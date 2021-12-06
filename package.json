@@ -1,0 +1,24 @@
+{
+  "name": "fields",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SukuWc/fields.git"
+  },
+  "author": "SukuWc",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/SukuWc/fields/issues"
+  },
+  "homepage": "https://github.com/SukuWc/fields#readme",
+  "dependencies": {
+    "planck": "^1.0.0-alpha.2",
+    "planck-renderer": "^2.2.0",
+    "planckjs": "^0.0.0"
+  }
+}
