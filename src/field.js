@@ -108,27 +108,39 @@ function Vector(midX, midY) {
         // this.angle = angleBetween(this.midX, this.midY, mouseX, mouseY);
         // d = dist(this.midX, this.midY, mouseX, mouseY);
 
-        this.angle = (0/180)*Math.PI;
+        // windangle
+        this.angle = (60/-180)*Math.PI;
 
+        let x0 = canvas.width/2;
+        let y0 = canvas.height/2;
 
-        let dx = Math.sin((this.midX+time*3)/50);
-        let dy = Math.cos((this.midY+time*3)/50);
+        let distance = dist(this.midX, this.midY, x0, y0);
 
+        let alpha = Math.atan2((this.midY-y0),(this.midX-x0))
+  
+        let phase = Math.cos((this.angle - alpha))*distance;
+        let amplitude = 30;
 
-        d = 200*Math.sin(dx) + 200*Math.cos(dy)
+        d = amplitude*Math.sin((phase/30+time/20.0))  ;
+    
 
         if (d<0){
             d = -d;
             this.angle+=Math.PI;
         }
 
+
         /* Create a factor by which to scale the vector length and color. */
         factor = d / (canvas.width * 1.3);
-        hue = Math.floor(360 * factor * 5) % 360;
-        this.len = (200*factor > 30) ? 30 : 200*factor;
+        this.len = (d > 30) ? 30 : d;
+
+        let h = this.angle/Math.PI*180;
+        let s = amplitude+d;
+        let l = 35;
+
 
         /* Call the draw() method with the updated color. */
-        this.draw(`hsl(${hue}, 70%, 35%)`);
+        this.draw(`hsl(${h}, ${s}%, ${l}%)`);
     };
     /**
      * Draw the vector's arrow head.
