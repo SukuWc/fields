@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "start": "vite",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -17,8 +18,10 @@
   },
   "homepage": "https://github.com/SukuWc/fields#readme",
   "dependencies": {
-    "planck": "^1.0.0-alpha.2",
-    "planck-renderer": "^2.2.0",
-    "planckjs": "^0.0.0"
+    "planck-js": "^0.3.31",
+    "planck-renderer": "^2.2.0"
+  },
+  "devDependencies": {
+    "vite": "^2.7.6"
   }
 }
