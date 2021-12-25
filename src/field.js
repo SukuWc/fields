@@ -262,7 +262,7 @@ function VectorField(cols, rows, xOffset, yOffset) {
  * Update the vector field whenever the cursor is moved.
  * @callback
  */
-setInterval(function(){field.update();}, 30);
+
 
 
 /**
@@ -288,4 +288,5 @@ function setup() {
     field.init();
 }
 
-setup();
+//setup();
+//setInterval(function(){field.update();}, 30);

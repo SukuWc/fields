@@ -19,7 +19,8 @@
   "homepage": "https://github.com/SukuWc/fields#readme",
   "dependencies": {
     "planck-js": "^0.3.31",
-    "planck-renderer": "^2.2.0"
+    "planck-renderer": "^2.2.0",
+    "three": "^0.136.0"
   },
   "devDependencies": {
     "vite": "^2.7.6"
