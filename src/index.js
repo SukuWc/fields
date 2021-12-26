@@ -8,6 +8,11 @@ let keyboard_down = false;
 let keyboard_left = false;
 let keyboard_right = false;
 
+let polygons = [];
+let edges= [];
+let circles= [];
+
+
 document.onkeydown = checkKeyPress;
 document.onkeyup = checkKeyRelease;
 
@@ -192,10 +197,10 @@ const runner = new Runner(world, {
 })
 
 // init world entities
-world.createBody().createFixture(Edge(Vec2(-40.0, 0.0), Vec2(40.0, 0.0)));
 world.createDynamicBody(Vec2(0.0, 4.5)).createFixture(Circle(0.5), 10.0);
 world.createDynamicBody(Vec2(0.0, 10.0)).createFixture(Circle(5.0), 10.0);
 
+console.log(boat)
 
 runner.start(() => {
 
@@ -206,6 +211,17 @@ runner.start(() => {
   var d_vector = boat.m_linearVelocity;
   var direction = Math.atan2(d_vector.y, d_vector.x)*180/Math.PI;
   
+
+  let x = boat.c_position.c.x;
+  let y = boat.c_position.c.y;
+
+  x=0
+  y=0
+
+
+
+  //console.log(boat.c_position.c)
+
   while (angle < -180){
       angle+=360
   }
@@ -244,6 +260,7 @@ runner.start(() => {
   }
   ctx.clearRect(-canvas.width, - canvas.height, canvas.width, canvas.height);
 	renderer.renderWorld()
+
 },
 () => {
   //ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -263,22 +280,26 @@ runner.start(() => {
 import * as THREE from '../node_modules/three/build/three.module.js';
 
 let camera, scene, renderer2;
-let geometry, material, mesh;
+let geometry2, material, mesh;
+
+let line;
 
 init();
 
 function init() {
 
-	camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 10 );
-	camera.position.z = 1;
+	camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 55 );
+	camera.position.z = 50;
 
 	scene = new THREE.Scene();
 
-	geometry = new THREE.BoxGeometry( 0.2, 0.2, 0.2 );
+	geometry2 = new THREE.BoxGeometry( 0.2, 0.2, 0.2 );
 	material = new THREE.MeshNormalMaterial();
 
-	mesh = new THREE.Mesh( geometry, material );
+	mesh = new THREE.Mesh( geometry2, material );
 	scene.add( mesh );
+
+
 
 	renderer2 = new THREE.WebGLRenderer( { antialias: true } );
 	renderer2.setSize( window.innerWidth, window.innerHeight );
@@ -287,7 +308,123 @@ function init() {
 
 }
 
+let isFirstFrame = true;
+
+
 function animation( time ) {
+
+  
+  for (const p of polygons){
+    scene.remove(p)
+  }
+
+  for (const e of edges){
+    scene.remove(e)
+  }
+
+  for (let body = world.getBodyList(); body; body = body.getNext()) {
+    for (
+      let fixture = body.getFixtureList();
+      fixture;
+      fixture = fixture.getNext()
+    ) {
+
+      if (body.render && body.render.hidden) {
+        continue;
+      }
+
+      if (body.render && body.render.stroke) {
+        //ctx.strokeStyle = body.render.stroke;
+      } else if (body.isDynamic()) {
+        //ctx.strokeStyle = options.strokeStyle.dynamic;
+      } else if (body.isKinematic()) {
+        //ctx.strokeStyle = options.strokeStyle.kinematic;
+      } else if (body.isStatic()) {
+        //ctx.strokeStyle = options.strokeStyle.static;
+      }
+
+      const type = fixture.getType();
+      const shape = fixture.getShape();
+
+      
+      if (type === "circle") {
+        
+      }
+      if (type === "edge") {
+
+        
+        let points = []
+        const v1 = shape.m_vertex1;
+        const v2 = shape.m_vertex2;
+        
+        let x1 = v1.x + body.m_xf.p.x
+        let y1 = v1.y - body.m_xf.p.y       
+        
+        let x2 = v2.x + body.m_xf.p.x
+        let y2 = v2.y - body.m_xf.p.y  
+
+
+
+        points.push( new THREE.Vector3(x1, y1, 0) );
+        points.push( new THREE.Vector3(x2, y2, 0) );
+
+
+        const geometry = new THREE.BufferGeometry().setFromPoints( points );
+        const material2 = new THREE.LineBasicMaterial( { color: 0xff0000 } );
+        edges.push(new THREE.Line( geometry, material2 ))
+        scene.add( edges[edges.length -1]);
+
+      }
+      if (type === "polygon") {
+
+        let vertices = shape.m_vertices;
+        vertices.push(vertices[0]);
+
+        let points = []
+
+        for (const v of vertices) {
+          //console.log(v.x, v.y)
+
+          //let angle = fixture.getAngle()*180/Math.PI - 90;
+          let angle = -body.getAngle() + Math.PI;
+          let com  = body.getLocalCenter()
+
+
+         // o.x = v.x + com.x
+         // o.y = v.y + com.y
+
+          let x = (v.x-com.x)*Math.cos(angle) - (v.y-com.y)*Math.sin(angle);
+          let y = (v.x-com.x)*Math.sin(angle) + (v.y-com.y)*Math.cos(angle);
+          let z = 0;
+
+
+          x += fixture.m_body.c_position.c.x
+          y -= fixture.m_body.c_position.c.y
+          
+          points.push( new THREE.Vector3(x,y,z) );
+        }
+
+        const geometry = new THREE.BufferGeometry().setFromPoints( points );
+        const material2 = new THREE.LineBasicMaterial( { color: 0x0000ff } );
+        polygons.push(new THREE.Line( geometry, material2 ))
+        scene.add( polygons[polygons.length -1]);
+
+        
+      }
+      if (type === 'chain') {
+        
+      }
+
+    }
+  }
+
+  // for (let joint = this.world.getJointList(); joint; joint = joint.getNext()) {
+  //   ctx.save();
+  //   ctx.scale(this.options.scale, this.options.scale)
+  //   this.drawJoint(joint)
+  //   ctx.restore()
+  // }
+
 
 
   if (keyboard_up){
@@ -303,6 +440,7 @@ function animation( time ) {
     mesh.rotation.y -= 0.1;
   }
 
+  isFirstFrame = false;
 
 	renderer2.render( scene, camera );
 
