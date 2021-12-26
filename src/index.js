@@ -246,6 +246,12 @@ runner.start(() => {
     var f = boat.getWorldVector(Vec2(0.0, -0.3));
     var p = boat.getWorldPoint(Vec2(0.0, 2.0));
     boat.applyLinearImpulse(f, p, true);
+  }  
+  
+  if (keyboard_down) {
+    var f = boat.getWorldVector(Vec2(0.0, 0.3));
+    var p = boat.getWorldPoint(Vec2(0.0, 2.0));
+    boat.applyLinearImpulse(f, p, true);
   }
 
   if (keyboard_right && !keyboard_left) {
@@ -313,7 +319,10 @@ let isFirstFrame = true;
 
 function animation( time ) {
 
-  
+  for (const c of circles){
+    scene.remove(c)
+  }
+
   for (const p of polygons){
     scene.remove(p)
   }
@@ -321,6 +330,8 @@ function animation( time ) {
   for (const e of edges){
     scene.remove(e)
   }
+
+
 
   for (let body = world.getBodyList(); body; body = body.getNext()) {
     for (
@@ -349,6 +360,41 @@ function animation( time ) {
       
       if (type === "circle") {
         
+        const radius = shape.m_radius;
+        const pos = body.getPosition();
+
+        if (isFirstFrame){
+
+          console.log(body, shape)
+          console.log(pos, radius)
+
+          
+
+        }
+
+
+
+        let points = []
+
+        for (let i = 0; i<360; i+=10){
+
+          let angle = i/180*Math.PI
+
+          let x = radius*Math.cos(angle) + pos.x 
+          let y = radius*Math.sin(angle) + pos.y
+
+
+          points.push( new THREE.Vector3(x, y, 0) );
+
+
+        }
+        points.push(points[0])
+
+        const geometry = new THREE.BufferGeometry().setFromPoints( points );
+        const material2 = new THREE.LineBasicMaterial( { color: 0x00ff00 } );
+        circles.push(new THREE.Line( geometry, material2 ))
+        scene.add( circles[circles.length -1]);
+
       }
       if (type === "edge") {
 
@@ -358,10 +404,10 @@ function animation( time ) {
         const v2 = shape.m_vertex2;
         
         let x1 = v1.x + body.m_xf.p.x
-        let y1 = v1.y - body.m_xf.p.y       
+        let y1 = v1.y + body.m_xf.p.y       
         
         let x2 = v2.x + body.m_xf.p.x
-        let y2 = v2.y - body.m_xf.p.y  
+        let y2 = v2.y + body.m_xf.p.y  
 
 
 
@@ -386,20 +432,20 @@ function animation( time ) {
           //console.log(v.x, v.y)
 
           //let angle = fixture.getAngle()*180/Math.PI - 90;
-          let angle = -body.getAngle() + Math.PI;
+          let angle = body.getAngle() + Math.PI;
           let com  = body.getLocalCenter()
 
 
          // o.x = v.x + com.x
          // o.y = v.y + com.y
 
-          let x = (v.x-com.x)*Math.cos(angle) - (v.y-com.y)*Math.sin(angle);
-          let y = (v.x-com.x)*Math.sin(angle) + (v.y-com.y)*Math.cos(angle);
+          let x = (v.x+com.x)*Math.cos(angle) + (v.y-com.y)*Math.sin(angle);
+          let y = (v.x+com.x)*Math.sin(angle) - (v.y-com.y)*Math.cos(angle);
           let z = 0;
 
 
           x += fixture.m_body.c_position.c.x
-          y -= fixture.m_body.c_position.c.y
+          y += fixture.m_body.c_position.c.y
           
           points.push( new THREE.Vector3(x,y,z) );
         }
