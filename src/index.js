@@ -218,10 +218,6 @@ runner.start(() => {
   x=0
   y=0
 
-
-
-  //console.log(boat.c_position.c)
-
   while (angle < -180){
       angle+=360
   }
@@ -265,7 +261,7 @@ runner.start(() => {
     boat.applyForce(f, p, true); 
   }
   ctx.clearRect(-canvas.width, - canvas.height, canvas.width, canvas.height);
-	renderer.renderWorld()
+	//renderer.renderWorld()
 
 },
 () => {
@@ -285,12 +281,38 @@ runner.start(() => {
 
 import * as THREE from '../node_modules/three/build/three.module.js';
 
-let camera, scene, renderer2;
+let camera, scene, renderer2, uniforms;
 let geometry2, material, mesh;
 
 let line;
 
 init();
+
+function vertexShader() {
+  return `
+    varying vec3 vUv; 
+
+    void main() {
+      vUv = position; 
+
+      vec4 modelViewPosition = modelViewMatrix * vec4(position, 1.0);
+      gl_Position = projectionMatrix * modelViewPosition; 
+    }
+  `
+}
+
+function fragmentShader() {
+  return `
+    uniform vec3 colorA; 
+    uniform vec3 colorB; 
+    varying vec3 vUv;
+
+    void main() {
+      gl_FragColor = vec4(mix(colorA, colorB, vUv.x), 1.0);
+    }
+    `
+}
+
 
 function init() {
 
@@ -299,10 +321,25 @@ function init() {
 
 	scene = new THREE.Scene();
 
-	geometry2 = new THREE.BoxGeometry( 0.2, 0.2, 0.2 );
-	material = new THREE.MeshNormalMaterial();
+	geometry2 = new THREE.BoxGeometry( 4, 4, 4 );
 
-	mesh = new THREE.Mesh( geometry2, material );
+
+  let uniforms = {
+    colorB: {type: 'vec3', value: new THREE.Color(0x665555)},
+    colorA: {type: 'vec3', value: new THREE.Color(0x555566)}
+  }
+
+  material = new THREE.ShaderMaterial({
+    uniforms: uniforms,
+    fragmentShader: fragmentShader(),
+    vertexShader: vertexShader(),
+  });
+
+	//material = new THREE.MeshNormalMaterial();
+  console.log(document.getElementById('fragmentShader').textContent)
+
+  mesh = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), material);
+	//mesh = new THREE.Mesh( geometry2, material );
 	scene.add( mesh );
 
 
@@ -471,7 +508,7 @@ function animation( time ) {
   //   ctx.restore()
   // }
 
-
+  /*
 
   if (keyboard_up){
     mesh.rotation.x += 0.1;
@@ -485,6 +522,8 @@ function animation( time ) {
   if (keyboard_right){
     mesh.rotation.y -= 0.1;
   }
+
+  */
 
   isFirstFrame = false;
 
