@@ -89,33 +89,6 @@ function setup_world(){
   // Bottom horizontal
   ground.createFixture(pl.Edge(Vec2(-20.0, -20.0), Vec2(20.0, -20.0)), wallFD);
 
-  /*
-
-  var boxFD = {
-    density: 1.0,
-    friction: 0.3,
-  };
-
-  for (var i = 0; i < 10; ++i) {
-    var box = world.createDynamicBody(Vec2(0.0, 5.0 + 1.54 * i));
-
-    box.createFixture(pl.Box(0.5, 0.5), boxFD);
-
-    var gravity = 10.0;
-    var I = box.getInertia();
-    var mass = box.getMass();
-
-    // For a circle: I = 0.5 * m * r * r ==> r = sqrt(2 * I / m)
-    var radius = Math.sqrt(2.0 * I / mass);
-
-    world.createJoint(pl.FrictionJoint({
-      collideConnected : true,
-      maxForce : mass * gravity,
-      maxTorque : mass * radius * gravity
-    }, ground, box));
-  }
-  */
-
   return world;
 } 
 
@@ -281,9 +254,9 @@ runner.start(() => {
 
 import * as THREE from '../node_modules/three/build/three.module.js';
 
-let camera, scene, renderer2, uniforms;
+let camera, scene, renderer2;
 let geometry2, material, mesh;
-
+let uniforms = {};
 let line;
 
 init();
@@ -305,28 +278,49 @@ function fragmentShader() {
   return `
     uniform vec3 colorA; 
     uniform vec3 colorB; 
+    uniform float time; 
     varying vec3 vUv;
+ 
 
     void main() {
-      gl_FragColor = vec4(mix(colorA, colorB, vUv.x), 1.0);
+
+      float windangle = 60.0; 
+
+      float angle = (windangle/180.0)*3.141592;
+    
+      float distance =  sqrt(vUv.x*vUv.x + vUv.y*vUv.y);
+    
+      float alpha = atan(vUv.y, vUv.x);
+    
+      float phase = cos((angle - alpha))*distance;
+    
+      float d = 0.25*sin((phase/1.0+time/1.0));
+
+
+      gl_FragColor = vec4(0.5+d, 0.5+d, 0.5+d, 1);
+
+
     }
     `
 }
 
 
+let frame = 0;
+
 function init() {
 
-	camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 55 );
-	camera.position.z = 50;
-
+	camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 85 );
+	camera.position.z = 40;
+	camera.position.y = 20;
 	scene = new THREE.Scene();
 
 	geometry2 = new THREE.BoxGeometry( 4, 4, 4 );
 
 
-  let uniforms = {
+  uniforms = {
     colorB: {type: 'vec3', value: new THREE.Color(0x665555)},
-    colorA: {type: 'vec3', value: new THREE.Color(0x555566)}
+    colorA: {type: 'vec3', value: new THREE.Color(0x555566)},
+    'time': {value: 1.0},
   }
 
   material = new THREE.ShaderMaterial({
@@ -336,7 +330,6 @@ function init() {
   });
 
 	//material = new THREE.MeshNormalMaterial();
-  console.log(document.getElementById('fragmentShader').textContent)
 
   mesh = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), material);
 	//mesh = new THREE.Mesh( geometry2, material );
@@ -355,6 +348,28 @@ let isFirstFrame = true;
 
 
 function animation( time ) {
+
+
+  // pixel position
+  let x1 = 130;
+  let y1 = 130;
+
+  let windangle = 60;  
+  // windangle
+  let angle = (windangle/-180)*Math.PI;
+
+  let distance =  Math.sqrt(x1*x1 + y1*y1);
+
+  let alpha = Math.atan2(y1,x1)
+
+  let phase = Math.cos((angle - alpha))*distance;
+
+  let d = 30*Math.sin((phase/100+time/50.0));
+
+  //console.log(angle, d)
+
+
+
 
   for (const c of circles){
     scene.remove(c)
@@ -524,6 +539,8 @@ function animation( time ) {
   }
 
   */
+  frame++;
+  uniforms.time.value+=0.1;
 
   isFirstFrame = false;
 
