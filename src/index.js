@@ -118,8 +118,13 @@ function setup_boat(world){
   });
 
 
-  boat.createFixture(poly1, 2.0);
-  boat.createFixture(poly2, 2.0);
+  let polya = pl.Polygon([Vec2(0, -2.25), Vec2(-0.5, -1.25), Vec2(-0.75, -0.25),  Vec2(-0.75, 0.5),  Vec2(-0.5, 1.75),  Vec2(0, 1.75) ])
+  let polyb = pl.Polygon([Vec2(0, -2.25), Vec2(0.5, -1.25), Vec2(0.75, -0.25),  Vec2(0.75, 0.5),  Vec2(0.5, 1.75),  Vec2(0, 1.75) ])
+
+  //boat.createFixture(poly1, 2.0);
+  //boat.createFixture(poly2, 2.0);
+  boat.createFixture(polya, 2.0);
+  boat.createFixture(polyb, 2.0);
 
   return boat
 }
