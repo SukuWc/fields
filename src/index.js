@@ -110,7 +110,7 @@ function setup_boat(world){
   var boat = world.createBody({
     type : 'dynamic',
     angularDamping : 0.5,
-    linearDamping : 0.5,
+    linearDamping : 0.1,
     position : Vec2(0.0, 2.0),
     angle : Math.PI,
     allowSleep : false
@@ -123,7 +123,7 @@ function setup_boat(world){
   //boat.createFixture(poly2, 2.0);
   //boat.createFixture(polya, 2.0);
   //boat.createFixture(polyb, 2.0);
-  boat.createFixture(polyc, 4.0);
+  boat.createFixture(polyc, 6.0);
 
   return boat
 }
@@ -188,6 +188,8 @@ runner.start(() => {
   forces = [];
   // render loop
   
+  rudders = [];
+  sails = [];
   
   var angle = boat.getAngle();
   var d_vector = boat.m_linearVelocity;
@@ -230,13 +232,13 @@ runner.start(() => {
     centerboard_AoA_degrees += 180
   }
 
-  let force = -centerboard_AoA_degrees/2 * Math.abs(d)*Math.abs(d);
+  let force = -centerboard_AoA_degrees * Math.abs(d)*Math.abs(d) *2;
 
-  if (force>75){
-    force = 75
+  if (force>150){
+    force = 150
   }
-  else if (force<-75){
-    force = -75
+  else if (force<-150){
+    force = -150
   }
 
   if (Math.abs(d)<0.5){
@@ -247,6 +249,9 @@ runner.start(() => {
   // console.log(angle, d, q);
 
   document.getElementById("info").innerHTML = "q/d: "+ centerboard_AoA_degrees + "°<br>"; 
+  document.getElementById("info").innerHTML += "Arrays: "+ polygons.length + " " + edges.length +  " " + circles.length +  " " + arrows.length +  " " + forces.length +  " " + rudders.length +  " " + sails.length +   "<br>"; 
+
+
   document.getElementById("info").innerHTML += "BS: "+ d + "<br>"; 
 
   //var f = boat.getWorldVector(Vec2(-q*100, 0)); 
@@ -277,14 +282,14 @@ runner.start(() => {
   if (keyboard_right && !keyboard_left) {
 
     if (rudder_angle<60){
-      rudder_angle +=1
+      rudder_angle +=0.5
       pumpfactor = 0.75
     }
 
   } else if (keyboard_left && !keyboard_right) {
     
     if (rudder_angle>-60){
-      rudder_angle -=1
+      rudder_angle -=0.5
       pumpfactor = -0.75
     }
 
@@ -318,10 +323,10 @@ runner.start(() => {
 
   let rudderforce = 0;
   if (d>0){
-    rudderforce = d*(rudder_angle+water_angle)/10;
+    rudderforce = d*(rudder_angle+water_angle)/5;
   }
   else{
-    rudderforce = d*(rudder_angle-water_angle)/10; 
+    rudderforce = d*(rudder_angle-water_angle)/5; 
   }
 
   rudderforce += pumpfactor*4
@@ -333,8 +338,6 @@ runner.start(() => {
   
   forces.push({name: "rudder", vector: f2, point: p2})
 
-  rudders = [];
-  sails = [];
 
   let r = {}
 
@@ -381,7 +384,7 @@ runner.start(() => {
   let awa = Math.atan2(aw_vector.y, aw_vector.x)/Math.PI*180 - angle/Math.PI*180 + 90 ;
   let aws = Math.sqrt(aw_vector.x*aw_vector.x + aw_vector.y*aw_vector.y)
 
-  sails.push(w)
+  //sails.push(w)
 
 
   if (awa>180){
@@ -436,6 +439,51 @@ runner.start(() => {
   mainsail[3].y = mainsail[0].y  +Math.sin(angle + Math.PI/2 + mainsail_awa*0.5 /180*Math.PI) * mainsail_boom_length;
 
   sails.push(mainsail)
+
+  let bs = Math.sqrt(boat.m_linearVelocity.x*boat.m_linearVelocity.x + boat.m_linearVelocity.y*boat.m_linearVelocity.y)
+
+  let mainsail_f = {};
+
+  mainsail_f.x = -aw_vector.x - Math.cos(angle + Math.PI/2 )*aws*1.0
+  mainsail_f.y = -aw_vector.y - Math.sin(angle + Math.PI/2 )*aws*1.0
+
+  let normalize_factor = Math.sqrt(mainsail_f.x*mainsail_f.x + mainsail_f.y+mainsail_f.y)
+
+
+
+  mainsail_f.x *= Math.sqrt(Math.abs(twa)/100)*2*aws
+  mainsail_f.y *= Math.sqrt(Math.abs(twa)/100)*2*aws
+
+
+  if (isNaN(mainsail_f.x)){
+    mainsail_f.x = 0;
+  }
+  if (isNaN(mainsail_f.y)){
+    mainsail_f.y = 0;
+  }
+  
+  document.getElementById("info").innerHTML += "X2Y: "+ Math.floor(mainsail_f.x*10)/10 + " " + Math.floor(mainsail_f.y*10)/10 + "<br>";
+
+  const center_of_lift = -0.025
+
+  var mainsail_p = boat.getWorldPoint(Vec2(0.0, center_of_lift));
+  // centerboard
+  
+  boat.applyForce(mainsail_f, mainsail_p, true);   
+  forces.push({name: "mainsail", vector: mainsail_f, point: mainsail_p})
+
+
+  // Calculate DRAG
+  let boat_speed = Math.sqrt(boat.m_linearVelocity.x*boat.m_linearVelocity.x + boat.m_linearVelocity.y*boat.m_linearVelocity.y)
+
+  var drag_f = {}
+  drag_f.x = -(boat.m_linearVelocity.x)*boat_speed
+  drag_f.y = -(boat.m_linearVelocity.y)*boat_speed
+
+
+  var drag_p = boat.getWorldPoint(Vec2(0.0, -0.00));
+  boat.applyForce(drag_f, drag_p, true);   
+  forces.push({name: "drag", vector: drag_f, point: drag_p})
 
 
   // RENDER JIB SHAPE
@@ -581,6 +629,7 @@ let isFirstFrame = true;
 
 function animation( time ) {
 
+ 
 
   // pixel position
   let x1 = 130;
@@ -615,8 +664,13 @@ function animation( time ) {
     scene.remove(s)
   }
 
-  let impulses= [];
+  impulses= [];
 
+  polygons = [];
+  edges= [];
+  circles= [];
+  
+  arrows= [];
 
   for (let body = world.getBodyList(); body; body = body.getNext()) {
     for (
@@ -803,7 +857,7 @@ function animation( time ) {
     }
 
     const geometry = new THREE.BufferGeometry().setFromPoints( points );
-    const material2 = new THREE.LineBasicMaterial( { color: 0x00ff00 } );
+    const material2 = new THREE.LineBasicMaterial( { color: 0x00ffff } );
     edges.push(new THREE.Line( geometry, material2 ))
     scene.add( edges[edges.length -1]);
 
