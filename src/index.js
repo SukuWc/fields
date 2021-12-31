@@ -29,50 +29,431 @@ document.onkeyup = checkKeyRelease;
 
 function checkKeyPress(e) {
 
-    e = e || window.event;
+  e = e || window.event;
 
-    if (e.keyCode == '38') {
-        // up arrow
-        keyboard_up = true;
-    }
-    else if (e.keyCode == '40') {
-        // down arrow
-        keyboard_down = true;
-    }
-    else if (e.keyCode == '37') {
-       // left arrow
-        keyboard_left = true;
-    }
-    else if (e.keyCode == '39') {
-       // right arrow
-        keyboard_right = true;
-    }
+  if (e.keyCode == '38') {
+      // up arrow
+      keyboard_up = true;
+  }
+  else if (e.keyCode == '40') {
+      // down arrow
+      keyboard_down = true;
+  }
+  else if (e.keyCode == '37') {
+     // left arrow
+      keyboard_left = true;
+  }
+  else if (e.keyCode == '39') {
+     // right arrow
+      keyboard_right = true;
+  }
 
 }
 
 
 function checkKeyRelease(e) {
 
-  e = e || window.event;
+e = e || window.event;
 
-  if (e.keyCode == '38') {
-      // up arrow
-      keyboard_up = false;
-  }
-  else if (e.keyCode == '40') {
-      // down arrow
-      keyboard_down = false;
-  }
-  else if (e.keyCode == '37') {
-     // left arrow
-      keyboard_left = false;
-  }
-  else if (e.keyCode == '39') {
-     // right arrow
-      keyboard_right = false;
-  }
+if (e.keyCode == '38') {
+    // up arrow
+    keyboard_up = false;
+}
+else if (e.keyCode == '40') {
+    // down arrow
+    keyboard_down = false;
+}
+else if (e.keyCode == '37') {
+   // left arrow
+    keyboard_left = false;
+}
+else if (e.keyCode == '39') {
+   // right arrow
+    keyboard_right = false;
+}
 
 }
+
+
+class Boat{
+
+  constructor(){
+
+    let pl = planck, Vec2 = pl.Vec2;
+
+    this.hull_mass = 6
+    this.hull_shape = pl.Polygon([Vec2(0, -2.25), Vec2(-0.5, -1.25), Vec2(-0.75, -0.25),  Vec2(-0.75, 0.5),  Vec2(-0.5, 1.75), Vec2(0.5, 1.75),  Vec2(0.75, 0.5), Vec2(0.75, -0.25), Vec2(0.5, -1.25), Vec2(0, -2.25)])
+   
+    this.hull_angle = 0;
+
+    this.rudder_angle = 0;
+    this.rudder_angle_max = 60;
+    this.rudder_position = 1.8
+    this.rudder_lenght = 0.5
+
+    this.centerboard_position = 0;
+    this.centerboard_length   = 0.6
+
+    this.mainsail_leading_edge_position = -0.8
+    this.mainsail_boom_length = 2.2
+
+    this.mainsail_boom_angle_max = 80
+    this.mainsail_boom_angle_factor = 0.5
+    this.mainsail_boom_angle = 0
+    this.mainsail_boom_angle_actual = 0
+
+    this.jib_leading_edge_position = -2
+    this.jib_boom_length = 1.4
+
+    this.jib_boom_angle_max = 55
+    this.jib_boom_angle_factor = 0.65
+    this.jib_boom_angle = 0
+    this.jib_boom_angle_actual = 0
+
+    this.center_of_lift = -0.025
+
+    this.physics_model = undefined;
+
+  }
+
+  physics_model_init(world){
+
+    let pl = planck, Vec2 = pl.Vec2;
+    
+    console.log(world)
+
+    let boat = world.createBody({
+      type : 'dynamic',
+      angularDamping : 0.5,
+      linearDamping : 0.1,
+      position : Vec2(0.0, 2.0),
+      angle : Math.PI,
+      allowSleep : false
+    });
+
+    console.log(boat)
+
+    boat.createFixture(this.hull_shape, this.hull_mass);
+
+    this.physics_model = boat;
+
+  }
+
+
+  physics_model_step(){
+
+    document.getElementById("info").innerHTML = ""
+    // calculate boat dynamics
+
+    var angle = this.physics_model.getAngle();
+
+    this.hull_angle = angle;
+
+    while (angle < -Math.PI){
+        angle+=2*Math.PI
+    }
+
+    while (angle > Math.PI){
+        angle-=2*Math.PI;
+    }
+
+    // direct (forward) component of velocity vector
+    let d = this.physics_model.m_linearVelocity.x*Math.cos(angle-Math.PI/2) + this.physics_model.m_linearVelocity.y*Math.sin(angle-Math.PI/2) 
+    
+    // quadrature (sideways) component of velocity vector
+    let q = this.physics_model.m_linearVelocity.x*Math.cos(angle) + this.physics_model.m_linearVelocity.y*Math.sin(angle) 
+
+    // calculate centerboard dynamics
+    let centerboard_AoA_degrees = Math.atan2(q, Math.abs(d)) * 180 / Math.PI
+
+    if (centerboard_AoA_degrees>90){
+      centerboard_AoA_degrees -= 180
+    }
+    else if (centerboard_AoA_degrees<-90){
+      centerboard_AoA_degrees += 180
+    }
+
+    let centerboard_force = -centerboard_AoA_degrees * Math.abs(d)*Math.abs(d) *2;
+
+    if (centerboard_force>150){
+      centerboard_force = 150
+    }
+    else if (centerboard_force<-150){
+      centerboard_force = -150
+    }
+
+    //var f = boat.getWorldVector(Vec2(-q*100, 0)); 
+    var centerboard_f = this.physics_model.getWorldVector(Vec2(centerboard_force, 0));
+    var centerboard_p = this.physics_model.getWorldPoint(Vec2(0.0, 0));
+
+    // centerboard
+    this.physics_model.applyForce(centerboard_f, centerboard_p, true);   
+    forces.push({name: "centerboard", vector: centerboard_f, point: centerboard_p})
+
+    document.getElementById("info").innerHTML += "q/d: "+ centerboard_AoA_degrees + "°<br>"; 
+  
+
+    // fake motor
+
+    if (keyboard_up) {
+      var f = this.physics_model.getWorldVector(Vec2(0.0, -0.3));
+      var p = this.physics_model.getWorldPoint(Vec2(0.0, 2.0));
+      this.physics_model.applyLinearImpulse(f, p, true);
+    }  
+    
+    if (keyboard_down) {
+      var f = this.physics_model.getWorldVector(Vec2(0.0, 0.3));
+      var p = this.physics_model.getWorldPoint(Vec2(0.0, 2.0));
+      this.physics_model.applyLinearImpulse(f, p, true);
+    }
+
+
+    // rudder dynamics
+
+    let pumpfactor = 0;
+
+    if (keyboard_right && !keyboard_left) {
+
+      if (this.rudder_angle<this.rudder_angle_max){
+        this.rudder_angle +=0.5
+        pumpfactor = 0.75
+      }
+
+    } else if (keyboard_left && !keyboard_right) {
+      
+      if (this.rudder_angle>-this.rudder_angle_max){
+        this.rudder_angle -=0.5
+        pumpfactor = -0.75
+      }
+
+    }
+    else{
+
+      let dmod = d
+      if (d>1){
+        dmod = 1
+      }
+      if (d<-1){
+        dmod = -1
+      }
+
+      this.rudder_angle = this.rudder_angle*(0.98-dmod/80)
+      //pumpfactor = rudder_angle*-dmod/20
+
+    }
+    
+
+
+    // calculate flow directuion under the rudder
+    let angular_velocity = this.physics_model.m_angularVelocity;
+    let q_rot = angular_velocity*this.rudder_lenght;
+    let water_angle = Math.atan2(q+q_rot, Math.abs(d)) /Math.PI*180
+
+    let rudder_force = 0;
+    if (d>0){
+      rudder_force = d*(this.rudder_angle+water_angle)/5;
+    }
+    else{
+      rudder_force = d*(this.rudder_angle-water_angle)/5; 
+    }
+
+    rudder_force += pumpfactor*4
+
+    let rudder_p = this.physics_model.getWorldPoint(Vec2(0.0, this.rudder_position))
+    let rudder_f = {}
+
+    rudder_f.x = Math.cos(angle +this.rudder_angle/180*Math.PI)* rudder_force;
+    rudder_f.y = Math.sin(angle +this.rudder_angle/180*Math.PI)* rudder_force;
+
+    this.physics_model.applyForce(rudder_f, rudder_p, true); 
+    forces.push({name: "rudder", vector: rudder_f, point: rudder_p})
+
+
+    // Calculate True wind and apparent wind
+    let twa = (windangle - angle/Math.PI*180 + 90 )
+
+    let aw_vector = {}
+
+    aw_vector.x = this.physics_model.m_linearVelocity.x + Math.cos(windangle /180*Math.PI) * windspeed;
+    aw_vector.y = this.physics_model.m_linearVelocity.y + Math.sin(windangle /180*Math.PI) * windspeed;
+
+    let awa = Math.atan2(aw_vector.y, aw_vector.x)/Math.PI*180 - angle/Math.PI*180 + 90 ;
+    let aws = Math.sqrt(aw_vector.x*aw_vector.x + aw_vector.y*aw_vector.y)
+
+    if (awa>180){
+      awa-=360
+    }
+    if (awa<-180){
+      awa+=360
+    }
+
+    if (twa>180){
+      twa-=360
+    }
+    if (twa<-180){
+      twa+=360
+    }
+
+    document.getElementById("info").innerHTML += "TWA: "+Math.floor(twa) + "<br>";
+    document.getElementById("info").innerHTML += "TWS: "+Math.floor(windspeed) + "<br>";
+    document.getElementById("info").innerHTML += "AWA: "+Math.floor(awa) + "<br>";
+    document.getElementById("info").innerHTML += "AWS: "+Math.floor(aws*10)/10 + "<br>";
+
+
+    // Calculate boat speed and velocity made good
+
+    let bs = Math.sqrt(this.physics_model.m_linearVelocity.x*this.physics_model.m_linearVelocity.x + this.physics_model.m_linearVelocity.y*this.physics_model.m_linearVelocity.y)
+    let vmg = Math.cos(twa/180*Math.PI)*bs
+
+    document.getElementById("info").innerHTML += "BS: "+ Math.floor( bs *10) /10 + "<br>"; 
+    document.getElementById("info").innerHTML += "VMG: "+ Math.floor( vmg *10) /10 + "<br>"; 
+
+
+
+    // JIB
+
+    this.jib_boom_angle = awa*this.jib_boom_angle_factor;
+
+    if (this.jib_boom_angle>this.jib_boom_angle_max) this.jib_boom_angle = this.jib_boom_angle_max;
+    if (this.jib_boom_angle<-this.jib_boom_angle_max) this.jib_boom_angle = -this.jib_boom_angle_max;
+
+
+    // MAINSAIL
+
+    this.mainsail_boom_angle = awa*this.mainsail_boom_angle_factor;
+
+    if (this.mainsail_boom_angle>this.mainsail_boom_angle_max) this.mainsail_boom_angle = this.mainsail_boom_angle_max;
+    if (this.mainsail_boom_angle<-this.mainsail_boom_angle_max) this.mainsail_boom_angle = -this.mainsail_boom_angle_max;
+
+
+    let mainsail_f = {};
+
+    mainsail_f.x = -aw_vector.x - Math.cos(angle + Math.PI/2 )*aws*1.0
+    mainsail_f.y = -aw_vector.y - Math.sin(angle + Math.PI/2 )*aws*1.0
+
+
+    mainsail_f.x *= Math.sqrt(Math.abs(twa)/100)*2*aws
+    mainsail_f.y *= Math.sqrt(Math.abs(twa)/100)*2*aws
+
+
+    if (isNaN(mainsail_f.x)){
+      mainsail_f.x = 0;
+    }
+    if (isNaN(mainsail_f.y)){
+      mainsail_f.y = 0;
+    }
+    
+
+    var mainsail_p = this.physics_model.getWorldPoint(Vec2(0.0, this.center_of_lift));
+    
+    this.physics_model.applyForce(mainsail_f, mainsail_p, true);   
+    forces.push({name: "mainsail", vector: mainsail_f, point: mainsail_p})
+
+
+
+    // Calculate DRAG
+    var drag_f = {}
+    drag_f.x = -(this.physics_model.m_linearVelocity.x)*bs
+    drag_f.y = -(this.physics_model.m_linearVelocity.y)*bs
+
+
+    var drag_p = this.physics_model.getWorldPoint(Vec2(0.0, 0));
+    this.physics_model.applyForce(drag_f, drag_p, true);   
+    forces.push({name: "drag", vector: drag_f, point: drag_p})
+
+  }
+  
+  grephics_model_render(){
+
+
+    // rendering the rudder
+    let r = {}
+
+    r.x1 = this.physics_model.getWorldPoint(Vec2(0.0, this.rudder_position)).x;
+    r.y1 = this.physics_model.getWorldPoint(Vec2(0.0, this.rudder_position)).y;
+    r.x2 = r.x1+Math.cos(this.physics_model.getAngle() + Math.PI/2 +this.rudder_angle/180*Math.PI)*this.rudder_lenght;
+    r.y2 = r.y1+Math.sin(this.physics_model.getAngle() + Math.PI/2 +this.rudder_angle/180*Math.PI)*this.rudder_lenght;
+
+    rudders.push(r)
+
+    // rendering the centerboard
+
+    let c = {}
+    
+    c.x1 = this.physics_model.getWorldPoint(Vec2(0.0, this.centerboard_position + this.centerboard_length/2)).x;
+    c.y1 = this.physics_model.getWorldPoint(Vec2(0.0, this.centerboard_position + this.centerboard_length/2)).y;
+    c.x2 = this.physics_model.getWorldPoint(Vec2(0.0, this.centerboard_position - this.centerboard_length/2)).x;
+    c.y2 = this.physics_model.getWorldPoint(Vec2(0.0, this.centerboard_position - this.centerboard_length/2)).y;
+
+    rudders.push(c)
+
+    // rendering the mainsail
+
+    
+    let mainsail = []
+
+    mainsail[0] = {};
+    mainsail[0].x = this.physics_model.getWorldPoint(Vec2(0.0, this.mainsail_leading_edge_position)).x;
+    mainsail[0].y = this.physics_model.getWorldPoint(Vec2(0.0, this.mainsail_leading_edge_position)).y;
+
+    let awa = this.mainsail_boom_angle/this.mainsail_boom_angle_factor
+
+
+    this.mainsail_boom_angle_actual+= (this.mainsail_boom_angle-this.mainsail_boom_angle_actual)/30;
+
+    let mainsail_fat1 = (this.mainsail_boom_length*0.05*Math.abs(awa)/30 < this.mainsail_boom_length/10)?this.mainsail_boom_length*0.05*Math.abs(awa)/30 :this.mainsail_boom_length/10;
+    mainsail[1] = {};
+    mainsail[1].x = mainsail[0].x + Math.cos(this.hull_angle+ Math.PI/2 + this.mainsail_boom_angle_actual /180*Math.PI) * this.mainsail_boom_length*0.25 +  Math.cos(this.hull_angle+ this.mainsail_boom_angle_actual /180*Math.PI)*-mainsail_fat1*Math.sign(this.mainsail_boom_angle_actual);
+    mainsail[1].y = mainsail[0].y  +Math.sin(this.hull_angle+ Math.PI/2 + this.mainsail_boom_angle_actual /180*Math.PI) * this.mainsail_boom_length*0.25 +  Math.sin(this.hull_angle + this.mainsail_boom_angle_actual /180*Math.PI)*-mainsail_fat1*Math.sign(this.mainsail_boom_angle_actual);
+    
+    let mainsail_fat2 = mainsail_fat1;
+    mainsail[2] = {};
+    mainsail[2].x = mainsail[0].x + Math.cos(this.hull_angle + Math.PI/2 + this.mainsail_boom_angle_actual /180*Math.PI) * this.mainsail_boom_length*0.5 +  Math.cos(this.hull_angle + this.mainsail_boom_angle_actual /180*Math.PI)*-mainsail_fat2*Math.sign(this.mainsail_boom_angle_actual);
+    mainsail[2].y = mainsail[0].y  +Math.sin(this.hull_angle + Math.PI/2 + this.mainsail_boom_angle_actual /180*Math.PI) * this.mainsail_boom_length*0.5 +  Math.sin(this.hull_angle + this.mainsail_boom_angle_actual /180*Math.PI)*-mainsail_fat2*Math.sign(this.mainsail_boom_angle_actual);
+
+    mainsail[3] = {};
+    mainsail[3].x = mainsail[0].x + Math.cos(this.hull_angle + Math.PI/2 + this.mainsail_boom_angle_actual /180*Math.PI) * this.mainsail_boom_length;
+    mainsail[3].y = mainsail[0].y  +Math.sin(this.hull_angle + Math.PI/2 + this.mainsail_boom_angle_actual /180*Math.PI) * this.mainsail_boom_length;
+
+    sails.push(mainsail)
+
+    // RENDER JIB SHAPE
+
+
+    this.jib_boom_angle_actual+= (this.jib_boom_angle-this.jib_boom_angle_actual)/20;
+
+    let jib = []
+
+    jib[0] = {};
+    jib[0].x = this.physics_model.getWorldPoint(Vec2(0.0, this.jib_leading_edge_position)).x;
+    jib[0].y = this.physics_model.getWorldPoint(Vec2(0.0, this.jib_leading_edge_position)).y;
+
+    let jib_fat1 = (this.jib_boom_length*0.05*Math.abs(awa)/15 < this.jib_boom_length/3)?this.jib_boom_length*0.05*Math.abs(awa)/15 :this.jib_boom_length/3;
+    jib[1] = {};
+    jib[1].x = jib[0].x + Math.cos(this.hull_angle + Math.PI/2 + this.jib_boom_angle_actual /180*Math.PI) * this.jib_boom_length*0.25 +  Math.cos(this.hull_angle + this.jib_boom_angle_actual /180*Math.PI)*-jib_fat1*Math.sign(this.jib_boom_angle_actual);
+    jib[1].y = jib[0].y  +Math.sin(this.hull_angle + Math.PI/2 + this.jib_boom_angle_actual /180*Math.PI) * this.jib_boom_length*0.25 +  Math.sin(this.hull_angle + this.jib_boom_angle_actual /180*Math.PI)*-jib_fat1*Math.sign(this.jib_boom_angle_actual);
+    
+    let jib_fat2 = jib_fat1;
+    jib[2] = {};
+    jib[2].x = jib[0].x + Math.cos(this.hull_angle + Math.PI/2 + this.jib_boom_angle_actual /180*Math.PI) * this.jib_boom_length*0.5 +  Math.cos(this.hull_angle + this.jib_boom_angle_actual /180*Math.PI)*-jib_fat2*Math.sign(this.jib_boom_angle_actual);
+    jib[2].y = jib[0].y  +Math.sin(this.hull_angle + Math.PI/2 + this.jib_boom_angle_actual /180*Math.PI) * this.jib_boom_length*0.5 +  Math.sin(this.hull_angle + this.jib_boom_angle_actual /180*Math.PI)*-jib_fat2*Math.sign(this.jib_boom_angle_actual);
+
+    jib[3] = {};
+    jib[3].x = jib[0].x + Math.cos(this.hull_angle + Math.PI/2 + this.jib_boom_angle_actual /180*Math.PI) * this.jib_boom_length;
+    jib[3].y = jib[0].y  +Math.sin(this.hull_angle + Math.PI/2 + this.jib_boom_angle_actual /180*Math.PI) * this.jib_boom_length;
+
+    sails.push(jib);
+
+
+  }
+  
+  input_rudder_left(){}
+  input_rudder_right(){}
+
+
+
+}
+
 
 
 function setup_world(){
@@ -103,31 +484,6 @@ function setup_world(){
   return world;
 } 
 
-function setup_boat(world){
-  
-  let pl = planck, Vec2 = pl.Vec2;
-  
-  var boat = world.createBody({
-    type : 'dynamic',
-    angularDamping : 0.5,
-    linearDamping : 0.1,
-    position : Vec2(0.0, 2.0),
-    angle : Math.PI,
-    allowSleep : false
-  });
-
-  let polyc = pl.Polygon([Vec2(0, -2.25), Vec2(-0.5, -1.25), Vec2(-0.75, -0.25),  Vec2(-0.75, 0.5),  Vec2(-0.5, 1.75), Vec2(0.5, 1.75),  Vec2(0.75, 0.5), Vec2(0.75, -0.25), Vec2(0.5, -1.25), Vec2(0, -2.25)])
-
-
-  //boat.createFixture(poly1, 2.0);
-  //boat.createFixture(poly2, 2.0);
-  //boat.createFixture(polya, 2.0);
-  //boat.createFixture(polyb, 2.0);
-  boat.createFixture(polyc, 6.0);
-
-  return boat
-}
-
 
 const canvas = document.querySelector('#test')
 
@@ -137,7 +493,6 @@ canvas.width = window.innerWidth;
 const ctx = canvas.getContext('2d')
 
 ctx.translate(300, 0);
-
 
 const options = {
   scale: 16,
@@ -151,19 +506,10 @@ const options = {
 
 const world = setup_world();
 
-console.log(world)
 
-const boat = setup_boat(world);
-
-const renderer = new Renderer(world, ctx, options)
-
-console.log(renderer)
-
-renderer.draw = (ctx) => {
-  //ctx.strokeText(`FPS: ${runner.fps}`, 0, 10)
-  ctx.strokeText(Date.now()/1000, 0, 10)
-
-}
+// init world entities
+world.createDynamicBody(Vec2(0.0, 14.5)).createFixture(Circle(0.5), 10.0);
+world.createDynamicBody(Vec2(0.0, 20.0)).createFixture(Circle(5.0), 10.0);
 
 
 
@@ -173,352 +519,23 @@ const runner = new Runner(world, {
 	fps: 60,
 })
 
-// init world entities
-world.createDynamicBody(Vec2(0.0, 14.5)).createFixture(Circle(0.5), 10.0);
-world.createDynamicBody(Vec2(0.0, 20.0)).createFixture(Circle(5.0), 10.0);
 
-console.log(boat)
 
-let centerboard_AoA_last = 0;
-let rudder_angle = 0;
+const player = new Boat();
+player.physics_model_init(world);
 
 
 runner.start(() => {
 
-  forces = [];
-  // render loop
-  
+  // clear the array of displayed graphic elements
+  forces = []; 
   rudders = [];
   sails = [];
   
-  var angle = boat.getAngle();
-  var d_vector = boat.m_linearVelocity;
-  var direction = Math.atan2(d_vector.y, d_vector.x)*180/Math.PI;
-  
+ 
+  player.physics_model_step();
+  player.grephics_model_render();
 
-  let x = boat.c_position.c.x;
-  let y = boat.c_position.c.y;
-
-  x=0
-  y=0
-
-  while (angle < -Math.PI){
-      angle+=2*Math.PI
-  }
-
-  while (angle > Math.PI){
-      angle-=2*Math.PI;
-  }
-
-  // direct (forward) component of velocity vector
-  var d = boat.m_linearVelocity.x*Math.cos(angle-Math.PI/2) + boat.m_linearVelocity.y*Math.sin(angle-Math.PI/2) 
-  
-  // quadrature (sideways) component of velocity vector
-  var q = boat.m_linearVelocity.x*Math.cos(angle) + boat.m_linearVelocity.y*Math.sin(angle) 
-
-  
-
-  let centerboard_AoA_degrees = Math.atan2(q, Math.abs(d)) * 180 / Math.PI
-
-  // centerboard_AoA_degrees = (centerboard_AoA_degrees*1 + centerboard_AoA_last*9)/10
-  // centerboard_AoA_last = centerboard_AoA_degrees
-
-
-
-  if (centerboard_AoA_degrees>90){
-    centerboard_AoA_degrees -= 180
-  }
-  else if (centerboard_AoA_degrees<-90){
-    centerboard_AoA_degrees += 180
-  }
-
-  let force = -centerboard_AoA_degrees * Math.abs(d)*Math.abs(d) *2;
-
-  if (force>150){
-    force = 150
-  }
-  else if (force<-150){
-    force = -150
-  }
-
-  if (Math.abs(d)<0.5){
-    //force = 0;
-  }
-
-
-  // console.log(angle, d, q);
-
-  document.getElementById("info").innerHTML = "q/d: "+ centerboard_AoA_degrees + "°<br>"; 
-  document.getElementById("info").innerHTML += "Arrays: "+ polygons.length + " " + edges.length +  " " + circles.length +  " " + arrows.length +  " " + forces.length +  " " + rudders.length +  " " + sails.length +   "<br>"; 
-
-
-  document.getElementById("info").innerHTML += "BS: "+ d + "<br>"; 
-
-  //var f = boat.getWorldVector(Vec2(-q*100, 0)); 
-  var f = boat.getWorldVector(Vec2(force, 0));
-  var p = boat.getWorldPoint(Vec2(0.0, 0));
-
-  // centerboard
-  boat.applyForce(f, p, true);   
-
-  forces.push({name: "centerboard", vector: f, point: p})
-
-
-  if (keyboard_up) {
-    var f = boat.getWorldVector(Vec2(0.0, -0.3));
-    var p = boat.getWorldPoint(Vec2(0.0, 2.0));
-    boat.applyLinearImpulse(f, p, true);
-  }  
-  
-  if (keyboard_down) {
-    var f = boat.getWorldVector(Vec2(0.0, 0.3));
-    var p = boat.getWorldPoint(Vec2(0.0, 2.0));
-    boat.applyLinearImpulse(f, p, true);
-  }
-
-
-  let pumpfactor = 0;
-
-  if (keyboard_right && !keyboard_left) {
-
-    if (rudder_angle<60){
-      rudder_angle +=0.5
-      pumpfactor = 0.75
-    }
-
-  } else if (keyboard_left && !keyboard_right) {
-    
-    if (rudder_angle>-60){
-      rudder_angle -=0.5
-      pumpfactor = -0.75
-    }
-
-  }
-  else{
-
-    let dmod = d
-    if (d>1){
-      dmod = 1
-    }
-    if (d<-1){
-      dmod = -1
-    }
-
-    rudder_angle = rudder_angle*(0.98-dmod/80)
-    //pumpfactor = rudder_angle*-dmod/20
-
-  }
-
-
-  
-  let p2 = boat.getWorldPoint(Vec2(0.0, 1.8))
-  let f2 = {}
-
-  let angular_velocity = boat.m_angularVelocity;
-
-  let q_rot = angular_velocity*1.8;
-
-
-  let water_angle = Math.atan2(q+q_rot, Math.abs(d)) /Math.PI*180
-
-  let rudderforce = 0;
-  if (d>0){
-    rudderforce = d*(rudder_angle+water_angle)/5;
-  }
-  else{
-    rudderforce = d*(rudder_angle-water_angle)/5; 
-  }
-
-  rudderforce += pumpfactor*4
-
-  f2.x = Math.cos(angle +rudder_angle/180*Math.PI)* rudderforce;
-  f2.y = Math.sin(angle +rudder_angle/180*Math.PI)* rudderforce;
-
-  boat.applyForce(f2, p2, true); 
-  
-  forces.push({name: "rudder", vector: f2, point: p2})
-
-
-  let r = {}
-
-  r.x1 = boat.getWorldPoint(Vec2(0.0, 1.8)).x;
-  r.y1 = boat.getWorldPoint(Vec2(0.0, 1.8)).y;
-  r.x2 = r.x1+Math.cos(angle + Math.PI/2 +rudder_angle/180*Math.PI)*0.5;
-  r.y2 = r.y1+Math.sin(angle + Math.PI/2 +rudder_angle/180*Math.PI)*0.5;
-
-  rudders.push(r)
-
-  let c = {}
-  
-  c.x1 = boat.getWorldPoint(Vec2(0.0, 0.3)).x;
-  c.y1 = boat.getWorldPoint(Vec2(0.0, 0.3)).y;
-  c.x2 = boat.getWorldPoint(Vec2(0.0, -0.3)).x;
-  c.y2 = boat.getWorldPoint(Vec2(0.0, -0.3)).y;
-
-  rudders.push(c)
-
-  let twa = (windangle - angle/Math.PI*180 + 90 )
-
-
-
-
-  let w = []
-
-  w[0] = {};
-  w[0].x = 0;
-  w[0].y = 0;
-
-  w[1] = {};
-  w[1].x = boat.m_linearVelocity.x;
-  w[1].y = boat.m_linearVelocity.y;
-  
-  w[2] = {};
-  w[2].x = w[1].x + Math.cos(windangle /180*Math.PI) * windspeed;
-  w[2].y = w[1].y  +Math.sin(windangle /180*Math.PI) * windspeed;
-
-  let aw_vector = {}
-
-  aw_vector.x = boat.m_linearVelocity.x + Math.cos(windangle /180*Math.PI) * windspeed;
-  aw_vector.y = boat.m_linearVelocity.y + Math.sin(windangle /180*Math.PI) * windspeed;
-
-  let awa = Math.atan2(aw_vector.y, aw_vector.x)/Math.PI*180 - angle/Math.PI*180 + 90 ;
-  let aws = Math.sqrt(aw_vector.x*aw_vector.x + aw_vector.y*aw_vector.y)
-
-  //sails.push(w)
-
-
-  if (awa>180){
-    awa-=360
-  }
-  if (awa<-180){
-    awa+=360
-  }
-
-  if (twa>180){
-    twa-=360
-  }
-  if (twa<-180){
-    twa+=360
-  }
-
-  document.getElementById("info").innerHTML += "TWA: "+Math.floor(twa) + "<br>";
-  document.getElementById("info").innerHTML += "TWS: "+Math.floor(windspeed) + "<br>";
-  document.getElementById("info").innerHTML += "AWA: "+Math.floor(awa) + "<br>";
-  document.getElementById("info").innerHTML += "AWS: "+Math.floor(aws*10)/10 + "<br>";
-
-
-  // RENDER MAINSAIL SHAPE
-  let mainsail_leading_edge_position = -0.8
-
-  let mainsail_awa = awa;
-
-  const mainsail_awa_max = 150;
-
-  if (mainsail_awa>mainsail_awa_max) mainsail_awa = mainsail_awa_max;
-  if (mainsail_awa<-mainsail_awa_max) mainsail_awa = -mainsail_awa_max;
-
-  let mainsail_boom_length = 2.2
-  let mainsail = []
-
-  mainsail[0] = {};
-  mainsail[0].x = boat.getWorldPoint(Vec2(0.0, mainsail_leading_edge_position)).x;
-  mainsail[0].y = boat.getWorldPoint(Vec2(0.0, mainsail_leading_edge_position)).y;
-
-  let mainsail_fat1 = (mainsail_boom_length*0.05*Math.abs(awa)/30 < mainsail_boom_length/10)?mainsail_boom_length*0.05*Math.abs(awa)/30 :mainsail_boom_length/10;
-  mainsail[1] = {};
-  mainsail[1].x = mainsail[0].x + Math.cos(angle + Math.PI/2 + mainsail_awa*0.5 /180*Math.PI) * mainsail_boom_length*0.25 +  Math.cos(angle + mainsail_awa*0.5 /180*Math.PI)*-mainsail_fat1*Math.sign(mainsail_awa);
-  mainsail[1].y = mainsail[0].y  +Math.sin(angle + Math.PI/2 + mainsail_awa*0.5 /180*Math.PI) * mainsail_boom_length*0.25 +  Math.sin(angle + mainsail_awa*0.5 /180*Math.PI)*-mainsail_fat1*Math.sign(mainsail_awa);
-  
-  let mainsail_fat2 = mainsail_fat1;
-  mainsail[2] = {};
-  mainsail[2].x = mainsail[0].x + Math.cos(angle + Math.PI/2 + mainsail_awa*0.5 /180*Math.PI) * mainsail_boom_length*0.5 +  Math.cos(angle + mainsail_awa*0.5 /180*Math.PI)*-mainsail_fat2*Math.sign(mainsail_awa);
-  mainsail[2].y = mainsail[0].y  +Math.sin(angle + Math.PI/2 + mainsail_awa*0.5 /180*Math.PI) * mainsail_boom_length*0.5 +  Math.sin(angle + mainsail_awa*0.5 /180*Math.PI)*-mainsail_fat2*Math.sign(mainsail_awa);
-
-  mainsail[3] = {};
-  mainsail[3].x = mainsail[0].x + Math.cos(angle + Math.PI/2 + mainsail_awa*0.5 /180*Math.PI) * mainsail_boom_length;
-  mainsail[3].y = mainsail[0].y  +Math.sin(angle + Math.PI/2 + mainsail_awa*0.5 /180*Math.PI) * mainsail_boom_length;
-
-  sails.push(mainsail)
-
-  let bs = Math.sqrt(boat.m_linearVelocity.x*boat.m_linearVelocity.x + boat.m_linearVelocity.y*boat.m_linearVelocity.y)
-
-  let mainsail_f = {};
-
-  mainsail_f.x = -aw_vector.x - Math.cos(angle + Math.PI/2 )*aws*1.0
-  mainsail_f.y = -aw_vector.y - Math.sin(angle + Math.PI/2 )*aws*1.0
-
-  let normalize_factor = Math.sqrt(mainsail_f.x*mainsail_f.x + mainsail_f.y+mainsail_f.y)
-
-
-
-  mainsail_f.x *= Math.sqrt(Math.abs(twa)/100)*2*aws
-  mainsail_f.y *= Math.sqrt(Math.abs(twa)/100)*2*aws
-
-
-  if (isNaN(mainsail_f.x)){
-    mainsail_f.x = 0;
-  }
-  if (isNaN(mainsail_f.y)){
-    mainsail_f.y = 0;
-  }
-  
-  document.getElementById("info").innerHTML += "X2Y: "+ Math.floor(mainsail_f.x*10)/10 + " " + Math.floor(mainsail_f.y*10)/10 + "<br>";
-
-  const center_of_lift = -0.025
-
-  var mainsail_p = boat.getWorldPoint(Vec2(0.0, center_of_lift));
-  // centerboard
-  
-  boat.applyForce(mainsail_f, mainsail_p, true);   
-  forces.push({name: "mainsail", vector: mainsail_f, point: mainsail_p})
-
-
-  // Calculate DRAG
-  let boat_speed = Math.sqrt(boat.m_linearVelocity.x*boat.m_linearVelocity.x + boat.m_linearVelocity.y*boat.m_linearVelocity.y)
-
-  var drag_f = {}
-  drag_f.x = -(boat.m_linearVelocity.x)*boat_speed
-  drag_f.y = -(boat.m_linearVelocity.y)*boat_speed
-
-
-  var drag_p = boat.getWorldPoint(Vec2(0.0, -0.00));
-  boat.applyForce(drag_f, drag_p, true);   
-  forces.push({name: "drag", vector: drag_f, point: drag_p})
-
-
-  // RENDER JIB SHAPE
-  let jib_leading_edge_position = -2
-
-  let jib_awa = awa;
-
-  const jib_awa_max = 65;
-
-  if (jib_awa>jib_awa_max) jib_awa = jib_awa_max;
-  if (jib_awa<-jib_awa_max) jib_awa = -jib_awa_max;
-
-
-  let jib_boom_length = 1.4
-  let jib = []
-
-  jib[0] = {};
-  jib[0].x = boat.getWorldPoint(Vec2(0.0, jib_leading_edge_position)).x;
-  jib[0].y = boat.getWorldPoint(Vec2(0.0, jib_leading_edge_position)).y;
-
-  let jib_fat1 = (jib_boom_length*0.05*Math.abs(awa)/25 < jib_boom_length/3)?jib_boom_length*0.05*Math.abs(awa)/25 :jib_boom_length/3;
-  jib[1] = {};
-  jib[1].x = jib[0].x + Math.cos(angle + Math.PI/2 + jib_awa*0.65 /180*Math.PI) * jib_boom_length*0.25 +  Math.cos(angle + jib_awa*0.65 /180*Math.PI)*-jib_fat1*Math.sign(jib_awa);
-  jib[1].y = jib[0].y  +Math.sin(angle + Math.PI/2 + jib_awa*0.65 /180*Math.PI) * jib_boom_length*0.25 +  Math.sin(angle + jib_awa*0.65 /180*Math.PI)*-jib_fat1*Math.sign(jib_awa);
-  
-  let jib_fat2 = jib_fat1;
-  jib[2] = {};
-  jib[2].x = jib[0].x + Math.cos(angle + Math.PI/2 + jib_awa*0.65 /180*Math.PI) * jib_boom_length*0.5 +  Math.cos(angle + jib_awa*0.65 /180*Math.PI)*-jib_fat2*Math.sign(jib_awa);
-  jib[2].y = jib[0].y  +Math.sin(angle + Math.PI/2 + jib_awa*0.65 /180*Math.PI) * jib_boom_length*0.5 +  Math.sin(angle + jib_awa*0.65 /180*Math.PI)*-jib_fat2*Math.sign(jib_awa);
-
-  jib[3] = {};
-  jib[3].x = jib[0].x + Math.cos(angle + Math.PI/2 + jib_awa*0.65 /180*Math.PI) * jib_boom_length;
-  jib[3].y = jib[0].y  +Math.sin(angle + Math.PI/2 + jib_awa*0.65 /180*Math.PI) * jib_boom_length;
-
-  sails.push(jib) 
 
 },
 () => {
@@ -534,10 +551,8 @@ runner.start(() => {
 
 import * as THREE from '../node_modules/three/build/three.module.js';
 
-let camera, scene, renderer2;
-let geometry2, material, mesh;
+let camera, scene, renderer, mesh;
 let uniforms = {};
-let line;
 
 init();
 
@@ -594,33 +609,30 @@ function init() {
 	camera.position.y = 20;
 	scene = new THREE.Scene();
 
-	geometry2 = new THREE.BoxGeometry( 4, 4, 4 );
-
-
   uniforms = {
     colorB: {type: 'vec3', value: new THREE.Color(0x665555)},
     colorA: {type: 'vec3', value: new THREE.Color(0x555566)},
     'time': {value: 1.0},
   }
 
-  material = new THREE.ShaderMaterial({
+
+	// let material = new THREE.MeshNormalMaterial();
+
+  let material = new THREE.ShaderMaterial({
     uniforms: uniforms,
     fragmentShader: fragmentShader(),
     vertexShader: vertexShader(),
   });
 
-	//material = new THREE.MeshNormalMaterial();
-
-  //mesh = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), material);
-	//mesh = new THREE.Mesh( geometry2, material );
+  // mesh = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), material);
 	// scene.add( mesh );
 
 
 
-	renderer2 = new THREE.WebGLRenderer( { antialias: true } );
-	renderer2.setSize( window.innerWidth, window.innerHeight );
-	renderer2.setAnimationLoop( animation );
-	document.body.appendChild( renderer2.domElement );
+	renderer = new THREE.WebGLRenderer( { antialias: true } );
+	renderer.setSize( window.innerWidth, window.innerHeight );
+	renderer.setAnimationLoop( animation );
+	document.body.appendChild( renderer.domElement );
 
 }
 
@@ -628,13 +640,6 @@ let isFirstFrame = true;
 
 
 function animation( time ) {
-
- 
-
-  // pixel position
-  let x1 = 130;
-  let y1 = 130;
-
 
 
   //console.log(angle, d)
@@ -870,6 +875,6 @@ function animation( time ) {
 
   isFirstFrame = false;
 
-	renderer2.render( scene, camera );
+	renderer.render( scene, camera );
 
 }
