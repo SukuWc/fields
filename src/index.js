@@ -3,6 +3,9 @@ import planck from 'planck-js/dist/planck-with-testbed';
 import Renderer, { Runner } from "planck-renderer";
 import './field.js';
 
+let key_bind_list = []
+let key_state = []
+
 let keyboard_up = false;
 let keyboard_down = false;
 let keyboard_left = false;
@@ -21,70 +24,73 @@ let impulses= [];
 let rudders= [];
 let sails= [];
 
-let windangle = 90;  
-let windspeed = 5;  
+let path_markers= [];
+
 
 document.onkeydown = checkKeyPress;
 document.onkeyup = checkKeyRelease;
+
+
+
 
 function checkKeyPress(e) {
 
   e = e || window.event;
 
-  if (e.keyCode == '38') {
-      // up arrow
-      keyboard_up = true;
-  }
-  else if (e.keyCode == '40') {
-      // down arrow
-      keyboard_down = true;
-  }
-  else if (e.keyCode == '37') {
-     // left arrow
-      keyboard_left = true;
-  }
-  else if (e.keyCode == '39') {
-     // right arrow
-      keyboard_right = true;
-  }
+  key_state[e.keyCode] = true
 
 }
 
 
 function checkKeyRelease(e) {
 
-e = e || window.event;
+  e = e || window.event;
 
-if (e.keyCode == '38') {
-    // up arrow
-    keyboard_up = false;
-}
-else if (e.keyCode == '40') {
-    // down arrow
-    keyboard_down = false;
-}
-else if (e.keyCode == '37') {
-   // left arrow
-    keyboard_left = false;
-}
-else if (e.keyCode == '39') {
-   // right arrow
-    keyboard_right = false;
-}
+  key_state[e.keyCode] = false
 
 }
 
+
+class Map{
+  constructor(direction, speed){
+
+    this.wind_direction = direction;  
+    this.wind_speed = speed;  
+
+  }
+
+  get_wind_speed(x, y){
+  
+    return this.wind_speed;
+  }
+
+  get_wind_direction(x, y){
+  
+    return this.wind_direction;
+  }
+
+}
 
 class Boat{
 
-  constructor(){
+  constructor(map, x, y){
+
+    this.map = map;
 
     let pl = planck, Vec2 = pl.Vec2;
 
-    this.hull_mass = 6
+    this.x = x;
+    this.y = y;
+
+    this.hull_mass = 6;
     this.hull_shape = pl.Polygon([Vec2(0, -2.25), Vec2(-0.5, -1.25), Vec2(-0.75, -0.25),  Vec2(-0.75, 0.5),  Vec2(-0.5, 1.75), Vec2(0.5, 1.75),  Vec2(0.75, 0.5), Vec2(0.75, -0.25), Vec2(0.5, -1.25), Vec2(0, -2.25)])
    
     this.hull_angle = 0;
+
+    
+    this.rudder_input = 0;
+    this.motor_input = 0;
+
 
     this.rudder_angle = 0;
     this.rudder_angle_max = 60;
@@ -113,6 +119,9 @@ class Boat{
     this.center_of_lift = -0.025
 
     this.physics_model = undefined;
+    
+    this.power = 0;
+    this.power_direction = 0;
 
   }
 
@@ -126,7 +135,7 @@ class Boat{
       type : 'dynamic',
       angularDamping : 0.5,
       linearDamping : 0.1,
-      position : Vec2(0.0, 2.0),
+      position : Vec2(this.x, this.y),
       angle : Math.PI,
       allowSleep : false
     });
@@ -144,6 +153,11 @@ class Boat{
 
     document.getElementById("info").innerHTML = ""
     // calculate boat dynamics
+
+
+    this.x = this.physics_model.m_xf.p.x;
+    this.y = this.physics_model.m_xf.p.y;
+    
 
     var angle = this.physics_model.getAngle();
 
@@ -195,13 +209,13 @@ class Boat{
 
     // fake motor
 
-    if (keyboard_up) {
+    if (this.motor_input === 1) {
       var f = this.physics_model.getWorldVector(Vec2(0.0, -0.3));
       var p = this.physics_model.getWorldPoint(Vec2(0.0, 2.0));
       this.physics_model.applyLinearImpulse(f, p, true);
     }  
     
-    if (keyboard_down) {
+    if (this.motor_input === -1) {
       var f = this.physics_model.getWorldVector(Vec2(0.0, 0.3));
       var p = this.physics_model.getWorldPoint(Vec2(0.0, 2.0));
       this.physics_model.applyLinearImpulse(f, p, true);
@@ -212,14 +226,14 @@ class Boat{
 
     let pumpfactor = 0;
 
-    if (keyboard_right && !keyboard_left) {
+    if (this.rudder_input === -1) {
 
       if (this.rudder_angle<this.rudder_angle_max){
         this.rudder_angle +=0.5
         pumpfactor = 0.75
       }
 
-    } else if (keyboard_left && !keyboard_right) {
+    } else if (this.rudder_input === 1) {
       
       if (this.rudder_angle>-this.rudder_angle_max){
         this.rudder_angle -=0.5
@@ -270,12 +284,12 @@ class Boat{
 
 
     // Calculate True wind and apparent wind
-    let twa = (windangle - angle/Math.PI*180 + 90 )
+    let twa = (map.get_wind_direction(this.x, this.y) - angle/Math.PI*180 + 90 )
 
     let aw_vector = {}
 
-    aw_vector.x = this.physics_model.m_linearVelocity.x + Math.cos(windangle /180*Math.PI) * windspeed;
-    aw_vector.y = this.physics_model.m_linearVelocity.y + Math.sin(windangle /180*Math.PI) * windspeed;
+    aw_vector.x = this.physics_model.m_linearVelocity.x + Math.cos(map.get_wind_direction(this.x, this.y) /180*Math.PI) * map.get_wind_speed(this.x, this.y);
+    aw_vector.y = this.physics_model.m_linearVelocity.y + Math.sin(map.get_wind_direction(this.x, this.y) /180*Math.PI) * map.get_wind_speed(this.x, this.y);
 
     let awa = Math.atan2(aw_vector.y, aw_vector.x)/Math.PI*180 - angle/Math.PI*180 + 90 ;
     let aws = Math.sqrt(aw_vector.x*aw_vector.x + aw_vector.y*aw_vector.y)
@@ -295,7 +309,7 @@ class Boat{
     }
 
     document.getElementById("info").innerHTML += "TWA: "+Math.floor(twa) + "<br>";
-    document.getElementById("info").innerHTML += "TWS: "+Math.floor(windspeed) + "<br>";
+    document.getElementById("info").innerHTML += "TWS: "+Math.floor(map.get_wind_speed(this.x, this.y)) + "<br>";
     document.getElementById("info").innerHTML += "AWA: "+Math.floor(awa) + "<br>";
     document.getElementById("info").innerHTML += "AWS: "+Math.floor(aws*10)/10 + "<br>";
 
@@ -349,6 +363,12 @@ class Boat{
     this.physics_model.applyForce(mainsail_f, mainsail_p, true);   
     forces.push({name: "mainsail", vector: mainsail_f, point: mainsail_p})
 
+    this.power = Math.sqrt(mainsail_f.x*mainsail_f.x + mainsail_f.y*mainsail_f.y)
+    this.power_direction = Math.atan2(mainsail_f.y, mainsail_f.x) / Math.PI * 180;
+
+    
+    document.getElementById("info").innerHTML += "Power: "+ Math.floor( this.power *10) /10 + "<br>"; 
+
 
 
     // Calculate DRAG
@@ -360,6 +380,11 @@ class Boat{
     var drag_p = this.physics_model.getWorldPoint(Vec2(0.0, 0));
     this.physics_model.applyForce(drag_f, drag_p, true);   
     forces.push({name: "drag", vector: drag_f, point: drag_p})
+
+
+    // clear inputs
+    this.rudder_input = 0;
+    this.motor_input = 0;
 
   }
   
@@ -447,14 +472,54 @@ class Boat{
 
   }
   
-  input_rudder_left(){}
-  input_rudder_right(){}
 
+
+  input_rudder_left(){
+    this.rudder_input = 1
+  }
+  input_rudder_right(){
+    this.rudder_input = -1
+  }
+
+  input_motor_forward(){
+    this.motor_input = 1
+  }
+  input_motor_reverse(){
+    this.motor_input = -1
+  }
 
 
 }
 
+class Path{
+  constructor(map, x, y, power){
 
+    this.map = map
+    this.power = power;
+    this.x = x;
+    this.y = y;
+    this.age = 0;
+
+  }
+
+  physics_model_step(){
+
+    let wdir = map.get_wind_direction(this.x, this.y)
+    let wspe = -map.get_wind_speed(this.x, this.y)
+
+    this.x += Math.cos(wdir/180*Math.PI)*wspe/100
+    this.y += Math.sin(wdir/180*Math.PI)*wspe/100
+
+    this.age++
+  }
+
+  graphics_model_render(){
+
+    path_markers.push({x: this.x, y: this.y, power: this.power, age: this.age})
+
+  }
+
+}
 
 function setup_world(){
 
@@ -521,9 +586,32 @@ const runner = new Runner(world, {
 
 
 
-const player = new Boat();
-player.physics_model_init(world);
+let map = new Map(90, 5)
 
+let players = []
+let paths = []
+
+players.push(new Boat(map, -2, 5))
+//players.push(new Boat(map, 2, 5))
+
+players.forEach(player => {
+  player.physics_model_init(world);
+});
+
+// up 38 down 40 left 37 right 39
+
+key_bind_list.push({activation_key: 37, prohibition_key: 39, object: players[0], input_handler: players[0].input_rudder_left.name})
+key_bind_list.push({activation_key: 39, prohibition_key: 37, object: players[0], input_handler: players[0].input_rudder_right.name})
+key_bind_list.push({activation_key: 38, prohibition_key: 40, object: players[0], input_handler: players[0].input_motor_forward.name})
+key_bind_list.push({activation_key: 40, prohibition_key: 38, object: players[0], input_handler: players[0].input_motor_reverse.name})
+
+//key_bind_list.push({activation_key: 65, prohibition_key: 68, object: players[1], input_handler: players[1].input_rudder_left.name})
+//key_bind_list.push({activation_key: 68, prohibition_key: 65, object: players[1], input_handler: players[1].input_rudder_right.name})
+//key_bind_list.push({activation_key: 87, prohibition_key: 83, object: players[1], input_handler: players[1].input_motor_forward.name})
+//key_bind_list.push({activation_key: 83, prohibition_key: 87, object: players[1], input_handler: players[1].input_motor_reverse.name})
+
+
+let physics_frame = 0;
 
 runner.start(() => {
 
@@ -531,11 +619,52 @@ runner.start(() => {
   forces = []; 
   rudders = [];
   sails = [];
+  path_markers = [];
   
- 
-  player.physics_model_step();
-  player.grephics_model_render();
+  key_bind_list.forEach(bind => {
 
+    if (key_state[bind.activation_key] === true && (key_state[bind.prohibition_key] === false || key_state[bind.prohibition_key] === undefined)){
+
+      bind.object[bind.input_handler]()
+    }
+
+  });
+
+
+  players.forEach(player => {
+    player.physics_model_step();
+    player.grephics_model_render();
+  
+    frame ++
+
+    if (physics_frame%15 == 0){
+      
+      let power = player.power;
+      if (power>256){power = 256} 
+
+      paths.push(new Path(map, player.x, player.y, power))
+
+      //console.log("Path",player.x, player.y)
+
+    }
+  
+  });
+
+  let paths_to_keep = []
+
+  paths.forEach(path => {
+
+    path.physics_model_step()
+    path.graphics_model_render()
+
+    if (path.age<250){
+      paths_to_keep.push(path)
+    }
+  });
+
+  paths = paths_to_keep;
+
+  physics_frame++;
 
 },
 () => {
@@ -746,7 +875,7 @@ function animation( time ) {
         let points = []
         const v1 = shape.m_vertex1;
         const v2 = shape.m_vertex2;
-        
+
         let x1 = v1.x + body.m_xf.p.x
         let y1 = v1.y + body.m_xf.p.y       
         
@@ -865,6 +994,54 @@ function animation( time ) {
     const material2 = new THREE.LineBasicMaterial( { color: 0x00ffff } );
     edges.push(new THREE.Line( geometry, material2 ))
     scene.add( edges[edges.length -1]);
+
+  }
+
+
+  for (const p of path_markers){
+
+    if (p.age<20 ) continue;
+
+    let points = []
+
+    let radius = 2+p.age/100;
+
+
+    let strength = p.power*5 - p.age;
+
+
+
+    if (strength>256){
+      strength = 256
+    }
+    if (strength<0){
+      strength = 0
+    }
+
+    strength=Math.floor(strength)
+    
+
+    let color = (strength)*256*256 + (strength)*256 + (strength)
+
+    for (let i = 0; i<360; i+=10){
+
+      let angle = i/180*Math.PI
+
+      let x = radius*Math.cos(angle) + p.x 
+      let y = radius*Math.sin(angle) + p.y
+
+
+      points.push( new THREE.Vector3(x, y, 0) );
+
+
+    }
+    points.push(points[0])
+
+    const geometry = new THREE.BufferGeometry().setFromPoints( points );
+    const material2 = new THREE.LineBasicMaterial( { color: color } );
+
+    circles.push(new THREE.Line( geometry, material2 ))
+    scene.add( circles[circles.length -1]);
 
   }
 
