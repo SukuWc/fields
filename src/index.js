@@ -151,7 +151,7 @@ class Boat{
 
   physics_model_step(){
 
-    document.getElementById("info").innerHTML = ""
+    document.getElementById("info").innerHTML = "Paths" + paths.length + " " + path_markers.length
     // calculate boat dynamics
 
 
@@ -637,7 +637,7 @@ runner.start(() => {
   
     frame ++
 
-    if (physics_frame%15 == 0){
+    if (physics_frame%30 == 0){
       
       let power = player.power;
       if (power>256){power = 256} 
@@ -768,35 +768,47 @@ function init() {
 let isFirstFrame = true;
 
 
+
 function animation( time ) {
 
 
   //console.log(angle, d)
 
 
-  for (const c of circles){
-    scene.remove(c)
+  for (let element of circles){
+    scene.remove(element)
+    element.geometry.dispose();
+    element.material.dispose();
+    element = undefined;
+
   }
 
-  for (const p of polygons){
-    scene.remove(p)
+  for (let element of polygons){
+    scene.remove(element)
+    element.geometry.dispose();
+    element.material.dispose();
+    element = undefined;
+
   }
 
-  for (const e of edges){
-    scene.remove(e)
+  for (let element of edges){
+    scene.remove(element)
+    element.geometry.dispose();
+    element.material.dispose();
+    element = undefined;
+
   }
 
-  for (const a of arrows){
-    scene.remove(a)
+  // arrows work differently, they don't need dispose
+  for (let element of arrows){
+    scene.remove(element)
+    //element.geometry.dispose();
+    //element.material.dispose();
+    element = undefined;
+
   }  
-  
-  for (const r of rudders){
-    scene.remove(r)
-  }  
 
-  for (const s of sails){
-    scene.remove(s)
-  }
+
 
   impulses= [];
 
@@ -805,6 +817,7 @@ function animation( time ) {
   circles= [];
   
   arrows= [];
+
 
   for (let body = world.getBodyList(); body; body = body.getNext()) {
     for (
@@ -836,17 +849,6 @@ function animation( time ) {
         const radius = shape.m_radius;
         const pos = body.getPosition();
 
-        if (isFirstFrame){
-
-          console.log(body, shape)
-          console.log(pos, radius)
-
-          
-
-        }
-
-
-
         let points = []
 
         for (let i = 0; i<360; i+=10){
@@ -864,9 +866,11 @@ function animation( time ) {
         points.push(points[0])
 
         const geometry = new THREE.BufferGeometry().setFromPoints( points );
-        const material2 = new THREE.LineBasicMaterial( { color: 0x00ff00 } );
-        circles.push(new THREE.Line( geometry, material2 ))
+        const material = new THREE.LineBasicMaterial( { color: 0x00ff00 } );
+        circles.push(new THREE.Line( geometry, material ))
         scene.add( circles[circles.length -1]);
+
+
 
       }
       if (type === "edge") {
@@ -887,8 +891,8 @@ function animation( time ) {
 
 
         const geometry = new THREE.BufferGeometry().setFromPoints( points );
-        const material2 = new THREE.LineBasicMaterial( { color: 0xff0000 } );
-        edges.push(new THREE.Line( geometry, material2 ))
+        const material = new THREE.LineBasicMaterial( { color: 0xff0000 } );
+        edges.push(new THREE.Line( geometry, material ))
         scene.add( edges[edges.length -1]);
 
       }
@@ -922,8 +926,8 @@ function animation( time ) {
         }
 
         const geometry = new THREE.BufferGeometry().setFromPoints( points );
-        const material2 = new THREE.LineBasicMaterial( { color: 0x0000ff } );
-        polygons.push(new THREE.Line( geometry, material2 ))
+        const material = new THREE.LineBasicMaterial( { color: 0x0000ff } );
+        polygons.push(new THREE.Line( geometry, material ))
         scene.add( polygons[polygons.length -1]);
 
         
@@ -946,6 +950,8 @@ function animation( time ) {
 
   // ARROW HELPER
 
+
+ 
   for (const f of forces){
 
 
@@ -974,9 +980,10 @@ function animation( time ) {
 
 
     const geometry = new THREE.BufferGeometry().setFromPoints( points );
-    const material2 = new THREE.LineBasicMaterial( { color: 0xff0000 } );
-    edges.push(new THREE.Line( geometry, material2 ))
+    const material = new THREE.LineBasicMaterial( { color: 0xff0000 } );
+    edges.push(new THREE.Line( geometry, material ))
     scene.add( edges[edges.length -1]);
+
 
   }
 
@@ -991,8 +998,8 @@ function animation( time ) {
     }
 
     const geometry = new THREE.BufferGeometry().setFromPoints( points );
-    const material2 = new THREE.LineBasicMaterial( { color: 0x00ffff } );
-    edges.push(new THREE.Line( geometry, material2 ))
+    const material = new THREE.LineBasicMaterial( { color: 0x00ffff } );
+    edges.push(new THREE.Line( geometry, material ))
     scene.add( edges[edges.length -1]);
 
   }
@@ -1038,10 +1045,11 @@ function animation( time ) {
     points.push(points[0])
 
     const geometry = new THREE.BufferGeometry().setFromPoints( points );
-    const material2 = new THREE.LineBasicMaterial( { color: color } );
+    const material = new THREE.LineBasicMaterial( { color: color } );
 
-    circles.push(new THREE.Line( geometry, material2 ))
+    circles.push(new THREE.Line( geometry, material ))
     scene.add( circles[circles.length -1]);
+
 
   }
 
