@@ -23,8 +23,10 @@ let impulses= [];
 
 let rudders= [];
 let sails= [];
+let guides= [];
 
 let path_markers= [];
+
 
 
 document.onkeydown = checkKeyPress;
@@ -38,6 +40,18 @@ function checkKeyPress(e) {
   e = e || window.event;
 
   key_state[e.keyCode] = true
+
+    
+  key_bind_list.forEach(bind => {
+
+    if (bind.type === "KEYDOWN" && key_state[bind.activation_key] && (key_state[bind.prohibition_key] === false || key_state[bind.prohibition_key] === undefined)){
+
+      bind.object[bind.input_handler]()
+
+    }
+
+
+  });
 
 }
 
@@ -82,6 +96,9 @@ class Boat{
     this.x = x;
     this.y = y;
 
+    this.wind_direction = 0;
+    this.wind_speed = 0;
+
     this.hull_mass = 6;
     this.hull_shape = pl.Polygon([Vec2(0, -2.25), Vec2(-0.5, -1.25), Vec2(-0.75, -0.25),  Vec2(-0.75, 0.5),  Vec2(-0.5, 1.75), Vec2(0.5, 1.75),  Vec2(0.75, 0.5), Vec2(0.75, -0.25), Vec2(0.5, -1.25), Vec2(0, -2.25)])
    
@@ -123,6 +140,23 @@ class Boat{
     this.power = 0;
     this.power_direction = 0;
 
+    this.autopilot_enabled = false;
+    this.autopilot_heading_target = 0;
+    this.autopilot_heading_input = 0;
+
+    this.autopilot_heading_best_vmg_1 = 65;
+    this.autopilot_heading_best_vmg_2 = 160;
+
+    this.autopilot_compensator_p = 0;
+    this.autopilot_compensator_i = 0;
+    this.autopilot_compensator_d = 0;
+
+    this.autopilot_compensator_last_error = 0;
+    this.autopilot_compensator_current_error = 0;
+    this.autopilot_compensator_sum_error = 0;
+
+    this.twa = 0;
+
   }
 
   physics_model_init(world){
@@ -151,13 +185,16 @@ class Boat{
 
   physics_model_step(){
 
-    document.getElementById("info").innerHTML = "Paths" + paths.length + " " + path_markers.length
+    document.getElementById("info").innerHTML = "Autopilot" + this.autopilot_enabled + " " + this.autopilot_heading_target
     // calculate boat dynamics
 
 
     this.x = this.physics_model.m_xf.p.x;
     this.y = this.physics_model.m_xf.p.y;
     
+    this.wind_speed = this.map.get_wind_speed(this.x, this.y)
+    this.wind_direction = this.map.get_wind_direction(this.x, this.y)
+
 
     var angle = this.physics_model.getAngle();
 
@@ -207,6 +244,37 @@ class Boat{
     document.getElementById("info").innerHTML += "q/d: "+ centerboard_AoA_degrees + "°<br>"; 
   
 
+
+
+    // Calculate True wind and apparent wind
+    let twa = (map.get_wind_direction(this.x, this.y) - angle/Math.PI*180 + 90 )
+
+    let aw_vector = {}
+
+    aw_vector.x = this.physics_model.m_linearVelocity.x + Math.cos(map.get_wind_direction(this.x, this.y) /180*Math.PI) * this.map.get_wind_speed(this.x, this.y);
+    aw_vector.y = this.physics_model.m_linearVelocity.y + Math.sin(map.get_wind_direction(this.x, this.y) /180*Math.PI) * this.map.get_wind_speed(this.x, this.y);
+
+    let awa = Math.atan2(aw_vector.y, aw_vector.x)/Math.PI*180 - angle/Math.PI*180 + 90 ;
+    let aws = Math.sqrt(aw_vector.x*aw_vector.x + aw_vector.y*aw_vector.y)
+
+    if (awa>180){
+      awa-=360
+    }
+    if (awa<-180){
+      awa+=360
+    }
+
+    if (twa>180){
+      twa-=360
+    }
+    if (twa<-180){
+      twa+=360
+    }
+
+    
+    this.twa = twa;
+
+
     // fake motor
 
     if (this.motor_input === 1) {
@@ -225,6 +293,8 @@ class Boat{
     // rudder dynamics
 
     let pumpfactor = 0;
+
+ 
 
     if (this.rudder_input === -1) {
 
@@ -256,6 +326,45 @@ class Boat{
 
     }
     
+    if (this.autopilot_enabled){
+
+      this.autopilot_compensator_p = 0.5
+      this.autopilot_compensator_i = 0
+      this.autopilot_compensator_d = 20
+
+      let error = -(this.autopilot_heading_target - (-this.twa))
+
+      if (error>180) {
+        error-=360
+      }
+      if (error<-180) {
+        error+=360
+      }
+
+      document.getElementById("info").innerHTML += "error: "+ Math.floor(error) + "°<br>"; 
+
+      let p = error * this.autopilot_compensator_p 
+      let i = 0
+      let d = (error - this.autopilot_compensator_last_error) * this.autopilot_compensator_d
+
+      this.rudder_angle = p + i + d
+
+      if (this.rudder_angle>this.rudder_angle_max/3){
+        this.rudder_angle = this.rudder_angle_max/3;
+      }
+      if (this.rudder_angle<-this.rudder_angle_max/3){
+        this.rudder_angle = -this.rudder_angle_max/3;
+      }
+
+
+      this.autopilot_compensator_last_error = error;
+
+    }
+    else{
+      this.autopilot_heading_target = angle/Math.PI*180 + 180
+    }
+
+
 
 
     // calculate flow directuion under the rudder
@@ -282,31 +391,6 @@ class Boat{
     this.physics_model.applyForce(rudder_f, rudder_p, true); 
     forces.push({name: "rudder", vector: rudder_f, point: rudder_p})
 
-
-    // Calculate True wind and apparent wind
-    let twa = (map.get_wind_direction(this.x, this.y) - angle/Math.PI*180 + 90 )
-
-    let aw_vector = {}
-
-    aw_vector.x = this.physics_model.m_linearVelocity.x + Math.cos(map.get_wind_direction(this.x, this.y) /180*Math.PI) * map.get_wind_speed(this.x, this.y);
-    aw_vector.y = this.physics_model.m_linearVelocity.y + Math.sin(map.get_wind_direction(this.x, this.y) /180*Math.PI) * map.get_wind_speed(this.x, this.y);
-
-    let awa = Math.atan2(aw_vector.y, aw_vector.x)/Math.PI*180 - angle/Math.PI*180 + 90 ;
-    let aws = Math.sqrt(aw_vector.x*aw_vector.x + aw_vector.y*aw_vector.y)
-
-    if (awa>180){
-      awa-=360
-    }
-    if (awa<-180){
-      awa+=360
-    }
-
-    if (twa>180){
-      twa-=360
-    }
-    if (twa<-180){
-      twa+=360
-    }
 
     document.getElementById("info").innerHTML += "TWA: "+Math.floor(twa) + "<br>";
     document.getElementById("info").innerHTML += "TWS: "+Math.floor(map.get_wind_speed(this.x, this.y)) + "<br>";
@@ -389,6 +473,23 @@ class Boat{
   }
   
   grephics_model_render(){
+
+
+    // autopilot guide
+    let a = {}
+
+    let a_length = 2;
+    if (this.autopilot_enabled){
+      a_length = 10;
+    }
+
+    a.x1 = this.physics_model.getWorldPoint(Vec2(0.0, 0.0)).x;
+    a.y1 = this.physics_model.getWorldPoint(Vec2(0.0, 0.0)).y;
+    a.x2 = a.x1+Math.cos((this.wind_direction + this.autopilot_heading_target)/180*Math.PI)*a_length;
+    a.y2 = a.y1+Math.sin((this.wind_direction + this.autopilot_heading_target)/180*Math.PI)*a_length;
+    a.color = 0x556677
+
+    guides.push(a)
 
 
     // rendering the rudder
@@ -476,9 +577,11 @@ class Boat{
 
   input_rudder_left(){
     this.rudder_input = 1
+    this.autopilot_enabled = false
   }
   input_rudder_right(){
     this.rudder_input = -1
+    this.autopilot_enabled = false
   }
 
   input_motor_forward(){
@@ -486,6 +589,64 @@ class Boat{
   }
   input_motor_reverse(){
     this.motor_input = -1
+  }
+
+  input_autopilot_enabled_toggle(){
+
+    this.autopilot_enabled = true
+
+    if (this.twa > 0){
+
+      if (this.twa < 90){
+        this.autopilot_heading_target = -this.autopilot_heading_best_vmg_1
+      }
+      else{
+        this.autopilot_heading_target = -this.autopilot_heading_best_vmg_2
+      }
+
+    }
+    else{
+      if (this.twa > -90){
+        this.autopilot_heading_target = this.autopilot_heading_best_vmg_1
+      }
+      else{
+        this.autopilot_heading_target = this.autopilot_heading_best_vmg_2
+      }
+    }
+
+
+
+  }  
+  input_autopilot_tack_toggle(){
+    this.autopilot_heading_target *=-1
+    this.autopilot_enabled = true
+  }
+
+  input_autopilot_heading_increase(){
+
+
+    if (Math.abs(this.autopilot_heading_target)<175){
+      if (this.autopilot_heading_target>0){
+        this.autopilot_heading_target += 1
+      } 
+      else{
+        this.autopilot_heading_target -= 1        
+      }
+    }
+
+  }
+  input_autopilot_heading_decrease(){
+
+    console.log("2")
+    if (Math.abs(this.autopilot_heading_target)>5){
+      if (this.autopilot_heading_target>0){
+        this.autopilot_heading_target -= 1
+      } 
+      else{
+        this.autopilot_heading_target += 1        
+      }
+    }
+    
   }
 
 
@@ -600,10 +761,17 @@ players.forEach(player => {
 
 // up 38 down 40 left 37 right 39
 
-key_bind_list.push({activation_key: 37, prohibition_key: 39, object: players[0], input_handler: players[0].input_rudder_left.name})
-key_bind_list.push({activation_key: 39, prohibition_key: 37, object: players[0], input_handler: players[0].input_rudder_right.name})
-key_bind_list.push({activation_key: 38, prohibition_key: 40, object: players[0], input_handler: players[0].input_motor_forward.name})
-key_bind_list.push({activation_key: 40, prohibition_key: 38, object: players[0], input_handler: players[0].input_motor_reverse.name})
+key_bind_list.push({type: "PRESSED", activation_key: 37, prohibition_key: 39, object: players[0], input_handler: players[0].input_rudder_left.name})   // Left
+key_bind_list.push({type: "PRESSED", activation_key: 39, prohibition_key: 37, object: players[0], input_handler: players[0].input_rudder_right.name})  // Right
+
+key_bind_list.push({type: "PRESSED", activation_key: 87, prohibition_key: 83, object: players[0], input_handler: players[0].input_motor_forward.name}) // W
+key_bind_list.push({type: "PRESSED", activation_key: 83, prohibition_key: 87, object: players[0], input_handler: players[0].input_motor_reverse.name}) // S
+
+key_bind_list.push({type: "PRESSED", activation_key: 40, prohibition_key: 38, object: players[0], input_handler: players[0].input_autopilot_heading_increase.name})
+key_bind_list.push({type: "PRESSED", activation_key: 38, prohibition_key: 40, object: players[0], input_handler: players[0].input_autopilot_heading_decrease.name})
+
+key_bind_list.push({type: "KEYDOWN", activation_key: 32, prohibition_key: -1, object: players[0], input_handler: players[0].input_autopilot_enabled_toggle.name})
+key_bind_list.push({type: "KEYDOWN", activation_key: 13, prohibition_key: -1, object: players[0], input_handler: players[0].input_autopilot_tack_toggle.name})
 
 //key_bind_list.push({activation_key: 65, prohibition_key: 68, object: players[1], input_handler: players[1].input_rudder_left.name})
 //key_bind_list.push({activation_key: 68, prohibition_key: 65, object: players[1], input_handler: players[1].input_rudder_right.name})
@@ -618,12 +786,13 @@ runner.start(() => {
   // clear the array of displayed graphic elements
   forces = []; 
   rudders = [];
+  guides = [];
   sails = [];
   path_markers = [];
   
   key_bind_list.forEach(bind => {
 
-    if (key_state[bind.activation_key] === true && (key_state[bind.prohibition_key] === false || key_state[bind.prohibition_key] === undefined)){
+    if (bind.type === "PRESSED" && key_state[bind.activation_key] === true && (key_state[bind.prohibition_key] === false || key_state[bind.prohibition_key] === undefined)){
 
       bind.object[bind.input_handler]()
     }
@@ -642,7 +811,7 @@ runner.start(() => {
       let power = player.power;
       if (power>256){power = 256} 
 
-      paths.push(new Path(map, player.x, player.y, power))
+      //paths.push(new Path(map, player.x, player.y, power))
 
       //console.log("Path",player.x, player.y)
 
@@ -986,7 +1155,27 @@ function animation( time ) {
 
 
   }
+  
+  for (const r of guides){
 
+    let points = []
+    
+    points.push( new THREE.Vector3(r.x1, r.y1, 0) );
+    points.push( new THREE.Vector3(r.x2, r.y2, 0) );
+
+
+    const geometry = new THREE.BufferGeometry().setFromPoints( points );
+
+    let color = r.color
+    if (color === undefined){
+      color = 0xff0000
+    }
+    const material = new THREE.LineBasicMaterial( { color: color } );
+    edges.push(new THREE.Line( geometry, material ))
+    scene.add( edges[edges.length -1]);
+
+
+  }
   for (const s of sails){
 
     let points = []
