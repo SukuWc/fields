@@ -6,7 +6,7 @@
   
     <style>
 
-      #info {
+#info {
         position: absolute;
         top: 10px;
         width: 100%;
@@ -14,6 +14,17 @@
         z-index: 100;
         display:block;
         font-family: 'Courier New', Courier, monospace;
+      }      
+      #settings {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 250px;
+        color: white;
+        z-index: 100;
+        display:block;
+        font-family: 'Courier New', Courier, monospace;
+        background-color: rgba(50,50,50,0.5);
       }
 
     </style>
@@ -21,10 +32,16 @@
   </head>
   <body style="padding:0px; margin:0px">  
 
-    <div id="info">Description</div>
+    <div id="info"></div>
+    <div id="settings">
+      <input type="checkbox">Camera Follow
+      <input type="range" min="10" max="30">Zoom
+    
+    
+    </div>
 
     <canvas id="test" style="z-index: 10; position: absolute; top: 0px; left: 0px;"></canvas>
-
+    
     <script type="module" src="./src/index.js"></script>
   </body>
 </html>

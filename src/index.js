@@ -144,7 +144,7 @@ class Boat{
     this.autopilot_heading_target = 0;
     this.autopilot_heading_input = 0;
 
-    this.autopilot_heading_best_vmg_1 = 65;
+    this.autopilot_heading_best_vmg_1 = 60;
     this.autopilot_heading_best_vmg_2 = 160;
 
     this.autopilot_compensator_p = 0;
@@ -185,7 +185,8 @@ class Boat{
 
   physics_model_step(){
 
-    document.getElementById("info").innerHTML = "Autopilot" + this.autopilot_enabled + " " + this.autopilot_heading_target
+    document.getElementById("info").innerHTML = "Autopilot" + this.autopilot_enabled + "<br>"
+    document.getElementById("info").innerHTML += "Heading Target" + this.autopilot_heading_target + "<br>"
     // calculate boat dynamics
 
 
@@ -362,6 +363,9 @@ class Boat{
     }
     else{
       this.autopilot_heading_target = angle/Math.PI*180 + 180
+      
+      if (this.autopilot_heading_target > 180) {this.autopilot_heading_target -= 360} 
+      if (this.autopilot_heading_target < -180) {this.autopilot_heading_target += 360} 
     }
 
 
@@ -593,11 +597,10 @@ class Boat{
 
   input_autopilot_enabled_toggle(){
 
-    this.autopilot_enabled = true
 
-    if (this.twa > 0){
+    if (this.autopilot_heading_target < 0){
 
-      if (this.twa < 90){
+      if (this.autopilot_heading_target > -90){
         this.autopilot_heading_target = -this.autopilot_heading_best_vmg_1
       }
       else{
@@ -606,7 +609,7 @@ class Boat{
 
     }
     else{
-      if (this.twa > -90){
+      if (this.autopilot_heading_target < 90){
         this.autopilot_heading_target = this.autopilot_heading_best_vmg_1
       }
       else{
@@ -614,6 +617,8 @@ class Boat{
       }
     }
 
+
+    this.autopilot_enabled = true;
 
 
   }  
@@ -625,6 +630,7 @@ class Boat{
   input_autopilot_heading_increase(){
 
 
+    this.autopilot_enabled = true
     if (Math.abs(this.autopilot_heading_target)<175){
       if (this.autopilot_heading_target>0){
         this.autopilot_heading_target += 1
@@ -637,7 +643,7 @@ class Boat{
   }
   input_autopilot_heading_decrease(){
 
-    console.log("2")
+    this.autopilot_enabled = true
     if (Math.abs(this.autopilot_heading_target)>5){
       if (this.autopilot_heading_target>0){
         this.autopilot_heading_target -= 1
@@ -696,16 +702,16 @@ function setup_world(){
   };
 
   // Left vertical
-  ground.createFixture(pl.Edge(Vec2(-20.0, -20.0), Vec2(-20.0, 20.0)), wallFD);
+  ground.createFixture(pl.Edge(Vec2(-40.0, -40.0), Vec2(-40.0, 40.0)), wallFD);
 
   // Right vertical
-  ground.createFixture(pl.Edge(Vec2(20.0, -20.0), Vec2(20.0, 20.0)), wallFD);
+  ground.createFixture(pl.Edge(Vec2(40.0, -40.0), Vec2(40.0, 40.0)), wallFD);
 
   // Top horizontal
-  ground.createFixture(pl.Edge(Vec2(-20.0, 20.0), Vec2(20.0, 20.0)), wallFD);
+  ground.createFixture(pl.Edge(Vec2(-40.0, 40.0), Vec2(40.0, 40.0)), wallFD);
 
   // Bottom horizontal
-  ground.createFixture(pl.Edge(Vec2(-20.0, -20.0), Vec2(20.0, -20.0)), wallFD);
+  ground.createFixture(pl.Edge(Vec2(-40.0, -40.0), Vec2(40.0, -40.0)), wallFD);
 
   return world;
 } 
@@ -903,7 +909,7 @@ let frame = 0;
 function init() {
 
 	camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 85 );
-	camera.position.z = 40;
+	camera.position.z = 60;
 	camera.position.y = 20;
 	scene = new THREE.Scene();
 
@@ -941,6 +947,8 @@ let isFirstFrame = true;
 function animation( time ) {
 
 
+	camera.position.x = players[0].x;
+	camera.position.y = players[0].y;
   //console.log(angle, d)
 
 
