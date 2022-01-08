@@ -23,6 +23,7 @@
     "three": "^0.136.0"
   },
   "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^1.0.0-next.34",
     "vite": "^2.7.6"
   }
 }

@@ -32,7 +32,41 @@ let path_markers= [];
 document.onkeydown = checkKeyPress;
 document.onkeyup = checkKeyRelease;
 
+document.getElementById("camera_follow").checked = false
+document.getElementById("show_forces").checked = true
 
+document.getElementById("show_forces").addEventListener("change", e => {
+
+  map.input_show_forces(document.getElementById("show_forces").checked)
+
+}); 
+
+document.getElementById("camera_follow").addEventListener("change", e => {
+
+  map.input_camera_follow(document.getElementById("camera_follow").checked)
+
+}); 
+
+document.getElementById("camera_zoom_in").addEventListener("click", e => {
+  map.input_camera_zoom_relative(-2)
+}); 
+
+document.getElementById("camera_zoom_out").addEventListener("click", e => {
+  map.input_camera_zoom_relative(+2)
+}); 
+
+document.getElementById("camera_move_left").addEventListener("click", e => {
+  map.input_camera_move_relative(-5,0)
+}); 
+document.getElementById("camera_move_right").addEventListener("click", e => {
+  map.input_camera_move_relative(5,0)
+}); 
+document.getElementById("camera_move_up").addEventListener("click", e => {
+  map.input_camera_move_relative(0,5)
+}); 
+document.getElementById("camera_move_down").addEventListener("click", e => {
+  map.input_camera_move_relative(0,-5)
+}); 
 
 
 function checkKeyPress(e) {
@@ -69,7 +103,24 @@ class Map{
   constructor(direction, speed){
 
     this.wind_direction = direction;  
-    this.wind_speed = speed;  
+    this.wind_speed = speed;
+
+    this.show_forces = true;
+
+    this.camera_follow_target = undefined;
+    this.camera_follow = false;
+    this.camera_zoom = 30;
+    this.camera_zoom_max = 70;
+    this.camera_zoom_min = 10;
+    
+    this.camera_position_x = 0;
+    this.camera_position_y = 0;
+
+    this.camera_position_x_max = 30;
+    this.camera_position_x_min = -30;
+
+    this.camera_position_y_max = 30;
+    this.camera_position_y_min = -30;
 
   }
 
@@ -81,6 +132,56 @@ class Map{
   get_wind_direction(x, y){
   
     return this.wind_direction;
+  }
+
+  set_camera_follow_target(obj){
+
+    this.camera_follow_target = obj;
+  }
+
+  physics_model_step(){
+    if (this.camera_follow === true && this.camera_follow_target !== undefined){
+
+      this.camera_position_x = this.camera_follow_target.x
+      this.camera_position_y = this.camera_follow_target.y
+
+      if (this.camera_position_x>this.camera_position_x_max) {this.camera_position_x = this.camera_position_x_max}
+      if (this.camera_position_y>this.camera_position_y_max) {this.camera_position_y = this.camera_position_y_max}
+      if (this.camera_position_x<this.camera_position_x_min) {this.camera_position_x = this.camera_position_x_min}
+      if (this.camera_position_y<this.camera_position_y_min) {this.camera_position_y = this.camera_position_y_min}
+
+    }
+  }
+
+  input_show_forces(e){
+    this.show_forces = e;
+  }
+
+  input_camera_follow(e){
+
+    this.camera_follow = e;
+
+  }  
+  
+  input_camera_zoom_relative(e){
+ 
+    this.camera_zoom += e;
+
+    if (this.camera_zoom>this.camera_zoom_max) {this.camera_zoom = this.camera_zoom_max}
+    if (this.camera_zoom<this.camera_zoom_min) {this.camera_zoom = this.camera_zoom_min}
+
+  }
+
+  input_camera_move_relative(dx, dy){
+ 
+    this.camera_position_x += dx
+    this.camera_position_y += dy
+
+    if (this.camera_position_x>this.camera_position_x_max) {this.camera_position_x = this.camera_position_x_max}
+    if (this.camera_position_y>this.camera_position_y_max) {this.camera_position_y = this.camera_position_y_max}
+    if (this.camera_position_x<this.camera_position_x_min) {this.camera_position_x = this.camera_position_x_min}
+    if (this.camera_position_y<this.camera_position_y_min) {this.camera_position_y = this.camera_position_y_min}
+
   }
 
 }
@@ -694,7 +795,7 @@ function setup_world(){
   
   let world = new World(Vec2(0, 0));
 
-  let ground = world.createBody(Vec2(0.0, 20.0));
+  let ground = world.createBody(Vec2(0.0, 0.0));
 
   let wallFD = {
     density: 0.0,
@@ -805,6 +906,8 @@ runner.start(() => {
 
   });
 
+  map.set_camera_follow_target(players[0])
+  map.physics_model_step();
 
   players.forEach(player => {
     player.physics_model_step();
@@ -817,7 +920,7 @@ runner.start(() => {
       let power = player.power;
       if (power>256){power = 256} 
 
-      //paths.push(new Path(map, player.x, player.y, power))
+      paths.push(new Path(map, player.x, player.y, power))
 
       //console.log("Path",player.x, player.y)
 
@@ -947,8 +1050,9 @@ let isFirstFrame = true;
 function animation( time ) {
 
 
-	camera.position.x = players[0].x;
-	camera.position.y = players[0].y;
+  camera.position.x = map.camera_position_x
+  camera.position.y = map.camera_position_y
+  camera.position.z = map.camera_zoom
   //console.log(angle, d)
 
 
@@ -1128,25 +1232,29 @@ function animation( time ) {
   // ARROW HELPER
 
 
- 
-  for (const f of forces){
+  if (map.show_forces){
+
+    for (const f of forces){
 
 
-    var arrow = new THREE.ArrowHelper(
-      // first argument is the direction
-      new THREE.Vector3(f.vector.x, f.vector.y, 0).normalize(),
-      // second argument is the origin
-      new THREE.Vector3(f.point.x, f.point.y, 0),
-      // length
-      Math.sqrt(f.vector.x*f.vector.x + f.vector.y*f.vector.y)/5,
-      // color
-      0x00ff00);
+      var arrow = new THREE.ArrowHelper(
+        // first argument is the direction
+        new THREE.Vector3(f.vector.x, f.vector.y, 0).normalize(),
+        // second argument is the origin
+        new THREE.Vector3(f.point.x, f.point.y, 0),
+        // length
+        Math.sqrt(f.vector.x*f.vector.x + f.vector.y*f.vector.y)/5,
+        // color
+        0x00ff00);
 
-    scene.add(arrow);
-  
-    arrows.push(arrow)
+      scene.add(arrow);
+    
+      arrows.push(arrow)
+
+    }
 
   }
+
 
   for (const r of rudders){
 
