@@ -225,8 +225,8 @@ export let fluid = {
 
 					
 				// SUKU HACK to improve field recovery
-				vx_ = vx *.5 + field[ax][ay].vx*0.5; // store new vx
-				vy_ = vy *.5 + field[ax][ay].vy*0.5; // store new vy
+				vx_ = vx *.2 + field[ax][ay].vx*0.8; // store new vx
+				vy_ = vy *.2 + field[ax][ay].vy*0.8; // store new vy
 				
 				
 				// old implementation
@@ -236,7 +236,7 @@ export let fluid = {
 				// limit area velocity (angular)
 				let dis = Math.sqrt( vx_ * vx_ + vy_ * vy_ );
 				if( dis > 1 ){
-					mf = 1 / dis;
+					let mf = 1 / dis;
 					vx_ *= mf;
 					vy_ *= mf;
 				}
@@ -248,50 +248,107 @@ export let fluid = {
 			}
 		}
 
+		// clear vx and vy values
+		
+		ax = aw;
+		while( ax-- ){
+			ay = ah;
+			while( ay-- ){
+				field[ax][ay].vx__ = 0
+				field[ax][ay].vy__ = 0
+			}
+		}
+		
+
 		// copy across velocities
-		var mf = 0.1;
-		var imf = 1 - mf;
-		var damp = 1;
 
 		ax = aw;
 		while( ax-- ){
 			ay = ah;
 			while( ay-- ){
 
-				field[ax][ay].vx = (field[ax][ay].vx * imf + field[ax][ay].vx_ * mf) * damp;
-				field[ax][ay].vy = (field[ax][ay].vy * imf + field[ax][ay].vy_ * mf) * damp;
+				let vx_next = field[ax][ay].vx *0.9 + field[ax][ay].vx_*0.1
+				let vy_next = field[ax][ay].vy *0.9 + field[ax][ay].vy_*0.1
+
+				let grid_size = 1
+
+				/*
+					vy_next == 60 => vf = 1
+					vy_next == 30 => vf = 0.5
+					vy_next == 15 => vf = 0.25
+				
+				*/
+
+				let horizontal_factor = 0
+				let vertical_factor = -vy_next/30
+
+				/*
+				// Horizontal
+				if (vx_next>0){
+					if (ax<field.width-1){
+						field[ax+1][ay].vx__ += vx_next*horizontal_factor
+						field[ax+1][ay].vy__ += vy_next*horizontal_factor
+					}
+					else{
+						field[ax][ay].vx__ += vx_next
+						field[ax][ay].vy__ += vy_next
+					}
+				}
+				else{
+					if (ax>0+1){
+						field[ax-1][ay].vx__ += vx_next*horizontal_factor
+						field[ax-1][ay].vy__ += vy_next*horizontal_factor
+					}
+					else{
+						field[ax][ay].vx__ += vx_next
+						field[ax][ay].vy__ += vy_next
+					}
+				}
+
+				*/
+
+				// Vertical
+				if (vy_next>0){
+					if (ay<field.height-1){
+						field[ax][ay+1].vx__ += vx_next*vertical_factor
+						field[ax][ay+1].vy__ += vy_next*vertical_factor
+					}
+					else{
+						field[ax][ay].vx__ += vx_next
+						field[ax][ay].vy__ += vy_next
+					}
+				}
+				else{
+					if (ay>0+1){
+						field[ax][ay-1].vx__ += vx_next*vertical_factor
+						field[ax][ay-1].vy__ += vy_next*vertical_factor
+					}
+					else{
+						field[ax][ay].vx__ += vx_next
+						field[ax][ay].vy__ += vy_next
+					}
+				}
+				
+				field[ax][ay].vx__ += vx_next*(1-horizontal_factor-vertical_factor)
+				field[ax][ay].vy__ += vy_next*(1-horizontal_factor-vertical_factor)
+				
+
+				// map boundary condition
+				if (ay == 56 || ay == 24 || ax == 56 || ax == 24){
+					field[ax][ay].vx__ = 0
+					field[ax][ay].vy__ = -2
+				}
 
 			}
 		}
-	},
 
-
-
-	clearScreen:function(){
-		var ctx = this.ctx;
-
-		ctx.fillStyle = 'rgba(0,0,0,0.4)';
-		ctx.fillRect( 0,0, this.vectorField.width, this.vectorField.height );
-	},
-
-	drawParticles:function(){
-		var ctx = this.ctx;
-		var cols = this.colors;
-		var mf;
-		var imaxspeed = 1 / this.maxParticleSpeed;
-
-		var p, i = this.particleCount;
-		while( i-- ){
-			p = this.particles[ i ];
-
-			mf = p.speed * imaxspeed;
-			if( mf > 1 ) mf = 1;
-
-			ctx.strokeStyle = cols[ mf * mf * mf * mf * 255 >> 0 ];
-			ctx.beginPath();
-			ctx.moveTo( p.ox>>0, p.oy>>0 );
-			ctx.lineTo( p.x>>0, p.y>>0 );
-			ctx.stroke();
+		ax = aw;
+		while( ax-- ){
+			ay = ah;
+			while( ay-- ){
+				field[ax][ay].vx = field[ax][ay].vx__
+				field[ax][ay].vy = field[ax][ay].vy__
+			}
 		}
 	},
 
@@ -385,6 +442,9 @@ let fieldArea = function(){
 
 	this.vx_ = 0;
 	this.vy_ = -2;
+
+	this.vx__ = 0;
+	this.vy__ = -2;
 }
 
 

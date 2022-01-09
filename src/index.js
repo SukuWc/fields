@@ -964,7 +964,8 @@ runner.start(() => {
           //console.log(x,y )
           //sum += Math.sqrt(field[x][y].vx*field[x][y].vx + field[x][y].vy*field[x][y].vy)
 
-          raw_field[(x-25)*30 + y-25] = (Math.sqrt(field[x][y].vx*field[x][y].vx + field[x][y].vy*field[x][y].vy)-0.75)
+          //raw_field[(x-25)*30 + y-25] = (Math.sqrt(field[x][y].vx*field[x][y].vx + field[x][y].vy*field[x][y].vy)-0.75)
+          raw_field[(x-25)*30 + y-25] = -field[x][y].vy-0.75
 
 
 
