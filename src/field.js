@@ -269,7 +269,7 @@ function VectorField(cols, rows, xOffset, yOffset) {
  * Setup the animation.
  * @function
  */
-function setup() {
+export function setup() {
     let cols, rows,
         offsets = [20, 20];
 

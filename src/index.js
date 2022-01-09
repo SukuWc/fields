@@ -1,7 +1,12 @@
 import { World, Edge, Vec2, Circle } from 'planck-js'
-import planck from 'planck-js/dist/planck-with-testbed';
+import planck, { random } from 'planck-js/dist/planck-with-testbed';
 import Renderer, { Runner } from "planck-renderer";
-import './field.js';
+
+import {fluid} from './fluid.js';
+
+
+
+fluid.init()
 
 let key_bind_list = []
 let key_state = []
@@ -852,14 +857,18 @@ const runner = new Runner(world, {
 	fps: 60,
 })
 
+let raw_field = []
 
+for (let i=0; i<80*80; i++){
+  raw_field[i] = Math.random()
+}
 
 let map = new Map(90, 5)
 
 let players = []
 let paths = []
 
-players.push(new Boat(map, -2, 5))
+players.push(new Boat(map, 0, -10))
 //players.push(new Boat(map, 2, 5))
 
 players.forEach(player => {
@@ -915,12 +924,92 @@ runner.start(() => {
   
     frame ++
 
-    if (physics_frame%30 == 0){
+
+
+    if (physics_frame%1 == 0){
+      var field = fluid.vectorField.field;
+
+      let ax = ((player.x-0.5)>>0) + 40
+      let ay = ((player.y-0.5)>>0) + 40
+      let xeffect = 0;
+      let yeffect = 0;
+
+      if (ax>=0 && ax<80 && ay>=0 && ay<80)
+
+      //console.log(ax, ay)
+      xeffect += -Math.cos(player.power_direction/180*Math.PI)*player.power
+      yeffect += -Math.sin(player.power_direction/180*Math.PI)*player.power
+
+      let prim = 1000
+      let secu = 2000
+
+      field[ax][ay].vx += xeffect/prim
+      field[ax][ay].vy += yeffect/prim    
+
+      field[ax-1][ay].vx += xeffect/secu
+      field[ax+1][ay].vx += xeffect/secu
+      field[ax][ay-1].vx += xeffect/secu
+      field[ax][ay+1].vx += xeffect/secu
       
+      field[ax-1][ay].vy += yeffect/secu
+      field[ax+1][ay].vy += yeffect/secu
+      field[ax][ay-1].vy += yeffect/secu
+      field[ax][ay+1].vy += yeffect/secu
+
+      for (let x=25; x<55; x++){
+
+        let sum = 0;
+        for (let y=25; y<55; y++){
+
+          //console.log(x,y )
+          //sum += Math.sqrt(field[x][y].vx*field[x][y].vx + field[x][y].vy*field[x][y].vy)
+
+          raw_field[(x-25)*30 + y-25] = (Math.sqrt(field[x][y].vx*field[x][y].vx + field[x][y].vy*field[x][y].vy)-0.75)
+
+
+
+        }
+
+        //raw_field[x] = sum/100.0
+
+      }
+
+      fluid.loop()
+    }
+
+    if (physics_frame%1 == 0){
+      
+
+
+      fluid.particles
+      var cols = fluid.colors;
+      var mf;
+      var imaxspeed = 1 / fluid.maxParticleSpeed;
+  
+      var p, i = fluid.particleCount;
+      while( i-- ){
+        p = fluid.particles[ i ];
+  
+        mf = p.speed * imaxspeed;
+        if( mf > 1 ) mf = 1;
+  
+
+        let g = {}
+        g.x1 = p.ox / 10 -40
+        g.y1 = p.oy / 10 -40
+        g.x2 = p.x / 10 -40
+        g.y2 = p.y / 10 -40
+        g.color = cols[ mf * mf * mf * mf * 255 >> 0 ]
+
+        guides.push(g)
+
+      }
+
+
       let power = player.power;
       if (power>256){power = 256} 
 
-      paths.push(new Path(map, player.x, player.y, power))
+      //paths.push(new Path(map, player.x, player.y, power))
 
       //console.log("Path",player.x, player.y)
 
@@ -981,11 +1070,17 @@ function fragmentShader() {
     uniform vec3 colorA; 
     uniform vec3 colorB; 
     uniform float time; 
+
+    uniform float testarray[900]; 
+
     varying vec3 vUv;
- 
+
+
 
     void main() {
 
+
+      /*
       float windangle = 60.0; 
 
       float angle = (windangle/180.0)*3.141592;
@@ -998,8 +1093,36 @@ function fragmentShader() {
     
       float d = 0.25*sin((phase/1.0+time/1.0));
 
-
       gl_FragColor = vec4(0.5+d, 0.5+d, 0.5+d, 1);
+
+      */
+      //float red = floor(vUv.x/10)%4*4 + floor(vUv.y/10)%4;
+
+
+      float x = vUv.x + 15.0;
+      float y = vUv.y + 15.0;
+
+      int index_x = 0;
+      if (x>0.0 && x<30.0){
+        index_x = int(floor(x));
+      }
+
+      int index_y = 0;
+      if (y>0.0 && y<30.0){
+        index_y = int(floor(y));
+      }
+
+      int index = index_x*30 + index_y;
+
+
+      float red = 0.0;
+
+      for (int i=0; i<900; i++) {
+        if (i == index) red = testarray[i];
+      }
+
+
+      gl_FragColor = vec4(red, red, red, 1);
 
 
     }
@@ -1016,12 +1139,13 @@ function init() {
 	camera.position.y = 20;
 	scene = new THREE.Scene();
 
+  
   uniforms = {
     colorB: {type: 'vec3', value: new THREE.Color(0x665555)},
     colorA: {type: 'vec3', value: new THREE.Color(0x555566)},
     'time': {value: 1.0},
+    'testarray': {value: raw_field},
   }
-
 
 	// let material = new THREE.MeshNormalMaterial();
 
@@ -1031,8 +1155,8 @@ function init() {
     vertexShader: vertexShader(),
   });
 
-  // mesh = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), material);
-	// scene.add( mesh );
+  mesh = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), material);
+	scene.add( mesh );
 
 
 
@@ -1048,6 +1172,8 @@ let isFirstFrame = true;
 
 
 function animation( time ) {
+
+
 
 
   camera.position.x = map.camera_position_x
@@ -1362,6 +1488,7 @@ function animation( time ) {
 
   frame++;
   uniforms.time.value+=0.1;
+  uniforms.testarray.value = raw_field;
 
   isFirstFrame = false;
 
