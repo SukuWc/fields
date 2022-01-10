@@ -940,8 +940,17 @@ runner.start(() => {
       xeffect += -Math.cos(player.power_direction/180*Math.PI)*player.power
       yeffect += -Math.sin(player.power_direction/180*Math.PI)*player.power
 
-      let prim = 1000
-      let secu = 2000
+
+      let tws = Math.sqrt(field[ax][ay].vx*field[ax][ay].vx + field[ax][ay].vy*field[ax][ay].vy)
+      document.getElementById("info").innerHTML += "XE: "+ Math.floor( xeffect *100) /100 + "<br>"; 
+      document.getElementById("info").innerHTML += "YE: "+ Math.floor( yeffect *100) /100 + "<br>"; 
+      document.getElementById("info").innerHTML += "TWS: "+ Math.floor( tws *100) /100 + "<br>"; 
+      //console.log(xeffect,yeffect)
+
+
+      
+      let prim = 200
+      let secu = 300
 
       field[ax][ay].vx += xeffect/prim
       field[ax][ay].vy += yeffect/prim    
@@ -965,7 +974,7 @@ runner.start(() => {
           //sum += Math.sqrt(field[x][y].vx*field[x][y].vx + field[x][y].vy*field[x][y].vy)
 
           //raw_field[(x-25)*30 + y-25] = (Math.sqrt(field[x][y].vx*field[x][y].vx + field[x][y].vy*field[x][y].vy)-0.75)
-          raw_field[(x-25)*30 + y-25] = -field[x][y].vy-0.75
+          raw_field[(x-25)*30 + y-25] = -field[x][y].vy/3-0.25
 
 
 

@@ -131,6 +131,7 @@ export let fluid = {
 			p = this.particles[ i ];
 
 			// limit velocity (angular)
+			/*
 			dis = Math.sqrt( p.vx * p.vx + p.vy * p.vy );
 			if( dis > maxspeed ){
 				mf = maxspeed / dis;
@@ -138,7 +139,7 @@ export let fluid = {
 				p.vy *= mf;
 			}
 			p.speed = dis;
-
+			*/
 
 			// friction
 			//p.vx *= 0.9;
@@ -225,8 +226,8 @@ export let fluid = {
 
 					
 				// SUKU HACK to improve field recovery
-				vx_ = vx *.2 + field[ax][ay].vx*0.8; // store new vx
-				vy_ = vy *.2 + field[ax][ay].vy*0.8; // store new vy
+				vx_ = vx *.2 + field[ax][ay].vx*0.2; // store new vx
+				vy_ = vy *.2 + field[ax][ay].vy*0.2; // store new vy
 				
 				
 				// old implementation
@@ -234,12 +235,14 @@ export let fluid = {
 				// vy_ = vy *.1 + field[ax][ay].vy; // store new vy
 
 				// limit area velocity (angular)
+				/*
 				let dis = Math.sqrt( vx_ * vx_ + vy_ * vy_ );
 				if( dis > 1 ){
 					let mf = 1 / dis;
 					vx_ *= mf;
 					vy_ *= mf;
 				}
+				*/
 
 				//
 				field[ax][ay].vx_ = vx_;
@@ -279,63 +282,70 @@ export let fluid = {
 				
 				*/
 
-				let horizontal_factor = 0
-				let vertical_factor = -vy_next/30
-
-				/*
+				let horizontal_factor = Math.abs(vx_next/30)
+				let vertical_factor = Math.abs(vy_next/30)
+				//horizontal_factor = 0
+				//vertical_factor = 0
+				
 				// Horizontal
 				if (vx_next>0){
+					//problematic
 					if (ax<field.width-1){
 						field[ax+1][ay].vx__ += vx_next*horizontal_factor
 						field[ax+1][ay].vy__ += vy_next*horizontal_factor
 					}
 					else{
-						field[ax][ay].vx__ += vx_next
-						field[ax][ay].vy__ += vy_next
+						//field[ax][ay].vx__ += vx_next
+						//field[ax][ay].vy__ += vy_next
+
 					}
 				}
 				else{
+					//more problematic
 					if (ax>0+1){
 						field[ax-1][ay].vx__ += vx_next*horizontal_factor
 						field[ax-1][ay].vy__ += vy_next*horizontal_factor
 					}
 					else{
-						field[ax][ay].vx__ += vx_next
-						field[ax][ay].vy__ += vy_next
+						//field[ax][ay].vx__ += vx_next
+						//field[ax][ay].vy__ += vy_next
 					}
 				}
 
-				*/
+				
 
 				// Vertical
+				
 				if (vy_next>0){
 					if (ay<field.height-1){
 						field[ax][ay+1].vx__ += vx_next*vertical_factor
 						field[ax][ay+1].vy__ += vy_next*vertical_factor
 					}
 					else{
-						field[ax][ay].vx__ += vx_next
-						field[ax][ay].vy__ += vy_next
+						//field[ax][ay].vx__ += vx_next
+						//field[ax][ay].vy__ += vy_next
 					}
 				}
 				else{
+					// this happenes
 					if (ay>0+1){
 						field[ax][ay-1].vx__ += vx_next*vertical_factor
 						field[ax][ay-1].vy__ += vy_next*vertical_factor
 					}
 					else{
-						field[ax][ay].vx__ += vx_next
-						field[ax][ay].vy__ += vy_next
+						//field[ax][ay].vx__ += vx_next
+						//field[ax][ay].vy__ += vy_next
 					}
 				}
 				
+
 				field[ax][ay].vx__ += vx_next*(1-horizontal_factor-vertical_factor)
 				field[ax][ay].vy__ += vy_next*(1-horizontal_factor-vertical_factor)
 				
 
 				// map boundary condition
 				if (ay == 56 || ay == 24 || ax == 56 || ax == 24){
-					field[ax][ay].vx__ = 0
+					field[ax][ay].vx__ = 0.5
 					field[ax][ay].vy__ = -2
 				}
 
