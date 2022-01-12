@@ -5,6 +5,7 @@ import Renderer, { Runner } from "planck-renderer";
 import {fluid} from './fluid.js';
 
 
+let field_draw = []
 
 fluid.init()
 
@@ -39,12 +40,20 @@ document.onkeyup = checkKeyRelease;
 
 document.getElementById("camera_follow").checked = false
 document.getElementById("show_forces").checked = true
+document.getElementById("show_field").checked = false
 
 document.getElementById("show_forces").addEventListener("change", e => {
 
   map.input_show_forces(document.getElementById("show_forces").checked)
 
 }); 
+
+document.getElementById("show_field").addEventListener("change", e => {
+
+  map.input_show_fields(document.getElementById("show_field").checked)
+
+}); 
+
 
 document.getElementById("camera_follow").addEventListener("change", e => {
 
@@ -111,6 +120,7 @@ class Map{
     this.wind_speed = speed;
 
     this.show_forces = true;
+    this.show_fields = false;
 
     this.camera_follow_target = undefined;
     this.camera_follow = false;
@@ -156,6 +166,10 @@ class Map{
       if (this.camera_position_y<this.camera_position_y_min) {this.camera_position_y = this.camera_position_y_min}
 
     }
+  }
+
+  input_show_fields(e){
+    this.show_fields = e;
   }
 
   input_show_forces(e){
@@ -601,6 +615,38 @@ class Boat{
 
     guides.push(a)
 
+    // wind indicator
+
+    
+    let wind_angle = (this.wind_direction)/180*Math.PI
+
+    a = {}
+    a.color = 0x556677
+
+    a.x1 = this.x + Math.cos(wind_angle)*3;
+    a.y1 = this.y + Math.sin(wind_angle)*3;
+    a.x2 = this.x + Math.cos(wind_angle)*5 + Math.cos(wind_angle+Math.PI/2)*0.5;
+    a.y2 = this.y + Math.sin(wind_angle)*5 + Math.sin(wind_angle+Math.PI/2)*0.5;
+
+    guides.push(a)
+
+    let b = {}
+    b.color = 0x556677
+    b.x1 = this.x + Math.cos(wind_angle)*3;
+    b.y1 = this.y + Math.sin(wind_angle)*3;
+    b.x2 = this.x + Math.cos(wind_angle)*5 + Math.cos(wind_angle-Math.PI/2)*0.5;
+    b.y2 = this.y + Math.sin(wind_angle)*5 + Math.sin(wind_angle-Math.PI/2)*0.5;
+
+    guides.push(b)  
+
+    let c = {}
+    c.color = 0x556677
+    c.x1 = this.x + Math.cos(wind_angle)*5 + Math.cos(wind_angle+Math.PI/2)*0.5;
+    c.y1 = this.y + Math.sin(wind_angle)*5 + Math.sin(wind_angle+Math.PI/2)*0.5;
+    c.x2 = this.x + Math.cos(wind_angle)*5 + Math.cos(wind_angle-Math.PI/2)*0.5;
+    c.y2 = this.y + Math.sin(wind_angle)*5 + Math.sin(wind_angle-Math.PI/2)*0.5;
+
+    guides.push(c)
 
     // rendering the rudder
     let r = {}
@@ -614,14 +660,14 @@ class Boat{
 
     // rendering the centerboard
 
-    let c = {}
+    let e = {}
     
-    c.x1 = this.physics_model.getWorldPoint(Vec2(0.0, this.centerboard_position + this.centerboard_length/2)).x;
-    c.y1 = this.physics_model.getWorldPoint(Vec2(0.0, this.centerboard_position + this.centerboard_length/2)).y;
-    c.x2 = this.physics_model.getWorldPoint(Vec2(0.0, this.centerboard_position - this.centerboard_length/2)).x;
-    c.y2 = this.physics_model.getWorldPoint(Vec2(0.0, this.centerboard_position - this.centerboard_length/2)).y;
+    e.x1 = this.physics_model.getWorldPoint(Vec2(0.0, this.centerboard_position + this.centerboard_length/2)).x;
+    e.y1 = this.physics_model.getWorldPoint(Vec2(0.0, this.centerboard_position + this.centerboard_length/2)).y;
+    e.x2 = this.physics_model.getWorldPoint(Vec2(0.0, this.centerboard_position - this.centerboard_length/2)).x;
+    e.y2 = this.physics_model.getWorldPoint(Vec2(0.0, this.centerboard_position - this.centerboard_length/2)).y;
 
-    rudders.push(c)
+    rudders.push(e)
 
     // rendering the mainsail
 
@@ -897,6 +943,31 @@ key_bind_list.push({type: "KEYDOWN", activation_key: 13, prohibition_key: -1, ob
 
 let physics_frame = 0;
 
+function HSVtoRGB(h, s, v) {
+  var r, g, b, i, f, p, q, t;
+  if (arguments.length === 1) {
+      s = h.s, v = h.v, h = h.h;
+  }
+  i = Math.floor(h * 6);
+  f = h * 6 - i;
+  p = v * (1 - s);
+  q = v * (1 - f * s);
+  t = v * (1 - (1 - f) * s);
+  switch (i % 6) {
+      case 0: r = v, g = t, b = p; break;
+      case 1: r = q, g = v, b = p; break;
+      case 2: r = p, g = v, b = t; break;
+      case 3: r = p, g = q, b = v; break;
+      case 4: r = t, g = p, b = v; break;
+      case 5: r = v, g = p, b = q; break;
+  }
+  return {
+      r: Math.round(r * 255),
+      g: Math.round(g * 255),
+      b: Math.round(b * 255)
+  };
+}
+
 runner.start(() => {
 
   // clear the array of displayed graphic elements
@@ -949,21 +1020,27 @@ runner.start(() => {
 
 
       
-      let prim = 200
-      let secu = 300
+      let prim = 4
+      let secu = 3
 
-      field[ax][ay].vx += xeffect/prim
-      field[ax][ay].vy += yeffect/prim    
+      field[ax][ay].vx += xeffect/1000*prim
+      field[ax][ay].vy += yeffect/1000*prim    
 
-      field[ax-1][ay].vx += xeffect/secu
-      field[ax+1][ay].vx += xeffect/secu
-      field[ax][ay-1].vx += xeffect/secu
-      field[ax][ay+1].vx += xeffect/secu
+      field[ax-1][ay].vx += xeffect/1000*secu
+      field[ax+1][ay].vx += xeffect/1000*secu
+      field[ax][ay-1].vx += xeffect/1000*secu
+      field[ax][ay+1].vx += xeffect/1000*secu
       
-      field[ax-1][ay].vy += yeffect/secu
-      field[ax+1][ay].vy += yeffect/secu
-      field[ax][ay-1].vy += yeffect/secu
-      field[ax][ay+1].vy += yeffect/secu
+      field[ax-1][ay].vy += yeffect/1000*secu
+      field[ax+1][ay].vy += yeffect/1000*secu
+      field[ax][ay-1].vy += yeffect/1000*secu
+      field[ax][ay+1].vy += yeffect/1000*secu
+
+      if (physics_frame%200 <10){
+
+        //field[40][40].vx = 5
+        //field[40][40].vy = 0
+      }
 
       for (let x=25; x<55; x++){
 
@@ -973,10 +1050,26 @@ runner.start(() => {
           //console.log(x,y )
           //sum += Math.sqrt(field[x][y].vx*field[x][y].vx + field[x][y].vy*field[x][y].vy)
 
-          //raw_field[(x-25)*30 + y-25] = (Math.sqrt(field[x][y].vx*field[x][y].vx + field[x][y].vy*field[x][y].vy)-0.75)
-          raw_field[(x-25)*30 + y-25] = -field[x][y].vy/3-0.25
+          let velocity = Math.floor(Math.sqrt(field[x][y].vx*field[x][y].vx + field[x][y].vy*field[x][y].vy)*50)
 
 
+          let angle = Math.floor(Math.atan2(field[x][y].vy, field[x][y].vx)/Math.PI*180) + 270
+
+          while(angle>360){
+            angle-=360
+          }          
+          while(angle<0){
+            angle+=360
+          }
+
+
+          let rgb;
+          
+          rgb = HSVtoRGB(angle/360,0.5,velocity/200)
+
+          rgb = HSVtoRGB(angle/360,0.0,velocity/200)
+
+          field_draw[x][y].material.color.setHex(  256*256*rgb.r + 256*rgb.g + rgb.b );
 
         }
 
@@ -987,9 +1080,11 @@ runner.start(() => {
       fluid.loop()
     }
 
-    if (physics_frame%1 == 0){
-      
 
+
+    if (physics_frame%1 == 0 && map.show_fields){
+      
+      
 
       fluid.particles
       var cols = fluid.colors;
@@ -1009,19 +1104,12 @@ runner.start(() => {
         g.y1 = p.oy / 10 -40
         g.x2 = p.x / 10 -40
         g.y2 = p.y / 10 -40
-        g.color = cols[ mf * mf * mf * mf * 255 >> 0 ]
+        g.color = 0xAAAAAA
+        g.opacity = (50-Math.abs(50-p.age))/50
 
         guides.push(g)
 
       }
-
-
-      let power = player.power;
-      if (power>256){power = 256} 
-
-      //paths.push(new Path(map, player.x, player.y, power))
-
-      //console.log("Path",player.x, player.y)
 
     }
   
@@ -1142,6 +1230,8 @@ function fragmentShader() {
 
 let frame = 0;
 
+
+
 function init() {
 
 	camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 85 );
@@ -1149,6 +1239,7 @@ function init() {
 	camera.position.y = 20;
 	scene = new THREE.Scene();
 
+ 
   
   uniforms = {
     colorB: {type: 'vec3', value: new THREE.Color(0x665555)},
@@ -1156,7 +1247,7 @@ function init() {
     'time': {value: 1.0},
     'testarray': {value: raw_field},
   }
-
+ /*
 	// let material = new THREE.MeshNormalMaterial();
 
   let material = new THREE.ShaderMaterial({
@@ -1166,9 +1257,33 @@ function init() {
   });
 
   mesh = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), material);
+
+  //new THREE.Mesh(new THREE.PlaneGeometry(30, 30), material);
 	scene.add( mesh );
+  */
+  for (let x=25; x<55; x++){
+    field_draw[x] = []
+
+    for (let y=25; y<55; y++){
+
+      field_draw[x][y] = {}
+      
+      const geometry = new THREE.PlaneGeometry( 1, 1 );
+
+      field_draw[x][y].material = new THREE.MeshBasicMaterial( {color: 0xffff00, side: THREE.DoubleSide} );
+      field_draw[x][y].material.needsUpdate = true
 
 
+      //needsUpdate
+
+      let plane = new THREE.Mesh( geometry, field_draw[x][y].material );
+      plane.position.x = x-40
+      plane.position.y = y-40
+      scene.add( plane);
+
+    }
+
+  }
 
 	renderer = new THREE.WebGLRenderer( { antialias: true } );
 	renderer.setSize( window.innerWidth, window.innerHeight );
@@ -1422,7 +1537,24 @@ function animation( time ) {
     if (color === undefined){
       color = 0xff0000
     }
-    const material = new THREE.LineBasicMaterial( { color: color } );
+
+    let options;
+    let opacity;
+    let transparent;
+
+
+    let  material
+
+    if (r.opacity !== undefined){
+      transparent = true,
+      opacity = r.opacity    
+      material = new THREE.LineBasicMaterial( { color: color, transparent: transparent, opacity: opacity } );
+    }
+    else{ 
+      material = new THREE.LineBasicMaterial( { color: color } );
+    }
+
+
     edges.push(new THREE.Line( geometry, material ))
     scene.add( edges[edges.length -1]);
 
@@ -1493,6 +1625,9 @@ function animation( time ) {
 
 
   }
+
+  var field = fluid.vectorField.field;
+
 
 
 

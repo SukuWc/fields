@@ -14,7 +14,7 @@ export let fluid = {
 	vectorField:undefined,
 
 	particles:[],
-	particleCount:400,
+	particleCount:500,
 
 	maxParticleSpeed:8,
 
@@ -130,6 +130,16 @@ export let fluid = {
 		while( i-- ){
 			p = this.particles[ i ];
 
+
+			p.age+= 0.1
+
+			if (p.age>100){
+
+				p.age = 0;
+				p.x = 250 + Math.random()*300
+				p.y = 250 + Math.random()*300
+			}
+
 			// limit velocity (angular)
 			/*
 			dis = Math.sqrt( p.vx * p.vx + p.vy * p.vy );
@@ -164,11 +174,22 @@ export let fluid = {
 				p.oy = p.y += 300
 				p.x = 250 + Math.random()*300
 				p.ox = p.x		
-			};
+			}
 			if( p.y > 550 ) {
 				p.oy = p.y -= 300;
 				p.x = 250 + Math.random()*300
 				p.ox = p.x
+			}
+
+			if( p.x < 250 ) {
+				p.ox = p.x += 300
+				p.y = 250 + Math.random()*300
+				p.oy = p.y		
+			}
+			if( p.x > 550 ) {
+				p.ox = p.x -= 300;
+				p.y = 250 + Math.random()*300
+				p.oy = p.y
 			}
 
 
@@ -176,22 +197,18 @@ export let fluid = {
 			ax = (((p.x + p.vx * 5) * axmf >> 0) + aw) % aw;
 			ay = (((p.y + p.vy * 5) * aymf >> 0) + ah) % ah;
 
-			// particles velocity influences area
-			//field[ax][ay].vx += p.vx *.05;
-			//field[ax][ay].vy += p.vy *.05;
-
-			
+		
 			// SUKU HACK to limit simulated area
 			// areas velocity influences particle
 			
-			p.ox = p.x + (p.x-p.ox)*4
-			p.oy = p.y + (p.y-p.oy)*4
+			p.ox = p.x + (p.x-p.ox)*5
+			p.oy = p.y + (p.y-p.oy)*5
 
-			p.vx *=0.25
-			p.vy *=0.25
+			p.vx *=0.4
+			p.vy *=0.4
 
-			p.vx += field[ax][ay].vx * .75;
-			p.vy += field[ax][ay].vy * .75;
+			p.vx += field[ax][ay].vx * .4;
+			p.vy += field[ax][ay].vy * .4;
 		}
 	},
 
@@ -212,41 +229,28 @@ export let fluid = {
 			while( ay-- ){
 
 				// blend this areas velocity with surrounding areas
-				vx = 0 +
-					(ax > 0 ? field[ax-1][ay].vx : 0) +
-					(ax + 1 < aw ? field[ax+1][ay].vx : 0) +
-					(ay > 0 ? field[ax][ay-1].vx : 0) +
-					(ay + 1 < ah ? field[ax][ay+1].vx : 0);
 
-				vy = 0 +
-					(ax > 0 ? field[ax-1][ay].vy : 0) +
-					(ax + 1 < aw ? field[ax+1][ay].vy : 0) +
-					(ay > 0 ? field[ax][ay-1].vy : 0) +
-					(ay + 1 < ah ? field[ax][ay+1].vy : 0);
+				if (ax<aw-1 && ax>0+1 && ay<ah-1 && ay>0+1){
 
-					
-				// SUKU HACK to improve field recovery
-				vx_ = vx *.2 + field[ax][ay].vx*0.2; // store new vx
-				vy_ = vy *.2 + field[ax][ay].vy*0.2; // store new vy
+					vx = (field[ax-1][ay].vx + field[ax+1][ay].vx + field[ax][ay-1].vx + field[ax][ay+1].vx)/4
+					vy = (field[ax-1][ay].vy + field[ax+1][ay].vy + field[ax][ay-1].vy + field[ax][ay+1].vy)/4
 				
-				
-				// old implementation
-				// vx_ = vx *.1 + field[ax][ay].vx; // store new vx
-				// vy_ = vy *.1 + field[ax][ay].vy; // store new vy
+					let mixfactor = 0.2
 
-				// limit area velocity (angular)
-				/*
-				let dis = Math.sqrt( vx_ * vx_ + vy_ * vy_ );
-				if( dis > 1 ){
-					let mf = 1 / dis;
-					vx_ *= mf;
-					vy_ *= mf;
+					vx_ = field[ax][ay].vx*(1-mixfactor) + vx*mixfactor
+					vy_ = field[ax][ay].vy*(1-mixfactor) + vy*mixfactor
+
+
+
 				}
-				*/
+				else{
+					vx_ = field[ax][ay].vx
+					vy_ = field[ax][ay].vy
+				}
 
-				//
 				field[ax][ay].vx_ = vx_;
 				field[ax][ay].vy_ = vy_;
+				
 
 			}
 		}
@@ -257,8 +261,8 @@ export let fluid = {
 		while( ax-- ){
 			ay = ah;
 			while( ay-- ){
-				field[ax][ay].vx__ = 0
-				field[ax][ay].vy__ = 0
+				//field[ax][ay].vx__ = 0
+				//field[ax][ay].vy__ = 0
 			}
 		}
 		
@@ -270,82 +274,58 @@ export let fluid = {
 			ay = ah;
 			while( ay-- ){
 
-				let vx_next = field[ax][ay].vx *0.9 + field[ax][ay].vx_*0.1
-				let vy_next = field[ax][ay].vy *0.9 + field[ax][ay].vy_*0.1
+				let vx_next = field[ax][ay].vx_
+				let vy_next = field[ax][ay].vy_
+
 
 				let grid_size = 1
 
-				/*
-					vy_next == 60 => vf = 1
-					vy_next == 30 => vf = 0.5
-					vy_next == 15 => vf = 0.25
-				
-				*/
-
-				let horizontal_factor = Math.abs(vx_next/30)
-				let vertical_factor = Math.abs(vy_next/30)
+				let hf = Math.abs(vx_next/15)
+				let vf = Math.abs(vy_next/15)
 				//horizontal_factor = 0
 				//vertical_factor = 0
-				
-				// Horizontal
-				if (vx_next>0){
-					//problematic
-					if (ax<field.width-1){
-						field[ax+1][ay].vx__ += vx_next*horizontal_factor
-						field[ax+1][ay].vy__ += vy_next*horizontal_factor
-					}
-					else{
-						//field[ax][ay].vx__ += vx_next
-						//field[ax][ay].vy__ += vy_next
+
+
+
+				if (ax<aw-1 && ax>0+1 && ay<ah-1 && ay>0+1 ){
+						
+
+					let x0, x1, x2, x3
+					let y0, y1, y2, y3
+
+					x0 = field[ax][ay].vx_;
+					x1 = field[ax-Math.sign(vx_next)][ay].vx_;
+					x2 = field[ax][ay-Math.sign(vy_next)].vx_;
+					x3 = field[ax-Math.sign(vx_next)][ay-Math.sign(vy_next)].vx_;
+
+					y0 = field[ax][ay].vy_;
+					y1 = field[ax-Math.sign(vx_next)][ay].vy_;
+					y2 = field[ax][ay-Math.sign(vy_next)].vy_;
+					y3 = field[ax-Math.sign(vx_next)][ay-Math.sign(vy_next)].vy_;
+
+					field[ax][ay].vx__ = (1-hf)*(1-vf)*x0 + (hf)*(1-vf)*x1 + (1-hf)*(vf)*x2 + (hf)*(vf)*x3
+					field[ax][ay].vy__ = (1-hf)*(1-vf)*y0 + (hf)*(1-vf)*y1 + (1-hf)*(vf)*y2 + (hf)*(vf)*y3
+
+					if ( field[ax][ay].vx__ === undefined || field[ax][ay].vy__ === undefined){
+						console.log("TRAP")
+						field=undefined;
 
 					}
+
+				
+
 				}
 				else{
-					//more problematic
-					if (ax>0+1){
-						field[ax-1][ay].vx__ += vx_next*horizontal_factor
-						field[ax-1][ay].vy__ += vy_next*horizontal_factor
-					}
-					else{
-						//field[ax][ay].vx__ += vx_next
-						//field[ax][ay].vy__ += vy_next
-					}
+					field[ax][ay].vx__ = field[ax][ay].vx_
+					field[ax][ay].vy__ = field[ax][ay].vy_
 				}
 
 				
 
-				// Vertical
-				
-				if (vy_next>0){
-					if (ay<field.height-1){
-						field[ax][ay+1].vx__ += vx_next*vertical_factor
-						field[ax][ay+1].vy__ += vy_next*vertical_factor
-					}
-					else{
-						//field[ax][ay].vx__ += vx_next
-						//field[ax][ay].vy__ += vy_next
-					}
-				}
-				else{
-					// this happenes
-					if (ay>0+1){
-						field[ax][ay-1].vx__ += vx_next*vertical_factor
-						field[ax][ay-1].vy__ += vy_next*vertical_factor
-					}
-					else{
-						//field[ax][ay].vx__ += vx_next
-						//field[ax][ay].vy__ += vy_next
-					}
-				}
-				
-
-				field[ax][ay].vx__ += vx_next*(1-horizontal_factor-vertical_factor)
-				field[ax][ay].vy__ += vy_next*(1-horizontal_factor-vertical_factor)
-				
 
 				// map boundary condition
 				if (ay == 56 || ay == 24 || ax == 56 || ax == 24){
-					field[ax][ay].vx__ = 0.5
+					field[ax][ay].vx__ = 0
 					field[ax][ay].vy__ = -2
 				}
 
@@ -459,6 +439,8 @@ let fieldArea = function(){
 
 
 let particle = function( x, y ){
+
+	this.age = Math.random()*100;
 	this.x = this.ox = x;
 	this.y = this.oy = y;
 
