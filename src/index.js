@@ -113,6 +113,25 @@ function checkKeyRelease(e) {
 }
 
 
+function sum(a) {
+  var s = 0;
+  for (var i = 0; i < a.length; i++) s += a[i];
+  return s;
+} 
+
+function degToRad(a) {
+  return Math.PI / 180 * a;
+}
+
+function meanAngleDeg(a) {
+  return 180 / Math.PI * Math.atan2(
+      sum(a.map(degToRad).map(Math.sin)) / a.length,
+      sum(a.map(degToRad).map(Math.cos)) / a.length
+  );
+}
+
+
+
 class Map{
   constructor(direction, speed){
 
@@ -141,11 +160,47 @@ class Map{
 
   get_wind_speed(x, y){
   
+    var field = fluid.vectorField.field;
+
+    let ax = ((x-0.5)>>0) + 40
+    let ay = ((y-0.5)>>0) + 40
+
+
+    let tws = 0
+    tws += Math.sqrt(field[ax][ay].vx*field[ax][ay].vx + field[ax][ay].vy*field[ax][ay].vy)
+
+    tws += Math.sqrt(field[ax+1][ay].vx*field[ax+1][ay].vx + field[ax+1][ay].vy*field[ax+1][ay].vy)
+    tws += Math.sqrt(field[ax-1][ay].vx*field[ax-1][ay].vx + field[ax-1][ay].vy*field[ax-1][ay].vy)
+    tws += Math.sqrt(field[ax][ay+1].vx*field[ax][ay+1].vx + field[ax][ay+1].vy*field[ax][ay+1].vy)
+    tws += Math.sqrt(field[ax][ay-1].vx*field[ax][ay-1].vx + field[ax][ay-1].vy*field[ax][ay-1].vy)
+
+    return tws/5*3;
     return this.wind_speed;
   }
 
   get_wind_direction(x, y){
   
+    var field = fluid.vectorField.field;
+
+    let ax = ((x-0.5)>>0) + 40
+    let ay = ((y-0.5)>>0) + 40
+
+    let angle_array = [
+      Math.atan2(field[ax][ay].vy, field[ax][ay].vx)/Math.PI*180 + 180,
+      Math.atan2(field[ax-1][ay].vy, field[ax-1][ay].vx)/Math.PI*180 + 180,
+      Math.atan2(field[ax+1][ay].vy, field[ax+1][ay].vx)/Math.PI*180 + 180,
+      Math.atan2(field[ax][ay-1].vy, field[ax][ay-1].vx)/Math.PI*180 + 180,
+      Math.atan2(field[ax][ay+1].vy, field[ax][ay+1].vx)/Math.PI*180 + 180
+    ]
+
+
+   
+
+    let twa = meanAngleDeg(angle_array)
+
+    return twa;
+    return this.wind_speed;
+
     return this.wind_direction;
   }
 
@@ -255,6 +310,12 @@ class Boat{
 
     this.center_of_lift = -0.025
 
+    //
+    this.aero_lookup_resolution = 5 //degrees
+    this.aero_lift_lookup = [  0, 0.025, 0.15, 0.9, 1.3, 1.46, 1.52, 1.51, 1.45, 1.41, 1.33, 1.16, 0.95, 0.82, 0.73, 0.6, 0.43, 0.34, 0.28, 0.28, 0.28]
+    this.aero_drag_lookup = [0.15, 0.15, 0.15, 0.16, 0.172, 0.19, 0.22, 0.25, 0.29, 0.34, 0.4, 0.47, 0.55, 0.635, 0.73, 0.83, 0.95, 1.1, 1.28, 1.28, 1.28]
+
+
     this.physics_model = undefined;
     
     this.power = 0;
@@ -319,6 +380,8 @@ class Boat{
 
     var angle = this.physics_model.getAngle();
 
+
+
     this.hull_angle = angle;
 
     while (angle < -Math.PI){
@@ -360,7 +423,7 @@ class Boat{
 
     // centerboard
     this.physics_model.applyForce(centerboard_f, centerboard_p, true);   
-    forces.push({name: "centerboard", vector: centerboard_f, point: centerboard_p})
+    //forces.push({name: "centerboard", vector: centerboard_f, point: centerboard_p})
 
     document.getElementById("info").innerHTML += "q/d: "+ centerboard_AoA_degrees + "°<br>"; 
   
@@ -392,7 +455,7 @@ class Boat{
       twa+=360
     }
 
-    
+    this.awa = awa;
     this.twa = twa;
 
 
@@ -482,7 +545,7 @@ class Boat{
 
     }
     else{
-      this.autopilot_heading_target = angle/Math.PI*180 + 180
+      this.autopilot_heading_target = - this.twa
       
       if (this.autopilot_heading_target > 180) {this.autopilot_heading_target -= 360} 
       if (this.autopilot_heading_target < -180) {this.autopilot_heading_target += 360} 
@@ -513,7 +576,7 @@ class Boat{
     rudder_f.y = Math.sin(angle +this.rudder_angle/180*Math.PI)* rudder_force;
 
     this.physics_model.applyForce(rudder_f, rudder_p, true); 
-    forces.push({name: "rudder", vector: rudder_f, point: rudder_p})
+    //forces.push({name: "rudder", vector: rudder_f, point: rudder_p})
 
 
     document.getElementById("info").innerHTML += "TWA: "+Math.floor(twa) + "<br>";
@@ -534,7 +597,7 @@ class Boat{
 
     // JIB
 
-    this.jib_boom_angle = awa*this.jib_boom_angle_factor;
+    this.jib_boom_angle = this.awa*this.jib_boom_angle_factor;
 
     if (this.jib_boom_angle>this.jib_boom_angle_max) this.jib_boom_angle = this.jib_boom_angle_max;
     if (this.jib_boom_angle<-this.jib_boom_angle_max) this.jib_boom_angle = -this.jib_boom_angle_max;
@@ -542,34 +605,47 @@ class Boat{
 
     // MAINSAIL
 
-    this.mainsail_boom_angle = awa*this.mainsail_boom_angle_factor;
+    this.mainsail_boom_angle = this.awa*this.mainsail_boom_angle_factor;
 
     if (this.mainsail_boom_angle>this.mainsail_boom_angle_max) this.mainsail_boom_angle = this.mainsail_boom_angle_max;
     if (this.mainsail_boom_angle<-this.mainsail_boom_angle_max) this.mainsail_boom_angle = -this.mainsail_boom_angle_max;
 
 
+    // calculate lookup index
+    const lookup_index = Math.floor(Math.abs(this.mainsail_boom_angle-this.awa)/this.aero_lookup_resolution)
+    const interpolator = Math.abs(this.mainsail_boom_angle-this.awa)/this.aero_lookup_resolution - lookup_index
+
+
+    let c_drag = this.aero_drag_lookup[lookup_index]* (1-interpolator) + this.aero_drag_lookup[lookup_index+1] * (interpolator)
+    let c_lift = this.aero_lift_lookup[lookup_index]* (1-interpolator) + this.aero_lift_lookup[lookup_index+1] * (interpolator)
+
+    let sail_f_drag = {};
+    let sail_f_lift = {};
+
+    document.getElementById("info").innerHTML += "Cd: "+ Math.floor( c_drag *10) /10 + "<br>"; 
+    document.getElementById("info").innerHTML += "Cl: "+ Math.floor( c_lift *10) /10 + "<br>"; 
+    
+    sail_f_drag.x = Math.cos(angle+this.awa/180*Math.PI + Math.PI/2 )*aws*aws*c_drag*0.45
+    sail_f_drag.y = Math.sin(angle+this.awa/180*Math.PI + Math.PI/2 )*aws*aws*c_drag*0.45
+    
+    sail_f_lift.x = -Math.sign(this.awa)*Math.cos(angle+(this.awa)/180*Math.PI )*aws*aws*c_lift*0.45
+    sail_f_lift.y = -Math.sign(this.awa)*Math.sin(angle+(this.awa)/180*Math.PI )*aws*aws*c_lift*0.45
+
     let mainsail_f = {};
 
-    mainsail_f.x = -aw_vector.x - Math.cos(angle + Math.PI/2 )*aws*1.0
-    mainsail_f.y = -aw_vector.y - Math.sin(angle + Math.PI/2 )*aws*1.0
+    mainsail_f.x = sail_f_drag.x  + sail_f_lift.x
+    mainsail_f.y = sail_f_drag.y  + sail_f_lift.y
 
-
-    mainsail_f.x *= Math.sqrt(Math.abs(twa)/100)*2*aws
-    mainsail_f.y *= Math.sqrt(Math.abs(twa)/100)*2*aws
-
-
-    if (isNaN(mainsail_f.x)){
-      mainsail_f.x = 0;
-    }
-    if (isNaN(mainsail_f.y)){
-      mainsail_f.y = 0;
-    }
-    
 
     var mainsail_p = this.physics_model.getWorldPoint(Vec2(0.0, this.center_of_lift));
     
-    this.physics_model.applyForce(mainsail_f, mainsail_p, true);   
-    forces.push({name: "mainsail", vector: mainsail_f, point: mainsail_p})
+    //this.physics_model.applyForce(mainsail_f, mainsail_p, true);   
+    //forces.push({name: "mainsail", vector: mainsail_f, point: mainsail_p})
+    
+    this.physics_model.applyForce(sail_f_lift, mainsail_p, true); 
+    this.physics_model.applyForce(sail_f_drag, mainsail_p, true); 
+    forces.push({name: "mainsail", vector: sail_f_lift, point: mainsail_p})
+    forces.push({name: "mainsail", vector: sail_f_drag, point: mainsail_p})
 
     this.power = Math.sqrt(mainsail_f.x*mainsail_f.x + mainsail_f.y*mainsail_f.y)
     this.power_direction = Math.atan2(mainsail_f.y, mainsail_f.x) / Math.PI * 180;
@@ -587,7 +663,7 @@ class Boat{
 
     var drag_p = this.physics_model.getWorldPoint(Vec2(0.0, 0));
     this.physics_model.applyForce(drag_f, drag_p, true);   
-    forces.push({name: "drag", vector: drag_f, point: drag_p})
+    //forces.push({name: "drag", vector: drag_f, point: drag_p})
 
 
     // clear inputs
@@ -611,6 +687,7 @@ class Boat{
     a.y1 = this.physics_model.getWorldPoint(Vec2(0.0, 0.0)).y;
     a.x2 = a.x1+Math.cos((this.wind_direction + this.autopilot_heading_target)/180*Math.PI)*a_length;
     a.y2 = a.y1+Math.sin((this.wind_direction + this.autopilot_heading_target)/180*Math.PI)*a_length;
+
     a.color = 0x556677
 
     guides.push(a)
@@ -620,33 +697,63 @@ class Boat{
     
     let wind_angle = (this.wind_direction)/180*Math.PI
 
-    a = {}
-    a.color = 0x556677
+    guides.push({ color: 0x554477, 
+      x1: this.x + Math.cos(wind_angle)*3,
+      y1: this.y + Math.sin(wind_angle)*3,
+      x2: this.x + Math.cos(wind_angle)*5 + Math.cos(wind_angle+Math.PI/2)*0.5,
+      y2: this.y + Math.sin(wind_angle)*5 + Math.sin(wind_angle+Math.PI/2)*0.5
+    })
 
-    a.x1 = this.x + Math.cos(wind_angle)*3;
-    a.y1 = this.y + Math.sin(wind_angle)*3;
-    a.x2 = this.x + Math.cos(wind_angle)*5 + Math.cos(wind_angle+Math.PI/2)*0.5;
-    a.y2 = this.y + Math.sin(wind_angle)*5 + Math.sin(wind_angle+Math.PI/2)*0.5;
+    guides.push({ color: 0x554477, 
+      x1: this.x + Math.cos(wind_angle)*3,
+      y1: this.y + Math.sin(wind_angle)*3,
+      x2: this.x + Math.cos(wind_angle)*5 - Math.cos(wind_angle+Math.PI/2)*0.5,
+      y2: this.y + Math.sin(wind_angle)*5 - Math.sin(wind_angle+Math.PI/2)*0.5
+    })
 
-    guides.push(a)
+    guides.push({ color: 0x554477, 
+      x1: this.x + Math.cos(wind_angle)*4.75,
+      y1: this.y + Math.sin(wind_angle)*4.75,
+      x2: this.x + Math.cos(wind_angle)*5 - Math.cos(wind_angle+Math.PI/2)*0.5,
+      y2: this.y + Math.sin(wind_angle)*5 - Math.sin(wind_angle+Math.PI/2)*0.5
+    })    
+    
+    guides.push({ color: 0x554477, 
+      x1: this.x + Math.cos(wind_angle)*4.75,
+      y1: this.y + Math.sin(wind_angle)*4.75,
+      x2: this.x + Math.cos(wind_angle)*5 + Math.cos(wind_angle+Math.PI/2)*0.5,
+      y2: this.y + Math.sin(wind_angle)*5 + Math.sin(wind_angle+Math.PI/2)*0.5
+    })
 
-    let b = {}
-    b.color = 0x556677
-    b.x1 = this.x + Math.cos(wind_angle)*3;
-    b.y1 = this.y + Math.sin(wind_angle)*3;
-    b.x2 = this.x + Math.cos(wind_angle)*5 + Math.cos(wind_angle-Math.PI/2)*0.5;
-    b.y2 = this.y + Math.sin(wind_angle)*5 + Math.sin(wind_angle-Math.PI/2)*0.5;
+    wind_angle = (this.awa)/180*Math.PI + this.hull_angle - Math.PI/2
 
-    guides.push(b)  
+    guides.push({ color: 0x550077, 
+      x1: this.x + Math.cos(wind_angle)*3,
+      y1: this.y + Math.sin(wind_angle)*3,
+      x2: this.x + Math.cos(wind_angle)*5 + Math.cos(wind_angle+Math.PI/2)*0.5,
+      y2: this.y + Math.sin(wind_angle)*5 + Math.sin(wind_angle+Math.PI/2)*0.5
+    })
 
-    let c = {}
-    c.color = 0x556677
-    c.x1 = this.x + Math.cos(wind_angle)*5 + Math.cos(wind_angle+Math.PI/2)*0.5;
-    c.y1 = this.y + Math.sin(wind_angle)*5 + Math.sin(wind_angle+Math.PI/2)*0.5;
-    c.x2 = this.x + Math.cos(wind_angle)*5 + Math.cos(wind_angle-Math.PI/2)*0.5;
-    c.y2 = this.y + Math.sin(wind_angle)*5 + Math.sin(wind_angle-Math.PI/2)*0.5;
+    guides.push({ color: 0x550077, 
+      x1: this.x + Math.cos(wind_angle)*3,
+      y1: this.y + Math.sin(wind_angle)*3,
+      x2: this.x + Math.cos(wind_angle)*5 - Math.cos(wind_angle+Math.PI/2)*0.5,
+      y2: this.y + Math.sin(wind_angle)*5 - Math.sin(wind_angle+Math.PI/2)*0.5
+    })
 
-    guides.push(c)
+    guides.push({ color: 0x550077, 
+      x1: this.x + Math.cos(wind_angle)*4.75,
+      y1: this.y + Math.sin(wind_angle)*4.75,
+      x2: this.x + Math.cos(wind_angle)*5 - Math.cos(wind_angle+Math.PI/2)*0.5,
+      y2: this.y + Math.sin(wind_angle)*5 - Math.sin(wind_angle+Math.PI/2)*0.5
+    })    
+    
+    guides.push({ color: 0x550077, 
+      x1: this.x + Math.cos(wind_angle)*4.75,
+      y1: this.y + Math.sin(wind_angle)*4.75,
+      x2: this.x + Math.cos(wind_angle)*5 + Math.cos(wind_angle+Math.PI/2)*0.5,
+      y2: this.y + Math.sin(wind_angle)*5 + Math.sin(wind_angle+Math.PI/2)*0.5
+    })
 
     // rendering the rudder
     let r = {}
@@ -683,7 +790,7 @@ class Boat{
 
     this.mainsail_boom_angle_actual+= (this.mainsail_boom_angle-this.mainsail_boom_angle_actual)/30;
 
-    let mainsail_fat1 = (this.mainsail_boom_length*0.05*Math.abs(awa)/30 < this.mainsail_boom_length/10)?this.mainsail_boom_length*0.05*Math.abs(awa)/30 :this.mainsail_boom_length/10;
+    let mainsail_fat1 = (this.mainsail_boom_length*0.05*Math.abs(this.awa)/30 < this.mainsail_boom_length/10)?this.mainsail_boom_length*0.05*Math.abs(this.awa)/30 :this.mainsail_boom_length/10;
     mainsail[1] = {};
     mainsail[1].x = mainsail[0].x + Math.cos(this.hull_angle+ Math.PI/2 + this.mainsail_boom_angle_actual /180*Math.PI) * this.mainsail_boom_length*0.25 +  Math.cos(this.hull_angle+ this.mainsail_boom_angle_actual /180*Math.PI)*-mainsail_fat1*Math.sign(this.mainsail_boom_angle_actual);
     mainsail[1].y = mainsail[0].y  +Math.sin(this.hull_angle+ Math.PI/2 + this.mainsail_boom_angle_actual /180*Math.PI) * this.mainsail_boom_length*0.25 +  Math.sin(this.hull_angle + this.mainsail_boom_angle_actual /180*Math.PI)*-mainsail_fat1*Math.sign(this.mainsail_boom_angle_actual);
@@ -710,7 +817,7 @@ class Boat{
     jib[0].x = this.physics_model.getWorldPoint(Vec2(0.0, this.jib_leading_edge_position)).x;
     jib[0].y = this.physics_model.getWorldPoint(Vec2(0.0, this.jib_leading_edge_position)).y;
 
-    let jib_fat1 = (this.jib_boom_length*0.05*Math.abs(awa)/15 < this.jib_boom_length/3)?this.jib_boom_length*0.05*Math.abs(awa)/15 :this.jib_boom_length/3;
+    let jib_fat1 = (this.jib_boom_length*0.05*Math.abs(this.awa)/15 < this.jib_boom_length/3)?this.jib_boom_length*0.05*Math.abs(this.awa)/15 :this.jib_boom_length/3;
     jib[1] = {};
     jib[1].x = jib[0].x + Math.cos(this.hull_angle + Math.PI/2 + this.jib_boom_angle_actual /180*Math.PI) * this.jib_boom_length*0.25 +  Math.cos(this.hull_angle + this.jib_boom_angle_actual /180*Math.PI)*-jib_fat1*Math.sign(this.jib_boom_angle_actual);
     jib[1].y = jib[0].y  +Math.sin(this.hull_angle + Math.PI/2 + this.jib_boom_angle_actual /180*Math.PI) * this.jib_boom_length*0.25 +  Math.sin(this.hull_angle + this.jib_boom_angle_actual /180*Math.PI)*-jib_fat1*Math.sign(this.jib_boom_angle_actual);
@@ -998,43 +1105,9 @@ runner.start(() => {
 
 
     if (physics_frame%1 == 0){
-      var field = fluid.vectorField.field;
-
-      let ax = ((player.x-0.5)>>0) + 40
-      let ay = ((player.y-0.5)>>0) + 40
-      let xeffect = 0;
-      let yeffect = 0;
-
-      if (ax>=0 && ax<80 && ay>=0 && ay<80)
-
-      //console.log(ax, ay)
-      xeffect += -Math.cos(player.power_direction/180*Math.PI)*player.power
-      yeffect += -Math.sin(player.power_direction/180*Math.PI)*player.power
 
 
-      let tws = Math.sqrt(field[ax][ay].vx*field[ax][ay].vx + field[ax][ay].vy*field[ax][ay].vy)
-      document.getElementById("info").innerHTML += "XE: "+ Math.floor( xeffect *100) /100 + "<br>"; 
-      document.getElementById("info").innerHTML += "YE: "+ Math.floor( yeffect *100) /100 + "<br>"; 
-      document.getElementById("info").innerHTML += "TWS: "+ Math.floor( tws *100) /100 + "<br>"; 
-      //console.log(xeffect,yeffect)
-
-
-      
-      let prim = 4
-      let secu = 3
-
-      field[ax][ay].vx += xeffect/1000*prim
-      field[ax][ay].vy += yeffect/1000*prim    
-
-      field[ax-1][ay].vx += xeffect/1000*secu
-      field[ax+1][ay].vx += xeffect/1000*secu
-      field[ax][ay-1].vx += xeffect/1000*secu
-      field[ax][ay+1].vx += xeffect/1000*secu
-      
-      field[ax-1][ay].vy += yeffect/1000*secu
-      field[ax+1][ay].vy += yeffect/1000*secu
-      field[ax][ay-1].vy += yeffect/1000*secu
-      field[ax][ay+1].vy += yeffect/1000*secu
+     fluid.apply_energy(player.x, player.y, player.power_direction, player.power)
 
       if (physics_frame%200 <10){
 
@@ -1042,6 +1115,7 @@ runner.start(() => {
         //field[40][40].vy = 0
       }
 
+      var field = fluid.vectorField.field;
       for (let x=25; x<55; x++){
 
         let sum = 0;

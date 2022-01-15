@@ -95,7 +95,77 @@ export let fluid = {
 		}
 		window.animateFrame();
 	},
+	apply_energy:function(x, y, direction, strength){
 
+		var w = this.vectorField.width;
+		var h = this.vectorField.height;
+
+		var aw = this.vectorField.areaWidth;
+		var ah = this.vectorField.areaHeight;
+
+		x+=40
+		y+=40
+
+		// distribute the applied energy into the nearest 4 field elements.
+
+		let x0, x1, x2, x3
+		let y0, y1, y2, y3
+		let s0, s1, s2, s3
+		
+		x0 = Math.floor(x)
+		y0 = Math.floor(y)
+
+		x1 = x0 + 1
+		y1 = y0
+
+		x2 = x0
+		y2 = y0 + 1
+
+		x3 = x0 + 1
+		y3 = y0 + 1
+
+
+		let hf = x-x0
+		let vf = y-y0
+
+		//console.log(hf, vf)
+
+		s0 = (1-hf)*(1-vf)
+		s1 = (hf)*(1-vf)
+		s2 = (1-hf)*(vf)
+		s3 = (hf)*(vf)
+
+		let ax = ((x+0.5)>>0)
+		let ay = ((y-0.5)>>0)
+
+		if (ax<aw-1 && ax>0+1 && ay<ah-1 && ay>0+1){
+
+			var field = this.vectorField.field;
+
+			let xeffect = 0;
+			let yeffect = 0;
+	
+			xeffect += -Math.cos(direction/180*Math.PI)*strength/1000*20
+			yeffect += -Math.sin(direction/180*Math.PI)*strength/1000*20
+	  
+			field[x0][y0].vx += s0*xeffect
+			field[x0][y0].vy += s0*yeffect
+
+			field[x1][y1].vx += s1*xeffect
+			field[x1][y1].vy += s1*yeffect 
+
+			field[x2][y2].vx += s2*xeffect
+			field[x2][y2].vy += s2*yeffect
+	  
+			field[x3][y3].vx += s3*xeffect
+			field[x3][y3].vy += s3*yeffect
+	  
+		}
+		else{
+
+		}
+
+	},
 
 	// ================================================== Loop ==================================================
 
