@@ -160,48 +160,41 @@ class Map{
 
   get_wind_speed(x, y){
   
-    var field = fluid.vectorField.field;
 
-    let ax = ((x-0.5)>>0) + 40
-    let ay = ((y-0.5)>>0) + 40
-
+    let v0 = fluid.get_field_velocity(x,y)
+    let v1 = fluid.get_field_velocity(x-1,y)
+    let v2 = fluid.get_field_velocity(x+1,y)
+    let v3 = fluid.get_field_velocity(x,y-1)
+    let v4 = fluid.get_field_velocity(x,y+1)
 
     let tws = 0
-    tws += Math.sqrt(field[ax][ay].vx*field[ax][ay].vx + field[ax][ay].vy*field[ax][ay].vy)
+    tws += Math.sqrt(v0.x*v0.x + v0.y*v0.y)
+    tws += Math.sqrt(v1.x*v1.x + v1.y*v1.y)
+    tws += Math.sqrt(v2.x*v2.x + v2.y*v2.y)
+    tws += Math.sqrt(v3.x*v3.x + v3.y*v3.y)
+    tws += Math.sqrt(v4.x*v4.x + v4.y*v4.y)
 
-    tws += Math.sqrt(field[ax+1][ay].vx*field[ax+1][ay].vx + field[ax+1][ay].vy*field[ax+1][ay].vy)
-    tws += Math.sqrt(field[ax-1][ay].vx*field[ax-1][ay].vx + field[ax-1][ay].vy*field[ax-1][ay].vy)
-    tws += Math.sqrt(field[ax][ay+1].vx*field[ax][ay+1].vx + field[ax][ay+1].vy*field[ax][ay+1].vy)
-    tws += Math.sqrt(field[ax][ay-1].vx*field[ax][ay-1].vx + field[ax][ay-1].vy*field[ax][ay-1].vy)
-
-    return tws/5*3;
-    return this.wind_speed;
+    return tws/5*5.0;
   }
 
   get_wind_direction(x, y){
   
-    var field = fluid.vectorField.field;
 
-    let ax = ((x-0.5)>>0) + 40
-    let ay = ((y-0.5)>>0) + 40
+    let v0 = fluid.get_field_velocity(x,y)
+    let v1 = fluid.get_field_velocity(x-1,y)
+    let v2 = fluid.get_field_velocity(x+1,y)
+    let v3 = fluid.get_field_velocity(x,y-1)
+    let v4 = fluid.get_field_velocity(x,y+1)
 
-    let angle_array = [
-      Math.atan2(field[ax][ay].vy, field[ax][ay].vx)/Math.PI*180 + 180,
-      Math.atan2(field[ax-1][ay].vy, field[ax-1][ay].vx)/Math.PI*180 + 180,
-      Math.atan2(field[ax+1][ay].vy, field[ax+1][ay].vx)/Math.PI*180 + 180,
-      Math.atan2(field[ax][ay-1].vy, field[ax][ay-1].vx)/Math.PI*180 + 180,
-      Math.atan2(field[ax][ay+1].vy, field[ax][ay+1].vx)/Math.PI*180 + 180
+    let angle_array = [Math.atan2(v0.x, v0.y)/Math.PI*180 + 270,
+      Math.atan2(v1.x, v1.y)/Math.PI*180 + 270,
+      Math.atan2(v2.x, v2.y)/Math.PI*180 + 270,
+      Math.atan2(v3.x, v3.y)/Math.PI*180 + 270,
+      Math.atan2(v4.x, v4.y)/Math.PI*180 + 270
     ]
-
-
-   
-
     let twa = meanAngleDeg(angle_array)
 
     return twa;
-    return this.wind_speed;
-
-    return this.wind_direction;
   }
 
   set_camera_follow_target(obj){
@@ -274,7 +267,7 @@ class Boat{
     this.wind_direction = 0;
     this.wind_speed = 0;
 
-    this.hull_mass = 6;
+    this.hull_mass = 8; // was 6
     this.hull_shape = pl.Polygon([Vec2(0, -2.25), Vec2(-0.5, -1.25), Vec2(-0.75, -0.25),  Vec2(-0.75, 0.5),  Vec2(-0.5, 1.75), Vec2(0.5, 1.75),  Vec2(0.75, 0.5), Vec2(0.75, -0.25), Vec2(0.5, -1.25), Vec2(0, -2.25)])
    
     this.hull_angle = 0;
@@ -289,8 +282,7 @@ class Boat{
     this.rudder_position = 1.8
     this.rudder_lenght = 0.5
 
-    this.centerboard_position = 0;
-    this.centerboard_length   = 0.6
+
 
     this.mainsail_leading_edge_position = -0.8
     this.mainsail_boom_length = 2.2
@@ -308,8 +300,10 @@ class Boat{
     this.jib_boom_angle = 0
     this.jib_boom_angle_actual = 0
 
-    this.center_of_lift = -0.025
+    this.center_of_lift = -0.05
 
+    this.centerboard_position = -0.15;
+    this.centerboard_length   = 0.6
     //
     this.aero_lookup_resolution = 5 //degrees
     this.aero_lift_lookup = [  0, 0.025, 0.15, 0.9, 1.3, 1.46, 1.52, 1.51, 1.45, 1.41, 1.33, 1.16, 0.95, 0.82, 0.73, 0.6, 0.43, 0.34, 0.28, 0.28, 0.28]
@@ -419,11 +413,11 @@ class Boat{
 
     //var f = boat.getWorldVector(Vec2(-q*100, 0)); 
     var centerboard_f = this.physics_model.getWorldVector(Vec2(centerboard_force, 0));
-    var centerboard_p = this.physics_model.getWorldPoint(Vec2(0.0, 0));
+    var centerboard_p = this.physics_model.getWorldPoint(Vec2(0.0, this.centerboard_position));
 
     // centerboard
     this.physics_model.applyForce(centerboard_f, centerboard_p, true);   
-    //forces.push({name: "centerboard", vector: centerboard_f, point: centerboard_p})
+    forces.push({name: "centerboard", vector: centerboard_f, point: centerboard_p})
 
     document.getElementById("info").innerHTML += "q/d: "+ centerboard_AoA_degrees + "°<br>"; 
   
@@ -483,15 +477,15 @@ class Boat{
     if (this.rudder_input === -1) {
 
       if (this.rudder_angle<this.rudder_angle_max){
-        this.rudder_angle +=0.5
-        pumpfactor = 0.75
+        this.rudder_angle +=1
+        pumpfactor = 1.5
       }
 
     } else if (this.rudder_input === 1) {
       
       if (this.rudder_angle>-this.rudder_angle_max){
-        this.rudder_angle -=0.5
-        pumpfactor = -0.75
+        this.rudder_angle -=1
+        pumpfactor = -1.5
       }
 
     }
@@ -512,9 +506,9 @@ class Boat{
     
     if (this.autopilot_enabled){
 
-      this.autopilot_compensator_p = 0.5
-      this.autopilot_compensator_i = 0
-      this.autopilot_compensator_d = 20
+      this.autopilot_compensator_p = 0.5 // 0.5
+      this.autopilot_compensator_i = 0 // 0
+      this.autopilot_compensator_d = 50 //  20
 
       let error = -(this.autopilot_heading_target - (-this.twa))
 
@@ -527,11 +521,13 @@ class Boat{
 
       document.getElementById("info").innerHTML += "error: "+ Math.floor(error) + "°<br>"; 
 
-      let p = error * this.autopilot_compensator_p 
-      let i = 0
-      let d = (error - this.autopilot_compensator_last_error) * this.autopilot_compensator_d
+      let comp_p = error * this.autopilot_compensator_p 
+      let comp_i = 0
+      let comp_d = (error - this.autopilot_compensator_last_error) * this.autopilot_compensator_d
 
-      this.rudder_angle = p + i + d
+      
+
+      this.rudder_angle = (comp_p + comp_i + comp_d)*Math.sign(d)
 
       if (this.rudder_angle>this.rudder_angle_max/3){
         this.rudder_angle = this.rudder_angle_max/3;
@@ -557,17 +553,17 @@ class Boat{
     // calculate flow directuion under the rudder
     let angular_velocity = this.physics_model.m_angularVelocity;
     let q_rot = angular_velocity*this.rudder_lenght;
-    let water_angle = Math.atan2(q+q_rot, Math.abs(d)) /Math.PI*180
+    let water_angle = Math.atan2(-q+q_rot, Math.abs(d)) /Math.PI*180
 
     let rudder_force = 0;
     if (d>0){
-      rudder_force = d*(this.rudder_angle+water_angle)/5;
+      rudder_force = d*(this.rudder_angle+water_angle)/7;
     }
     else{
-      rudder_force = d*(this.rudder_angle-water_angle)/5; 
+      rudder_force = d*(this.rudder_angle-water_angle)/7; 
     }
 
-    rudder_force += pumpfactor*4
+    rudder_force += pumpfactor*2
 
     let rudder_p = this.physics_model.getWorldPoint(Vec2(0.0, this.rudder_position))
     let rudder_f = {}
@@ -576,7 +572,7 @@ class Boat{
     rudder_f.y = Math.sin(angle +this.rudder_angle/180*Math.PI)* rudder_force;
 
     this.physics_model.applyForce(rudder_f, rudder_p, true); 
-    //forces.push({name: "rudder", vector: rudder_f, point: rudder_p})
+    forces.push({name: "rudder", vector: rudder_f, point: rudder_p})
 
 
     document.getElementById("info").innerHTML += "TWA: "+Math.floor(twa) + "<br>";
@@ -625,11 +621,13 @@ class Boat{
     document.getElementById("info").innerHTML += "Cd: "+ Math.floor( c_drag *10) /10 + "<br>"; 
     document.getElementById("info").innerHTML += "Cl: "+ Math.floor( c_lift *10) /10 + "<br>"; 
     
-    sail_f_drag.x = Math.cos(angle+this.awa/180*Math.PI + Math.PI/2 )*aws*aws*c_drag*0.45
-    sail_f_drag.y = Math.sin(angle+this.awa/180*Math.PI + Math.PI/2 )*aws*aws*c_drag*0.45
+    const sail_efficiency = 0.15
+
+    sail_f_drag.x = Math.cos(angle+this.awa/180*Math.PI + Math.PI/2 )*aws*aws*c_drag*sail_efficiency
+    sail_f_drag.y = Math.sin(angle+this.awa/180*Math.PI + Math.PI/2 )*aws*aws*c_drag*sail_efficiency
     
-    sail_f_lift.x = -Math.sign(this.awa)*Math.cos(angle+(this.awa)/180*Math.PI )*aws*aws*c_lift*0.45
-    sail_f_lift.y = -Math.sign(this.awa)*Math.sin(angle+(this.awa)/180*Math.PI )*aws*aws*c_lift*0.45
+    sail_f_lift.x = -Math.sign(this.awa)*Math.cos(angle+(this.awa)/180*Math.PI )*aws*aws*c_lift*sail_efficiency
+    sail_f_lift.y = -Math.sign(this.awa)*Math.sin(angle+(this.awa)/180*Math.PI )*aws*aws*c_lift*sail_efficiency
 
     let mainsail_f = {};
 
@@ -1107,7 +1105,14 @@ runner.start(() => {
     if (physics_frame%1 == 0){
 
 
-     fluid.apply_energy(player.x, player.y, player.power_direction, player.power)
+      let p = {}
+
+      let wind_angle = (player.awa)/180*Math.PI + player.hull_angle - Math.PI/2
+      p.x = player.x + Math.cos(wind_angle)*(-1.2)   
+      p.y = player.y + Math.sin(wind_angle)*(-1.2)   
+
+     fluid.apply_energy(p.x, p.y, player.power_direction, player.power*0.75)
+
 
       if (physics_frame%200 <10){
 
