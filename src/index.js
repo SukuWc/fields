@@ -48,6 +48,20 @@ document.getElementById("show_forces").addEventListener("change", e => {
 
 }); 
 
+document.getElementById("scenario_selector").addEventListener("change", e => {
+
+  console.log(document.getElementById("scenario_selector").value)  
+  scenario_start(scenarios[document.getElementById("scenario_selector").value])
+
+}); 
+
+document.getElementById("scenario_restart").addEventListener("click", e => {
+
+  console.log("restart")
+  scenario_start(scenarios[document.getElementById("scenario_selector").value])
+
+}); 
+
 document.getElementById("show_field").addEventListener("change", e => {
 
   map.input_show_fields(document.getElementById("show_field").checked)
@@ -133,7 +147,9 @@ function meanAngleDeg(a) {
 
 
 class Map{
-  constructor(direction, speed){
+  constructor(world, direction, speed){
+
+    this.world = world
 
     this.wind_direction = direction;  
     this.wind_speed = speed;
@@ -255,7 +271,7 @@ class Map{
 
 class Boat{
 
-  constructor(map, x, y){
+  constructor(map, x, y, hull_angle){
 
     this.map = map;
 
@@ -264,13 +280,19 @@ class Boat{
     this.x = x;
     this.y = y;
 
+    if (hull_angle != undefined){
+      this.hull_angle = hull_angle;
+    }
+    else{
+      this.hull_angle = Math.PI
+    }
+
     this.wind_direction = 0;
     this.wind_speed = 0;
 
     this.hull_mass = 8; // was 6
     this.hull_shape = pl.Polygon([Vec2(0, -2.25), Vec2(-0.5, -1.25), Vec2(-0.75, -0.25),  Vec2(-0.75, 0.5),  Vec2(-0.5, 1.75), Vec2(0.5, 1.75),  Vec2(0.75, 0.5), Vec2(0.75, -0.25), Vec2(0.5, -1.25), Vec2(0, -2.25)])
    
-    this.hull_angle = 0;
 
     
     this.rudder_input = 0;
@@ -278,6 +300,7 @@ class Boat{
 
 
     this.rudder_angle = 0;
+    this.rudder_angle_last = 0;
     this.rudder_angle_max = 60;
     this.rudder_position = 1.8
     this.rudder_lenght = 0.5
@@ -332,29 +355,32 @@ class Boat{
 
     this.twa = 0;
 
+    this.physics_model_init()
+
   }
 
-  physics_model_init(world){
+  physics_model_init(){
 
     let pl = planck, Vec2 = pl.Vec2;
     
-    console.log(world)
 
-    let boat = world.createBody({
+    let boat = this.map.world.createBody({
       type : 'dynamic',
       angularDamping : 0.5,
       linearDamping : 0.1,
       position : Vec2(this.x, this.y),
-      angle : Math.PI,
+      angle : this.hull_angle,
       allowSleep : false
     });
-
-    console.log(boat)
 
     boat.createFixture(this.hull_shape, this.hull_mass);
 
     this.physics_model = boat;
 
+  }
+
+  physics_model_deinit(){
+    this.map.world.destroyBody(this.physics_model)
   }
 
 
@@ -470,24 +496,28 @@ class Boat{
 
     // rudder dynamics
 
+ 
+
+    this.rudder_angle_last = this.rudder_angle;
     let pumpfactor = 0;
 
- 
+    const rudder_turn_rate = (1-Math.abs(d)>0)?1-Math.abs(d)+1:1;
 
     if (this.rudder_input === -1) {
 
       if (this.rudder_angle<this.rudder_angle_max){
-        this.rudder_angle +=1
-        pumpfactor = 1.5
+        this.rudder_angle +=rudder_turn_rate
       }
 
+      
+      pumpfactor = 1.5* (this.rudder_angle-this.rudder_angle_last)*(this.rudder_angle-this.rudder_angle_last)*(this.rudder_angle-this.rudder_angle_last)
     } else if (this.rudder_input === 1) {
       
       if (this.rudder_angle>-this.rudder_angle_max){
-        this.rudder_angle -=1
-        pumpfactor = -1.5
+        this.rudder_angle -=rudder_turn_rate
       }
 
+      pumpfactor = 1.5* (this.rudder_angle-this.rudder_angle_last)*(this.rudder_angle-this.rudder_angle_last)*(this.rudder_angle-this.rudder_angle_last)
     }
     else{
 
@@ -500,17 +530,19 @@ class Boat{
       }
 
       this.rudder_angle = this.rudder_angle*(0.98-dmod/80)
-      //pumpfactor = rudder_angle*-dmod/20
 
     }
     
     if (this.autopilot_enabled){
 
-      this.autopilot_compensator_p = 0.5 // 0.5
+      this.autopilot_compensator_p = 1 // 0.5
       this.autopilot_compensator_i = 0 // 0
-      this.autopilot_compensator_d = 50 //  20
+      this.autopilot_compensator_d = 40 //  20
 
       let error = -(this.autopilot_heading_target - (-this.twa))
+
+      this.autopilot_compensator_sum_error *=0.85
+      this.autopilot_compensator_sum_error += error;
 
       if (error>180) {
         error-=360
@@ -522,19 +554,21 @@ class Boat{
       document.getElementById("info").innerHTML += "error: "+ Math.floor(error) + "°<br>"; 
 
       let comp_p = error * this.autopilot_compensator_p 
-      let comp_i = 0
+      let comp_i = this.autopilot_compensator_sum_error * this.autopilot_compensator_i 
       let comp_d = (error - this.autopilot_compensator_last_error) * this.autopilot_compensator_d
 
       
 
-      this.rudder_angle = (comp_p + comp_i + comp_d)*Math.sign(d)
+      this.rudder_angle_target = (comp_p + comp_i + comp_d)*Math.sign(d)
 
-      if (this.rudder_angle>this.rudder_angle_max/3){
-        this.rudder_angle = this.rudder_angle_max/3;
+      if (this.rudder_angle_target>this.rudder_angle_max/2){
+        this.rudder_angle_target = this.rudder_angle_max/2;
       }
-      if (this.rudder_angle<-this.rudder_angle_max/3){
-        this.rudder_angle = -this.rudder_angle_max/3;
+      if (this.rudder_angle_target<-this.rudder_angle_max/2){
+        this.rudder_angle_target = -this.rudder_angle_max/2;
       }
+
+      this.rudder_angle += (this.rudder_angle_target - this.rudder_angle)/10
 
 
       this.autopilot_compensator_last_error = error;
@@ -548,8 +582,7 @@ class Boat{
     }
 
 
-
-
+  
     // calculate flow directuion under the rudder
     let angular_velocity = this.physics_model.m_angularVelocity;
     let q_rot = angular_velocity*this.rudder_lenght;
@@ -1008,45 +1041,90 @@ const runner = new Runner(world, {
 	fps: 60,
 })
 
-let raw_field = []
 
-for (let i=0; i<80*80; i++){
-  raw_field[i] = Math.random()
-}
-
-let map = new Map(90, 5)
-
+let map = new Map(world, 90, 5)
+let scenario_descriptor = {}
 let players = []
 let paths = []
 
-players.push(new Boat(map, 0, -10))
-//players.push(new Boat(map, 2, 5))
-
-players.forEach(player => {
-  player.physics_model_init(world);
-});
-
-// up 38 down 40 left 37 right 39
-
-key_bind_list.push({type: "PRESSED", activation_key: 37, prohibition_key: 39, object: players[0], input_handler: players[0].input_rudder_left.name})   // Left
-key_bind_list.push({type: "PRESSED", activation_key: 39, prohibition_key: 37, object: players[0], input_handler: players[0].input_rudder_right.name})  // Right
-
-key_bind_list.push({type: "PRESSED", activation_key: 87, prohibition_key: 83, object: players[0], input_handler: players[0].input_motor_forward.name}) // W
-key_bind_list.push({type: "PRESSED", activation_key: 83, prohibition_key: 87, object: players[0], input_handler: players[0].input_motor_reverse.name}) // S
-
-key_bind_list.push({type: "PRESSED", activation_key: 40, prohibition_key: 38, object: players[0], input_handler: players[0].input_autopilot_heading_increase.name})
-key_bind_list.push({type: "PRESSED", activation_key: 38, prohibition_key: 40, object: players[0], input_handler: players[0].input_autopilot_heading_decrease.name})
-
-key_bind_list.push({type: "KEYDOWN", activation_key: 32, prohibition_key: -1, object: players[0], input_handler: players[0].input_autopilot_enabled_toggle.name})
-key_bind_list.push({type: "KEYDOWN", activation_key: 13, prohibition_key: -1, object: players[0], input_handler: players[0].input_autopilot_tack_toggle.name})
-
-//key_bind_list.push({activation_key: 65, prohibition_key: 68, object: players[1], input_handler: players[1].input_rudder_left.name})
-//key_bind_list.push({activation_key: 68, prohibition_key: 65, object: players[1], input_handler: players[1].input_rudder_right.name})
-//key_bind_list.push({activation_key: 87, prohibition_key: 83, object: players[1], input_handler: players[1].input_motor_forward.name})
-//key_bind_list.push({activation_key: 83, prohibition_key: 87, object: players[1], input_handler: players[1].input_motor_reverse.name})
-
-
 let physics_frame = 0;
+
+
+function scenario_clear(){
+
+  scenario_descriptor = {};
+  key_bind_list = [];
+
+  players.forEach(player => {
+    player.physics_model_deinit()
+  });
+  players = [];
+  physics_frame = 0;
+  
+}
+
+function scenario_start(param){
+
+  scenario_clear()
+
+  scenario_descriptor = param
+  
+}
+
+function autokeybind(players){
+
+  key_bind_list = [];
+  
+  if (players[0] !== undefined){
+    key_bind_list.push({type: "PRESSED", activation_key: 37, prohibition_key: 39, object: players[0], input_handler: players[0].input_rudder_left.name})   // Left
+    key_bind_list.push({type: "PRESSED", activation_key: 39, prohibition_key: 37, object: players[0], input_handler: players[0].input_rudder_right.name})  // Right
+    key_bind_list.push({type: "PRESSED", activation_key: 40, prohibition_key: 38, object: players[0], input_handler: players[0].input_autopilot_heading_increase.name})
+    key_bind_list.push({type: "PRESSED", activation_key: 38, prohibition_key: 40, object: players[0], input_handler: players[0].input_autopilot_heading_decrease.name})
+    key_bind_list.push({type: "KEYDOWN", activation_key: 32, prohibition_key: -1, object: players[0], input_handler: players[0].input_autopilot_enabled_toggle.name})
+    key_bind_list.push({type: "KEYDOWN", activation_key: 13, prohibition_key: -1, object: players[0], input_handler: players[0].input_autopilot_tack_toggle.name})
+  }
+
+  if (players[1] !== undefined){
+    key_bind_list.push({type: "PRESSED", activation_key: 65, prohibition_key: 68, object: players[1], input_handler: players[1].input_rudder_left.name})
+    key_bind_list.push({type: "PRESSED", activation_key: 68, prohibition_key: 65, object: players[1], input_handler: players[1].input_rudder_right.name})
+    key_bind_list.push({type: "PRESSED", activation_key: 83, prohibition_key: 87, object: players[1], input_handler: players[1].input_autopilot_heading_increase.name})
+    key_bind_list.push({type: "PRESSED", activation_key: 87, prohibition_key: 83, object: players[1], input_handler: players[1].input_autopilot_heading_decrease.name})
+    key_bind_list.push({type: "KEYDOWN", activation_key: 17, prohibition_key: -1, object: players[1], input_handler: players[0].input_autopilot_enabled_toggle.name})
+    key_bind_list.push({type: "KEYDOWN", activation_key: 16, prohibition_key: -1, object: players[1], input_handler: players[0].input_autopilot_tack_toggle.name})
+  }
+
+
+}
+
+let scenarios = []
+
+scenarios[0] = []
+scenarios[0] [0] = () => {players.push(new Boat(map, 10, -9, 5*Math.PI/4));}
+scenarios[0] [1] = () => {console.log(1); players[0].input_autopilot_enabled_toggle();}
+scenarios[0] [2] = () => {autokeybind(players);}
+
+scenarios[1] = []
+scenarios[1] [0] = () => {players.push(new Boat(map, 10, -9, 5*Math.PI/4)); players.push(new Boat(map, 15, -11.5, 5*Math.PI/4)); }
+scenarios[1] [1] = () => {console.log(1); players[0].input_autopilot_enabled_toggle(); players[1].input_autopilot_enabled_toggle();}
+scenarios[1] [2] = () => {autokeybind(players);}
+scenarios[1] [1500] = () => {scenario_clear()}
+
+scenarios[2] = []
+scenarios[2] [0] = () => {players.push(new Boat(map, -10, -6, 3*Math.PI/4)); players.push(new Boat(map, 15, -11.5, 5*Math.PI/4)); }
+scenarios[2] [1] = () => {console.log(1); players[0].input_autopilot_enabled_toggle(); players[1].input_autopilot_enabled_toggle();}
+scenarios[2] [2] = () => {autokeybind(players);}
+scenarios[2] [1500] = () => {scenario_clear()}
+
+scenarios[3] = []
+scenarios[3] [0] = () => {players.push(new Boat(map, -12, -6, 3*Math.PI/4)); players.push(new Boat(map, 18, -11.5, 5*Math.PI/4)); }
+scenarios[3] [1] = () => {console.log(1); players[0].input_autopilot_enabled_toggle(); players[1].input_autopilot_enabled_toggle();}
+scenarios[3] [2] = () => {autokeybind(players);}
+scenarios[3] [300] = () => {players[0].input_autopilot_tack_toggle()}
+scenarios[3] [1500] = () => {scenario_clear()}
+
+
+scenario_start(scenarios[document.getElementById("scenario_selector").value]);
+
 
 function HSVtoRGB(h, s, v) {
   var r, g, b, i, f, p, q, t;
@@ -1081,7 +1159,16 @@ runner.start(() => {
   guides = [];
   sails = [];
   path_markers = [];
+
+
+  if (scenario_descriptor !== undefined){
+    if (scenario_descriptor[physics_frame] !== undefined){
+      console.log("Frame ", physics_frame)
+      scenario_descriptor[physics_frame]()
+    }
   
+  }
+
   key_bind_list.forEach(bind => {
 
     if (bind.type === "PRESSED" && key_state[bind.activation_key] === true && (key_state[bind.prohibition_key] === false || key_state[bind.prohibition_key] === undefined)){
@@ -1095,104 +1182,95 @@ runner.start(() => {
   map.physics_model_step();
 
   players.forEach(player => {
+
     player.physics_model_step();
     player.grephics_model_render();
-  
-    frame ++
 
 
+    let p = {}
 
-    if (physics_frame%1 == 0){
+    let wind_angle = (player.awa)/180*Math.PI + player.hull_angle - Math.PI/2
+    p.x = player.x + Math.cos(wind_angle)*(-1.2)   
+    p.y = player.y + Math.sin(wind_angle)*(-1.2)   
 
-
-      let p = {}
-
-      let wind_angle = (player.awa)/180*Math.PI + player.hull_angle - Math.PI/2
-      p.x = player.x + Math.cos(wind_angle)*(-1.2)   
-      p.y = player.y + Math.sin(wind_angle)*(-1.2)   
-
-     fluid.apply_energy(p.x, p.y, player.power_direction, player.power*0.75)
+    fluid.apply_energy(p.x, p.y, player.power_direction, player.power*0.75)
 
 
-      if (physics_frame%200 <10){
-
-        //field[40][40].vx = 5
-        //field[40][40].vy = 0
-      }
-
-      var field = fluid.vectorField.field;
-      for (let x=25; x<55; x++){
-
-        let sum = 0;
-        for (let y=25; y<55; y++){
-
-          //console.log(x,y )
-          //sum += Math.sqrt(field[x][y].vx*field[x][y].vx + field[x][y].vy*field[x][y].vy)
-
-          let velocity = Math.floor(Math.sqrt(field[x][y].vx*field[x][y].vx + field[x][y].vy*field[x][y].vy)*50)
-
-
-          let angle = Math.floor(Math.atan2(field[x][y].vy, field[x][y].vx)/Math.PI*180) + 270
-
-          while(angle>360){
-            angle-=360
-          }          
-          while(angle<0){
-            angle+=360
-          }
-
-
-          let rgb;
-          
-          rgb = HSVtoRGB(angle/360,0.5,velocity/200)
-
-          rgb = HSVtoRGB(angle/360,0.0,velocity/200)
-
-          field_draw[x][y].material.color.setHex(  256*256*rgb.r + 256*rgb.g + rgb.b );
-
-        }
-
-        //raw_field[x] = sum/100.0
-
-      }
-
-      fluid.loop()
-    }
-
-
-
-    if (physics_frame%1 == 0 && map.show_fields){
-      
-      
-
-      fluid.particles
-      var cols = fluid.colors;
-      var mf;
-      var imaxspeed = 1 / fluid.maxParticleSpeed;
-  
-      var p, i = fluid.particleCount;
-      while( i-- ){
-        p = fluid.particles[ i ];
-  
-        mf = p.speed * imaxspeed;
-        if( mf > 1 ) mf = 1;
-  
-
-        let g = {}
-        g.x1 = p.ox / 10 -40
-        g.y1 = p.oy / 10 -40
-        g.x2 = p.x / 10 -40
-        g.y2 = p.y / 10 -40
-        g.color = 0xAAAAAA
-        g.opacity = (50-Math.abs(50-p.age))/50
-
-        guides.push(g)
-
-      }
-
-    }
-  
+ 
   });
+
+  physics_frame++
+
+  fluid.loop()
+
+
+  var field = fluid.vectorField.field;
+  for (let x=0; x<80; x++){
+
+    let sum = 0;
+    for (let y=0; y<80; y++){
+
+      //console.log(x,y )
+      //sum += Math.sqrt(field[x][y].vx*field[x][y].vx + field[x][y].vy*field[x][y].vy)
+
+      let velocity = Math.floor(Math.sqrt(field[x][y].vx*field[x][y].vx + field[x][y].vy*field[x][y].vy)*50)
+
+
+      let angle = Math.floor(Math.atan2(field[x][y].vy, field[x][y].vx)/Math.PI*180) + 270
+
+      while(angle>360){
+        angle-=360
+      }          
+      while(angle<0){
+        angle+=360
+      }
+
+
+      let rgb;
+      
+      rgb = HSVtoRGB(angle/360,0.5,velocity/200)
+
+      rgb = HSVtoRGB(angle/360,0.0,velocity/200)
+
+      field_draw[x][y].material.color.setHex(  256*256*rgb.r + 256*rgb.g + rgb.b );
+
+    }
+
+  }
+
+
+  if (map.show_fields){
+    
+    
+
+    fluid.particles
+    var cols = fluid.colors;
+    var mf;
+    var imaxspeed = 1 / fluid.maxParticleSpeed;
+
+    var p, i = fluid.particleCount;
+    while( i-- ){
+      p = fluid.particles[ i ];
+
+      mf = p.speed * imaxspeed;
+      if( mf > 1 ) mf = 1;
+
+
+      let g = {}
+      g.x1 = p.ox / 10 -40
+      g.y1 = p.oy / 10 -40
+      g.x2 = p.x / 10 -40
+      g.y2 = p.y / 10 -40
+      g.color = 0xAAAAAA
+      g.opacity = (50-Math.abs(50-p.age))/50
+
+      guides.push(g)
+
+    }
+
+  }
+
+
 
   let paths_to_keep = []
 
@@ -1208,7 +1286,6 @@ runner.start(() => {
 
   paths = paths_to_keep;
 
-  physics_frame++;
 
 },
 () => {
@@ -1323,8 +1400,7 @@ function init() {
   uniforms = {
     colorB: {type: 'vec3', value: new THREE.Color(0x665555)},
     colorA: {type: 'vec3', value: new THREE.Color(0x555566)},
-    'time': {value: 1.0},
-    'testarray': {value: raw_field},
+    'time': {value: 1.0}
   }
  /*
 	// let material = new THREE.MeshNormalMaterial();
@@ -1340,10 +1416,10 @@ function init() {
   //new THREE.Mesh(new THREE.PlaneGeometry(30, 30), material);
 	scene.add( mesh );
   */
-  for (let x=25; x<55; x++){
+  for (let x=0; x<80; x++){
     field_draw[x] = []
 
-    for (let y=25; y<55; y++){
+    for (let y=0; y<80; y++){
 
       field_draw[x][y] = {}
       
@@ -1711,8 +1787,6 @@ function animation( time ) {
 
 
   frame++;
-  uniforms.time.value+=0.1;
-  uniforms.testarray.value = raw_field;
 
   isFirstFrame = false;
 
