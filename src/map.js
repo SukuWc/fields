@@ -75,16 +75,16 @@ export class Map{
 
 	  
 		// Left vertical
-		ground.createFixture(pl.Edge(Vec2(-this.width/2, -this.height/2), Vec2(-this.width/2, this.height/2)), wallFD);
+		ground.createFixture(pl.Edge(Vec2(-this.width/2+2, -this.height/2+2), Vec2(-this.width/2+2, this.height/2-2)), wallFD);
 	  
 		// Right vertical
-		ground.createFixture(pl.Edge(Vec2(this.width/2, -this.height/2), Vec2(this.width/2, this.height/2)), wallFD);
+		ground.createFixture(pl.Edge(Vec2(this.width/2-2, -this.height/2+2), Vec2(this.width/2-2, this.height/2-2)), wallFD);
 	  
 		// Top horizontal
-		ground.createFixture(pl.Edge(Vec2(-this.width/2, this.height/2), Vec2(this.width/2, this.height/2)), wallFD);
+		ground.createFixture(pl.Edge(Vec2(-this.width/2+2, this.height/2-2), Vec2(this.width/2-2, this.height/2-2)), wallFD);
 	  
 		// Bottom horizontal
-		ground.createFixture(pl.Edge(Vec2(-this.width/2, -this.height/2), Vec2(this.width/2, -this.height/2)), wallFD);
+		ground.createFixture(pl.Edge(Vec2(-this.width/2+2, -this.height/2+2), Vec2(this.width/2-2, -this.height/2+2)), wallFD);
 
 		// init world entities
 		this.world.createDynamicBody(Vec2(0.0, 14.5)).createFixture(Circle(0.5), 10.0);
