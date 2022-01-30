@@ -2,6 +2,13 @@ import { World, Edge, Vec2, Circle } from 'planck-js'
 import planck, { random } from 'planck-js/dist/planck-with-testbed';
 import Renderer, { Runner } from "planck-renderer";
 
+import { Boltzmann } from './boltzmann.js'; 
+
+
+
+
+
+
 import {Map} from './map.js';
 import {Gust} from './gust.js';
 import {Boat} from './boat.js';
@@ -14,10 +21,8 @@ const range_map =  function (input, in_min, in_max, out_min, out_max) {
 
 
 
-
-
-
-let map = new Map(100, 100,      90, 5)
+const bm = new Boltzmann(100, 100, 90, 5);
+let map = new Map(100, 100, 90, 5)
 map.physics_model_init()
 
 let scenario_descriptor = {}
@@ -344,6 +349,8 @@ runner.start(() => {
     }
 
   });
+
+  //bm.physics_model_step();
 
   map.set_camera_follow_target(players[0])
   map.physics_model_step();
