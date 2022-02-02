@@ -59,20 +59,25 @@ function rgbToHex(r, g, b) {
 
 export class Boltzmann{
 
-	constructor(width, height, direction, speed){
+	constructor(width, height, resolution, direction, speed, texture){
 
-		this.width = width;
-		this.height = height;
-		this.direction = direction;
+		this.texture = texture;
+		this.resolution = resolution;
+
+		this.width = width*this.resolution;
+		this.height = height*this.resolution;
+		this.direction = direction + 180;
 		this.speed = speed;
+
+		this.step_ready = false;
+		this.t_delta = 0;
 
 		// grid dimensions for simulation
 		// width of plotted grid site in pixels
-		this.width = canvas.width
-		this.height = canvas.height
+		canvas.width = this.width
+		canvas.height = this.height
 		this.speed = 0.12;
-
-		this.direction = 45;
+		this.speed = 0.12;
 
 		//  kinematic viscosity coefficient in natural units
 		this.viscosity = 0.020;
@@ -155,12 +160,21 @@ export class Boltzmann{
 	// Simulate function executes a bunch of steps and then schedules another call to itself:
 	physics_model_step() {
 
-		this.setBoundaries();
+		let t_start = new Date()
 
-		this.collide();
-		this.stream();
+		for(let i=0; i<8; i++){
 
 
+			this.setBoundaries();
+			this.collide();
+			this.stream();
+	
+
+		}
+
+		this.t_delta = new Date() - t_start;
+
+		this.step_ready = true;
 
 		this.paintCanvas();
 
@@ -322,21 +336,102 @@ export class Boltzmann{
 	// "Drag" the fluid in a direction determined by the mous* (or touch) motion:
 	// (The drag affects a "circle", 5 px in diameter, centered on the given coordinates.)
 	apply_energy(pushX, pushY, pushUX, pushUY) {
-		// First make sure we're not too close to edge:
-		var margin = 3;
-		if ((pushX > margin) && (pushX < this.width-1-margin) && (pushY > margin) && (pushY < this.height-1-margin)) {
-			for (var dx=-1; dx<=1; dx++) {
-				this.setEquil(pushX+dx, pushY+2, pushUX, pushUY);
-				this.setEquil(pushX+dx, pushY-2, pushUX, pushUY);
-			}
-			for (var dx=-2; dx<=2; dx++) {
-				for (var dy=-1; dy<=1; dy++) {
-					this.setEquil(pushX+dx, pushY+dy, pushUX, pushUY);
-				}
-			}
-		}
-	}
 
+		// translate the position to field coordinates
+
+		let x = this.width/2 + Math.floor(pushX*this.resolution)
+		let y = this.height/2 + Math.floor(pushY*this.resolution)
+
+		// distribute the applied energy into the nearest 4 field elements.
+
+		let x0, x1, x2, x3
+		let y0, y1, y2, y3
+		let s0, s1, s2, s3
+		
+		x0 = Math.floor(x)
+		y0 = Math.floor(y)
+
+		x1 = x0 + 1
+		y1 = y0
+
+		x2 = x0
+		y2 = y0 + 1
+
+		x3 = x0 + 1
+		y3 = y0 + 1
+
+		let hf = x-x0
+		let vf = y-y0
+
+		s0 = (1-hf)*(1-vf)
+		s1 = (hf)*(1-vf)
+		s2 = (1-hf)*(vf)
+		s3 = (hf)*(vf)
+
+
+		let old_ux0 = this._ux_[x0 + y0*this.width]
+		let old_uy0 = this._uy_[x0 + y0*this.width]
+
+		let old_ux1 = this._ux_[x1 + y1*this.width]
+		let old_uy1 = this._uy_[x1 + y1*this.width]
+
+		let old_ux2 = this._ux_[x2 + y2*this.width]
+		let old_uy2 = this._uy_[x2 + y2*this.width]
+
+		let old_ux3 = this._ux_[x3 + y3*this.width]
+		let old_uy3 = this._uy_[x3 + y3*this.width]
+
+		this.setEquil(x0, y0, old_ux0 + s0*pushUX, old_uy0 + s0*pushUY);
+		this.setEquil(x1, y1, old_ux1 + s1*pushUX, old_uy1 + s1*pushUY);
+		this.setEquil(x2, y2, old_ux2 + s2*pushUX, old_uy2 + s2*pushUY);
+		this.setEquil(x3, y3, old_ux3 + s3*pushUX, old_uy3 + s3*pushUY);
+
+	}
+	get_field_velocity(x, y){
+
+
+
+		x = this.width/2 + Math.floor(x*this.resolution)
+		y = this.height/2 + Math.floor(y*this.resolution)
+
+
+		// distribute the applied energy into the nearest 4 field elements.
+
+		let x0, x1, x2, x3
+		let y0, y1, y2, y3
+		let s0, s1, s2, s3
+		
+		x0 = Math.floor(x)
+		y0 = Math.floor(y)
+
+		x1 = x0 + 1
+		y1 = y0
+
+		x2 = x0
+		y2 = y0 + 1
+
+		x3 = x0 + 1
+		y3 = y0 + 1
+
+
+		let hf = x-x0
+		let vf = y-y0
+
+		//console.log(hf, vf)
+
+		s0 = (1-hf)*(1-vf)
+		s1 = (hf)*(1-vf)
+		s2 = (1-hf)*(vf)
+		s3 = (hf)*(vf)
+
+		let vx = 0;
+		let vy = 0;
+
+		vx = this._ux_[x0 + y0*this.width]*s0 + this._ux_[x1 + y1*this.width]*s1 +  this._ux_[x2 + y2*this.width]*s2 +  this._ux_[x3 + y3*this.width]*s3
+		vy = this._uy_[x0 + y0*this.width]*s0 + this._uy_[x1 + y1*this.width]*s1 +  this._uy_[x2 + y2*this.width]*s2 +  this._uy_[x3 + y3*this.width]*s3
+
+		return {x: vx/4, y: vy/4}
+	}
 	// Paint the canvas:
 	paintCanvas() {
 		var cIndex=0;
@@ -376,6 +471,17 @@ export class Boltzmann{
 
 	// Color a grid square in the image data array, one pixel at a time (rgb each in range 0 to 255):
 	colorSquare(x, y, r, g, b) {
+
+		
+		var ind = (x + y*this.width) * 4;
+		this.texture.image.data[ind+0] = r;
+		this.texture.image.data[ind+1] = g;
+		this.texture.image.data[ind+2] = b;
+		this.texture.image.data[ind+3] = 255;
+
+
+
+
 		var flippedy = this.height - y - 1;			// put y=0 at the bottom
 		for (var py=flippedy; py<(flippedy+1); py++) {
 			for (var px=x; px<(x+1); px++) {

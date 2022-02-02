@@ -5,13 +5,39 @@ import Renderer, { Runner } from "planck-renderer";
 import { Boltzmann } from './boltzmann.js'; 
 
 
-
-
-
-
 import {Map} from './map.js';
 import {Gust} from './gust.js';
 import {Boat} from './boat.js';
+
+
+let map = new Map(100, 100, 90, 5)
+map.physics_model_init()
+
+/*Data texture*/
+const bm_resolution = 1.5;
+var _side1 = map.fluid.vectorField.areaWidth*bm_resolution; // power of two textures are better cause powers of two are required by some algorithms. Like ones that decide what color will pixel have if amount of pixels is less than amount of textels (see three.js console error when given non-power-of-two texture)
+var _side2 = map.fluid.vectorField.areaHeight*bm_resolution; // power of two textures are better cause powers of two are required by some algorithms. Like ones that decide what color will pixel have if amount of pixels is less than amount of textels (see three.js console error when given non-power-of-two texture)
+
+var _amount = _side1*_side2*4; // you need 4 values for every pixel in side*side plane
+var _data = new Uint8Array(_amount);
+
+for (var i = 0; i < _amount; i++) {
+  _data[i] = Math.random()*256; // generates random r,g,b,a values from 0 to 1
+}
+
+var _dataTex = new THREE.DataTexture(_data, _side1, _side2, THREE.RGBAFormat, THREE.UnsignedByteType, THREE.UVMapping); // maybe RGBAIntegerFormat but that requires WebGL2 rendering context
+var _dataTex2 = new THREE.DataTexture(_data, _side1, _side2, THREE.RGBAFormat, THREE.UnsignedByteType, THREE.UVMapping);
+
+
+_dataTex.magFilter = THREE.NearestFilter; // also check out THREE.LinearFilter just to see the results
+_dataTex.needsUpdate = true; // somehow this line is required for this demo to work. I have not figured that out yet. 
+
+var _planeMat = new THREE.MeshBasicMaterial({map: _dataTex, transparent: true });
+_planeMat.needsUpdate = true;
+
+
+
+
 
 
 const range_map =  function (input, in_min, in_max, out_min, out_max) {
@@ -21,9 +47,8 @@ const range_map =  function (input, in_min, in_max, out_min, out_max) {
 
 
 
-const bm = new Boltzmann(100, 100, 90, 5);
-let map = new Map(100, 100, 90, 5)
-map.physics_model_init()
+const bm = new Boltzmann(map.fluid.vectorField.areaWidth, map.fluid.vectorField.areaHeight, bm_resolution, 90, 5, _dataTex2);
+
 
 let scenario_descriptor = {}
 let players = []
@@ -48,11 +73,9 @@ var data = new Uint8Array(amount);
 
 for (var i = 0; i < amount; i++) {
   data[i] = Math.random()*256; // generates random r,g,b,a values from 0 to 1
-
 }
 
 var dataTex = new THREE.DataTexture(data, side1, side2, THREE.LuminanceFormat, THREE.UnsignedByteType);
-
 var dataTex2 = new THREE.DataTexture(data, side1, side2, THREE.LuminanceFormat, THREE.UnsignedByteType);
 
 
@@ -61,6 +84,9 @@ dataTex.needsUpdate = true; // somehow this line is required for this demo to wo
 
 var planeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, alphaMap: dataTex, transparent: true });
 planeMat.needsUpdate = true;
+
+
+
 
 
 let key_bind_list = []
@@ -164,12 +190,19 @@ var mouse_monitor = function(e) {
 
   pos.copy( camera.position ).add( vec.multiplyScalar( distance ) );
 
- let wdir = map.get_wind_direction(pos.x, pos.y)
- let wspe = map.get_wind_speed(pos.x, pos.y)
+  let wdir = map.get_wind_direction(pos.x, pos.y)
+  let wspe = map.get_wind_speed(pos.x, pos.y)
+
+  let vx = bm.get_field_velocity(pos.x, pos.y).x
+  let vy = bm.get_field_velocity(pos.x, pos.y).y 
+
+  wdir = Math.atan2(vy, vx)/Math.PI*180
+  wspe = Math.sqrt(vx*vx + vy*vy)
 
  let color = range_map(wspe, 10, 13, 0, 300)
 
-  document.getElementById("wind_info").innerHTML = "Speed: " + Math.floor(wspe*100)/100 + "<br>Color: " + Math.floor(color*100)/100 + "<br>Direction: " + Math.floor(wdir*10)/10
+  document.getElementById("wind_info").innerHTML = "Speed: " +  Math.floor(wspe*1000)/10 + "<br>Direction: " + Math.floor(wdir*10)/10
+  
 }
 
 document.addEventListener("mousemove", mouse_monitor); 
@@ -350,7 +383,6 @@ runner.start(() => {
 
   });
 
-  //bm.physics_model_step();
 
   map.set_camera_follow_target(players[0])
   map.physics_model_step();
@@ -374,12 +406,32 @@ runner.start(() => {
     p.y = player.y + Math.sin(wind_angle)*(-1.8)   
 
     map.fluid.apply_energy(p.x, p.y, player.power_direction, player.power/50)
- 
+
+
+    let ux=Math.cos(player.power_direction/180*Math.PI)*player.power/7000
+    let uy=Math.sin(player.power_direction/180*Math.PI)*player.power/7000
+
+    p.x0 = player.x + Math.cos(wind_angle)*(-1.8)   
+    p.y0 = player.y + Math.sin(wind_angle)*(-1.8)   
+    
+    p.x1 = player.x + Math.cos(wind_angle+Math.PI/8)*(-1.8)   
+    p.y1 = player.y + Math.sin(wind_angle+Math.PI/8)*(-1.8) 
+
+    p.x2 = player.x + Math.cos(wind_angle-Math.PI/8)*(-1.8)   
+    p.y2 = player.y + Math.sin(wind_angle-Math.PI/8)*(-1.8)   
+
+    bm.apply_energy(p.x0, p.y0, -ux, -uy)
+    //bm.apply_energy(p.x1, p.y1,-ux,-uy)
+    //bm.apply_energy(p.x2, p.y2,-ux,-uy)
+
+    document.getElementById("info").innerHTML += "Phys Time: " + bm.t_delta + "<br>"
+   
   });
 
   physics_frame++
 
   map.fluid.loop()
+
 
 
   var field = map.fluid.vectorField.field;
@@ -401,12 +453,21 @@ runner.start(() => {
 
   }
 
+
+
+
   let position={}
 
   position.x = 0
   position.y = 0
   
   renderer.copyTextureToTexture( position, dataTex2, dataTex );
+
+  if (bm.step_ready){
+
+    renderer.copyTextureToTexture( position, _dataTex2, _dataTex );
+    bm.step_ready = false;
+  }
 
 
   if (map.show_fields){
@@ -547,7 +608,7 @@ function init() {
 
   //needsUpdate
 
-  let plane = new THREE.Mesh( geometry, planeMat );
+  let plane = new THREE.Mesh( geometry, _planeMat );
 
   plane.position.x = 0
   plane.position.y = 0
