@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>New webpage</title>
+  
+    <style>
+
+#info {
+        position: absolute;
+        top: 10px;
+        width: 100%;
+        color: white;
+        z-index: 100;
+        display:block;
+        font-family: 'Courier New', Courier, monospace;
+      }      
+      #settings {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 250px;
+        color: white;
+        z-index: 100;
+        display:block;
+        font-family: 'Courier New', Courier, monospace;
+        background-color: rgba(50,50,50,0.5);
+      }
+
+    </style>
+  
+    <script type="module" crossorigin src="/assets/index.fd6d7b51.js"></script>
+    <link rel="modulepreload" href="/assets/vendor.da8be286.js">
+  </head>
+  <body style="padding:0px; margin:0px">  
+
+    <div id="info"></div>
+    <div id="settings">
+      <input id="show_field" type="checkbox">Toggle Field
+      <br>
+      <input id="show_forces" type="checkbox">Toggle Forces
+      <br>
+      <input id="camera_follow" type="checkbox">Camera Follow
+      <br>
+      <input id="camera_zoom_in" type="button" value="+"><input id="camera_zoom_out" type="button" value="-">Zoom
+      <br>
+      <input id="camera_move_left" type="button" value="◄">
+      <input id="camera_move_right" type="button" value="►">
+      <input id="camera_move_up" type="button" value="▲">
+      <input id="camera_move_down" type="button" value="▼">
+      <br>
+      <input id="scenario_selector" type="number" min="0" max="10" value="0" style="width: 50px;">Select Scenario
+      <br>
+      <input id="scenario_restart" type="button" min="0" max="10" style="width: 50px;" value="Restart">
+    
+      <div id="wind_info"></div>
+
+
+
+      <div>
+        <select id="plotSelect" onchange="paintCanvas()">
+          <option>Plot density</option>
+          <option>Plot x velocity</option>
+          <option>Plot y velocity</option>
+          <option>Plot speed</option>
+          <option selected="selected">Plot curl</option>
+        </select>
+        &nbsp;&nbsp;Contrast:
+        <input id="contrastSlider" type="range" min="-10" max="10" step="1" value="0" onchange="paintCanvas()">
+      </div>
+      <div>
+        Animation speed:
+        <input id="stepsSlider" type="range" min="1" max="40" step="1" value="1" onchange="resetTimer()">
+        &nbsp;&nbsp;Steps per second: <span id="speedReadout">60</span>
+        &nbsp;&nbsp;<input id="rafCheck" type="checkbox" checked="checked" onchange="resetTimer()">Faster?
+      </div>
+
+    </div>
+
+    <canvas id="theCanvas" width="300" height="120" style="position: absolute; z-index: 9999">This application runs only in modern
+      browsers. For best results, use Google Chrome.
+    </canvas>
+    
+    
+
+    
+  </body>
+</html>
