@@ -25,7 +25,7 @@ export class Boat{
     this.wind_direction = 0;
     this.wind_speed = 0;
 
-    this.hull_mass = 8; // was 6
+    this.hull_mass = 6; // was 6
     this.hull_shape = pl.Polygon([Vec2(0, -2.25), Vec2(-0.5, -1.25), Vec2(-0.75, -0.25),  Vec2(-0.75, 0.5),  Vec2(-0.5, 1.75), Vec2(0.5, 1.75),  Vec2(0.75, 0.5), Vec2(0.75, -0.25), Vec2(0.5, -1.25), Vec2(0, -2.25)])
    
 
@@ -134,9 +134,8 @@ export class Boat{
     this.wind_speed = this.map.get_wind_speed(this.x, this.y)
     this.wind_direction = this.map.get_wind_direction(this.x, this.y)
 
-
     var angle = this.physics_model.getAngle();
-
+    this.angle = angle;
 
 
     this.hull_angle = angle;

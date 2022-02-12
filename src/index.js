@@ -10,13 +10,20 @@ import {Gust} from './gust.js';
 import {Boat} from './boat.js';
 
 
-let map = new Map(100, 100, 90, 5)
+const map_w = 100
+const map_h = 100
+const wind_angle = 90
+const wind_speed = 5
+const bm_resolution = 1.5;
+
+const bm = new Boltzmann(map_w, map_h, bm_resolution, wind_angle, wind_speed);
+
+let map = new Map(map_w, map_h, wind_angle, wind_speed, bm)
 map.physics_model_init()
 
 /*Data texture*/
-const bm_resolution = 1.5;
-var _side1 = map.fluid.vectorField.areaWidth*bm_resolution; // power of two textures are better cause powers of two are required by some algorithms. Like ones that decide what color will pixel have if amount of pixels is less than amount of textels (see three.js console error when given non-power-of-two texture)
-var _side2 = map.fluid.vectorField.areaHeight*bm_resolution; // power of two textures are better cause powers of two are required by some algorithms. Like ones that decide what color will pixel have if amount of pixels is less than amount of textels (see three.js console error when given non-power-of-two texture)
+var _side1 = map_w*bm_resolution; // power of two textures are better cause powers of two are required by some algorithms. Like ones that decide what color will pixel have if amount of pixels is less than amount of textels (see three.js console error when given non-power-of-two texture)
+var _side2 = map_h*bm_resolution; // power of two textures are better cause powers of two are required by some algorithms. Like ones that decide what color will pixel have if amount of pixels is less than amount of textels (see three.js console error when given non-power-of-two texture)
 
 var _amount = _side1*_side2*4; // you need 4 values for every pixel in side*side plane
 var _data = new Uint8Array(_amount);
@@ -35,7 +42,7 @@ _dataTex.needsUpdate = true; // somehow this line is required for this demo to w
 var _planeMat = new THREE.MeshBasicMaterial({map: _dataTex, transparent: true });
 _planeMat.needsUpdate = true;
 
-
+map.bm.texture = _dataTex2
 
 
 
@@ -46,8 +53,6 @@ const range_map =  function (input, in_min, in_max, out_min, out_max) {
 }
 
 
-
-const bm = new Boltzmann(map.fluid.vectorField.areaWidth, map.fluid.vectorField.areaHeight, bm_resolution, 90, 5, _dataTex2);
 
 
 let scenario_descriptor = {}
@@ -405,32 +410,50 @@ runner.start(() => {
     p.x = player.x + Math.cos(wind_angle)*(-1.8)   
     p.y = player.y + Math.sin(wind_angle)*(-1.8)   
 
-    map.fluid.apply_energy(p.x, p.y, player.power_direction, player.power/50)
+    // map.fluid.apply_energy(p.x, p.y, player.power_direction, player.power/50)
 
 
-    let ux=Math.cos(player.power_direction/180*Math.PI)*player.power/7000
-    let uy=Math.sin(player.power_direction/180*Math.PI)*player.power/7000
+    let ux=Math.cos(player.power_direction/180*Math.PI)*player.power/10000
+    let uy=Math.sin(player.power_direction/180*Math.PI)*player.power/10000
 
-    p.x0 = player.x + Math.cos(wind_angle)*(-1.8)   
-    p.y0 = player.y + Math.sin(wind_angle)*(-1.8)   
     
-    p.x1 = player.x + Math.cos(wind_angle+Math.PI/8)*(-1.8)   
-    p.y1 = player.y + Math.sin(wind_angle+Math.PI/8)*(-1.8) 
 
-    p.x2 = player.x + Math.cos(wind_angle-Math.PI/8)*(-1.8)   
-    p.y2 = player.y + Math.sin(wind_angle-Math.PI/8)*(-1.8)   
+    p.x0 = player.x + Math.cos(wind_angle)*(-3.8)   
+    p.y0 = player.y + Math.sin(wind_angle)*(-3.8)   
+    
+    p.x1 = player.x + Math.cos(wind_angle+Math.PI/8)*(-3.8)   
+    p.y1 = player.y + Math.sin(wind_angle+Math.PI/8)*(-3.8) 
 
-    bm.apply_energy(p.x0, p.y0, -ux, -uy)
-    //bm.apply_energy(p.x1, p.y1,-ux,-uy)
-    //bm.apply_energy(p.x2, p.y2,-ux,-uy)
+    p.x2 = player.x + Math.cos(wind_angle-Math.PI/8)*(-3.8)   
+    p.y2 = player.y + Math.sin(wind_angle-Math.PI/8)*(-3.8)   
+
+    map.bm.apply_energy(p.x0, p.y0, player.angle + Math.PI/2 )
+    //map.bm.apply_energy(p.x0, p.y0, 0, -0.001)
+
+    //map.bm.apply_energy(p.x1, p.y1,-ux,-uy)
+    //map.bm.apply_energy(p.x2, p.y2,-ux,-uy)
 
     document.getElementById("info").innerHTML += "Phys Time: " + bm.t_delta + "<br>"
    
+    //map.bm.apply_energy(20, 0, 0,  uy/2)
+
   });
+
+  
+
+  if (physics_frame%1==0){
+
+
+
+    map.bm.physics_model_step();
+   // map.bm.physics_model_step();
+
+  }
+
 
   physics_frame++
 
-  map.fluid.loop()
+  // map.fluid.loop()
 
 
 

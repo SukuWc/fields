@@ -126,6 +126,8 @@ export class Boltzmann{
 
 		this.initFluid();		// initialize to steady rightward flow
 		this.startStop();
+
+		this.graphics_model_init()
 	}
 
 
@@ -162,7 +164,7 @@ export class Boltzmann{
 
 		let t_start = new Date()
 
-		for(let i=0; i<8; i++){
+		for(let i=0; i<1; i++){
 
 
 			this.setBoundaries();
@@ -176,7 +178,6 @@ export class Boltzmann{
 
 		this.step_ready = true;
 
-		this.paintCanvas();
 
 		var stable = true;
 		for (var x=0; x<this.width; x++) {
@@ -188,18 +189,33 @@ export class Boltzmann{
 			this.startStop();
 			this.initFluid();
 		}
+		this.graphics_model_init();
+
+	}
+
+	graphics_model_init(){
+
+		this.graphics_model_step()
+	}
+
+	graphics_model_step(){
+
+		this.paintCanvas();
 
 		if (this.running) {
 			if (rafCheck.checked) {
-				requestAnimFrame(this.physics_model_step_handler.bind(this));	// let browser schedule next frame
+				requestAnimFrame(this.graphics_model_step_handler.bind(this));	// let browser schedule next frame
 			} else {
-				window.setTimeout(this.physics_model_step_handler.bind(this), 1);	// schedule next frame asap (nominally 1 ms but always more)
+				window.setTimeout(this.graphics_model_step_handler.bind(this), 10);	// schedule next frame asap (nominally 1 ms but always more)
 			}
 		}
+
 	}
 
-	physics_model_step_handler(){
-		this.physics_model_step()
+	graphics_model_step_handler(){
+
+		this.graphics_model_step()
+
 	}
 
 	// Set the fluid variables at the boundaries, according to the current slider value:
@@ -285,18 +301,22 @@ export class Boltzmann{
 				this._nSW_[x+y*this.width] = this._nSW_[x+1+(y+1)*this.width];		// and the southwest-moving particles
 			}
 		}
+
+		
+		const opacity = 0.70;
+		const transparency = 1-opacity;
 		for (var y=1; y<this.height-1; y++) {				// Now handle bounce-back from barriers
 			for (var x=1; x<this.width-1; x++) {
 				if (this.barrier[x+y*this.width]) {
 					var index = x + y*this.width;
-					this._nE_[x+1+y*this.width] = this._nW_[index];
-					this._nW_[x-1+y*this.width] = this._nE_[index];
-					this._nN_[x+(y+1)*this.width] = this._nS_[index];
-					this._nS_[x+(y-1)*this.width] = this._nN_[index];
-					this._nNE_[x+1+(y+1)*this.width] = this._nSW_[index];
-					this._nNW_[x-1+(y+1)*this.width] = this._nSE_[index];
-					this._nSE_[x+1+(y-1)*this.width] = this._nNW_[index];
-					this._nSW_[x-1+(y-1)*this.width] = this._nNE_[index];
+					this._nE_[x+1+y*this.width] = this._nE_[x+1+y*this.width]*transparency + this._nW_[index]*opacity;
+					this._nW_[x-1+y*this.width] = this._nW_[x-1+y*this.width]*transparency + this._nE_[index]*opacity;
+					this._nN_[x+(y+1)*this.width] = this._nN_[x+(y+1)*this.width]*transparency +  this._nS_[index]*opacity;
+					this._nS_[x+(y-1)*this.width] = this._nS_[x+(y-1)*this.width]*transparency +  this._nN_[index]*opacity;
+					this._nNE_[x+1+(y+1)*this.width] = this._nNE_[x+1+(y+1)*this.width]*transparency +  this._nSW_[index]*opacity;
+					this._nNW_[x-1+(y+1)*this.width] = this._nNW_[x-1+(y+1)*this.width]*transparency +  this._nSE_[index]*opacity;
+					this._nSE_[x+1+(y-1)*this.width] = this._nSE_[x+1+(y-1)*this.width]*transparency +  this._nNW_[index]*opacity;
+					this._nSW_[x-1+(y-1)*this.width] = this._nSW_[x-1+(y-1)*this.width] *transparency +  this._nNE_[index]*opacity;
 
 
 				}
@@ -381,11 +401,20 @@ export class Boltzmann{
 		let old_ux3 = this._ux_[x3 + y3*this.width]
 		let old_uy3 = this._uy_[x3 + y3*this.width]
 
-		this.setEquil(x0, y0, old_ux0 + s0*pushUX, old_uy0 + s0*pushUY);
-		this.setEquil(x1, y1, old_ux1 + s1*pushUX, old_uy1 + s1*pushUY);
-		this.setEquil(x2, y2, old_ux2 + s2*pushUX, old_uy2 + s2*pushUY);
-		this.setEquil(x3, y3, old_ux3 + s3*pushUX, old_uy3 + s3*pushUY);
+		let old_speed = Math.sqrt(old_ux0*old_ux0 + old_uy0*old_uy0)*1
 
+		let angle = pushUX;
+
+		let new_ux = Math.cos(angle) * old_speed
+		let new_uy = Math.sin(angle) * old_speed
+
+		this.setEquil(x0, y0, (old_ux0*29+new_ux)/30, (old_uy0*29+new_uy)/30);
+/*
+		this.setEquil(x0, y0, old_ux0*0.998, old_uy0*0.998);
+		this.setEquil(x1, y1, old_ux1*0.998, old_uy1*0.998);
+		this.setEquil(x2, y2, old_ux2*0.998, old_uy2*0.998);
+		this.setEquil(x3, y3, old_ux3*0.998, old_uy3*0.998);
+*/
 	}
 	get_field_velocity(x, y){
 
@@ -472,6 +501,9 @@ export class Boltzmann{
 	// Color a grid square in the image data array, one pixel at a time (rgb each in range 0 to 255):
 	colorSquare(x, y, r, g, b) {
 
+		if (this.texture === undefined){
+			return
+		}
 		
 		var ind = (x + y*this.width) * 4;
 		this.texture.image.data[ind+0] = r;
