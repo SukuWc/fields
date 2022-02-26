@@ -130,6 +130,8 @@ export class Boat{
 
     this.x = this.physics_model.m_xf.p.x;
     this.y = this.physics_model.m_xf.p.y;
+
+
     
     this.wind_speed = this.map.get_wind_speed(this.x, this.y)
     this.wind_direction = this.map.get_wind_direction(this.x, this.y)
@@ -345,7 +347,7 @@ export class Boat{
     this.forces.push({name: "rudder", type: "arrow", vector: rudder_f, point: rudder_p})
 
     document.getElementById("info").innerHTML += "TWA: "+Math.floor(twa) + "<br>";
-    document.getElementById("info").innerHTML += "TWS: "+Math.floor(this.map.get_wind_speed(this.x, this.y)) + "<br>";
+    document.getElementById("info").innerHTML += "TWS: "+Math.floor(this.wind_speed*10)/10 + "<br>";
     document.getElementById("info").innerHTML += "AWA: "+Math.floor(awa) + "<br>";
     document.getElementById("info").innerHTML += "AWS: "+Math.floor(aws*10)/10 + "<br>";
 
@@ -390,7 +392,7 @@ export class Boat{
     document.getElementById("info").innerHTML += "Cd: "+ Math.floor( c_drag *10) /10 + "<br>"; 
     document.getElementById("info").innerHTML += "Cl: "+ Math.floor( c_lift *10) /10 + "<br>"; 
     
-    const sail_efficiency = 0.15
+    const sail_efficiency = 0.35
 
     sail_f_drag.x = Math.cos(angle+this.awa/180*Math.PI + Math.PI/2 )*aws*aws*c_drag*sail_efficiency
     sail_f_drag.y = Math.sin(angle+this.awa/180*Math.PI + Math.PI/2 )*aws*aws*c_drag*sail_efficiency

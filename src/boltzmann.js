@@ -67,7 +67,6 @@ export class Boltzmann{
 		this.width = width*this.resolution;
 		this.height = height*this.resolution;
 		this.direction = direction + 180;
-		this.speed = speed;
 
 		this.step_ready = false;
 		this.t_delta = 0;
@@ -76,8 +75,8 @@ export class Boltzmann{
 		// width of plotted grid site in pixels
 		canvas.width = this.width
 		canvas.height = this.height
-		this.speed = 0.12;
-		this.speed = 0.12;
+		this.speed = speed/100; // default speed 0.12
+
 
 		//  kinematic viscosity coefficient in natural units
 		this.viscosity = 0.020;
@@ -355,8 +354,9 @@ export class Boltzmann{
 
 	// "Drag" the fluid in a direction determined by the mous* (or touch) motion:
 	// (The drag affects a "circle", 5 px in diameter, centered on the given coordinates.)
-	apply_energy(pushX, pushY, pushUX, pushUY) {
+	apply_energy(pushX, pushY, direction, pushUY) {
 
+		//console.log("Apply")
 		// translate the position to field coordinates
 
 		let x = this.width/2 + Math.floor(pushX*this.resolution)
@@ -389,32 +389,91 @@ export class Boltzmann{
 		s3 = (hf)*(vf)
 
 
-		let old_ux0 = this._ux_[x0 + y0*this.width]
-		let old_uy0 = this._uy_[x0 + y0*this.width]
 
-		let old_ux1 = this._ux_[x1 + y1*this.width]
-		let old_uy1 = this._uy_[x1 + y1*this.width]
 
-		let old_ux2 = this._ux_[x2 + y2*this.width]
-		let old_uy2 = this._uy_[x2 + y2*this.width]
 
-		let old_ux3 = this._ux_[x3 + y3*this.width]
-		let old_uy3 = this._uy_[x3 + y3*this.width]
+		let mirror_angle = direction + 270 // 0...359.999
+		
+		if (mirror_angle>360){
+			mirror_angle-=360
+		}
+		
+		document.getElementById("wind_info").innerHTML = "mirror_angle: " + mirror_angle + "<br>"
+  
+		const directions = [this._nE_, this._nNE_, this._nN_, this._nNW_, this._nW_, this._nSW_, this._nS_, this._nSE_]
+		
+		let component_x = [0, 0, 0, 0]
+		let component_y = [0, 0, 0, 0]
+		let mirrored_angle = [0, 0, 0, 0]
+		let source_angle = [0, 0, 0, 0]
 
-		let old_speed = Math.sqrt(old_ux0*old_ux0 + old_uy0*old_uy0)*1
+		for (let i=0; i<4; i++){
 
-		let angle = pushUX;
+			const nu = 0.02 //transfer efficiency
 
-		let new_ux = Math.cos(angle) * old_speed
-		let new_uy = Math.sin(angle) * old_speed
+			const index = (Math.floor(mirror_angle/45)+1+i)%8
 
-		this.setEquil(x0, y0, (old_ux0*29+new_ux)/30, (old_uy0*29+new_uy)/30);
-/*
-		this.setEquil(x0, y0, old_ux0*0.998, old_uy0*0.998);
-		this.setEquil(x1, y1, old_ux1*0.998, old_uy1*0.998);
-		this.setEquil(x2, y2, old_ux2*0.998, old_uy2*0.998);
-		this.setEquil(x3, y3, old_ux3*0.998, old_uy3*0.998);
-*/
+			source_angle[i] = index*45
+			mirrored_angle[i] = mirror_angle - (source_angle[i]-mirror_angle)
+
+			if (mirrored_angle[i]>360){
+				mirrored_angle[i]-=360;
+			}
+
+			if (mirrored_angle[i]<0){
+				mirrored_angle[i]+=360;
+			}
+
+			// calculate energy taken from the array
+			component_x[i] = Math.cos(mirrored_angle[i] /180*Math.PI) * directions[index][x + y*this.width] * nu
+			component_y[i] = Math.sin(mirrored_angle[i] /180*Math.PI) * directions[index][x + y*this.width] * nu
+
+		
+			// take the energy from the array
+			directions[index][x + y*this.width] *= (1-nu)
+		}
+
+		for (let i=0; i<4; i++){
+
+			const index = (Math.floor(mirrored_angle[i]/45)+1+i)%8
+			let u, v;
+
+			if (index%2 == 0){
+
+				if (Math.abs(component_x[i])>Math.abs(component_y[i])){
+					u = component_x[i]-component_y[i]
+					v = component_y[i]*Math.SQRT2
+				}
+				else{
+					u = component_y[i]-component_x[i]
+					v = component_x[i]*Math.SQRT2
+				}
+
+			}
+			else{
+
+				if (Math.abs(component_x[i])>Math.abs(component_y[i])){
+					u = component_y[i]*Math.SQRT2
+					v = component_x[i]-component_y[i]
+				}
+				else{
+					u = component_x[i]*Math.SQRT2
+					v = component_y[i]-component_x[i]
+				}
+
+			}
+
+
+			directions[index][x + y*this.width] += u
+			directions[(index+1)%8][x + y*this.width] += v
+
+			document.getElementById("wind_info").innerHTML += "sou: " + source_angle[i] +  " mirr: "+Math.floor(mirrored_angle[i])+ "<br>"
+
+	
+		}
+
+
+
 	}
 	get_field_velocity(x, y){
 

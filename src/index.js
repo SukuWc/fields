@@ -13,7 +13,7 @@ import {Boat} from './boat.js';
 const map_w = 100
 const map_h = 100
 const wind_angle = 90
-const wind_speed = 5
+const wind_speed = 7
 const bm_resolution = 1.5;
 
 const bm = new Boltzmann(map_w, map_h, bm_resolution, wind_angle, wind_speed);
@@ -418,25 +418,16 @@ runner.start(() => {
 
     
 
-    p.x0 = player.x + Math.cos(wind_angle)*(-3.8)   
-    p.y0 = player.y + Math.sin(wind_angle)*(-3.8)   
+    p.x0 = player.x + Math.cos(wind_angle)*(-2)   
+    p.y0 = player.y + Math.sin(wind_angle)*(-2)   
     
-    p.x1 = player.x + Math.cos(wind_angle+Math.PI/8)*(-3.8)   
-    p.y1 = player.y + Math.sin(wind_angle+Math.PI/8)*(-3.8) 
 
-    p.x2 = player.x + Math.cos(wind_angle-Math.PI/8)*(-3.8)   
-    p.y2 = player.y + Math.sin(wind_angle-Math.PI/8)*(-3.8)   
+    map.bm.apply_energy(p.x0, p.y0, player.power_direction)
 
-    map.bm.apply_energy(p.x0, p.y0, player.angle + Math.PI/2 )
-    //map.bm.apply_energy(p.x0, p.y0, 0, -0.001)
-
-    //map.bm.apply_energy(p.x1, p.y1,-ux,-uy)
-    //map.bm.apply_energy(p.x2, p.y2,-ux,-uy)
 
     document.getElementById("info").innerHTML += "Phys Time: " + bm.t_delta + "<br>"
    
-    //map.bm.apply_energy(20, 0, 0,  uy/2)
-
+   
   });
 
   

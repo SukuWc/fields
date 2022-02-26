@@ -111,7 +111,7 @@ export class Map{
 		tws += Math.sqrt(v3.x*v3.x + v3.y*v3.y)
 		tws += Math.sqrt(v4.x*v4.x + v4.y*v4.y)
 	
-		return tws/5*250.0;
+		return tws/5*100*4;
 	}
 	
 	get_wind_direction(x, y){
