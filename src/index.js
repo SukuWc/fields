@@ -304,7 +304,7 @@ scenarios[0] [1] = () => {console.log(1); players[0].input_autopilot_enabled_tog
 scenarios[0] [2] = () => {autokeybind(players);}
 
 scenarios[1] = []
-scenarios[1] [0] = () => {players.push(new Boat(map, 10, -8, 5*Math.PI/4)); players.push(new Boat(map, 15, -11.5, 5*Math.PI/4)); }
+scenarios[1] [0] = () => {players.push(new Boat(map, 12, -6, 5*Math.PI/4)); players.push(new Boat(map, 15, -11.5, 5*Math.PI/4)); }
 scenarios[1] [1] = () => {console.log(1); players[0].input_autopilot_enabled_toggle(); players[1].input_autopilot_enabled_toggle();}
 scenarios[1] [2] = () => {autokeybind(players);}
 //scenarios[1] [2000] = () => {scenario_clear()}
@@ -316,10 +316,10 @@ scenarios[2] [2] = () => {autokeybind(players);}
 scenarios[2] [2000] = () => {scenario_clear()}
 
 scenarios[3] = []
-scenarios[3] [0] = () => {players.push(new Boat(map, -3, -4, 3*Math.PI/4)); players.push(new Boat(map, 18, -11.5, 5*Math.PI/4)); }
+scenarios[3] [0] = () => {players.push(new Boat(map, -3, -3, 3*Math.PI/4)); players.push(new Boat(map, 18, -11.5, 5*Math.PI/4)); }
 scenarios[3] [1] = () => {console.log(1); players[0].input_autopilot_enabled_toggle(); players[1].input_autopilot_enabled_toggle();}
 scenarios[3] [2] = () => {autokeybind(players);}
-scenarios[3] [300] = () => {players[0].input_autopilot_tack_toggle()}
+scenarios[3] [350] = () => {players[0].input_autopilot_tack_toggle()}
 scenarios[3] [2000] = () => {scenario_clear()}
 
 scenarios[4] = []
@@ -422,7 +422,17 @@ runner.start(() => {
     p.y0 = player.y + Math.sin(wind_angle)*(-2)   
     
 
-    map.bm.apply_energy(p.x0, p.y0, player.power_direction)
+    map.bm.apply_energy(p.x0, p.y0, player.power_direction, player.power/10000)
+
+
+   
+    //map.bm.apply_energy(0, 0,  parseInt(document.getElementById("mirrorSlider").value))
+
+
+
+    //map.bm.apply_force_to_cell(0,0, 0, 10);
+
+    //map.bm.apply_energy(20, 0, 180)
 
 
     document.getElementById("info").innerHTML += "Phys Time: " + bm.t_delta + "<br>"

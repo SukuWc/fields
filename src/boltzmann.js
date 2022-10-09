@@ -352,9 +352,9 @@ export class Boltzmann{
 	}
 
 
-	// "Drag" the fluid in a direction determined by the mous* (or touch) motion:
-	// (The drag affects a "circle", 5 px in diameter, centered on the given coordinates.)
-	apply_energy(pushX, pushY, direction, pushUY) {
+	apply_energy(pushX, pushY, direction, strength){
+
+		document.getElementById("wind_info").innerHTML = "dir: " + direction + "stre : " + strength + "<br>"
 
 		//console.log("Apply")
 		// translate the position to field coordinates
@@ -388,8 +388,45 @@ export class Boltzmann{
 		s2 = (1-hf)*(vf)
 		s3 = (hf)*(vf)
 
+		let x_array = [x0, x1, x2, x3]
+		let y_array = [y0, y1, y2, y3]
+		let s_array = [s0, s1, s2, s3]
 
 
+		for (let i=0; i<1; i++){
+
+			this.apply_force_to_cell(x_array[i], y_array[i], direction, s_array[i]*strength)
+
+
+		}
+
+	}
+
+	apply_force_to_cell(x, y, direction, s) {
+
+
+	//	x += this.width/2;
+	//	y += this.height/2
+
+		let i = x + y*this.width;
+	
+		// F = m * a
+		// a = F/m
+		// dv/dt = F/m
+
+		let vx = this._ux_[i]
+		let vy = this._uy_[i]
+		let m = this._rho_[i];
+
+		let dvx = Math.cos(direction/180*Math.PI) * s / m * -1;
+		let dvy = Math.sin(direction/180*Math.PI) * s / m * -1;
+		
+		this.setEquil(x,y, vx + dvx, vy + dvy)
+		//this._nE_[i] = 0.1
+
+	}
+
+	apply_energy_to_cell(x, y, direction, s) {
 
 
 		let mirror_angle = direction + 270 // 0...359.999
@@ -400,16 +437,21 @@ export class Boltzmann{
 		
 		document.getElementById("wind_info").innerHTML = "mirror_angle: " + mirror_angle + "<br>"
   
+
+
 		const directions = [this._nE_, this._nNE_, this._nN_, this._nNW_, this._nW_, this._nSW_, this._nS_, this._nSE_]
+
 		
-		let component_x = [0, 0, 0, 0]
-		let component_y = [0, 0, 0, 0]
-		let mirrored_angle = [0, 0, 0, 0]
-		let source_angle = [0, 0, 0, 0]
+		document.getElementById("wind_info").innerHTML += JSON.stringify(direction) + "<br>"
+		
+		let component_x = [0, 0, 0, 0, 0, 0, 0, 0]
+		let component_y = [0, 0, 0, 0, 0, 0, 0, 0]
+		let mirrored_angle = [0, 0, 0, 0, 0, 0, 0, 0]
+		let source_angle = [0, 0, 0, 0, 0, 0, 0, 0]
 
-		for (let i=0; i<4; i++){
+		for (let i=0; i<8; i++){
 
-			const nu = 0.02 //transfer efficiency
+			const nu = 0.1*s //transfer efficiency
 
 			const index = (Math.floor(mirror_angle/45)+1+i)%8
 
@@ -433,7 +475,9 @@ export class Boltzmann{
 			directions[index][x + y*this.width] *= (1-nu)
 		}
 
-		for (let i=0; i<4; i++){
+		
+
+		for (let i=0; i<8; i++){
 
 			const index = (Math.floor(mirrored_angle[i]/45)+1+i)%8
 			let u, v;
@@ -467,9 +511,13 @@ export class Boltzmann{
 			directions[index][x + y*this.width] += u
 			directions[(index+1)%8][x + y*this.width] += v
 
-			document.getElementById("wind_info").innerHTML += "sou: " + source_angle[i] +  " mirr: "+Math.floor(mirrored_angle[i])+ "<br>"
+			let u2 = u*10000
+			let v2 = v*10000
 
-	
+
+			document.getElementById("wind_info").innerHTML += "sou: " + source_angle[i] +  " mirr: "+Math.floor(mirrored_angle[i])+ "<br>"
+			document.getElementById("wind_info").innerHTML += "u: " + Math.floor(u2) +  " v: "+ Math.floor(v2) + "<br>"
+
 		}
 
 
