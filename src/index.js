@@ -10,8 +10,8 @@ import {Gust} from './gust.js';
 import {Boat} from './boat.js';
 
 
-const map_w = 100
-const map_h = 100
+const map_w = 50
+const map_h = 50
 const wind_angle = 90
 const wind_speed = 7
 const bm_resolution = 1.5;
@@ -65,7 +65,7 @@ let physics_frame = 0;
 const runner = new Runner(map.world, {
 	// default settings
 	speed: 1,
-	fps: 60,
+	fps: 30,
 })
 
 
@@ -142,6 +142,16 @@ document.getElementById("scenario_restart").addEventListener("click", e => {
 document.getElementById("show_field").addEventListener("change", e => {
 
   map.input_show_fields(document.getElementById("show_field").checked)
+
+}); 
+
+
+document.getElementById("windAngle").addEventListener("change", e => {
+
+
+  let angle  = parseInt(document.getElementById("windAngle").value);
+
+  map.bm.direction = angle + 180;
 
 }); 
 
@@ -398,7 +408,25 @@ runner.start(() => {
 
   });
 
-  players.forEach(player => {
+  let sumOfPlayerDistances = 0;
+
+  players.forEach((player, index) => {
+
+    players.forEach((player2, index2) => {
+      if (index2>index){
+
+        let dx = (player.x - player2.x);
+        let dy = (player.y - player2.y);
+        
+        sumOfPlayerDistances += Math.sqrt(dx*dx + dy*dy)
+
+        
+        document.getElementById("dist_info").innerHTML = "Dist: " +  Math.floor(sumOfPlayerDistances*100)/100 + "<br>"
+
+      }
+
+    });
+
 
     player.physics_model_step();
     guides = [...guides, ...player.graphics_model_render()];
@@ -417,12 +445,21 @@ runner.start(() => {
     let uy=Math.sin(player.power_direction/180*Math.PI)*player.power/10000
 
     
+    const offset = 1.5;
 
-    p.x0 = player.x + Math.cos(wind_angle)*(-2)   
-    p.y0 = player.y + Math.sin(wind_angle)*(-2)   
+    p.x0 = player.x + Math.cos(player.hull_angle+90/180*Math.PI)*(-offset)   + Math.cos(wind_angle)*(-2)
+    p.y0 = player.y + Math.sin(player.hull_angle+90/180*Math.PI)*(-offset)   + Math.sin(wind_angle)*(-2)
+
+    p.x1 = player.x + Math.cos(player.hull_angle+90/180*Math.PI)*(0)     + Math.cos(wind_angle)*(-2) 
+    p.y1 = player.y + Math.sin(player.hull_angle+90/180*Math.PI)*(0)   + Math.sin(wind_angle)*(-2)
+
+    p.x2 = player.x + Math.cos(player.hull_angle+90/180*Math.PI)*(+offset)   + Math.cos(wind_angle)*(-2)  
+    p.y2 = player.y + Math.sin(player.hull_angle+90/180*Math.PI)*(+offset)     + Math.sin(wind_angle)*(-2) 
     
 
-    map.bm.apply_energy(p.x0, p.y0, player.power_direction, player.power/10000)
+    map.bm.apply_energy(p.x0, p.y0, player.power_direction, player.power/5000)
+    map.bm.apply_energy(p.x1, p.y1, player.power_direction, player.power/2000)
+    map.bm.apply_energy(p.x2, p.y2, player.power_direction, player.power/5000)
 
 
    

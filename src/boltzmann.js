@@ -112,7 +112,7 @@ export class Boltzmann{
 		var barrierSize = 16;
 		for (var y=(this.height/2)-barrierSize; y<=(this.height/2)+barrierSize; y++) {
 			var x = Math.round(this.height/3);
-			this.barrier[x+y*this.width] = true;
+			//this.barrier[x+y*this.width] = true;
 		}
 
 

@@ -392,7 +392,7 @@ export class Boat{
     document.getElementById("info").innerHTML += "Cd: "+ Math.floor( c_drag *10) /10 + "<br>"; 
     document.getElementById("info").innerHTML += "Cl: "+ Math.floor( c_lift *10) /10 + "<br>"; 
     
-    const sail_efficiency = 0.35
+    const sail_efficiency = 0.15 // was 0.35
 
     sail_f_drag.x = Math.cos(angle+this.awa/180*Math.PI + Math.PI/2 )*aws*aws*c_drag*sail_efficiency
     sail_f_drag.y = Math.sin(angle+this.awa/180*Math.PI + Math.PI/2 )*aws*aws*c_drag*sail_efficiency
@@ -650,6 +650,45 @@ export class Boat{
       x2: jib[3].x,
       y2: jib[3].y
     })
+
+    
+    if (this.map.show_fields){
+
+      const wind_indicator_size = 10
+      for(let i = -wind_indicator_size; i<wind_indicator_size; i++ ){
+  
+        for(let j = -wind_indicator_size; j<wind_indicator_size; j++ ){
+  
+          if (Math.sqrt(i*i + j*j)<wind_indicator_size-1){
+  
+            const res = this.map.bm.resolution
+
+            //Math.floor(x*this.resolution)
+
+            let x = Math.floor(this.x*res)/res + i/res;
+            let y = Math.floor(this.y*res)/res + j/res;
+    
+            let velo = this.map.bm.get_field_velocity(x, y)
+    
+            graphics.push({ color: 0x8866ff, type: "sail",
+              x1: x,
+              y1: y,
+              x2: x+velo.x*30,
+              y2: y+velo.y*30
+            })  
+          }
+  
+  
+  
+        }
+  
+      }
+
+    }
+    
+
+
+
 
 
     return graphics

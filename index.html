@@ -47,11 +47,16 @@
       <input id="camera_move_up" type="button" value="▲">
       <input id="camera_move_down" type="button" value="▼">
       <br>
-      <input id="scenario_selector" type="number" min="0" max="10" value="0" style="width: 50px;">Select Scenario
+      Wind angle<br>
+      <input id="windAngle" type="number" min="0" max="359" step="1" value="100">
       <br>
+      Select Scenario<br>
+      <input id="scenario_selector" type="number" min="0" max="10" value="0" style="width: 50px;">
+      
       <input id="scenario_restart" type="button" min="0" max="10" style="width: 50px;" value="Restart">
     
       <div id="wind_info"></div>
+      <div style="color:red;" id="dist_info"></div>
 
 
 
