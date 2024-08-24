@@ -59,7 +59,9 @@ function rgbToHex(r, g, b) {
 
 export class Boltzmann{
 
-	constructor(width, height, resolution, direction, speed, texture){
+	constructor(width, height, resolution, direction, speed, texture, oversampling){
+
+		this.oversampling = oversampling;
 
 		this.texture = texture;
 		this.resolution = resolution;
@@ -105,15 +107,17 @@ export class Boltzmann{
 		for (var y=0; y<this.height; y++) {
 			for (var x=0; x<this.width; x++) {
 				this.barrier[x+y*this.width] = false;
+
+
+				// create circular wall
+				let r = 5;
+
+				(Math.pow(this.width/2 - x, 2) + Math.pow(this.height*0.75 - y, 2) < Math.pow(r, 2) )? this.barrier[x+y*this.width] = true : null
+
+
 			}
 		}
 
-		// Create a simple linear "wall" barrier (intentionally a little offset from center):
-		var barrierSize = 16;
-		for (var y=(this.height/2)-barrierSize; y<=(this.height/2)+barrierSize; y++) {
-			var x = Math.round(this.height/3);
-			//this.barrier[x+y*this.width] = true;
-		}
 
 
 		this.image = context.createImageData(canvas.width, canvas.height);		// for direct pixel manipulation (faster than fillRect)
@@ -595,7 +599,12 @@ export class Boltzmann{
 					if (cIndex > nColors) cIndex = nColors;
 				}
 
-				this.colorSquare(x, y, redList[cIndex], greenList[cIndex], blueList[cIndex]);
+				let accent = false;
+				if (this._curl_[x+y*this.width] > 0.005 || this._curl_[x+y*this.width] < -0.005) {
+					accent = true;
+				}
+
+				this.colorSquare(x, y, redList[cIndex], greenList[cIndex], blueList[cIndex], accent);
 
 			}
 		}
@@ -606,30 +615,51 @@ export class Boltzmann{
 	}
 
 	// Color a grid square in the image data array, one pixel at a time (rgb each in range 0 to 255):
-	colorSquare(x, y, r, g, b) {
+	colorSquare(x, y, r, g, b, accent) {
 
 		if (this.texture === undefined){
 			return
 		}
+
+		for(var i=0; i<this.oversampling; i++) {
+			for(var j=0; j<this.oversampling; j++) {
+				
+				
+				var ind = (x*this.oversampling+i + (y*this.oversampling+j)*this.width*this.oversampling) * 4;
+				//var ind = (x + y*this.width) * 4;
+				this.texture.image.data[ind+0] = r;
+				this.texture.image.data[ind+1] = g;
+				this.texture.image.data[ind+2] = b;
+				this.texture.image.data[ind+3] = 255;
+
+				if (accent === true){
+
+					var accent_ind = (x*this.oversampling+0 + (y*this.oversampling+0)*this.width*this.oversampling) * 4;
+					this.texture.image.data[accent_ind+0] = 255;
+					this.texture.image.data[accent_ind+1] = 0;
+					this.texture.image.data[accent_ind+2] = 0;
+					this.texture.image.data[accent_ind+3] = 255;
+
+				}
 		
-		var ind = (x + y*this.width) * 4;
-		this.texture.image.data[ind+0] = r;
-		this.texture.image.data[ind+1] = g;
-		this.texture.image.data[ind+2] = b;
-		this.texture.image.data[ind+3] = 255;
+		
+		
+		
+				var flippedy = this.height - y - 1;			// put y=0 at the bottom
+				for (var py=flippedy; py<(flippedy+1); py++) {
+					for (var px=x; px<(x+1); px++) {
+						var index = (px + py*this.width) * 4;
+						this.image.data[index+0] = r;
+						this.image.data[index+1] = g;
+						this.image.data[index+2] = b;
+					}
+				}
 
 
-
-
-		var flippedy = this.height - y - 1;			// put y=0 at the bottom
-		for (var py=flippedy; py<(flippedy+1); py++) {
-			for (var px=x; px<(x+1); px++) {
-				var index = (px + py*this.width) * 4;
-				this.image.data[index+0] = r;
-				this.image.data[index+1] = g;
-				this.image.data[index+2] = b;
 			}
 		}
+			
+
 	}
 	
 

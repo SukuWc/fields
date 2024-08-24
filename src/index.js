@@ -16,14 +16,16 @@ const wind_angle = 90
 const wind_speed = 7
 const bm_resolution = 1.5;
 
-const bm = new Boltzmann(map_w, map_h, bm_resolution, wind_angle, wind_speed);
+var texture_oversampling = 2;
+const bm = new Boltzmann(map_w, map_h, bm_resolution, wind_angle, wind_speed, undefined, texture_oversampling);
 
 let map = new Map(map_w, map_h, wind_angle, wind_speed, bm)
 map.physics_model_init()
 
 /*Data texture*/
-var _side1 = map_w*bm_resolution; // power of two textures are better cause powers of two are required by some algorithms. Like ones that decide what color will pixel have if amount of pixels is less than amount of textels (see three.js console error when given non-power-of-two texture)
-var _side2 = map_h*bm_resolution; // power of two textures are better cause powers of two are required by some algorithms. Like ones that decide what color will pixel have if amount of pixels is less than amount of textels (see three.js console error when given non-power-of-two texture)
+
+var _side1 = texture_oversampling* map_w*bm_resolution; // power of two textures are better cause powers of two are required by some algorithms. Like ones that decide what color will pixel have if amount of pixels is less than amount of textels (see three.js console error when given non-power-of-two texture)
+var _side2 = texture_oversampling* map_h*bm_resolution; // power of two textures are better cause powers of two are required by some algorithms. Like ones that decide what color will pixel have if amount of pixels is less than amount of textels (see three.js console error when given non-power-of-two texture)
 
 var _amount = _side1*_side2*4; // you need 4 values for every pixel in side*side plane
 var _data = new Uint8Array(_amount);
@@ -499,9 +501,12 @@ runner.start(() => {
 
   const data = dataTex2.image.data
 
-  for (let x=0; x<map.fluid.vectorField.areaWidth; x++){
+  for (let _x=0; _x<map.fluid.vectorField.areaWidth*texture_oversampling; _x++){
 
-    for (let y=0; y<map.fluid.vectorField.areaHeight; y++){
+    for (let _y=0; _y<map.fluid.vectorField.areaHeight*texture_oversampling; _y++){
+
+      let x = Math.floor(_x/texture_oversampling)
+      let y = Math.floor(_y/texture_oversampling)
 
       let velocity = field[x][y].velocity
 
