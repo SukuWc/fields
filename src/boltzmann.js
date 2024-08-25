@@ -1,11 +1,4 @@
 
-// Global variables:	
-var canvas = document.getElementById('theCanvas');
-var context = canvas.getContext('2d');
-
-
-
-
 var plotSelect = document.getElementById('plotSelect');
 var contrastSlider = document.getElementById('contrastSlider');
 
@@ -75,8 +68,7 @@ export class Boltzmann{
 
 		// grid dimensions for simulation
 		// width of plotted grid site in pixels
-		canvas.width = this.width
-		canvas.height = this.height
+
 		this.speed = speed/100; // default speed 0.12
 
 
@@ -117,13 +109,6 @@ export class Boltzmann{
 
 			}
 		}
-
-
-
-		this.image = context.createImageData(canvas.width, canvas.height);		// for direct pixel manipulation (faster than fillRect)
-		for (var i=3; i<this.image.data.length; i+=4) this.image.data[i] = 255;			// set all alpha values to opaque
-		
-
 		
 		this.running = false;						// will be true when running
 
@@ -203,7 +188,7 @@ export class Boltzmann{
 
 	graphics_model_step(){
 
-		this.paintCanvas();
+		this.paintTexture();
 
 		if (this.running) {
 			if (rafCheck.checked) {
@@ -572,8 +557,8 @@ export class Boltzmann{
 
 		return {x: vx/4, y: vy/4}
 	}
-	// Paint the canvas:
-	paintCanvas() {
+
+	paintTexture() {
 		var cIndex=0;
 		var contrast = Math.pow(1.2,Number(contrastSlider.value));
 		var plotType = plotSelect.selectedIndex;

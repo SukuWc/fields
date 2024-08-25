@@ -12,8 +12,8 @@ import {Boat} from './boat.js';
 const map_w = 50
 const map_h = 50
 const wind_angle = 90
-const wind_speed = 7
-const bm_resolution = 1.5;
+const wind_speed = 15
+const bm_resolution = 2;
 
 var texture_oversampling = 2;
 
