@@ -48,6 +48,94 @@ function rgbToHex(r, g, b) {
 
 
 
+class SimulationCell{
+
+	constructor(sub_mesh_depth){
+
+		this.sub_mesh_depth = sub_mesh_depth; // 0 = boltzmann_root, 1 = simuation_cell, 2 = submesh_container
+		this.parent = null;
+		this._n0_  = 0; // microscopic densities along each lattice direction
+		this._nN_  = 0;
+		this._nS_  = 0;
+		this._nE_  = 0;
+		this._nW_  = 0;
+		this._nNE_ = 0;
+		this._nSE_ = 0;
+		this._nNW_ = 0;
+		this._nSW_ = 0;
+		this._ux_  = 0; // macroscopic x velocity
+		this._uy_  = 0; // macroscopic y velocity
+		this._rho_ = 0; // macroscopic density
+		this._curl_ = 0;
+
+		this.barrier = false;
+	
+		this.child_00 = null;
+		this.child_01 = null;
+		this.child_10 = null;
+		this.child_11 = null;
+	}
+
+	setCurl(curl) {
+		this._curl_ = curl;
+	}
+
+	setEquil(newux, newuy, newrho) {
+
+		if (typeof newrho == 'undefined') {
+			newrho = this._rho_;
+		}
+		var ux3 = 3 * newux;
+		var uy3 = 3 * newuy;
+		var ux2 = newux * newux;
+		var uy2 = newuy * newuy;
+		var uxuy2 = 2 * newux * newuy;
+		var u2 = ux2 + uy2;
+		var u215 = 1.5 * u2;
+		this._n0_  = four9ths * newrho * (1                              - u215);
+		this._nE_  =   one9th * newrho * (1 + ux3       + 4.5*ux2        - u215);
+		this._nW_  =   one9th * newrho * (1 - ux3       + 4.5*ux2        - u215);
+		this._nN_  =   one9th * newrho * (1 + uy3       + 4.5*uy2        - u215);
+		this._nS_  =   one9th * newrho * (1 - uy3       + 4.5*uy2        - u215);
+		this._nNE_ =  one36th * newrho * (1 + ux3 + uy3 + 4.5*(u2+uxuy2) - u215);
+		this._nSE_ =  one36th * newrho * (1 + ux3 - uy3 + 4.5*(u2-uxuy2) - u215);
+		this._nNW_ =  one36th * newrho * (1 - ux3 + uy3 + 4.5*(u2-uxuy2) - u215);
+		this._nSW_ =  one36th * newrho * (1 - ux3 - uy3 + 4.5*(u2+uxuy2) - u215);
+		this._rho_ = newrho;
+		this._ux_ = newux;
+		this._uy_ = newuy;
+	}
+
+	collide(omega){
+
+		let thisrho = this._n0_ + this._nN_ + this._nS_ + this._nE_ + this._nW_ + this._nNW_ + this._nNE_ + this._nSW_ + this._nSE_;
+		this._rho_ = thisrho;
+		let thisux = (this._nE_ + this._nNE_ + this._nSE_ - this._nW_ - this._nNW_ - this._nSW_) / thisrho;
+		this._ux_ = thisux;
+		let thisuy = (this._nN_ + this._nNE_ + this._nNW_ - this._nS_ - this._nSE_ - this._nSW_) / thisrho;
+		this._uy_ = thisuy
+		let one9thrho = one9th * thisrho;		// pre-compute a bunch of stuff for optimization
+		let one36thrho = one36th * thisrho;
+		let ux3 = 3 * thisux;
+		let uy3 = 3 * thisuy;
+		let ux2 = thisux * thisux;
+		let uy2 = thisuy * thisuy;
+		let uxuy2 = 2 * thisux * thisuy;
+		let u2 = ux2 + uy2;
+		let u215 = 1.5 * u2;
+		this._n0_  += omega * (four9ths*thisrho * (1                        - u215) - this._n0_);
+		this._nE_  += omega * (   one9thrho * (1 + ux3       + 4.5*ux2        - u215) - this._nE_);
+		this._nW_  += omega * (   one9thrho * (1 - ux3       + 4.5*ux2        - u215) - this._nW_);
+		this._nN_  += omega * (   one9thrho * (1 + uy3       + 4.5*uy2        - u215) - this._nN_);
+		this._nS_  += omega * (   one9thrho * (1 - uy3       + 4.5*uy2        - u215) - this._nS_);
+		this._nNE_ += omega * (  one36thrho * (1 + ux3 + uy3 + 4.5*(u2+uxuy2) - u215) - this._nNE_);
+		this._nSE_ += omega * (  one36thrho * (1 + ux3 - uy3 + 4.5*(u2-uxuy2) - u215) - this._nSE_);
+		this._nNW_ += omega * (  one36thrho * (1 - ux3 + uy3 + 4.5*(u2-uxuy2) - u215) - this._nNW_);
+		this._nSW_ += omega * (  one36thrho * (1 - ux3 - uy3 + 4.5*(u2+uxuy2) - u215) - this._nSW_);
+
+	}
+}
+
 
 
 export class Boltzmann{
@@ -75,7 +163,6 @@ export class Boltzmann{
 		//  kinematic viscosity coefficient in natural units
 		this.viscosity = 0.020;
 
-		// The _ at the end of the variable name is used for easier search or replacement of names.
 		// Create the arrays of fluid particle densities, etc. (using 1D arrays for speed):
 		// To index into these arrays, use x + y*this.width, traversing rows first and then columns.
 		this._n0_ = new Array(this.width*this.height);			// microscopic densities along each lattice direction
@@ -92,19 +179,39 @@ export class Boltzmann{
 		this._rho_ = new Array(this.width*this.height);			// macroscopic density
 		this._curl_ = new Array(this.width*this.height);	
 
+		this.cells = new Array(this.width*this.height);
+		for (var y=0; y<this.height; y++) {
+			for (var x=0; x<this.width; x++) {
+				this.cells[x+y*this.width] = new SimulationCell(1);
+			}
+		}
+
 		// Setup barrier
 		this.barrier = new Array(this.width*this.height);		// boolean array of barrier locations
 
 		// Initialize with no barriers:
 		for (var y=0; y<this.height; y++) {
 			for (var x=0; x<this.width; x++) {
-				this.barrier[x+y*this.width] = false;
 
+				let index = x + y*this.width;
+
+				// old implementation
+				this.barrier[index] = false;
+				
+				// new implementation
+				this.cells[index].barrier = false;
 
 				// create circular wall
 				let r = 5;
 
-				(Math.pow(this.width/2 - x, 2) + Math.pow(this.height*0.75 - y, 2) < Math.pow(r, 2) )? this.barrier[x+y*this.width] = true : null
+				if(Math.pow(this.width/2 - x, 2) + Math.pow(this.height*0.75 - y, 2) < Math.pow(r, 2) ){
+					
+					// old implementation
+					this.barrier[index] = true;
+
+					// new implementation
+					this.cells[index].barrier = true;
+				}
 
 
 			}
@@ -131,9 +238,15 @@ export class Boltzmann{
 		for (var y=0; y<this.height; y++) {
 			for (var x=0; x<this.width; x++) {
 
-				this.setEquil(x, y, hspeed, vspeed, 1);
+				let index = x + y*this.width;
+
+				// old implementaion
+				this.setEquil(index, hspeed, vspeed, 1);
 				this._curl_[x+y*this.width] = 0.0;
-			}
+
+				//new implementation
+				this.cells[index].setEquil(hspeed, vspeed, 1);
+				this.cells[index].setCurl(0.0);}
 		}
 
 	}
@@ -158,6 +271,7 @@ export class Boltzmann{
 			this.setBoundaries();
 			this.collide();
 			this.stream();
+			this.consolidate();
 	
 
 		}
@@ -167,16 +281,18 @@ export class Boltzmann{
 		this.step_ready = true;
 
 
-		var stable = true;
-		for (var x=0; x<this.width; x++) {
-			var index = x + (this.height/2)*this.width;	// look at middle row only
-			if (this._rho_[index] <= 0) stable = false;
-		}
-		if (!stable) {
-			window.alert("The simulation has become unstable due to excessive fluid speeds.");
-			this.startStop();
-			this.initFluid();
-		}
+		// var stable = true;
+		// for (var x=0; x<this.width; x++) {
+		// 	var index = x + (this.height/2)*this.width;	// look at middle row only
+		// 	if (this._rho_[index] <= 0) stable = false;
+		// }
+		// if (!stable) {
+		// 	window.alert("The simulation has become unstable due to excessive fluid speeds.");
+		// 	this.startStop();
+		// 	this.initFluid();
+		// }
+
+
 		this.graphics_model_init();
 
 	}
@@ -213,12 +329,30 @@ export class Boltzmann{
 		let vspeed = Math.sin(this.direction/180*Math.PI)*this.speed
 
 		for (var x=0; x<this.width; x++) {
-			this.setEquil(x, 0, hspeed, vspeed, 1);
-			this.setEquil(x, this.height-1, hspeed, vspeed, 1);
+			let index = x + 0*this.width;
+			// old implementation
+			this.setEquil(index, hspeed, vspeed, 1);
+			// new implementation
+			this.cells[index].setEquil(hspeed, vspeed, 1);
+
+			index = x + (this.height-1)*this.width;
+			// old implementation
+			this.setEquil(index, hspeed, vspeed, 1);
+			// new implementation
+			this.cells[index].setEquil(hspeed, vspeed, 1);
 		}
 		for (var y=1; y<this.height-1; y++) {
-			this.setEquil(0, y, hspeed, vspeed, 1);
-			this.setEquil(this.width-1, y, hspeed, vspeed, 1);
+			let index = 0 + y*this.width;
+			// old implementation
+			this.setEquil(index, hspeed, vspeed, 1);
+			// new implementation
+			this.cells[index].setEquil(hspeed, vspeed, 1);
+
+			index = (this.width-1) + y*this.width;
+			// old implementation
+			this.setEquil(index, hspeed, vspeed, 1);
+			// new implementation
+			this.cells[index].setEquil(hspeed, vspeed, 1);
 		}
 	}
 
@@ -226,40 +360,52 @@ export class Boltzmann{
 	collide() {
 		
 		var omega = 1 / (3*this.viscosity + 0.5);		// reciprocal of relaxation time
+		
 		for (var y=1; y<this.height-1; y++) {
 			for (var x=1; x<this.width-1; x++) {
-				var i = x + y*this.width;		// array index for this lattice site
-				var thisrho = this._n0_[i] + this._nN_[i] + this._nS_[i] + this._nE_[i] + this._nW_[i] + this._nNW_[i] + this._nNE_[i] + this._nSW_[i] + this._nSE_[i];
-				this._rho_[i] = thisrho;
-				var thisux = (this._nE_[i] + this._nNE_[i] + this._nSE_[i] - this._nW_[i] - this._nNW_[i] - this._nSW_[i]) / thisrho;
-				this._ux_[i] = thisux;
-				var thisuy = (this._nN_[i] + this._nNE_[i] + this._nNW_[i] - this._nS_[i] - this._nSE_[i] - this._nSW_[i]) / thisrho;
-				this._uy_[i] = thisuy
-				var one9thrho = one9th * thisrho;		// pre-compute a bunch of stuff for optimization
-				var one36thrho = one36th * thisrho;
-				var ux3 = 3 * thisux;
-				var uy3 = 3 * thisuy;
-				var ux2 = thisux * thisux;
-				var uy2 = thisuy * thisuy;
-				var uxuy2 = 2 * thisux * thisuy;
-				var u2 = ux2 + uy2;
-				var u215 = 1.5 * u2;
-				this._n0_[i]  += omega * (four9ths*thisrho * (1                        - u215) - this._n0_[i]);
-				this._nE_[i]  += omega * (   one9thrho * (1 + ux3       + 4.5*ux2        - u215) - this._nE_[i]);
-				this._nW_[i]  += omega * (   one9thrho * (1 - ux3       + 4.5*ux2        - u215) - this._nW_[i]);
-				this._nN_[i]  += omega * (   one9thrho * (1 + uy3       + 4.5*uy2        - u215) - this._nN_[i]);
-				this._nS_[i]  += omega * (   one9thrho * (1 - uy3       + 4.5*uy2        - u215) - this._nS_[i]);
-				this._nNE_[i] += omega * (  one36thrho * (1 + ux3 + uy3 + 4.5*(u2+uxuy2) - u215) - this._nNE_[i]);
-				this._nSE_[i] += omega * (  one36thrho * (1 + ux3 - uy3 + 4.5*(u2-uxuy2) - u215) - this._nSE_[i]);
-				this._nNW_[i] += omega * (  one36thrho * (1 - ux3 + uy3 + 4.5*(u2-uxuy2) - u215) - this._nNW_[i]);
-				this._nSW_[i] += omega * (  one36thrho * (1 - ux3 - uy3 + 4.5*(u2+uxuy2) - u215) - this._nSW_[i]);
+
+				let index = x + y*this.width;		// array index for this lattice site
+
+				// old implementation
+				let thisrho = this._n0_[index] + this._nN_[index] + this._nS_[index] + this._nE_[index] + this._nW_[index] + this._nNW_[index] + this._nNE_[index] + this._nSW_[index] + this._nSE_[index];
+				this._rho_[index] = thisrho;
+				let thisux = (this._nE_[index] + this._nNE_[index] + this._nSE_[index] - this._nW_[index] - this._nNW_[index] - this._nSW_[index]) / thisrho;
+				this._ux_[index] = thisux;
+				let thisuy = (this._nN_[index] + this._nNE_[index] + this._nNW_[index] - this._nS_[index] - this._nSE_[index] - this._nSW_[index]) / thisrho;
+				this._uy_[index] = thisuy
+				let one9thrho = one9th * thisrho;		// pre-compute a bunch of stuff for optimization
+				let one36thrho = one36th * thisrho;
+				let ux3 = 3 * thisux;
+				let uy3 = 3 * thisuy;
+				let ux2 = thisux * thisux;
+				let uy2 = thisuy * thisuy;
+				let uxuy2 = 2 * thisux * thisuy;
+				let u2 = ux2 + uy2;
+				let u215 = 1.5 * u2;
+				this._n0_[index]  += omega * (four9ths*thisrho * (1                        - u215) - this._n0_[index]);
+				this._nE_[index]  += omega * (   one9thrho * (1 + ux3       + 4.5*ux2        - u215) - this._nE_[index]);
+				this._nW_[index]  += omega * (   one9thrho * (1 - ux3       + 4.5*ux2        - u215) - this._nW_[index]);
+				this._nN_[index]  += omega * (   one9thrho * (1 + uy3       + 4.5*uy2        - u215) - this._nN_[index]);
+				this._nS_[index]  += omega * (   one9thrho * (1 - uy3       + 4.5*uy2        - u215) - this._nS_[index]);
+				this._nNE_[index] += omega * (  one36thrho * (1 + ux3 + uy3 + 4.5*(u2+uxuy2) - u215) - this._nNE_[index]);
+				this._nSE_[index] += omega * (  one36thrho * (1 + ux3 - uy3 + 4.5*(u2-uxuy2) - u215) - this._nSE_[index]);
+				this._nNW_[index] += omega * (  one36thrho * (1 - ux3 + uy3 + 4.5*(u2-uxuy2) - u215) - this._nNW_[index]);
+				this._nSW_[index] += omega * (  one36thrho * (1 - ux3 - uy3 + 4.5*(u2+uxuy2) - u215) - this._nSW_[index]);
+
+				// new implementation
+				this.cells[index].collide(omega);
 			}
 		}
-		for (var y=1; y<this.height-2; y++) {
-			this._nW_[this.width-1+y*this.width] = this._nW_[this.width-2+y*this.width];		// at right end, copy left-flowing densities from next row to the left
-			this._nNW_[this.width-1+y*this.width] = this._nNW_[this.width-2+y*this.width];
-			this._nSW_[this.width-1+y*this.width] = this._nSW_[this.width-2+y*this.width];
-		}
+
+		// for (var y=1; y<this.height-2; y++) {
+
+		// 	let index_from = this.width-2+y*this.width;
+		// 	let index_to = this.width-1+y*this.width;
+
+		// 	this._nW_[index_to] = this._nW_[index_from];		// at right end, copy left-flowing densities from next row to the left
+		// 	this._nNW_[index_to] = this._nNW_[index_from];
+		// 	this._nSW_[index_to] = this._nSW_[index_from];
+		// }
 	}
 
 	// Move particles along their directions of motion:
@@ -291,7 +437,7 @@ export class Boltzmann{
 		}
 
 		
-		const opacity = 0.70;
+		const opacity = 0.75;
 		const transparency = 1-opacity;
 		for (var y=1; y<this.height-1; y++) {				// Now handle bounce-back from barriers
 			for (var x=1; x<this.width-1; x++) {
@@ -311,13 +457,14 @@ export class Boltzmann{
 			}
 		}
 	}
-
+	consolidate() {
+	}
 	// Set all densities in a cell to their equilibrium values for a given velocity and density:
 	// (If density is omitted, it's left unchanged.)
-	setEquil(x, y, newux, newuy, newrho) {
-		var i = x + y*this.width;
+	setEquil(index, newux, newuy, newrho) {
+
 		if (typeof newrho == 'undefined') {
-			newrho = this._rho_[i];
+			newrho = this._rho_[index];
 		}
 		var ux3 = 3 * newux;
 		var uy3 = 3 * newuy;
@@ -326,18 +473,18 @@ export class Boltzmann{
 		var uxuy2 = 2 * newux * newuy;
 		var u2 = ux2 + uy2;
 		var u215 = 1.5 * u2;
-		this._n0_[i]  = four9ths * newrho * (1                              - u215);
-		this._nE_[i]  =   one9th * newrho * (1 + ux3       + 4.5*ux2        - u215);
-		this._nW_[i]  =   one9th * newrho * (1 - ux3       + 4.5*ux2        - u215);
-		this._nN_[i]  =   one9th * newrho * (1 + uy3       + 4.5*uy2        - u215);
-		this._nS_[i]  =   one9th * newrho * (1 - uy3       + 4.5*uy2        - u215);
-		this._nNE_[i] =  one36th * newrho * (1 + ux3 + uy3 + 4.5*(u2+uxuy2) - u215);
-		this._nSE_[i] =  one36th * newrho * (1 + ux3 - uy3 + 4.5*(u2-uxuy2) - u215);
-		this._nNW_[i] =  one36th * newrho * (1 - ux3 + uy3 + 4.5*(u2-uxuy2) - u215);
-		this._nSW_[i] =  one36th * newrho * (1 - ux3 - uy3 + 4.5*(u2+uxuy2) - u215);
-		this._rho_[i] = newrho;
-		this._ux_[i] = newux;
-		this._uy_[i] = newuy;
+		this._n0_[index]  = four9ths * newrho * (1                              - u215);
+		this._nE_[index]  =   one9th * newrho * (1 + ux3       + 4.5*ux2        - u215);
+		this._nW_[index]  =   one9th * newrho * (1 - ux3       + 4.5*ux2        - u215);
+		this._nN_[index]  =   one9th * newrho * (1 + uy3       + 4.5*uy2        - u215);
+		this._nS_[index]  =   one9th * newrho * (1 - uy3       + 4.5*uy2        - u215);
+		this._nNE_[index] =  one36th * newrho * (1 + ux3 + uy3 + 4.5*(u2+uxuy2) - u215);
+		this._nSE_[index] =  one36th * newrho * (1 + ux3 - uy3 + 4.5*(u2-uxuy2) - u215);
+		this._nNW_[index] =  one36th * newrho * (1 - ux3 + uy3 + 4.5*(u2-uxuy2) - u215);
+		this._nSW_[index] =  one36th * newrho * (1 - ux3 - uy3 + 4.5*(u2+uxuy2) - u215);
+		this._rho_[index] = newrho;
+		this._ux_[index] = newux;
+		this._uy_[index] = newuy;
 	}
 
 
@@ -397,21 +544,25 @@ export class Boltzmann{
 	//	x += this.width/2;
 	//	y += this.height/2
 
-		let i = x + y*this.width;
+		let index = x + y*this.width;
 	
 		// F = m * a
 		// a = F/m
 		// dv/dt = F/m
 
-		let vx = this._ux_[i]
-		let vy = this._uy_[i]
-		let m = this._rho_[i];
+		let vx = this._ux_[index];
+		let vy = this._uy_[index];
+		let m = this._rho_[index];
 
 		let dvx = Math.cos(direction/180*Math.PI) * s / m * -1;
 		let dvy = Math.sin(direction/180*Math.PI) * s / m * -1;
 		
-		this.setEquil(x,y, vx + dvx, vy + dvy)
-		//this._nE_[i] = 0.1
+
+		// old implementation
+		this.setEquil(index, vx + dvx, vy + dvy)
+
+		// new implementation
+		this.cells[index].setEquil(vx + dvx, vy + dvy)
 
 	}
 
