@@ -54,7 +54,9 @@ class SimulationCell{
 
 		this.sub_mesh_depth = sub_mesh_depth; // 0 = boltzmann_root, 1 = simuation_cell, 2 = submesh_container
 		this.parent = null;
-		this._n0_  = 0; // microscopic densities along each lattice direction
+		this._n0_  = 0; 
+		
+		// microscopic densities along each lattice direction
 		this._nN_  = 0;
 		this._nS_  = 0;
 		this._nE_  = 0;
@@ -63,6 +65,16 @@ class SimulationCell{
 		this._nSE_ = 0;
 		this._nNW_ = 0;
 		this._nSW_ = 0;
+
+		this._received_nN_  = 0;
+		this._received_nS_  = 0;
+		this._received_nE_  = 0;
+		this._received_nW_  = 0;
+		this._received_nNE_ = 0;
+		this._received_nSE_ = 0;
+		this._received_nNW_ = 0;
+		this._received_nSW_ = 0;
+
 		this._ux_  = 0; // macroscopic x velocity
 		this._uy_  = 0; // macroscopic y velocity
 		this._rho_ = 0; // macroscopic density
@@ -165,7 +177,9 @@ export class Boltzmann{
 
 		// Create the arrays of fluid particle densities, etc. (using 1D arrays for speed):
 		// To index into these arrays, use x + y*this.width, traversing rows first and then columns.
-		this._n0_ = new Array(this.width*this.height);			// microscopic densities along each lattice direction
+		this._n0_ = new Array(this.width*this.height);			
+		
+		// microscopic densities along each lattice direction
 		this._nN_ = new Array(this.width*this.height);
 		this._nS_ = new Array(this.width*this.height);
 		this._nE_ = new Array(this.width*this.height);
@@ -174,6 +188,17 @@ export class Boltzmann{
 		this._nSE_ = new Array(this.width*this.height);
 		this._nNW_ = new Array(this.width*this.height);
 		this._nSW_ = new Array(this.width*this.height);
+
+		// microscopic densities along each lattice direction
+		this._received_nN_ = new Array(this.width*this.height);
+		this._received_nS_ = new Array(this.width*this.height);
+		this._received_nE_ = new Array(this.width*this.height);
+		this._received_nW_ = new Array(this.width*this.height);
+		this._received_nNE_ = new Array(this.width*this.height);
+		this._received_nSE_ = new Array(this.width*this.height);
+		this._received_nNW_ = new Array(this.width*this.height);
+		this._received_nSW_ = new Array(this.width*this.height);
+
 		this._ux_ = new Array(this.width*this.height);			// macroscopic velocity
 		this._uy_ = new Array(this.width*this.height);
 		this._rho_ = new Array(this.width*this.height);			// macroscopic density
@@ -458,6 +483,25 @@ export class Boltzmann{
 		}
 	}
 	consolidate() {
+
+		// this._nN_  = this._received_nN_  ;
+		// this._nS_  = this._received_nS_  ;
+		// this._nE_  = this._received_nE_  ;
+		// this._nW_  = this._received_nW_  ;
+		// this._nNE_ = this._received_nNE_ ;
+		// this._nSE_ = this._received_nSE_ ;
+		// this._nNW_ = this._received_nNW_ ;
+		// this._nSW_ = this._received_nSW_ ;
+
+		// this._received_nN_  = 0;
+		// this._received_nS_  = 0;
+		// this._received_nE_  = 0;
+		// this._received_nW_  = 0;
+		// this._received_nNE_ = 0;
+		// this._received_nSE_ = 0;
+		// this._received_nNW_ = 0;
+		// this._received_nSW_ = 0;
+
 	}
 	// Set all densities in a cell to their equilibrium values for a given velocity and density:
 	// (If density is omitted, it's left unchanged.)
