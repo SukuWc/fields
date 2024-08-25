@@ -17,10 +17,7 @@ const wind_speed = 7
 const bm_resolution = 1.5;
 
 var texture_oversampling = 2;
-const bm = new Boltzmann(map_w, map_h, bm_resolution, wind_angle, wind_speed, undefined, texture_oversampling);
 
-let map = new Map(map_w, map_h, wind_angle, wind_speed, bm)
-map.physics_model_init()
 
 /*Data texture*/
 
@@ -28,26 +25,21 @@ var _side1 = texture_oversampling* map_w*bm_resolution; // power of two textures
 var _side2 = texture_oversampling* map_h*bm_resolution; // power of two textures are better cause powers of two are required by some algorithms. Like ones that decide what color will pixel have if amount of pixels is less than amount of textels (see three.js console error when given non-power-of-two texture)
 
 var _amount = _side1*_side2*4; // you need 4 values for every pixel in side*side plane
-var _data = new Uint8Array(_amount);
+var _data1 = new Uint8Array(_amount);
 
-for (var i = 0; i < _amount; i++) {
-  _data[i] = Math.random()*256; // generates random r,g,b,a values from 0 to 1
-}
-
-var _dataTex = new THREE.DataTexture(_data, _side1, _side2, THREE.RGBAFormat, THREE.UnsignedByteType, THREE.UVMapping); // maybe RGBAIntegerFormat but that requires WebGL2 rendering context
-var _dataTex2 = new THREE.DataTexture(_data, _side1, _side2, THREE.RGBAFormat, THREE.UnsignedByteType, THREE.UVMapping);
+var dataTextureMaterial = new THREE.DataTexture(_data1, _side1, _side2, THREE.RGBAFormat, THREE.UnsignedByteType, THREE.UVMapping); // maybe RGBAIntegerFormat but that requires WebGL2 rendering context
 
 
-_dataTex.magFilter = THREE.NearestFilter; // also check out THREE.LinearFilter just to see the results
-_dataTex.needsUpdate = true; // somehow this line is required for this demo to work. I have not figured that out yet. 
+dataTextureMaterial.magFilter = THREE.NearestFilter; // also check out THREE.LinearFilter just to see the results
+dataTextureMaterial.needsUpdate = true; // somehow this line is required for this demo to work. I have not figured that out yet. 
 
-var _planeMat = new THREE.MeshBasicMaterial({map: _dataTex, transparent: true });
+var _planeMat = new THREE.MeshBasicMaterial({map: dataTextureMaterial, transparent: true });
 _planeMat.needsUpdate = true;
 
-map.bm.texture = _dataTex2
+const bm = new Boltzmann(map_w, map_h, bm_resolution, wind_angle, wind_speed, dataTextureMaterial, texture_oversampling);
 
-
-
+let map = new Map(map_w, map_h, wind_angle, wind_speed, bm)
+map.physics_model_init()
 
 const range_map =  function (input, in_min, in_max, out_min, out_max) {
   let value = (input - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
@@ -527,11 +519,9 @@ runner.start(() => {
   position.x = 0
   position.y = 0
   
-  renderer.copyTextureToTexture( position, dataTex2, dataTex );
-
   if (bm.step_ready){
 
-    renderer.copyTextureToTexture( position, _dataTex2, _dataTex );
+    renderer.copyTextureToTexture( position, dataTextureMaterial, dataTextureMaterial );
     bm.step_ready = false;
   }
 

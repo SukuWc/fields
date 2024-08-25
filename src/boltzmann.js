@@ -608,10 +608,6 @@ export class Boltzmann{
 
 			}
 		}
-
-		context.putImageData(this.image, 0, 0);		// blast image to the screen
-
-
 	}
 
 	// Color a grid square in the image data array, one pixel at a time (rgb each in range 0 to 255):
@@ -642,20 +638,6 @@ export class Boltzmann{
 
 				}
 		
-		
-		
-		
-				var flippedy = this.height - y - 1;			// put y=0 at the bottom
-				for (var py=flippedy; py<(flippedy+1); py++) {
-					for (var px=x; px<(x+1); px++) {
-						var index = (px + py*this.width) * 4;
-						this.image.data[index+0] = r;
-						this.image.data[index+1] = g;
-						this.image.data[index+2] = b;
-					}
-				}
-
-
 			}
 		}
 			
