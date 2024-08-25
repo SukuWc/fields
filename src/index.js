@@ -6,7 +6,6 @@ import { Boltzmann } from './boltzmann.js';
 
 
 import {Map} from './map.js';
-import {Gust} from './gust.js';
 import {Boat} from './boat.js';
 
 
@@ -51,7 +50,6 @@ const range_map =  function (input, in_min, in_max, out_min, out_max) {
 
 let scenario_descriptor = {}
 let players = []
-let gusts = []
 
 let physics_frame = 0;
 
@@ -61,28 +59,6 @@ const runner = new Runner(map.world, {
 	speed: 1,
 	fps: 30,
 })
-
-
-/*Data texture*/
-var side1 = map.fluid.vectorField.areaWidth; // power of two textures are better cause powers of two are required by some algorithms. Like ones that decide what color will pixel have if amount of pixels is less than amount of textels (see three.js console error when given non-power-of-two texture)
-var side2 = map.fluid.vectorField.areaHeight; // power of two textures are better cause powers of two are required by some algorithms. Like ones that decide what color will pixel have if amount of pixels is less than amount of textels (see three.js console error when given non-power-of-two texture)
-
-var amount = side1*side2; // you need 4 values for every pixel in side*side plane
-var data = new Uint8Array(amount);
-
-for (var i = 0; i < amount; i++) {
-  data[i] = Math.random()*256; // generates random r,g,b,a values from 0 to 1
-}
-
-var dataTex = new THREE.DataTexture(data, side1, side2, THREE.LuminanceFormat, THREE.UnsignedByteType);
-var dataTex2 = new THREE.DataTexture(data, side1, side2, THREE.LuminanceFormat, THREE.UnsignedByteType);
-
-
-dataTex.magFilter = THREE.NearestFilter; // also check out THREE.LinearFilter just to see the results
-dataTex.needsUpdate = true; // somehow this line is required for this demo to work. I have not figured that out yet. 
-
-var planeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, alphaMap: dataTex, transparent: true });
-planeMat.needsUpdate = true;
 
 
 
@@ -338,8 +314,6 @@ scenarios[4] [2000] = () => {scenario_clear()}
 
 
 scenarios[5] = []
-scenarios[5] [0] = () => {gusts = []}
-scenarios[5] [1] = () => {gusts.push(new Gust(map))}
 
 scenario_start(scenarios[document.getElementById("scenario_selector").value]);
 
@@ -395,12 +369,6 @@ runner.start(() => {
 
   map.set_camera_follow_target(players[0])
   map.physics_model_step();
-
-  gusts.forEach(gust => {
-
-      gust.physics_model_step();
-
-  });
 
   let sumOfPlayerDistances = 0;
 
@@ -484,32 +452,6 @@ runner.start(() => {
 
 
   physics_frame++
-
-  // map.fluid.loop()
-
-
-
-  var field = map.fluid.vectorField.field;
-
-  const data = dataTex2.image.data
-
-  for (let _x=0; _x<map.fluid.vectorField.areaWidth*texture_oversampling; _x++){
-
-    for (let _y=0; _y<map.fluid.vectorField.areaHeight*texture_oversampling; _y++){
-
-      let x = Math.floor(_x/texture_oversampling)
-      let y = Math.floor(_y/texture_oversampling)
-
-      let velocity = field[x][y].velocity
-
-      let val = 256-range_map(velocity, 10, 15, 0, 256)
-
-      data[y*map.fluid.vectorField.areaWidth + x] = val
-
-    }
-
-
-  }
 
 
 

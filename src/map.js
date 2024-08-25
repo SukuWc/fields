@@ -1,7 +1,5 @@
 import planck, { random } from 'planck-js/dist/planck-with-testbed';
 
-import {fluid} from './fluid.js';
-
 
 import { World, Circle } from 'planck-js'
 let pl = planck, Vec2 = pl.Vec2;
@@ -30,8 +28,6 @@ export class Map{
 	constructor(width, height, direction, speed, boltzmann){
 	
 		this.bm = boltzmann
-
-		this.fluid = fluid
 		this.world = undefined
 	
 
@@ -64,8 +60,6 @@ export class Map{
 	
 	physics_model_init(){
 
-
-		this.fluid.init(this.width, this.height)
 		this.world =  new World(Vec2(0, 0));
 	  
 		let ground = this.world.createBody(Vec2(0.0, 0.0));

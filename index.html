@@ -61,7 +61,7 @@
 
 
       <div>
-        <select id="plotSelect" onchange="paintCanvas()">
+        <select id="plotSelect">
           <option>Plot density</option>
           <option>Plot x velocity</option>
           <option>Plot y velocity</option>
@@ -69,7 +69,7 @@
           <option>Plot curl</option>
         </select>
         &nbsp;&nbsp;Contrast:
-        <input id="contrastSlider" type="range" min="-10" max="10" step="1" value="0" onchange="paintCanvas()">
+        <input id="contrastSlider" type="range" min="-10" max="10" step="1" value="0">
         &nbsp;&nbsp;Mirror:
         <input id="mirrorSlider" type="range" min="0" max="359" step="1" value="0">
       </div>
