@@ -436,46 +436,44 @@ export class Boltzmann{
 	// Move particles along their directions of motion:
 	stream() {
 
-		for (var y=this.height-2; y>0; y--) {			// first start in NW corner...
+
+		// stream the particles across the grid
+		for (var y=1; y<this.height-1; y++) {
 			for (var x=1; x<this.width-1; x++) {
-				this._nN_[x+y*this.width] = this._nN_[x+(y-1)*this.width];			// move the north-moving particles
-				this._nNW_[x+y*this.width] = this._nNW_[x+1+(y-1)*this.width];		// and the northwest-moving particles
-			}
-		}
-		for (var y=this.height-2; y>0; y--) {			// now start in NE corner...
-			for (var x=this.width-2; x>0; x--) {
-				this._nE_[x+y*this.width] = this._nE_[x-1+y*this.width];			// move the east-moving particles
-				this._nNE_[x+y*this.width] = this._nNE_[x-1+(y-1)*this.width];		// and the northeast-moving particles
-			}
-		}
-		for (var y=1; y<this.height-1; y++) {			// now start in SE corner...
-			for (var x=this.width-2; x>0; x--) {
-				this._nS_[x+y*this.width] = this._nS_[x+(y+1)*this.width];			// move the south-moving particles
-				this._nSE_[x+y*this.width] = this._nSE_[x-1+(y+1)*this.width];		// and the southeast-moving particles
-			}
-		}
-		for (var y=1; y<this.height-1; y++) {				// now start in the SW corner...
-			for (var x=1; x<this.width-1; x++) {
-				this._nW_[x+y*this.width] = this._nW_[x+1+y*this.width];			// move the west-moving particles
-				this._nSW_[x+y*this.width] = this._nSW_[x+1+(y+1)*this.width];		// and the southwest-moving particles
+
+				let index = x+y*this.width;
+
+				this._received_nN_[index] = this._nN_[x+(y-1)*this.width];			// move the north-moving particles
+				this._received_nNW_[index] = this._nNW_[x+1+(y-1)*this.width];		// and the northwest-moving particles
+
+				this._received_nE_[index] = this._nE_[x-1+y*this.width];			// move the east-moving particles
+				this._received_nNE_[index] = this._nNE_[x-1+(y-1)*this.width];		// and the northeast-moving particles
+
+				this._received_nS_[index] = this._nS_[x+(y+1)*this.width];			// move the south-moving particles
+				this._received_nSE_[index] = this._nSE_[x-1+(y+1)*this.width];		// and the southeast-moving particles
+				
+				this._received_nW_[index] = this._nW_[x+1+y*this.width];			// move the west-moving particles
+				this._received_nSW_[index] = this._nSW_[x+1+(y+1)*this.width];		// and the southwest-moving particles
 			}
 		}
 
-		
-		const opacity = 0.75;
-		const transparency = 1-opacity;
-		for (var y=1; y<this.height-1; y++) {				// Now handle bounce-back from barriers
+		// bounce particles off barriers
+		for (var y=1; y<this.height-1; y++) {
 			for (var x=1; x<this.width-1; x++) {
-				if (this.barrier[x+y*this.width]) {
-					var index = x + y*this.width;
-					this._nE_[x+1+y*this.width] = this._nE_[x+1+y*this.width]*transparency + this._nW_[index]*opacity;
-					this._nW_[x-1+y*this.width] = this._nW_[x-1+y*this.width]*transparency + this._nE_[index]*opacity;
-					this._nN_[x+(y+1)*this.width] = this._nN_[x+(y+1)*this.width]*transparency +  this._nS_[index]*opacity;
-					this._nS_[x+(y-1)*this.width] = this._nS_[x+(y-1)*this.width]*transparency +  this._nN_[index]*opacity;
-					this._nNE_[x+1+(y+1)*this.width] = this._nNE_[x+1+(y+1)*this.width]*transparency +  this._nSW_[index]*opacity;
-					this._nNW_[x-1+(y+1)*this.width] = this._nNW_[x-1+(y+1)*this.width]*transparency +  this._nSE_[index]*opacity;
-					this._nSE_[x+1+(y-1)*this.width] = this._nSE_[x+1+(y-1)*this.width]*transparency +  this._nNW_[index]*opacity;
-					this._nSW_[x-1+(y-1)*this.width] = this._nSW_[x-1+(y-1)*this.width] *transparency +  this._nNE_[index]*opacity;
+
+		
+				let index = x+y*this.width;
+
+				if (this.barrier[index]) {
+					
+					this._received_nE_[x+1+y*this.width] =  this._received_nW_[index];
+					this._received_nW_[x-1+y*this.width] =  this._received_nE_[index];
+					this._received_nN_[x+(y+1)*this.width] = this._received_nS_[index];
+					this._received_nS_[x+(y-1)*this.width] = this._received_nN_[index];
+					this._received_nNE_[x+1+(y+1)*this.width] = this._received_nSW_[index];
+					this._received_nNW_[x-1+(y+1)*this.width] = this._received_nSE_[index];
+					this._received_nSE_[x+1+(y-1)*this.width] = this._received_nNW_[index];
+					this._received_nSW_[x-1+(y-1)*this.width] = this._received_nNE_[index];
 
 
 				}
@@ -484,23 +482,29 @@ export class Boltzmann{
 	}
 	consolidate() {
 
-		// this._nN_  = this._received_nN_  ;
-		// this._nS_  = this._received_nS_  ;
-		// this._nE_  = this._received_nE_  ;
-		// this._nW_  = this._received_nW_  ;
-		// this._nNE_ = this._received_nNE_ ;
-		// this._nSE_ = this._received_nSE_ ;
-		// this._nNW_ = this._received_nNW_ ;
-		// this._nSW_ = this._received_nSW_ ;
+		for (var y=0; y<this.height; y++) {
+			for (var x=0; x<this.width; x++) {
 
-		// this._received_nN_  = 0;
-		// this._received_nS_  = 0;
-		// this._received_nE_  = 0;
-		// this._received_nW_  = 0;
-		// this._received_nNE_ = 0;
-		// this._received_nSE_ = 0;
-		// this._received_nNW_ = 0;
-		// this._received_nSW_ = 0;
+				let index = x+y*this.width;
+				this._nN_[index]  = this._received_nN_[index]  ;
+				this._nS_[index]  = this._received_nS_[index]  ;
+				this._nE_[index]  = this._received_nE_[index]  ;
+				this._nW_[index]  = this._received_nW_[index]  ;
+				this._nNE_[index] = this._received_nNE_[index] ;
+				this._nSE_[index] = this._received_nSE_[index] ;
+				this._nNW_[index] = this._received_nNW_[index] ;
+				this._nSW_[index] = this._received_nSW_[index] ;
+
+				this._received_nN_[index]  = 0;
+				this._received_nS_[index]  = 0;
+				this._received_nE_[index]  = 0;
+				this._received_nW_[index]  = 0;
+				this._received_nNE_[index] = 0;
+				this._received_nSE_[index] = 0;
+				this._received_nNW_[index] = 0;
+				this._received_nSW_[index] = 0;
+			}
+		}
 
 	}
 	// Set all densities in a cell to their equilibrium values for a given velocity and density:
