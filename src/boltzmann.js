@@ -37,6 +37,14 @@ for (var c=0; c<=nColors; c++) {
 redList[nColors+1] = 0; greenList[nColors+1] = 0; blueList[nColors+1] = 0;	// barriers are black
 hexColorList[nColors+1] = rgbToHex(0, 0, 0);
 
+function get_color(cIndex){
+
+	if (cIndex < 0) cIndex = 0;
+	if (cIndex > nColors) cIndex = nColors;
+
+	return {red: redList[cIndex], green: greenList[cIndex], blue: blueList[cIndex]};
+}
+
 // Functions to convert rgb to hex color string (from stackoverflow):
 function componentToHex(c) {
 	var hex = c.toString(16);
@@ -241,6 +249,58 @@ class SimulationCell{
 
 
 	}
+
+	calculate_color(root, plot_type, contrast){
+
+		let color;
+
+		if (this.barrier) {
+			color = {red: 0, green: 0, blue: 0};	// kludge for barrier color which isn't really part of color map
+		} else {
+			if (plot_type == -1) {
+				color = {red: 255/this.sub_mesh_depth, green: 255/this.sub_mesh_depth, blue: 255/this.sub_mesh_depth};
+				if (this.x>this.parent.x){
+					if (this.y>this.parent.y){
+						
+						color.red = 0;
+					}
+					else{
+						color.green = 0;
+					}
+				}
+				else{
+					color.blue = 0;
+				}
+			}
+
+
+
+			else if (plot_type == 0) {
+				color = get_color( Math.round(nColors * ((this._rho_-1)*6*contrast + 0.5)));
+			} else if (plot_type == 1) {
+				color = get_color( Math.round(nColors * (this._ux_*2*contrast + 0.5)));
+			} else if (plot_type == 2) {
+				color = get_color(Math.round(nColors * (this._uy_*2*contrast + 0.5)));
+			} else if (plot_type == 3) {
+				var speed = Math.sqrt(this._ux_*this._ux_ + this._uy_*this._uy_);
+				color = get_color(Math.round(nColors * (speed*4*contrast)));
+			} else {
+				color = get_color(Math.round(nColors * (this._curl_*5*contrast + 0.5)));
+			}
+			
+		}
+
+		root.colorSquare(this.x, this.y, Math.pow(0.5,this.sub_mesh_depth-1), color.red, color.green, color.blue);
+
+		if (this.child_00 !== null){
+			this.child_00.calculate_color(root, -1, contrast);
+			this.child_01.calculate_color(root, -1, contrast);
+			this.child_10.calculate_color(root, -1, contrast);
+			this.child_11.calculate_color(root, -1, contrast);
+		}
+
+
+	}
 }
 
 
@@ -369,6 +429,7 @@ export class Boltzmann{
 			this.stream();
 			this.bounce();
 			this.consolidate();
+			this.computeCurl();
 	
 
 		}
@@ -740,60 +801,43 @@ export class Boltzmann{
 		return {x: vx/4, y: vy/4}
 	}
 
+
 	paintTexture() {
 		var cIndex=0;
+
+
 		var contrast = Math.pow(1.2,Number(contrastSlider.value));
 		var plotType = plotSelect.selectedIndex;
 
-		if (plotType == 4) this.computeCurl();
+
 		for (var y=0; y<this.height; y++) {
 			for (var x=0; x<this.width; x++) {
-				if (this.find_cell(x,y).barrier) {
-					cIndex = nColors + 1;	// kludge for barrier color which isn't really part of color map
-				} else {
-					if (plotType == 0) {
-						cIndex = Math.round(nColors * ((this.find_cell(x,y)._rho_-1)*6*contrast + 0.5));
-					} else if (plotType == 1) {
-						cIndex = Math.round(nColors * (this.find_cell(x,y)._ux_*2*contrast + 0.5));
-					} else if (plotType == 2) {
-						cIndex = Math.round(nColors * (this.find_cell(x,y)._uy_*2*contrast + 0.5));
-					} else if (plotType == 3) {
-						var speed = Math.sqrt(this.find_cell(x,y)._ux_*this.find_cell(x,y)._ux_ + this.find_cell(x,y)._uy_*this.find_cell(x,y)._uy_);
-						cIndex = Math.round(nColors * (speed*4*contrast));
-					} else {
-						cIndex = Math.round(nColors * (this.find_cell(x,y)._curl_*5*contrast + 0.5));
-					}
-					if (cIndex < 0) cIndex = 0;
-					if (cIndex > nColors) cIndex = nColors;
-				}
 
-				// let accent = false;
-				// if (this.find_cell(x,y)._curl_ > 0.005 || this.find_cell(x,y)._curl_ < -0.005) {
-				// 	accent = true;
+				let cell = this.find_cell(x,y);
+
+				cell.calculate_color(this, plotType, contrast);
+
+				//this.colorSquare(x, y, Math.pow(0.5,this.find_cell(x,y).sub_mesh_depth-1), redList[cIndex], greenList[cIndex], blueList[cIndex]);
+
+				// let last_cell = this.find_cell(x,y)
+
+				// for (let i = 0; i < this.oversampling; i++) {
+				// 	if (last_cell.child_00 !== null) {
+				// 		this.colorSquare(last_cell.child_00.x, last_cell.child_00.y, 0.5, 255, 0, 0);
+				// 		this.colorSquare(last_cell.child_01.x, last_cell.child_01.y, 0.5, 0,255,0);
+				// 		this.colorSquare(last_cell.child_10.x, last_cell.child_10.y, 0.5, 0, 0, 255);
+				// 		this.colorSquare(last_cell.child_11.x, last_cell.child_11.y, 0.5, 0, 0, 0);
+
+				// 		if (last_cell.child_00.child_00 !== null) {
+				// 			this.colorSquare(last_cell.child_00.child_00.x, last_cell.child_00.child_00.y, 0.25, 255, 0, 0);
+				// 			this.colorSquare(last_cell.child_00.child_01.x, last_cell.child_00.child_01.y, 0.25, 0,255,0);
+				// 			this.colorSquare(last_cell.child_00.child_10.x, last_cell.child_00.child_10.y, 0.25, 0, 0, 255);
+				// 			this.colorSquare(last_cell.child_00.child_11.x, last_cell.child_00.child_11.y, 0.25, 0, 0, 0);
+				// 		}
+				// 	}else{
+				// 		break;
+				// 	}
 				// }
-
-
-				this.colorSquare(x, y, 1, redList[cIndex], greenList[cIndex], blueList[cIndex]);
-
-				let last_cell = this.find_cell(x,y)
-
-				for (let i = 0; i < this.oversampling; i++) {
-					if (last_cell.child_00 !== null) {
-						this.colorSquare(last_cell.child_00.x, last_cell.child_00.y, 0.5, 255, 0, 0);
-						this.colorSquare(last_cell.child_01.x, last_cell.child_01.y, 0.5, 0,255,0);
-						this.colorSquare(last_cell.child_10.x, last_cell.child_10.y, 0.5, 0, 0, 255);
-						this.colorSquare(last_cell.child_11.x, last_cell.child_11.y, 0.5, 0, 0, 0);
-
-						if (last_cell.child_00.child_00 !== null) {
-							this.colorSquare(last_cell.child_00.child_00.x, last_cell.child_00.child_00.y, 0.25, 255, 0, 0);
-							this.colorSquare(last_cell.child_00.child_01.x, last_cell.child_00.child_01.y, 0.25, 0,255,0);
-							this.colorSquare(last_cell.child_00.child_10.x, last_cell.child_00.child_10.y, 0.25, 0, 0, 255);
-							this.colorSquare(last_cell.child_00.child_11.x, last_cell.child_00.child_11.y, 0.25, 0, 0, 0);
-						}
-					}else{
-						break;
-					}
-				}
 
 			}
 		}
