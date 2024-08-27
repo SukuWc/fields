@@ -791,9 +791,7 @@ export class Boltzmann{
 	computeCurl() {
 		for (var y=1; y<this.height-1; y++) {			// interior sites only; leave edges set to zero
 			for (var x=1; x<this.width-1; x++) {
-
-				this._curl_[x+y*this.width] = this._uy_[x+1+y*this.width] - this._uy_[x-1+y*this.width] - this._ux_[x+(y+1)*this.width] + this._ux_[x+(y-1)*this.width];
-			
+				
 				this.find_cell(x,y).calculate_curl();
 			
 			}
