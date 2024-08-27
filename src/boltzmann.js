@@ -50,10 +50,15 @@ function rgbToHex(r, g, b) {
 
 class SimulationCell{
 
-	constructor(sub_mesh_depth){
+	constructor(parent, x, y, sub_mesh_depth){
+
+
+		this.x = x;
+		this.y = y;
+		this.parent = parent;
 
 		this.sub_mesh_depth = sub_mesh_depth; // 0 = boltzmann_root, 1 = simuation_cell, 2 = submesh_container
-		this.parent = null;
+
 		this._n0_  = 0; 
 		
 		// microscopic densities along each lattice direction
@@ -118,6 +123,16 @@ class SimulationCell{
 		this._uy_ = newuy;
 	}
 
+	calculate_curl(){
+		
+		let root = this.parent;
+		let x = this.x;
+		let y = this.y;
+
+		this._curl_ = root.find_cell(x+1,y)._uy_ - root.find_cell(x-1,y)._uy_ - root.find_cell(x,y+1)._ux_ + root.find_cell(x,y-1)._ux_;	
+
+	}
+
 	collide(omega){
 
 		let thisrho = this._n0_ + this._nN_ + this._nS_ + this._nE_ + this._nW_ + this._nNW_ + this._nNE_ + this._nSW_ + this._nSE_;
@@ -144,6 +159,71 @@ class SimulationCell{
 		this._nSE_ += omega * (  one36thrho * (1 + ux3 - uy3 + 4.5*(u2-uxuy2) - u215) - this._nSE_);
 		this._nNW_ += omega * (  one36thrho * (1 - ux3 + uy3 + 4.5*(u2-uxuy2) - u215) - this._nNW_);
 		this._nSW_ += omega * (  one36thrho * (1 - ux3 - uy3 + 4.5*(u2+uxuy2) - u215) - this._nSW_);
+
+	}
+
+
+	stream(){
+
+		let root = this.parent;
+		let x = this.x;
+		let y = this.y;
+
+		
+
+		this._received_nN_ = root.find_cell(x,y-1)._nN_;			// move the north-moving particles
+		this._received_nNW_ = root.find_cell(x+1,y-1)._nNW_;		// and the northwest-moving particles
+
+		this._received_nE_ = root.find_cell(x-1,y)._nE_;			// move the east-moving particles
+		this._received_nNE_ = root.find_cell(x-1,y-1)._nNE_;		// and the northeast-moving particles
+
+		this._received_nS_ = root.find_cell(x,y+1)._nS_;			// move the south-moving particles
+		this._received_nSE_ = root.find_cell(x-1,y+1)._nSE_;		// and the southeast-moving particles
+		
+		this._received_nW_ = root.find_cell(x+1,y)._nW_;			// move the west-moving particles
+		this._received_nSW_ = root.find_cell(x+1,y+1)._nSW_;		// and the southwest-moving particles
+	}
+
+	bounce(){
+		
+		let root = this.parent;
+		let x = this.x;
+		let y = this.y;
+
+
+		if (this.barrier) {
+			root.find_cell(x+1,y)._received_nE_ = this._received_nW_;
+			root.find_cell(x-1,y)._received_nW_ = this._received_nE_;
+			root.find_cell(x,y+1)._received_nN_ = this._received_nS_;
+			root.find_cell(x,y-1)._received_nS_ = this._received_nN_;
+			root.find_cell(x+1,y+1)._received_nNE_ = this._received_nSW_;
+			root.find_cell(x-1,y+1)._received_nNW_ = this._received_nSE_;
+			root.find_cell(x+1,y-1)._received_nSE_ = this._received_nNW_;
+			root.find_cell(x-1,y-1)._received_nSW_ = this._received_nNE_;
+
+		}
+	}
+
+	consolidate(){
+
+		this._nN_  = this._received_nN_  ;
+		this._nS_  = this._received_nS_  ;
+		this._nE_  = this._received_nE_  ;
+		this._nW_  = this._received_nW_  ;
+		this._nNE_ = this._received_nNE_ ;
+		this._nSE_ = this._received_nSE_ ;
+		this._nNW_ = this._received_nNW_ ;
+		this._nSW_ = this._received_nSW_ ;
+
+		this._received_nN_  = 0;
+		this._received_nS_  = 0;
+		this._received_nE_  = 0;
+		this._received_nW_  = 0;
+		this._received_nNE_ = 0;
+		this._received_nSE_ = 0;
+		this._received_nNW_ = 0;
+		this._received_nSW_ = 0;
+
 
 	}
 }
@@ -207,7 +287,7 @@ export class Boltzmann{
 		this.cells = new Array(this.width*this.height);
 		for (var y=0; y<this.height; y++) {
 			for (var x=0; x<this.width; x++) {
-				this.cells[x+y*this.width] = new SimulationCell(1);
+				this.cells[x+y*this.width] = new SimulationCell(this, x, y, 1);
 			}
 		}
 
@@ -250,6 +330,13 @@ export class Boltzmann{
 		this.graphics_model_init()
 	}
 
+	calculate_index(x,y){
+		return x + y*this.width;
+	}
+
+	find_cell(x, y){
+		return this.cells[x + y*this.width];
+	}
 
 	// Function to initialize or re-initialize the fluid, based on speed slider setting:
 	initFluid() {
@@ -296,6 +383,7 @@ export class Boltzmann{
 			this.setBoundaries();
 			this.collide();
 			this.stream();
+			this.bounce();
 			this.consolidate();
 	
 
@@ -454,8 +542,14 @@ export class Boltzmann{
 				
 				this._received_nW_[index] = this._nW_[x+1+y*this.width];			// move the west-moving particles
 				this._received_nSW_[index] = this._nSW_[x+1+(y+1)*this.width];		// and the southwest-moving particles
+
+				this.cells[index].stream();
 			}
 		}
+
+	}
+
+	bounce(){
 
 		// bounce particles off barriers
 		for (var y=1; y<this.height-1; y++) {
@@ -477,8 +571,11 @@ export class Boltzmann{
 
 
 				}
+
+				this.cells[index].bounce();
 			}
 		}
+
 	}
 	consolidate() {
 
@@ -503,8 +600,12 @@ export class Boltzmann{
 				this._received_nSE_[index] = 0;
 				this._received_nNW_[index] = 0;
 				this._received_nSW_[index] = 0;
+
+
+				this.cells[index].consolidate();
 			}
 		}
+
 
 	}
 	// Set all densities in a cell to their equilibrium values for a given velocity and density:
@@ -761,6 +862,9 @@ export class Boltzmann{
 		var cIndex=0;
 		var contrast = Math.pow(1.2,Number(contrastSlider.value));
 		var plotType = plotSelect.selectedIndex;
+
+
+		// old implementation
 		if (plotType == 4) this.computeCurl();
 		for (var y=0; y<this.height; y++) {
 			for (var x=0; x<this.width; x++) {
@@ -785,6 +889,39 @@ export class Boltzmann{
 
 				let accent = false;
 				if (this._curl_[x+y*this.width] > 0.005 || this._curl_[x+y*this.width] < -0.005) {
+					accent = true;
+				}
+
+				this.colorSquare(x, y, redList[cIndex], greenList[cIndex], blueList[cIndex], accent);
+
+			}
+		}
+
+		// new implementation
+		if (plotType == 4) this.computeCurl();
+		for (var y=0; y<this.height; y++) {
+			for (var x=0; x<this.width; x++) {
+				if (this.find_cell(x,y).barrier) {
+					cIndex = nColors + 1;	// kludge for barrier color which isn't really part of color map
+				} else {
+					if (plotType == 0) {
+						cIndex = Math.round(nColors * ((this.find_cell(x,y)._rho_-1)*6*contrast + 0.5));
+					} else if (plotType == 1) {
+						cIndex = Math.round(nColors * (this.find_cell(x,y)._ux_*2*contrast + 0.5));
+					} else if (plotType == 2) {
+						cIndex = Math.round(nColors * (this.find_cell(x,y)._uy_*2*contrast + 0.5));
+					} else if (plotType == 3) {
+						var speed = Math.sqrt(this.find_cell(x,y)._ux_*this.find_cell(x,y)._ux_ + this.find_cell(x,y)._uy_*this.find_cell(x,y)._uy_);
+						cIndex = Math.round(nColors * (speed*4*contrast));
+					} else {
+						cIndex = Math.round(nColors * (this.find_cell(x,y)._curl_*5*contrast + 0.5));
+					}
+					if (cIndex < 0) cIndex = 0;
+					if (cIndex > nColors) cIndex = nColors;
+				}
+
+				let accent = false;
+				if (this.find_cell(x,y)._curl_ > 0.005 || this.find_cell(x,y)._curl_ < -0.005) {
 					accent = true;
 				}
 
@@ -836,7 +973,11 @@ export class Boltzmann{
 	computeCurl() {
 		for (var y=1; y<this.height-1; y++) {			// interior sites only; leave edges set to zero
 			for (var x=1; x<this.width-1; x++) {
+
 				this._curl_[x+y*this.width] = this._uy_[x+1+y*this.width] - this._uy_[x-1+y*this.width] - this._ux_[x+(y+1)*this.width] + this._ux_[x+(y-1)*this.width];
+			
+				this.find_cell(x,y).calculate_curl();
+			
 			}
 		}
 	}
