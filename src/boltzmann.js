@@ -255,34 +255,7 @@ export class Boltzmann{
 		//  kinematic viscosity coefficient in natural units
 		this.viscosity = 0.020;
 
-		// Create the arrays of fluid particle densities, etc. (using 1D arrays for speed):
-		// To index into these arrays, use x + y*this.width, traversing rows first and then columns.
-		this._n0_ = new Array(this.width*this.height);			
-		
-		// microscopic densities along each lattice direction
-		this._nN_ = new Array(this.width*this.height);
-		this._nS_ = new Array(this.width*this.height);
-		this._nE_ = new Array(this.width*this.height);
-		this._nW_ = new Array(this.width*this.height);
-		this._nNE_ = new Array(this.width*this.height);
-		this._nSE_ = new Array(this.width*this.height);
-		this._nNW_ = new Array(this.width*this.height);
-		this._nSW_ = new Array(this.width*this.height);
 
-		// microscopic densities along each lattice direction
-		this._received_nN_ = new Array(this.width*this.height);
-		this._received_nS_ = new Array(this.width*this.height);
-		this._received_nE_ = new Array(this.width*this.height);
-		this._received_nW_ = new Array(this.width*this.height);
-		this._received_nNE_ = new Array(this.width*this.height);
-		this._received_nSE_ = new Array(this.width*this.height);
-		this._received_nNW_ = new Array(this.width*this.height);
-		this._received_nSW_ = new Array(this.width*this.height);
-
-		this._ux_ = new Array(this.width*this.height);			// macroscopic velocity
-		this._uy_ = new Array(this.width*this.height);
-		this._rho_ = new Array(this.width*this.height);			// macroscopic density
-		this._curl_ = new Array(this.width*this.height);	
 
 		this.cells = new Array(this.width*this.height);
 		for (var y=0; y<this.height; y++) {
@@ -291,31 +264,19 @@ export class Boltzmann{
 			}
 		}
 
-		// Setup barrier
-		this.barrier = new Array(this.width*this.height);		// boolean array of barrier locations
 
 		// Initialize with no barriers:
 		for (var y=0; y<this.height; y++) {
 			for (var x=0; x<this.width; x++) {
 
-				let index = x + y*this.width;
-
-				// old implementation
-				this.barrier[index] = false;
-				
-				// new implementation
-				this.cells[index].barrier = false;
+				this.find_cell(x,y).barrier = false;
 
 				// create circular wall
 				let r = 5;
 
 				if(Math.pow(this.width/2 - x, 2) + Math.pow(this.height*0.75 - y, 2) < Math.pow(r, 2) ){
 					
-					// old implementation
-					this.barrier[index] = true;
-
-					// new implementation
-					this.cells[index].barrier = true;
+					this.find_cell(x,y).barrier = true;
 				}
 
 
@@ -350,15 +311,8 @@ export class Boltzmann{
 		for (var y=0; y<this.height; y++) {
 			for (var x=0; x<this.width; x++) {
 
-				let index = x + y*this.width;
-
-				// old implementaion
-				this.setEquil(index, hspeed, vspeed, 1);
-				this._curl_[x+y*this.width] = 0.0;
-
-				//new implementation
-				this.cells[index].setEquil(hspeed, vspeed, 1);
-				this.cells[index].setCurl(0.0);}
+				this.find_cell(x,y).setEquil(hspeed, vspeed, 1);
+				this.find_cell(x,y).setCurl(0.0);}
 		}
 
 	}
@@ -442,30 +396,14 @@ export class Boltzmann{
 		let vspeed = Math.sin(this.direction/180*Math.PI)*this.speed
 
 		for (var x=0; x<this.width; x++) {
-			let index = x + 0*this.width;
-			// old implementation
-			this.setEquil(index, hspeed, vspeed, 1);
-			// new implementation
-			this.cells[index].setEquil(hspeed, vspeed, 1);
 
-			index = x + (this.height-1)*this.width;
-			// old implementation
-			this.setEquil(index, hspeed, vspeed, 1);
-			// new implementation
-			this.cells[index].setEquil(hspeed, vspeed, 1);
+			this.find_cell(x,0).setEquil(hspeed, vspeed, 1);
+			this.find_cell(x,this.height-1).setEquil(hspeed, vspeed, 1);
 		}
 		for (var y=1; y<this.height-1; y++) {
-			let index = 0 + y*this.width;
-			// old implementation
-			this.setEquil(index, hspeed, vspeed, 1);
-			// new implementation
-			this.cells[index].setEquil(hspeed, vspeed, 1);
 
-			index = (this.width-1) + y*this.width;
-			// old implementation
-			this.setEquil(index, hspeed, vspeed, 1);
-			// new implementation
-			this.cells[index].setEquil(hspeed, vspeed, 1);
+			this.find_cell(0,y).setEquil(hspeed, vspeed, 1);
+			this.find_cell(this.width-1,y).setEquil(hspeed, vspeed, 1);
 		}
 	}
 
@@ -477,36 +415,7 @@ export class Boltzmann{
 		for (var y=1; y<this.height-1; y++) {
 			for (var x=1; x<this.width-1; x++) {
 
-				let index = x + y*this.width;		// array index for this lattice site
-
-				// old implementation
-				let thisrho = this._n0_[index] + this._nN_[index] + this._nS_[index] + this._nE_[index] + this._nW_[index] + this._nNW_[index] + this._nNE_[index] + this._nSW_[index] + this._nSE_[index];
-				this._rho_[index] = thisrho;
-				let thisux = (this._nE_[index] + this._nNE_[index] + this._nSE_[index] - this._nW_[index] - this._nNW_[index] - this._nSW_[index]) / thisrho;
-				this._ux_[index] = thisux;
-				let thisuy = (this._nN_[index] + this._nNE_[index] + this._nNW_[index] - this._nS_[index] - this._nSE_[index] - this._nSW_[index]) / thisrho;
-				this._uy_[index] = thisuy
-				let one9thrho = one9th * thisrho;		// pre-compute a bunch of stuff for optimization
-				let one36thrho = one36th * thisrho;
-				let ux3 = 3 * thisux;
-				let uy3 = 3 * thisuy;
-				let ux2 = thisux * thisux;
-				let uy2 = thisuy * thisuy;
-				let uxuy2 = 2 * thisux * thisuy;
-				let u2 = ux2 + uy2;
-				let u215 = 1.5 * u2;
-				this._n0_[index]  += omega * (four9ths*thisrho * (1                        - u215) - this._n0_[index]);
-				this._nE_[index]  += omega * (   one9thrho * (1 + ux3       + 4.5*ux2        - u215) - this._nE_[index]);
-				this._nW_[index]  += omega * (   one9thrho * (1 - ux3       + 4.5*ux2        - u215) - this._nW_[index]);
-				this._nN_[index]  += omega * (   one9thrho * (1 + uy3       + 4.5*uy2        - u215) - this._nN_[index]);
-				this._nS_[index]  += omega * (   one9thrho * (1 - uy3       + 4.5*uy2        - u215) - this._nS_[index]);
-				this._nNE_[index] += omega * (  one36thrho * (1 + ux3 + uy3 + 4.5*(u2+uxuy2) - u215) - this._nNE_[index]);
-				this._nSE_[index] += omega * (  one36thrho * (1 + ux3 - uy3 + 4.5*(u2-uxuy2) - u215) - this._nSE_[index]);
-				this._nNW_[index] += omega * (  one36thrho * (1 - ux3 + uy3 + 4.5*(u2-uxuy2) - u215) - this._nNW_[index]);
-				this._nSW_[index] += omega * (  one36thrho * (1 - ux3 - uy3 + 4.5*(u2+uxuy2) - u215) - this._nSW_[index]);
-
-				// new implementation
-				this.cells[index].collide(omega);
+				this.find_cell(x,y).collide(omega);
 			}
 		}
 
@@ -529,21 +438,7 @@ export class Boltzmann{
 		for (var y=1; y<this.height-1; y++) {
 			for (var x=1; x<this.width-1; x++) {
 
-				let index = x+y*this.width;
-
-				this._received_nN_[index] = this._nN_[x+(y-1)*this.width];			// move the north-moving particles
-				this._received_nNW_[index] = this._nNW_[x+1+(y-1)*this.width];		// and the northwest-moving particles
-
-				this._received_nE_[index] = this._nE_[x-1+y*this.width];			// move the east-moving particles
-				this._received_nNE_[index] = this._nNE_[x-1+(y-1)*this.width];		// and the northeast-moving particles
-
-				this._received_nS_[index] = this._nS_[x+(y+1)*this.width];			// move the south-moving particles
-				this._received_nSE_[index] = this._nSE_[x-1+(y+1)*this.width];		// and the southeast-moving particles
-				
-				this._received_nW_[index] = this._nW_[x+1+y*this.width];			// move the west-moving particles
-				this._received_nSW_[index] = this._nSW_[x+1+(y+1)*this.width];		// and the southwest-moving particles
-
-				this.cells[index].stream();
+				this.find_cell(x,y).stream();
 			}
 		}
 
@@ -555,24 +450,7 @@ export class Boltzmann{
 		for (var y=1; y<this.height-1; y++) {
 			for (var x=1; x<this.width-1; x++) {
 
-		
-				let index = x+y*this.width;
-
-				if (this.barrier[index]) {
-					
-					this._received_nE_[x+1+y*this.width] =  this._received_nW_[index];
-					this._received_nW_[x-1+y*this.width] =  this._received_nE_[index];
-					this._received_nN_[x+(y+1)*this.width] = this._received_nS_[index];
-					this._received_nS_[x+(y-1)*this.width] = this._received_nN_[index];
-					this._received_nNE_[x+1+(y+1)*this.width] = this._received_nSW_[index];
-					this._received_nNW_[x-1+(y+1)*this.width] = this._received_nSE_[index];
-					this._received_nSE_[x+1+(y-1)*this.width] = this._received_nNW_[index];
-					this._received_nSW_[x-1+(y-1)*this.width] = this._received_nNE_[index];
-
-
-				}
-
-				this.cells[index].bounce();
+				this.find_cell(x,y).bounce();
 			}
 		}
 
@@ -582,27 +460,7 @@ export class Boltzmann{
 		for (var y=0; y<this.height; y++) {
 			for (var x=0; x<this.width; x++) {
 
-				let index = x+y*this.width;
-				this._nN_[index]  = this._received_nN_[index]  ;
-				this._nS_[index]  = this._received_nS_[index]  ;
-				this._nE_[index]  = this._received_nE_[index]  ;
-				this._nW_[index]  = this._received_nW_[index]  ;
-				this._nNE_[index] = this._received_nNE_[index] ;
-				this._nSE_[index] = this._received_nSE_[index] ;
-				this._nNW_[index] = this._received_nNW_[index] ;
-				this._nSW_[index] = this._received_nSW_[index] ;
-
-				this._received_nN_[index]  = 0;
-				this._received_nS_[index]  = 0;
-				this._received_nE_[index]  = 0;
-				this._received_nW_[index]  = 0;
-				this._received_nNE_[index] = 0;
-				this._received_nSE_[index] = 0;
-				this._received_nNW_[index] = 0;
-				this._received_nSW_[index] = 0;
-
-
-				this.cells[index].consolidate();
+				this.find_cell(x,y).consolidate();
 			}
 		}
 
@@ -689,29 +547,19 @@ export class Boltzmann{
 
 	apply_force_to_cell(x, y, direction, s) {
 
-
-	//	x += this.width/2;
-	//	y += this.height/2
-
-		let index = x + y*this.width;
 	
 		// F = m * a
 		// a = F/m
-		// dv/dt = F/m
+		// dv/dt = F/m0
 
-		let vx = this._ux_[index];
-		let vy = this._uy_[index];
-		let m = this._rho_[index];
+		let vx = this.find_cell(x, y)._ux_;
+		let vy = this.find_cell(x, y)._uy_;
+		let m = this.find_cell(x, y)._rho_;
 
 		let dvx = Math.cos(direction/180*Math.PI) * s / m * -1;
 		let dvy = Math.sin(direction/180*Math.PI) * s / m * -1;
 		
-
-		// old implementation
-		this.setEquil(index, vx + dvx, vy + dvy)
-
-		// new implementation
-		this.cells[index].setEquil(vx + dvx, vy + dvy)
+		this.find_cell(x, y).setEquil(vx + dvx, vy + dvy)
 
 	}
 
@@ -852,8 +700,13 @@ export class Boltzmann{
 		let vx = 0;
 		let vy = 0;
 
-		vx = this._ux_[x0 + y0*this.width]*s0 + this._ux_[x1 + y1*this.width]*s1 +  this._ux_[x2 + y2*this.width]*s2 +  this._ux_[x3 + y3*this.width]*s3
-		vy = this._uy_[x0 + y0*this.width]*s0 + this._uy_[x1 + y1*this.width]*s1 +  this._uy_[x2 + y2*this.width]*s2 +  this._uy_[x3 + y3*this.width]*s3
+		let cell_0 = this.find_cell(x0, y0)
+		let cell_1 = this.find_cell(x1, y1)
+		let cell_2 = this.find_cell(x2, y2)
+		let cell_3 = this.find_cell(x3, y3)
+
+		vx = cell_0._ux_*s0 + cell_1._ux_*s1 +  cell_2._ux_*s2 +  cell_3._ux_*s3
+		vy = cell_0._uy_*s0 + cell_1._uy_*s1 +  cell_2._uy_*s2 +  cell_3._uy_*s3
 
 		return {x: vx/4, y: vy/4}
 	}
@@ -863,41 +716,6 @@ export class Boltzmann{
 		var contrast = Math.pow(1.2,Number(contrastSlider.value));
 		var plotType = plotSelect.selectedIndex;
 
-
-		// old implementation
-		if (plotType == 4) this.computeCurl();
-		for (var y=0; y<this.height; y++) {
-			for (var x=0; x<this.width; x++) {
-				if (this.barrier[x+y*this.width]) {
-					cIndex = nColors + 1;	// kludge for barrier color which isn't really part of color map
-				} else {
-					if (plotType == 0) {
-						cIndex = Math.round(nColors * ((this._rho_[x+y*this.width]-1)*6*contrast + 0.5));
-					} else if (plotType == 1) {
-						cIndex = Math.round(nColors * (this._ux_[x+y*this.width]*2*contrast + 0.5));
-					} else if (plotType == 2) {
-						cIndex = Math.round(nColors * (this._uy_[x+y*this.width]*2*contrast + 0.5));
-					} else if (plotType == 3) {
-						var speed = Math.sqrt(this._ux_[x+y*this.width]*this._ux_[x+y*this.width] + this._uy_[x+y*this.width]*this._uy_[x+y*this.width]);
-						cIndex = Math.round(nColors * (speed*4*contrast));
-					} else {
-						cIndex = Math.round(nColors * (this._curl_[x+y*this.width]*5*contrast + 0.5));
-					}
-					if (cIndex < 0) cIndex = 0;
-					if (cIndex > nColors) cIndex = nColors;
-				}
-
-				let accent = false;
-				if (this._curl_[x+y*this.width] > 0.005 || this._curl_[x+y*this.width] < -0.005) {
-					accent = true;
-				}
-
-				this.colorSquare(x, y, redList[cIndex], greenList[cIndex], blueList[cIndex], accent);
-
-			}
-		}
-
-		// new implementation
 		if (plotType == 4) this.computeCurl();
 		for (var y=0; y<this.height; y++) {
 			for (var x=0; x<this.width; x++) {
