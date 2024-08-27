@@ -97,6 +97,21 @@ class SimulationCell{
 		this._curl_ = curl;
 	}
 
+	convert_to_finer_mesh() {
+		// prediction
+
+
+		let mesh_offset = Math.pow(1/2, this.sub_mesh_depth*2);
+
+		console.log(this.sub_mesh_depth, mesh_offset)
+
+		this.child_00 = new SimulationCell(this, this.x-mesh_offset, this.y-mesh_offset, this.sub_mesh_depth+1);
+		this.child_01 = new SimulationCell(this, this.x-mesh_offset, this.y+mesh_offset, this.sub_mesh_depth+1);
+		this.child_10 = new SimulationCell(this, this.x+mesh_offset, this.y-mesh_offset, this.sub_mesh_depth+1);
+		this.child_11 = new SimulationCell(this, this.x+mesh_offset, this.y+mesh_offset, this.sub_mesh_depth+1);
+
+	}
+
 	setEquil(newux, newuy, newrho) {
 
 		if (typeof newrho == 'undefined') {
@@ -283,6 +298,21 @@ export class Boltzmann{
 			}
 		}
 		
+
+
+		// Initialize finer mesh at area of interest:
+		for (var y=10; y<12; y++) {
+			for (var x=10; x<12; x++) {
+
+				this.find_cell(x,y).convert_to_finer_mesh();
+			}
+		}
+
+		this.find_cell(10,10).child_00.convert_to_finer_mesh();
+
+
+
+
 		this.running = false;						// will be true when running
 
 		this.initFluid();		// initialize to steady rightward flow
@@ -346,7 +376,6 @@ export class Boltzmann{
 		this.t_delta = new Date() - t_start;
 
 		this.step_ready = true;
-
 
 		// var stable = true;
 		// for (var x=0; x<this.width; x++) {
@@ -738,44 +767,63 @@ export class Boltzmann{
 					if (cIndex > nColors) cIndex = nColors;
 				}
 
-				let accent = false;
-				if (this.find_cell(x,y)._curl_ > 0.005 || this.find_cell(x,y)._curl_ < -0.005) {
-					accent = true;
-				}
+				// let accent = false;
+				// if (this.find_cell(x,y)._curl_ > 0.005 || this.find_cell(x,y)._curl_ < -0.005) {
+				// 	accent = true;
+				// }
 
-				this.colorSquare(x, y, redList[cIndex], greenList[cIndex], blueList[cIndex], accent);
+
+				this.colorSquare(x, y, 1, redList[cIndex], greenList[cIndex], blueList[cIndex]);
+
+				let last_cell = this.find_cell(x,y)
+
+				for (let i = 0; i < this.oversampling; i++) {
+					if (last_cell.child_00 !== null) {
+						this.colorSquare(last_cell.child_00.x, last_cell.child_00.y, 0.5, 255, 0, 0);
+						this.colorSquare(last_cell.child_01.x, last_cell.child_01.y, 0.5, 0,255,0);
+						this.colorSquare(last_cell.child_10.x, last_cell.child_10.y, 0.5, 0, 0, 255);
+						this.colorSquare(last_cell.child_11.x, last_cell.child_11.y, 0.5, 0, 0, 0);
+
+						if (last_cell.child_00.child_00 !== null) {
+							this.colorSquare(last_cell.child_00.child_00.x, last_cell.child_00.child_00.y, 0.25, 255, 0, 0);
+							this.colorSquare(last_cell.child_00.child_01.x, last_cell.child_00.child_01.y, 0.25, 0,255,0);
+							this.colorSquare(last_cell.child_00.child_10.x, last_cell.child_00.child_10.y, 0.25, 0, 0, 255);
+							this.colorSquare(last_cell.child_00.child_11.x, last_cell.child_00.child_11.y, 0.25, 0, 0, 0);
+						}
+					}else{
+						break;
+					}
+				}
 
 			}
 		}
 	}
 
 	// Color a grid square in the image data array, one pixel at a time (rgb each in range 0 to 255):
-	colorSquare(x, y, r, g, b, accent) {
+	colorSquare(x, y, size, r, g, b) {
 
 		if (this.texture === undefined){
 			return
 		}
 
-		for(var i=0; i<this.oversampling; i++) {
-			for(var j=0; j<this.oversampling; j++) {
+		let pixels_to_fill = this.oversampling*size
+
+		for(var i=0; i<pixels_to_fill; i++) {
+			for(var j=0; j<pixels_to_fill; j++) {
 				
-				
-				var ind = (x*this.oversampling+i + (y*this.oversampling+j)*this.width*this.oversampling) * 4;
+
+				let _x_remainder = (x*this.oversampling-Math.round(x*this.oversampling))/2
+				let _y_remainder = (y*this.oversampling-Math.round(y*this.oversampling))/2
+
+				let _x = Math.round(x*this.oversampling)+i + Math.ceil(_x_remainder*this.oversampling)
+				let _y = Math.round(y*this.oversampling)+j + Math.ceil(_y_remainder*this.oversampling)
+
+				var ind = (_x + (_y)*this.width*this.oversampling) * 4;
 				//var ind = (x + y*this.width) * 4;
 				this.texture.image.data[ind+0] = r;
 				this.texture.image.data[ind+1] = g;
 				this.texture.image.data[ind+2] = b;
 				this.texture.image.data[ind+3] = 255;
-
-				if (accent === true){
-
-					var accent_ind = (x*this.oversampling+0 + (y*this.oversampling+0)*this.width*this.oversampling) * 4;
-					this.texture.image.data[accent_ind+0] = 255;
-					this.texture.image.data[accent_ind+1] = 0;
-					this.texture.image.data[accent_ind+2] = 0;
-					this.texture.image.data[accent_ind+3] = 255;
-
-				}
 		
 			}
 		}
@@ -791,7 +839,7 @@ export class Boltzmann{
 	computeCurl() {
 		for (var y=1; y<this.height-1; y++) {			// interior sites only; leave edges set to zero
 			for (var x=1; x<this.width-1; x++) {
-				
+
 				this.find_cell(x,y).calculate_curl();
 			
 			}

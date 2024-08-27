@@ -15,7 +15,7 @@ const wind_angle = 90
 const wind_speed = 15
 const bm_resolution = 2;
 
-var texture_oversampling = 2;
+var texture_oversampling = 4;
 
 
 /*Data texture*/
