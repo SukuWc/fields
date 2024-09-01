@@ -493,8 +493,8 @@ export class Boltzmann{
 			this.computeCurl();
 
 						// Initialize finer mesh at area of interest:
-			for (var y=40; y<42; y++) {
-				for (var x=40; x<42; x++) {
+			for (var y=30; y<52; y++) {
+				for (var x=30; x<52; x++) {
 
 					this.find_cell(x,y).convert_to_finer_mesh();
 				}
