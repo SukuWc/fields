@@ -108,15 +108,80 @@ class SimulationCell{
 	convert_to_finer_mesh() {
 		// prediction
 
+		let x = this.x;
+		let y = this.y;
 
-		let mesh_offset = Math.pow(1/2, this.sub_mesh_depth*2);
+		let root = this.parent;
 
-		console.log(this.sub_mesh_depth, mesh_offset)
+		while (root.sub_mesh_depth > 0) {
+			root = root.parent;
+		}
 
-		this.child_00 = new SimulationCell(this, this.x-mesh_offset, this.y-mesh_offset, this.sub_mesh_depth+1);
-		this.child_01 = new SimulationCell(this, this.x-mesh_offset, this.y+mesh_offset, this.sub_mesh_depth+1);
-		this.child_10 = new SimulationCell(this, this.x+mesh_offset, this.y-mesh_offset, this.sub_mesh_depth+1);
-		this.child_11 = new SimulationCell(this, this.x+mesh_offset, this.y+mesh_offset, this.sub_mesh_depth+1);
+		let neightbor = root.find_cell(x-1, y-1);
+
+		if (this.child_00 === null){
+
+			let mesh_offset = Math.pow(1/2, this.sub_mesh_depth*2);
+
+			this.child_00 = new SimulationCell(this, x-mesh_offset, y-mesh_offset, this.sub_mesh_depth+1);
+			this.child_01 = new SimulationCell(this, x-mesh_offset, y+mesh_offset, this.sub_mesh_depth+1);
+			this.child_10 = new SimulationCell(this, x+mesh_offset, y-mesh_offset, this.sub_mesh_depth+1);
+			this.child_11 = new SimulationCell(this, x+mesh_offset, y+mesh_offset, this.sub_mesh_depth+1);
+	
+
+		}
+
+		const prediciton_wights= [
+			[-1/64, 1/8, 1/64],
+			[1/8,   1,   -1/8],
+			[1/64, -1/8, -1/64]
+		  ];
+
+
+		let ux00 = 0;
+		let uy00 = 0;
+
+		let ux01 = 0;
+		let uy01 = 0;
+
+		let ux10 = 0;
+		let uy10 = 0;
+
+		let ux11 = 0;
+		let uy11 = 0;
+
+		if (x !== Math.round(x)){
+			// find cell is not implemented for submesh
+			return;
+		}
+
+
+		for (let i = 0; i < 3; i++) {
+			for (let j = 0; j < 3; j++) {
+
+				ux00 += prediciton_wights[i][j] * root.find_cell(x-1+i, y-1+j)._ux_;
+				uy00 += prediciton_wights[i][j] * root.find_cell(x-1+i, y-1+j)._uy_;
+
+				// rot 90
+				ux01 += prediciton_wights[2-j][i] * root.find_cell(x-1+i, y-1+j)._ux_;
+				uy01 += prediciton_wights[2-j][i] * root.find_cell(x-1+i, y-1+j)._uy_;
+
+				// rot 180 
+				ux11 += prediciton_wights[2-i][2-j] * root.find_cell(x-1+i, y-1+j)._ux_;
+				uy11 += prediciton_wights[2-i][2-j] * root.find_cell(x-1+i, y-1+j)._uy_;
+
+				// rot 270
+				ux10 += prediciton_wights[j][2-i] * root.find_cell(x-1+i, y-1+j)._ux_;
+				uy10 += prediciton_wights[j][2-i] * root.find_cell(x-1+i, y-1+j)._uy_;
+
+			}
+			
+		}
+		this.child_00.setEquil(ux00, uy00);
+		this.child_01.setEquil(ux01, uy01);
+		this.child_10.setEquil(ux10, uy10);
+		this.child_11.setEquil(ux11, uy11);
+
 
 	}
 
@@ -293,10 +358,14 @@ class SimulationCell{
 		root.colorSquare(this.x, this.y, Math.pow(0.5,this.sub_mesh_depth-1), color.red, color.green, color.blue);
 
 		if (this.child_00 !== null){
-			this.child_00.calculate_color(root, -1, contrast);
-			this.child_01.calculate_color(root, -1, contrast);
-			this.child_10.calculate_color(root, -1, contrast);
-			this.child_11.calculate_color(root, -1, contrast);
+
+
+			root.colorSquare(this.x, this.y, Math.pow(0.5,this.sub_mesh_depth-1), 0,0,0);
+
+			this.child_00.calculate_color(root, plot_type, contrast);
+			this.child_01.calculate_color(root, plot_type, contrast);
+			this.child_10.calculate_color(root, plot_type, contrast);
+			this.child_11.calculate_color(root, plot_type, contrast);
 		}
 
 
@@ -360,15 +429,7 @@ export class Boltzmann{
 		
 
 
-		// Initialize finer mesh at area of interest:
-		for (var y=10; y<12; y++) {
-			for (var x=10; x<12; x++) {
 
-				this.find_cell(x,y).convert_to_finer_mesh();
-			}
-		}
-
-		this.find_cell(10,10).child_00.convert_to_finer_mesh();
 
 
 
@@ -430,6 +491,16 @@ export class Boltzmann{
 			this.bounce();
 			this.consolidate();
 			this.computeCurl();
+
+						// Initialize finer mesh at area of interest:
+			for (var y=40; y<42; y++) {
+				for (var x=40; x<42; x++) {
+
+					this.find_cell(x,y).convert_to_finer_mesh();
+				}
+			}
+
+			//this.find_cell(10,10).child_00.convert_to_finer_mesh();
 	
 
 		}
@@ -859,8 +930,8 @@ export class Boltzmann{
 				let _x_remainder = (x*this.oversampling-Math.round(x*this.oversampling))/2
 				let _y_remainder = (y*this.oversampling-Math.round(y*this.oversampling))/2
 
-				let _x = Math.round(x*this.oversampling)+i + Math.ceil(_x_remainder*this.oversampling)
-				let _y = Math.round(y*this.oversampling)+j + Math.ceil(_y_remainder*this.oversampling)
+				let _x = Math.round(x*this.oversampling)+i + Math.ceil(_x_remainder*this.oversampling) + (size<1?1:0)
+				let _y = Math.round(y*this.oversampling)+j + Math.ceil(_y_remainder*this.oversampling) + (size<1	?1:0)
 
 				var ind = (_x + (_y)*this.width*this.oversampling) * 4;
 				//var ind = (x + y*this.width) * 4;
