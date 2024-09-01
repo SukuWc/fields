@@ -58,9 +58,9 @@ function rgbToHex(r, g, b) {
 
 class SimulationCell{
 
-	constructor(parent, x, y, sub_mesh_depth){
+	constructor(parent, x, y, sub_mesh_depth, is_temporary){
 
-
+		this.is_temporary = is_temporary;
 		this.x = x;
 		this.y = y;
 		this.parent = parent;
@@ -105,7 +105,7 @@ class SimulationCell{
 		this._curl_ = curl;
 	}
 
-	convert_to_finer_mesh() {
+	convert_to_finer_mesh(is_temporary) {
 		// prediction
 
 		let x = this.x;
@@ -117,16 +117,14 @@ class SimulationCell{
 			root = root.parent;
 		}
 
-		let neightbor = root.find_cell(x-1, y-1);
-
 		if (this.child_00 === null){
 
 			let mesh_offset = Math.pow(1/2, this.sub_mesh_depth*2);
 
-			this.child_00 = new SimulationCell(this, x-mesh_offset, y-mesh_offset, this.sub_mesh_depth+1);
-			this.child_01 = new SimulationCell(this, x-mesh_offset, y+mesh_offset, this.sub_mesh_depth+1);
-			this.child_10 = new SimulationCell(this, x+mesh_offset, y-mesh_offset, this.sub_mesh_depth+1);
-			this.child_11 = new SimulationCell(this, x+mesh_offset, y+mesh_offset, this.sub_mesh_depth+1);
+			this.child_00 = new SimulationCell(this, x-mesh_offset, y-mesh_offset, this.sub_mesh_depth+1, is_temporary);
+			this.child_01 = new SimulationCell(this, x-mesh_offset, y+mesh_offset, this.sub_mesh_depth+1, is_temporary);
+			this.child_10 = new SimulationCell(this, x+mesh_offset, y-mesh_offset, this.sub_mesh_depth+1, is_temporary);
+			this.child_11 = new SimulationCell(this, x+mesh_offset, y+mesh_offset, this.sub_mesh_depth+1, is_temporary);
 	
 
 		}
@@ -214,10 +212,47 @@ class SimulationCell{
 	calculate_curl(){
 		
 		let root = this.parent;
+
+		while (root.sub_mesh_depth > 0) {
+			root = root.parent;
+		}
+
+
 		let x = this.x;
 		let y = this.y;
 
-		this._curl_ = root.find_cell(x+1,y)._uy_ - root.find_cell(x-1,y)._uy_ - root.find_cell(x,y+1)._ux_ + root.find_cell(x,y-1)._ux_;	
+		const next_cell_distance = Math.pow(1/2, this.sub_mesh_depth-1);
+
+		let cell_left = root.find_cell(x-next_cell_distance,y);
+		let cell_right = root.find_cell(x+next_cell_distance,y);
+		let cell_up = root.find_cell(x,y+next_cell_distance);
+		let cell_down = root.find_cell(x,y-next_cell_distance);
+
+		if (cell_left === null || cell_right === null || cell_up === null || cell_down === null) {
+
+			this._curl_ = 0;
+			return;
+		}
+
+		this._curl_ = cell_right._uy_ - cell_left._uy_ - cell_up._ux_ + cell_down._ux_;	
+
+		[cell_left, cell_right, cell_up, cell_down].forEach((cell) => {
+			if (cell.is_temporary === true){
+				cell.parent.child_00 = null;
+				cell.parent.child_01 = null;
+				cell.parent.child_10 = null;
+				cell.parent.child_11 = null;
+			}
+		})
+
+
+		if (this.child_00 !== null) {
+
+			this.child_00.calculate_curl();
+			this.child_01.calculate_curl();
+			this.child_10.calculate_curl();
+			this.child_11.calculate_curl();
+		}
 
 	}
 
@@ -350,7 +385,7 @@ class SimulationCell{
 				var speed = Math.sqrt(this._ux_*this._ux_ + this._uy_*this._uy_);
 				color = get_color(Math.round(nColors * (speed*4*contrast)));
 			} else {
-				color = get_color(Math.round(nColors * (this._curl_*5*contrast + 0.5)));
+				color = get_color(Math.round(nColors * (this._curl_*this.sub_mesh_depth*5*contrast + 0.5)));
 			}
 			
 		}
@@ -447,7 +482,39 @@ export class Boltzmann{
 	}
 
 	find_cell(x, y){
-		return this.cells[x + y*this.width];
+
+		let x_i = Math.round(x);
+		let y_i = Math.round(y);
+
+		let x_r = (x-x_i)*1;
+		let y_r = (y-y_i)*1;
+
+		let base_cell = this.cells[x_i + y_i*this.width];
+
+
+		if (x != Math.round(x)){
+
+			if (base_cell.child_00 == null){
+				//return base_cell;
+				base_cell.convert_to_finer_mesh(true);
+			}
+
+			if (x_r < 0 && y_r < 0){
+				return base_cell.child_00;
+			}
+			else if (x_r > 0 && y_r < 0){
+				return base_cell.child_10;
+			}
+			else if (x_r < 0 && y_r > 0){
+				return base_cell.child_01;
+			}
+			else if (x_r > 0 && y_r > 0){
+				return base_cell.child_11;
+			}
+			
+		}
+
+		return base_cell;
 	}
 
 	// Function to initialize or re-initialize the fluid, based on speed slider setting:
@@ -490,7 +557,6 @@ export class Boltzmann{
 			this.stream();
 			this.bounce();
 			this.consolidate();
-			this.computeCurl();
 
 						// Initialize finer mesh at area of interest:
 			for (var y=30; y<52; y++) {
@@ -501,6 +567,10 @@ export class Boltzmann{
 			}
 
 			//this.find_cell(10,10).child_00.convert_to_finer_mesh();
+
+			this.computeCurl();
+
+
 	
 
 		}
