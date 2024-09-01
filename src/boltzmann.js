@@ -138,15 +138,19 @@ class SimulationCell{
 
 		let ux00 = 0;
 		let uy00 = 0;
+		let rho00 = 0;
 
 		let ux01 = 0;
 		let uy01 = 0;
+		let rho01 = 0;
 
 		let ux10 = 0;
 		let uy10 = 0;
+		let rho10 = 0;
 
 		let ux11 = 0;
 		let uy11 = 0;
+		let rho11 = 0;
 
 		if (x !== Math.round(x)){
 			// find cell is not implemented for submesh
@@ -159,26 +163,30 @@ class SimulationCell{
 
 				ux00 += prediciton_wights[i][j] * root.find_cell(x-1+i, y-1+j)._ux_;
 				uy00 += prediciton_wights[i][j] * root.find_cell(x-1+i, y-1+j)._uy_;
+				rho00 += prediciton_wights[i][j] * root.find_cell(x-1+i, y-1+j)._rho_;
 
 				// rot 90
 				ux01 += prediciton_wights[2-j][i] * root.find_cell(x-1+i, y-1+j)._ux_;
 				uy01 += prediciton_wights[2-j][i] * root.find_cell(x-1+i, y-1+j)._uy_;
+				rho01 += prediciton_wights[2-j][i] * root.find_cell(x-1+i, y-1+j)._rho_;
 
 				// rot 180 
 				ux11 += prediciton_wights[2-i][2-j] * root.find_cell(x-1+i, y-1+j)._ux_;
 				uy11 += prediciton_wights[2-i][2-j] * root.find_cell(x-1+i, y-1+j)._uy_;
+				rho11 += prediciton_wights[2-i][2-j] * root.find_cell(x-1+i, y-1+j)._rho_;
 
 				// rot 270
 				ux10 += prediciton_wights[j][2-i] * root.find_cell(x-1+i, y-1+j)._ux_;
 				uy10 += prediciton_wights[j][2-i] * root.find_cell(x-1+i, y-1+j)._uy_;
+				rho10 += prediciton_wights[j][2-i] * root.find_cell(x-1+i, y-1+j)._rho_;
 
 			}
 			
 		}
-		this.child_00.setEquil(ux00, uy00);
-		this.child_01.setEquil(ux01, uy01);
-		this.child_10.setEquil(ux10, uy10);
-		this.child_11.setEquil(ux11, uy11);
+		this.child_00.setEquil(ux00, uy00, rho00);
+		this.child_01.setEquil(ux01, uy01, rho01);
+		this.child_10.setEquil(ux10, uy10, rho10);
+		this.child_11.setEquil(ux11, uy11, rho11);
 
 
 	}
