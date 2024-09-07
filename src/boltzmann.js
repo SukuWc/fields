@@ -493,7 +493,7 @@ class SimulationCell{
 			this._uy_ = 2000;
 			//console.log(this.x, this.y, this._rho_, this._ux_, this._uy_, this._curl_);
 			//color = {red: Math.random()*255, green: Math.random()*255, blue: Math.random()*255};
-			color = {red: 0, green: color.green, blue: color.blue};
+			color = {red: color.red/2, green: color.green/2, blue: color.blue/2};
 		}
 
 		root.colorSquare(this.x, this.y, Math.pow(0.5,this.sub_mesh_depth-1), color.red, color.green, color.blue);
