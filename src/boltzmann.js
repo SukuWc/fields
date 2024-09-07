@@ -60,6 +60,12 @@ class SimulationCell{
 
 	constructor(parent, x, y, sub_mesh_depth, is_temporary){
 
+
+		if (sub_mesh_depth == 3){
+
+			//console.log("CREATE", x, y, sub_mesh_depth, is_temporary);
+		}
+
 		this.is_temporary = is_temporary;
 		this.x = x;
 		this.y = y;
@@ -99,6 +105,81 @@ class SimulationCell{
 		this.child_01 = null;
 		this.child_10 = null;
 		this.child_11 = null;
+	}
+
+	find_child_cell(incoming_x_r, incoming_y_r){
+
+
+		if (this.sub_mesh_depth == 2){
+
+			//console.log("yeye", incoming_x_r, incoming_y_r)
+
+		}
+
+		if(incoming_x_r*4 === Math.round(incoming_x_r*4)){
+
+			if (incoming_x_r < 0 && incoming_y_r < 0){
+				return this.child_00;
+			}
+			else if (incoming_x_r > 0 && incoming_y_r < 0){
+				return this.child_10;
+			}
+			else if (incoming_x_r < 0 && incoming_y_r > 0){
+				return this.child_01;
+			}
+			else if (incoming_x_r > 0 && incoming_y_r > 0){
+				return this.child_11;
+			}
+
+		}
+		else{
+
+
+			let x_i = Math.round(incoming_x_r*4);
+			let y_i = Math.round(incoming_y_r*4);
+	
+			let x_r = (incoming_x_r*4-x_i)*1;
+			let y_r = (incoming_y_r*4-y_i)*1;
+
+			let base_cell = this;
+
+			if (x_r !== 0){
+				
+				if (base_cell.child_00 == null){
+					
+					console.log("find_child_cell: convert", x_r, y_r)
+					base_cell.convert_to_finer_mesh(true);
+				}
+	
+				if (x_r < 0 && y_r < 0){
+					return this.child_00.find_child_cell(x_r, y_r);
+				}
+				else if (x_r > 0 && y_r < 0){
+					return this.child_10.find_child_cell(x_r, y_r);
+				}
+				else if (x_r < 0 && y_r > 0){
+					return this.child_01.find_child_cell(x_r, y_r);
+				}
+				else if (x_r > 0 && y_r > 0){
+					return this.child_11.find_child_cell(x_r, y_r);
+				}
+	
+			}
+	
+			return base_cell;
+			
+
+		}
+	
+	
+		return this;
+
+
+
+
+
+
+		
 	}
 
 	setCurl(curl) {
@@ -152,10 +233,11 @@ class SimulationCell{
 		let uy11 = 0;
 		let rho11 = 0;
 
-		if (x !== Math.round(x)){
-			// find cell is not implemented for submesh
-			return;
-		}
+		// if (x !== Math.round(x)){
+		// 	// find cell is not implemented for submesh
+		// 	//console.log("convert_to_finer_mesh: not implemented for submesh")
+		// 	return;
+		// }
 
 
 		for (let i = 0; i < 3; i++) {
@@ -360,6 +442,13 @@ class SimulationCell{
 
 	calculate_color(root, plot_type, contrast){
 
+
+
+		if (this.sub_mesh_depth == 3){
+
+			//console.log("DRAW", this.x, this.y, this.sub_mesh_depth);
+		}
+
 		let color;
 
 		if (this.barrier) {
@@ -396,6 +485,15 @@ class SimulationCell{
 				color = get_color(Math.round(nColors * (this._curl_*this.sub_mesh_depth*5*contrast + 0.5)));
 			}
 			
+		}
+
+		if (this.sub_mesh_depth == 3){
+
+			this._ux_ = 2000;
+			this._uy_ = 2000;
+			//console.log(this.x, this.y, this._rho_, this._ux_, this._uy_, this._curl_);
+			//color = {red: Math.random()*255, green: Math.random()*255, blue: Math.random()*255};
+			color = {red: 0, green: color.green, blue: color.blue};
 		}
 
 		root.colorSquare(this.x, this.y, Math.pow(0.5,this.sub_mesh_depth-1), color.red, color.green, color.blue);
@@ -502,23 +600,15 @@ export class Boltzmann{
 
 		if (x != Math.round(x)){
 
+
 			if (base_cell.child_00 == null){
 				//return base_cell;
 				base_cell.convert_to_finer_mesh(true);
 			}
 
-			if (x_r < 0 && y_r < 0){
-				return base_cell.child_00;
-			}
-			else if (x_r > 0 && y_r < 0){
-				return base_cell.child_10;
-			}
-			else if (x_r < 0 && y_r > 0){
-				return base_cell.child_01;
-			}
-			else if (x_r > 0 && y_r > 0){
-				return base_cell.child_11;
-			}
+
+			return base_cell.find_child_cell(x_r, y_r);
+
 			
 		}
 
@@ -567,10 +657,21 @@ export class Boltzmann{
 			this.consolidate();
 
 						// Initialize finer mesh at area of interest:
-			for (var y=30; y<52; y++) {
+			for (var y=40; y<62; y++) {
 				for (var x=30; x<52; x++) {
 
 					this.find_cell(x,y).convert_to_finer_mesh();
+				}
+			}
+
+			// Initialize finer mesh at area of interest:
+			for (var y=45; y<51; y++) {
+				for (var x=35; x<41; x++) {
+
+					this.find_cell(x,y).child_00.convert_to_finer_mesh();
+					this.find_cell(x,y).child_01.convert_to_finer_mesh();
+					this.find_cell(x,y).child_10.convert_to_finer_mesh();
+					this.find_cell(x,y).child_11.convert_to_finer_mesh();
 				}
 			}
 
