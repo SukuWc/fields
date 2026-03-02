@@ -1,77 +1,16 @@
 import * as THREE from 'three';
 
-let camera, scene, renderer, mesh;
-let uniforms = {};
-let frame = 0;
-let isFirstFrame = true;
+let camera, scene, renderer;
 let polygons = [];
 let arrows = [];
 
 let _map, _getGuides;
-
-function vertexShader() {
-  return `
-    varying vec3 vUv;
-
-    void main() {
-      vUv = position;
-
-      vec4 modelViewPosition = modelViewMatrix * vec4(position, 1.0);
-      gl_Position = projectionMatrix * modelViewPosition;
-    }
-  `
-}
-
-function fragmentShader() {
-  return `
-    uniform vec3 colorA;
-    uniform vec3 colorB;
-    uniform float time;
-
-    uniform float testarray[900];
-
-    varying vec3 vUv;
-
-    void main() {
-
-      float x = vUv.x + 15.0;
-      float y = vUv.y + 15.0;
-
-      int index_x = 0;
-      if (x>0.0 && x<30.0){
-        index_x = int(floor(x));
-      }
-
-      int index_y = 0;
-      if (y>0.0 && y<30.0){
-        index_y = int(floor(y));
-      }
-
-      int index = index_x*30 + index_y;
-
-      float red = 0.0;
-
-      for (int i=0; i<900; i++) {
-        if (i == index) red = testarray[i];
-      }
-
-      gl_FragColor = vec4(red, red, red, 1);
-
-    }
-    `
-}
 
 export function initRenderer(map, planeMat) {
   camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 85);
   camera.position.z = 60;
   camera.position.y = 20;
   scene = new THREE.Scene();
-
-  uniforms = {
-    colorB: {type: 'vec3', value: new THREE.Color(0x665555)},
-    colorA: {type: 'vec3', value: new THREE.Color(0x555566)},
-    'time': {value: 1.0}
-  };
 
   const geometry = new THREE.PlaneGeometry(map.width, map.height);
   let plane = new THREE.Mesh(geometry, planeMat);
@@ -157,8 +96,7 @@ function animation(time) {
       }
 
       if (type === "polygon") {
-        let vertices = shape.m_vertices;
-        vertices.push(vertices[0]);
+        const vertices = [...shape.m_vertices, shape.m_vertices[0]];
         let points = [];
         const angle = body.getAngle() + Math.PI;
         const com = body.getLocalCenter();
@@ -194,7 +132,5 @@ function animation(time) {
     scene.add(polygons[polygons.length - 1]);
   }
 
-  frame++;
-  isFirstFrame = false;
   renderer.render(scene, camera);
 }
