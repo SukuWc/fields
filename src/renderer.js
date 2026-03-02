@@ -3,6 +3,10 @@ import * as THREE from 'three';
 let camera, scene, renderer;
 let _map, _getGuides;
 
+const fpsEl = document.getElementById('fps');
+let fpsLastTime = performance.now();
+let fpsFrameCount = 0;
+
 // Persistent fixture → THREE.Line mapping — only rebuilt when fixtures enter/leave the world
 const fixtureLines = new Map();
 
@@ -161,4 +165,12 @@ function animation() {
   }
 
   renderer.render(scene, camera);
+
+  fpsFrameCount++;
+  if (fpsFrameCount % 5 === 0) {
+    const now = performance.now();
+    const fps = Math.round(5000 / (now - fpsLastTime));
+    fpsEl.textContent = fps + ' fps';
+    fpsLastTime = now;
+  }
 }
