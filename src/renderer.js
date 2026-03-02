@@ -167,9 +167,9 @@ function animation() {
   renderer.render(scene, camera);
 
   fpsFrameCount++;
-  if (fpsFrameCount % 5 === 0) {
+  if (fpsFrameCount % 30 === 0) {
     const now = performance.now();
-    const fps = Math.round(5000 / (now - fpsLastTime));
+    const fps = Math.round(30000 / (now - fpsLastTime));
     fpsEl.textContent = fps + ' fps';
     fpsLastTime = now;
   }

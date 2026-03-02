@@ -377,43 +377,26 @@ class SimulationCell{
 
 
 	stream(){
-
-		let root = this.parent;
-		let x = this.x;
-		let y = this.y;
-
-		
-
-		this._received_nN_ = root.find_cell(x,y-1)._nN_;			// move the north-moving particles
-		this._received_nNW_ = root.find_cell(x+1,y-1)._nNW_;		// and the northwest-moving particles
-
-		this._received_nE_ = root.find_cell(x-1,y)._nE_;			// move the east-moving particles
-		this._received_nNE_ = root.find_cell(x-1,y-1)._nNE_;		// and the northeast-moving particles
-
-		this._received_nS_ = root.find_cell(x,y+1)._nS_;			// move the south-moving particles
-		this._received_nSE_ = root.find_cell(x-1,y+1)._nSE_;		// and the southeast-moving particles
-		
-		this._received_nW_ = root.find_cell(x+1,y)._nW_;			// move the west-moving particles
-		this._received_nSW_ = root.find_cell(x+1,y+1)._nSW_;		// and the southwest-moving particles
+		this._received_nN_  = this.nbN._nN_;
+		this._received_nNW_ = this.nbNW._nNW_;
+		this._received_nE_  = this.nbE._nE_;
+		this._received_nNE_ = this.nbNE._nNE_;
+		this._received_nS_  = this.nbS._nS_;
+		this._received_nSE_ = this.nbSE._nSE_;
+		this._received_nW_  = this.nbW._nW_;
+		this._received_nSW_ = this.nbSW._nSW_;
 	}
 
 	bounce(){
-		
-		let root = this.parent;
-		let x = this.x;
-		let y = this.y;
-
-
 		if (this.barrier) {
-			root.find_cell(x+1,y)._received_nE_ = this._received_nW_;
-			root.find_cell(x-1,y)._received_nW_ = this._received_nE_;
-			root.find_cell(x,y+1)._received_nN_ = this._received_nS_;
-			root.find_cell(x,y-1)._received_nS_ = this._received_nN_;
-			root.find_cell(x+1,y+1)._received_nNE_ = this._received_nSW_;
-			root.find_cell(x-1,y+1)._received_nNW_ = this._received_nSE_;
-			root.find_cell(x+1,y-1)._received_nSE_ = this._received_nNW_;
-			root.find_cell(x-1,y-1)._received_nSW_ = this._received_nNE_;
-
+			this.nbW._received_nE_   = this._received_nW_;
+			this.nbE._received_nW_   = this._received_nE_;
+			this.nbS._received_nN_   = this._received_nS_;
+			this.nbN._received_nS_   = this._received_nN_;
+			this.nbSW._received_nNE_ = this._received_nSW_;
+			this.nbSE._received_nNW_ = this._received_nSE_;
+			this.nbNW._received_nSE_ = this._received_nNW_;
+			this.nbNE._received_nSW_ = this._received_nNE_;
 		}
 	}
 
@@ -549,6 +532,22 @@ export class Boltzmann{
 			}
 		}
 
+		// Cache direct neighbour references on each interior cell so stream() and
+		// bounce() never need to call find_cell() at runtime.
+		for (var y=1; y<this.height-1; y++) {
+			for (var x=1; x<this.width-1; x++) {
+				const cell = this.cells[x + y*this.width];
+				cell.nbN  = this.cells[x   + (y-1)*this.width];
+				cell.nbNW = this.cells[(x+1) + (y-1)*this.width];
+				cell.nbE  = this.cells[(x-1) + y*this.width];
+				cell.nbNE = this.cells[(x-1) + (y-1)*this.width];
+				cell.nbS  = this.cells[x   + (y+1)*this.width];
+				cell.nbSE = this.cells[(x-1) + (y+1)*this.width];
+				cell.nbW  = this.cells[(x+1) + y*this.width];
+				cell.nbSW = this.cells[(x+1) + (y+1)*this.width];
+			}
+		}
+
 
 		// Initialize with no barriers:
 		for (var y=0; y<this.height; y++) {
@@ -580,7 +579,7 @@ export class Boltzmann{
 		this.initFluid();		// initialize to steady rightward flow
 		this.startStop();
 
-		this.graphics_model_init()
+		this.paintTexture()
 	}
 
 	calculate_index(x,y){
@@ -700,34 +699,10 @@ export class Boltzmann{
 		// }
 
 
-		this.graphics_model_init();
-
-	}
-
-	graphics_model_init(){
-
-		this.graphics_model_step()
-	}
-
-	graphics_model_step(){
-
 		this.paintTexture();
 
-		if (this.running) {
-			if (rafCheck.checked) {
-				requestAnimFrame(this.graphics_model_step_handler.bind(this));	// let browser schedule next frame
-			} else {
-				window.setTimeout(this.graphics_model_step_handler.bind(this), 10);	// schedule next frame asap (nominally 1 ms but always more)
-			}
-		}
-
 	}
 
-	graphics_model_step_handler(){
-
-		this.graphics_model_step()
-
-	}
 
 	// Set the fluid variables at the boundaries, according to the current slider value:
 	setBoundaries() {
@@ -755,7 +730,7 @@ export class Boltzmann{
 		for (var y=1; y<this.height-1; y++) {
 			for (var x=1; x<this.width-1; x++) {
 
-				this.find_cell(x,y).collide(omega);
+				this.cells[x + y*this.width].collide(omega);
 			}
 		}
 
@@ -778,7 +753,7 @@ export class Boltzmann{
 		for (var y=1; y<this.height-1; y++) {
 			for (var x=1; x<this.width-1; x++) {
 
-				this.find_cell(x,y).stream();
+				this.cells[x + y*this.width].stream();
 			}
 		}
 
@@ -790,7 +765,7 @@ export class Boltzmann{
 		for (var y=1; y<this.height-1; y++) {
 			for (var x=1; x<this.width-1; x++) {
 
-				this.find_cell(x,y).bounce();
+				this.cells[x + y*this.width].bounce();
 			}
 		}
 
@@ -800,7 +775,7 @@ export class Boltzmann{
 		for (var y=0; y<this.height; y++) {
 			for (var x=0; x<this.width; x++) {
 
-				this.find_cell(x,y).consolidate();
+				this.cells[x + y*this.width].consolidate();
 			}
 		}
 
@@ -892,14 +867,15 @@ export class Boltzmann{
 		// a = F/m
 		// dv/dt = F/m0
 
-		let vx = this.find_cell(x, y)._ux_;
-		let vy = this.find_cell(x, y)._uy_;
-		let m = this.find_cell(x, y)._rho_;
+		const cell = this.find_cell(x, y);
+		const vx = cell._ux_;
+		const vy = cell._uy_;
+		const m = cell._rho_;
 
-		let dvx = Math.cos(direction/180*Math.PI) * s / m * -1;
-		let dvy = Math.sin(direction/180*Math.PI) * s / m * -1;
-		
-		this.find_cell(x, y).setEquil(vx + dvx, vy + dvy)
+		const dvx = Math.cos(direction/180*Math.PI) * s / m * -1;
+		const dvy = Math.sin(direction/180*Math.PI) * s / m * -1;
+
+		cell.setEquil(vx + dvx, vy + dvy);
 
 	}
 
@@ -1100,25 +1076,22 @@ export class Boltzmann{
 			return
 		}
 
-		let pixels_to_fill = this.oversampling*size
+		const pixels_to_fill = this.oversampling * size;
+		const _x_remainder = (x*this.oversampling - Math.round(x*this.oversampling)) / 2;
+		const _y_remainder = (y*this.oversampling - Math.round(y*this.oversampling)) / 2;
+		const offset = size < 1 ? 1 : 0;
+		const _x_base = Math.round(x*this.oversampling) + Math.ceil(_x_remainder*this.oversampling) + offset;
+		const _y_base = Math.round(y*this.oversampling) + Math.ceil(_y_remainder*this.oversampling) + offset;
+		const rowWidth = this.width * this.oversampling;
+		const data = this.texture.image.data;
 
 		for(var i=0; i<pixels_to_fill; i++) {
 			for(var j=0; j<pixels_to_fill; j++) {
-				
-
-				let _x_remainder = (x*this.oversampling-Math.round(x*this.oversampling))/2
-				let _y_remainder = (y*this.oversampling-Math.round(y*this.oversampling))/2
-
-				let _x = Math.round(x*this.oversampling)+i + Math.ceil(_x_remainder*this.oversampling) + (size<1?1:0)
-				let _y = Math.round(y*this.oversampling)+j + Math.ceil(_y_remainder*this.oversampling) + (size<1	?1:0)
-
-				var ind = (_x + (_y)*this.width*this.oversampling) * 4;
-				//var ind = (x + y*this.width) * 4;
-				this.texture.image.data[ind+0] = r;
-				this.texture.image.data[ind+1] = g;
-				this.texture.image.data[ind+2] = b;
-				this.texture.image.data[ind+3] = 255;
-		
+				var ind = ((_x_base + i) + (_y_base + j) * rowWidth) * 4;
+				data[ind]   = r;
+				data[ind+1] = g;
+				data[ind+2] = b;
+				data[ind+3] = 255;
 			}
 		}
 			
@@ -1134,7 +1107,7 @@ export class Boltzmann{
 		for (var y=1; y<this.height-1; y++) {			// interior sites only; leave edges set to zero
 			for (var x=1; x<this.width-1; x++) {
 
-				this.find_cell(x,y).calculate_curl();
+				this.cells[x + y*this.width].calculate_curl();
 			
 			}
 		}

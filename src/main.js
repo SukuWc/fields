@@ -36,6 +36,9 @@ setupControls(map, getCamera, bm);
 let guides = [];
 startAnimation(map, () => guides);
 
+const infoEl = document.getElementById('info');
+const distInfoEl = document.getElementById('dist_info');
+
 // Physics loop
 const runner = new Runner(map.world, { speed: 1, fps: 30 });
 
@@ -56,12 +59,12 @@ runner.start(() => {
         const dx = player.x - player2.x;
         const dy = player.y - player2.y;
         sumOfPlayerDistances += Math.sqrt(dx * dx + dy * dy);
-        document.getElementById("dist_info").innerHTML = "Dist: " + Math.floor(sumOfPlayerDistances * 100) / 100 + "<br>";
+        distInfoEl.innerHTML = "Dist: " + Math.floor(sumOfPlayerDistances * 100) / 100 + "<br>";
       }
     });
 
     player.physics_model_step();
-    guides = [...guides, ...player.graphics_model_render()];
+    guides.push(...player.graphics_model_render());
 
     const wind_angle_rad = (player.awa) / 180 * Math.PI + player.hull_angle - Math.PI / 2;
     const offset = 1.5;
@@ -77,12 +80,10 @@ runner.start(() => {
     map.bm.apply_energy(px1, py1, player.power_direction, player.power / 2000);
     map.bm.apply_energy(px2, py2, player.power_direction, player.power / 5000);
 
-    document.getElementById("info").innerHTML += "Phys Time: " + bm.t_delta + "<br>";
+    infoEl.innerHTML += "Phys Time: " + bm.t_delta + "<br>";
   });
 
-  if (getPhysicsFrame() % 1 === 0) {
-    map.bm.physics_model_step();
-  }
+  map.bm.physics_model_step();
 
   incrementPhysicsFrame();
 
