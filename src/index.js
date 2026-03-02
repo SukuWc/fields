@@ -26,7 +26,7 @@ var _side2 = texture_oversampling* map_h*bm_resolution; // power of two textures
 var _amount = _side1*_side2*4; // you need 4 values for every pixel in side*side plane
 var _data1 = new Uint8Array(_amount);
 
-var dataTextureMaterial = new THREE.DataTexture(_data1, _side1, _side2, THREE.RGBAFormat, THREE.UnsignedByteType, THREE.UVMapping); // maybe RGBAIntegerFormat but that requires WebGL2 rendering context
+var dataTextureMaterial = new THREE.DataTexture(_data1, _side1, _side2, THREE.RGBAFormat, THREE.UnsignedByteType); // maybe RGBAIntegerFormat but that requires WebGL2 rendering context
 
 
 dataTextureMaterial.magFilter = THREE.NearestFilter; // also check out THREE.LinearFilter just to see the results
@@ -456,14 +456,8 @@ runner.start(() => {
 
 
 
-  let position={}
-
-  position.x = 0
-  position.y = 0
-  
   if (bm.step_ready){
-
-    renderer.copyTextureToTexture( position, dataTextureMaterial, dataTextureMaterial );
+    dataTextureMaterial.needsUpdate = true;
     bm.step_ready = false;
   }
 
@@ -492,7 +486,7 @@ runner.start(() => {
 
 
 
-import * as THREE from '../node_modules/three/build/three.module.js';
+import * as THREE from 'three';
 
 let camera, scene, renderer, mesh;
 let uniforms = {};

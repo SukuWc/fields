@@ -12,6 +12,10 @@ npm run build      # Production build with base path /fields (output: dist/)
 
 No test suite is currently configured.
 
+## Dependency notes
+
+`planck-js` is intentionally pinned at `^0.3.31`. The newer `planck` package (v1+) has breaking API changes and requires a `stage-js` peer dependency that is incompatible with `planck-renderer@2.2.0` (already at latest). Do not upgrade `planck-js` or `planck-renderer` without significant migration work.
+
 ## Architecture
 
 This is an interactive web sailing simulator combining 2D fluid dynamics with 3D rendering.
