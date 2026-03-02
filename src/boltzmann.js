@@ -240,30 +240,38 @@ class SimulationCell{
 		// }
 
 
+		// Step size matches the grid spacing at this depth level:
+		// depth 1 (base) → step 1, depth 2 (first submesh) → step 0.5, etc.
+		const step = Math.pow(0.5, this.sub_mesh_depth - 1);
+
 		for (let i = 0; i < 3; i++) {
 			for (let j = 0; j < 3; j++) {
 
-				ux00 += prediciton_wights[i][j] * root.find_cell(x-1+i, y-1+j)._ux_;
-				uy00 += prediciton_wights[i][j] * root.find_cell(x-1+i, y-1+j)._uy_;
-				rho00 += prediciton_wights[i][j] * root.find_cell(x-1+i, y-1+j)._rho_;
+				const nx = x - step + i*step;
+				const ny = y - step + j*step;
+				const cell = root.find_cell(nx, ny);
+
+				ux00  += prediciton_wights[i][j]     * cell._ux_;
+				uy00  += prediciton_wights[i][j]     * cell._uy_;
+				rho00 += prediciton_wights[i][j]     * cell._rho_;
 
 				// rot 90
-				ux01 += prediciton_wights[2-j][i] * root.find_cell(x-1+i, y-1+j)._ux_;
-				uy01 += prediciton_wights[2-j][i] * root.find_cell(x-1+i, y-1+j)._uy_;
-				rho01 += prediciton_wights[2-j][i] * root.find_cell(x-1+i, y-1+j)._rho_;
+				ux01  += prediciton_wights[2-j][i]   * cell._ux_;
+				uy01  += prediciton_wights[2-j][i]   * cell._uy_;
+				rho01 += prediciton_wights[2-j][i]   * cell._rho_;
 
-				// rot 180 
-				ux11 += prediciton_wights[2-i][2-j] * root.find_cell(x-1+i, y-1+j)._ux_;
-				uy11 += prediciton_wights[2-i][2-j] * root.find_cell(x-1+i, y-1+j)._uy_;
-				rho11 += prediciton_wights[2-i][2-j] * root.find_cell(x-1+i, y-1+j)._rho_;
+				// rot 180
+				ux11  += prediciton_wights[2-i][2-j] * cell._ux_;
+				uy11  += prediciton_wights[2-i][2-j] * cell._uy_;
+				rho11 += prediciton_wights[2-i][2-j] * cell._rho_;
 
 				// rot 270
-				ux10 += prediciton_wights[j][2-i] * root.find_cell(x-1+i, y-1+j)._ux_;
-				uy10 += prediciton_wights[j][2-i] * root.find_cell(x-1+i, y-1+j)._uy_;
-				rho10 += prediciton_wights[j][2-i] * root.find_cell(x-1+i, y-1+j)._rho_;
+				ux10  += prediciton_wights[j][2-i]   * cell._ux_;
+				uy10  += prediciton_wights[j][2-i]   * cell._uy_;
+				rho10 += prediciton_wights[j][2-i]   * cell._rho_;
 
 			}
-			
+
 		}
 		this.child_00.setEquil(ux00, uy00, rho00);
 		this.child_01.setEquil(ux01, uy01, rho01);
@@ -470,12 +478,11 @@ class SimulationCell{
 			
 		}
 
-		if (this.sub_mesh_depth == 3){
+		if (this.sub_mesh_depth == 2){
+			color = {red: color.red*0.75, green: color.green*0.75, blue: color.blue*0.75};
+		}
 
-			this._ux_ = 2000;
-			this._uy_ = 2000;
-			//console.log(this.x, this.y, this._rho_, this._ux_, this._uy_, this._curl_);
-			//color = {red: Math.random()*255, green: Math.random()*255, blue: Math.random()*255};
+		if (this.sub_mesh_depth == 3){
 			color = {red: color.red/2, green: color.green/2, blue: color.blue/2};
 		}
 

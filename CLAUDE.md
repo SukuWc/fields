@@ -53,9 +53,10 @@ The physics runner (`planck-renderer` `Runner`) in `main.js` runs at 30 FPS:
 
 Uses the **D2Q9 lattice** (9-velocity 2D LBM). Key classes:
 
-- `SimulationCell` — single lattice node storing 9 microscopic densities (`_n0_`, `_nN_`, `_nS_`, `_nE_`, `_nW_`, `_nNE_`, `_nNW_`, `_nSE_`, `_nSW_`). `sub_mesh_depth` field: `0` = root, `1` = standard cell, `2` = submesh container cell.
+- `SimulationCell` — single lattice node storing 9 microscopic densities (`_n0_`, `_nN_`, `_nS_`, `_nE_`, `_nW_`, `_nNE_`, `_nNW_`, `_nSE_`, `_nSW_`). `sub_mesh_depth` field: `0` = root, `1` = standard cell, `2` = first submesh level, `3` = second submesh level.
 - `Boltzmann` — top-level class managing the cell grid, stepping (stream + collide), density/velocity/curl queries, and writing to the Three.js `DataTexture` for visualization.
-- Hierarchical **submesh refinement** at grain boundaries: `is_temporary` cells are created at edges to bridge resolution levels. Submesh generation and curl calculation are the most recently developed features.
+- **Adaptive mesh refinement (AMR) is early/experimental** — not fully implemented. Depth-2 and depth-3 child cells exist and are initialised via `convert_to_finer_mesh`, which samples a 3×3 neighbourhood at the parent's grid spacing (`step = Math.pow(0.5, sub_mesh_depth - 1)`) so depth-3 cells draw from depth-2 neighbours rather than the root grid. Sub-cells do not yet participate in the main stream/collide/bounce loop.
+- **Debug visualisation**: `calculate_color` dims cells by depth — depth-2 at 75% brightness, depth-3 at 50% — to make refinement region boundaries visible in the fluid texture.
 
 ### Boat Physics (`boat.js`)
 
