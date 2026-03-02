@@ -23,7 +23,10 @@ This is an interactive web sailing simulator combining 2D fluid dynamics with 3D
 ### System Overview
 
 ```
-src/index.js          — Main orchestrator: Three.js scene, simulation loop, UI events
+src/main.js           — Entry point: constants, texture setup, physics loop (Runner)
+src/renderer.js       — Three.js scene init and animation loop
+src/controls.js       — Keyboard/mouse input, DOM UI listeners, scenario management
+src/utils.js          — range_map and HSVtoRGB helpers
 src/boltzmann.js      — Lattice Boltzmann Method (LBM) fluid simulator
 src/boat.js           — Sailboat physics, aerodynamics, autopilot
 src/map.js            — Planck.js world container, camera control, wind queries
@@ -31,14 +34,20 @@ src/map.js            — Planck.js world container, camera control, wind querie
 
 ### Simulation Loop
 
-The physics runner (`planck-renderer` `Runner`) runs at 30 FPS:
-1. Dequeue scenario actions
-2. Process keyboard input
+The physics runner (`planck-renderer` `Runner`) in `main.js` runs at 30 FPS:
+1. `executeScenarioFrame()` — fire timed scenario callbacks
+2. `processKeys()` — dispatch held-key bindings
 3. `boat.physics_model_step()` — aerodynamic force calculation + Planck.js integration
-4. `bm.step()` — Boltzmann fluid advance
-5. Apply boat↔fluid interaction forces
+4. Boat→fluid energy application (`bm.apply_energy`)
+5. `bm.physics_model_step()` — Boltzmann fluid advance
 6. `map.physics_model_step()` — camera follow update
 7. Three.js render (`DataTexture` for fluid field, line geometry for physics bodies)
+
+### Module responsibilities
+
+- **`main.js`** owns: `dataTextureMaterial`, `bm`, `map`, `runner`, `guides[]`, and the physics loop. Passes a `() => guides` getter to `renderer.js` so the render loop can read guides without coupling.
+- **`renderer.js`** owns: `camera`, `scene`, `renderer`, `polygons[]`, `arrows[]`. `initRenderer` must be called before `setupControls` (controls needs `getCamera`).
+- **`controls.js`** owns: `key_bind_list`, `key_state`, `players[]`, `scenario_descriptor`, `physics_frame`, scenario definitions. `_map` is set lazily in `setupControls`; scenario closures safely reference it since they execute after setup.
 
 ### Boltzmann Fluid Engine (`boltzmann.js`)
 
@@ -64,7 +73,7 @@ Each `Boat` instance:
 
 ### Scenarios
 
-Scenarios are defined in `src/index.js` as `scenario_descriptor` objects with timed action queues. Scenario 0 = single boat autopilot; 1 = two-boat race; 2–4 = multi-boat automated sequences; 5 = empty template.
+Scenarios are defined in `src/controls.js` as sparse arrays indexed by physics frame number. Scenario 0 = single boat autopilot; 1 = two-boat race; 2–4 = multi-boat automated sequences; 5 = empty template. `map.js` intentionally creates two dynamic circle bodies in `physics_model_init` as world objects.
 
 ### Visualization Modes
 
