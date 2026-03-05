@@ -26,6 +26,7 @@ planeMat.needsUpdate = true;
 
 // Core simulation instances
 const bm = new Boltzmann(map_w, map_h, bm_resolution, wind_angle, wind_speed, dataTextureMaterial, texture_oversampling);
+bm.addDomain(35, 35, 57, 57);
 const map = new Map(map_w, map_h, wind_angle, wind_speed, bm);
 map.physics_model_init();
 
