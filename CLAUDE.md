@@ -53,9 +53,10 @@ The physics runner (`planck-renderer` `Runner`) in `main.js` runs at 30 FPS:
 
 Uses the **D2Q9 lattice** (9-velocity 2D LBM). Key classes:
 
-- `SimulationCell` — single lattice node storing 9 microscopic densities (`_n0_`, `_nN_`, `_nS_`, `_nE_`, `_nW_`, `_nNE_`, `_nNW_`, `_nSE_`, `_nSW_`). `sub_mesh_depth` field: `0` = root, `1` = standard cell, `2` = first submesh level, `3` = second submesh level.
-- `Boltzmann` — top-level class managing the cell grid, stepping (stream + collide), density/velocity/curl queries, and writing to the Three.js `DataTexture` for visualization.
+- `SimulationCell` — single lattice node. Fields match paper notation: `f0, fN, fS, fE, fW, fNE, fNW, fSE, fSW` (post-collision populations), `fN_in … fSW_in` (incoming buffers), `rho`, `ux`, `uy`, `curl`. `sub_mesh_depth`: `0` = root, `1` = standard cell, `2` = first submesh level, `3` = second submesh level.
+- `Boltzmann` — top-level class. Owns `cells[]` (all cells), `interiorCells[]` (pre-computed interior subset for efficient stepping), and the `collideAndStream(cells, omega)` helper that runs one full LBM step (collide→stream→bounce→consolidate) on any cell array. Step order in `physics_model_step`: collide → stream → bounce → consolidate → `setBoundaries` (boundaries enforced after propagation, per paper).
 - **Adaptive mesh refinement (AMR) is early/experimental** — not fully implemented. Depth-2 and depth-3 child cells exist and are initialised via `convert_to_finer_mesh`, which samples a 3×3 neighbourhood at the parent's grid spacing (`step = Math.pow(0.5, sub_mesh_depth - 1)`) so depth-3 cells draw from depth-2 neighbours rather than the root grid. Sub-cells do not yet participate in the main stream/collide/bounce loop.
+- **AMR reference paper**: Lagrava, Malaspinas, Latt, Chopard — *"Advances in multi-domain lattice Boltzmann grid refinement"*, J. Comput. Phys. 231:4808–4822, 2012. DOI: 10.1016/j.jcp.2012.03.015. PDF at `research/lagrava_gr_2012.pdf`. This is the paper we are following for the full AMR implementation (multi-domain, cell-vertex, convective scaling, Dupuis-Chopard non-equilibrium rescaling with cubic spatial interpolation and box-filter fine→coarse).
 - **Debug visualisation**: `calculate_color` dims cells by depth — depth-2 at 75% brightness, depth-3 at 50% — to make refinement region boundaries visible in the fluid texture.
 
 ### Boat Physics (`boat.js`)
@@ -75,6 +76,15 @@ Each `Boat` instance:
 ### Scenarios
 
 Scenarios are defined in `src/controls.js` as sparse arrays indexed by physics frame number. Scenario 0 = single boat autopilot; 1 = two-boat race; 2–4 = multi-boat automated sequences; 5 = empty template. `map.js` intentionally creates two dynamic circle bodies in `physics_model_init` as world objects.
+
+### Coding conventions for `boltzmann.js`
+
+The LBM implementation is kept as close as possible to the Lagrava paper. Follow these rules when editing:
+
+- **Variable names match paper notation**: `f0, fN, fS, fE, fW, fNE, fNW, fSE, fSW` (Eq. 2), `rho` (ρ), `ux/uy` (u), `nu` (ν), `omega` / `omega_c` / `omega_f` (ω).
+- **Equation comments**: every calculation that has a numbered formula in the paper must have a `// Eq. N:` comment on or above it. Current coverage: Eq. 2 (weights), Eq. 3 (equilibrium), Eq. 4/5 (macro fields), Eq. 10 (ω from ν), Eq. 15 (BGK collision), Eq. 16 (streaming), Eq. 24 (fine-grid ω), §3.5 (sub-cycling).
+- **Geographic neighbour naming**: `nbN` = y+1 (north), `nbS` = y−1, `nbE` = x+1, `nbW` = x−1, and diagonals accordingly. Pull-scheme streaming reads from the *upstream* geographic direction (e.g. `fN_in = nbS.fN`).
+- **No dead code**: remove stale methods rather than commenting them out.
 
 ### Visualization Modes
 
