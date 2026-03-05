@@ -235,7 +235,9 @@ class SimulationCell {
 // cx0, cy0, cx1, cy1 are corners in coarse grid integer coordinates (exclusive on cx1/cy1).
 // Each domain runs 2 fine sub-steps per 1 coarse step with its own omega_f (Eq. 24).
 // Coarse↔fine coupling: Eq. 29 (coarse→fine, non-eq rescaling) and Eq. 30/33
-// (fine→coarse, box-filter + non-eq rescaling). Temporal interpolation not yet implemented.
+// (fine→coarse, box-filter + non-eq rescaling).
+// Temporal interpolation (Section 3.5): sub-step 1 uses the t-state ghost boundary
+// (saved before the coarse step); sub-step 2 uses the t+½ interpolation.
 class RefinementDomain {
 
 	constructor(boltzmann, cx0, cy0, cx1, cy1) {
@@ -286,16 +288,96 @@ class RefinementDomain {
 		for (let k = 0; k < this.cells.length; k++) {
 			this.cells[k].setEquil(hspeed, vspeed, 1);
 		}
+
+		// Flat list of ghost border cells for temporal interpolation.
+		// These are the cells at fi=0, fi=width-1, fj=0, fj=height-1.
+		this.ghostCells = [];
+		for (let fi = 0; fi < this.width; fi++) {
+			this.ghostCells.push(this.cells[fi + 0                    * this.width]);
+			this.ghostCells.push(this.cells[fi + (this.height-1)      * this.width]);
+		}
+		for (let fj = 1; fj < this.height - 1; fj++) {
+			this.ghostCells.push(this.cells[0               + fj * this.width]);
+			this.ghostCells.push(this.cells[(this.width-1)  + fj * this.width]);
+		}
+
+		// Snapshot buffer: 9 populations per ghost cell, stores the t-state for
+		// temporal interpolation (sub-step 1 uses t, sub-step 2 uses t+½).
+		this.ghostSnapshot = new Float64Array(this.ghostCells.length * 9);
 	}
 
 	// Section 3.5 (Lagrava): coarse→fine injection, 2 fine sub-steps, fine→coarse averaging.
 	// Eq. 29 rescaling applied on injection; Eq. 30/33 applied on averaging.
-	// TODO: temporal interpolation — currently both fine sub-steps use the same coarse state.
+	// Temporal interpolation: sub-step 1 uses the t-state saved in ghostSnapshot;
+	// sub-step 2 uses the t+½ interpolation (0.5*t + 0.5*(t+1)).
 	step(boltzmann) {
+		// Sub-step 1: restore ghost boundary to t-state (saved before coarse step ran)
+		this._restoreGhostFromSnapshot();
+		boltzmann.collideAndStream(this.interiorCells, this.omega_f);
+
+		// Sub-step 2: inject t+1 coarse state, then interpolate to t+½ (Section 3.5)
 		this.injectFromCoarse(boltzmann);
+		this._interpolateGhostCells(0.5); // 0.5*(t-snapshot) + 0.5*(t+1) = t+½
 		boltzmann.collideAndStream(this.interiorCells, this.omega_f);
-		boltzmann.collideAndStream(this.interiorCells, this.omega_f);
+
 		this.averageToCoarse(boltzmann);
+	}
+
+	// Section 3.5 (Lagrava): capture t-state ghost boundary BEFORE the coarse step runs.
+	// Injects from coarse into ghost cells (Eq. 29) and snapshots the resulting populations.
+	// Must be called in Boltzmann.physics_model_step() before collideAndStream on root grid.
+	saveCoarseBoundary(boltzmann) {
+		this.injectFromCoarse(boltzmann);
+		for (let k = 0; k < this.ghostCells.length; k++) {
+			const g    = this.ghostCells[k];
+			const base = k * 9;
+			this.ghostSnapshot[base+0] = g.f0;
+			this.ghostSnapshot[base+1] = g.fN;
+			this.ghostSnapshot[base+2] = g.fS;
+			this.ghostSnapshot[base+3] = g.fE;
+			this.ghostSnapshot[base+4] = g.fW;
+			this.ghostSnapshot[base+5] = g.fNE;
+			this.ghostSnapshot[base+6] = g.fNW;
+			this.ghostSnapshot[base+7] = g.fSE;
+			this.ghostSnapshot[base+8] = g.fSW;
+		}
+	}
+
+	// Restore ghost cells to the t-state populations saved by saveCoarseBoundary.
+	// Used before sub-step 1 so the fine grid sees the t-state boundary.
+	_restoreGhostFromSnapshot() {
+		for (let k = 0; k < this.ghostCells.length; k++) {
+			const g    = this.ghostCells[k];
+			const base = k * 9;
+			g.f0  = this.ghostSnapshot[base+0];
+			g.fN  = this.ghostSnapshot[base+1];
+			g.fS  = this.ghostSnapshot[base+2];
+			g.fE  = this.ghostSnapshot[base+3];
+			g.fW  = this.ghostSnapshot[base+4];
+			g.fNE = this.ghostSnapshot[base+5];
+			g.fNW = this.ghostSnapshot[base+6];
+			g.fSE = this.ghostSnapshot[base+7];
+			g.fSW = this.ghostSnapshot[base+8];
+		}
+	}
+
+	// Interpolate ghost cells between the t-snapshot and their current (t+1) values.
+	// alpha=0 → pure t-state, alpha=0.5 → t+½ (Section 3.5 temporal interpolation).
+	_interpolateGhostCells(alpha) {
+		const beta = 1 - alpha;
+		for (let k = 0; k < this.ghostCells.length; k++) {
+			const g    = this.ghostCells[k];
+			const base = k * 9;
+			g.f0  = beta * this.ghostSnapshot[base+0] + alpha * g.f0;
+			g.fN  = beta * this.ghostSnapshot[base+1] + alpha * g.fN;
+			g.fS  = beta * this.ghostSnapshot[base+2] + alpha * g.fS;
+			g.fE  = beta * this.ghostSnapshot[base+3] + alpha * g.fE;
+			g.fW  = beta * this.ghostSnapshot[base+4] + alpha * g.fW;
+			g.fNE = beta * this.ghostSnapshot[base+5] + alpha * g.fNE;
+			g.fNW = beta * this.ghostSnapshot[base+6] + alpha * g.fNW;
+			g.fSE = beta * this.ghostSnapshot[base+7] + alpha * g.fSE;
+			g.fSW = beta * this.ghostSnapshot[base+8] + alpha * g.fSW;
+		}
 	}
 
 	// Coarse→fine: fill ghost border cells from bilinear interpolation of coarse macroscopic
@@ -593,8 +675,13 @@ export class Boltzmann {
 		// Eq. 24 (Lagrava): omega_f = 2*omega_c / (4 - omega_c)  (fine grid, per domain)
 		const omega_c = 1 / (3 * this.nu + 0.5);
 
-		// Section 3.5 (Lagrava): 1 coarse step + 2 fine sub-steps per domain.
-		// Paper step order (Eq. 15→16→bounce-back→consolidate→boundary):
+		// Section 3.5 (Lagrava): save t-state ghost boundaries BEFORE the coarse step,
+		// so sub-step 1 of each domain can use the correct t-state (temporal interpolation).
+		for (let d = 0; d < this.domains.length; d++) {
+			this.domains[d].saveCoarseBoundary(this);
+		}
+
+		// 1 coarse step (Eq. 15→16→bounce-back→consolidate→boundary):
 		this.collideAndStream(this.interiorCells, omega_c);
 		this.setBoundaries();
 
