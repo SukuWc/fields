@@ -542,7 +542,6 @@ class RefinementDomain {
 
 	// Paint fine cells onto the shared texture, overwriting the coarse cells in this region.
 	// Fine cell (fi, fj) has coarse coordinate x = cx0 + (fi-1)*0.5, y = cy0 + (fj-1)*0.5.
-	// Debug: dimmed to 75% brightness so the domain boundary is visible.
 	paintTexture(boltzmann, plot_type, contrast) {
 		for (let fj = 1; fj < this.height - 1; fj++) {
 			for (let fi = 1; fi < this.width - 1; fi++) {
@@ -550,9 +549,28 @@ class RefinementDomain {
 				const color = cell.calculate_color(plot_type, contrast);
 				const cx = this.cx0 + (fi - 1) * 0.5;
 				const cy = this.cy0 + (fj - 1) * 0.5;
-				boltzmann.colorSquare(cx, cy, 0.5, color.red * 0.75, color.green * 0.75, color.blue * 0.75);
+				boltzmann.colorSquare(cx, cy, 0.5, color.red, color.green, color.blue);
 			}
 		}
+	}
+
+	// Returns the domain boundary as four world-space line segments {x1,y1,x2,y2}.
+	// Caller passes the root Boltzmann instance to resolve the coarse→world transform.
+	worldBorderLines(boltzmann) {
+		const toWorld = (cx, cy) => ({
+			x: (cx - boltzmann.width  / 2) / boltzmann.resolution,
+			y: (cy - boltzmann.height / 2) / boltzmann.resolution,
+		});
+		const tl = toWorld(this.cx0, this.cy0);
+		const tr = toWorld(this.cx1, this.cy0);
+		const br = toWorld(this.cx1, this.cy1);
+		const bl = toWorld(this.cx0, this.cy1);
+		return [
+			{ x1: tl.x, y1: tl.y, x2: tr.x, y2: tr.y },
+			{ x1: tr.x, y1: tr.y, x2: br.x, y2: br.y },
+			{ x1: br.x, y1: br.y, x2: bl.x, y2: bl.y },
+			{ x1: bl.x, y1: bl.y, x2: tl.x, y2: tl.y },
+		];
 	}
 }
 
@@ -832,11 +850,8 @@ export class Boltzmann {
 		if (this.texture === undefined) return;
 
 		const pixels_to_fill = this.oversampling * size;
-		const _x_remainder = (x*this.oversampling - Math.round(x*this.oversampling)) / 2;
-		const _y_remainder = (y*this.oversampling - Math.round(y*this.oversampling)) / 2;
-		const offset = size < 1 ? 1 : 0;
-		const _x_base = Math.round(x*this.oversampling) + Math.ceil(_x_remainder*this.oversampling) + offset;
-		const _y_base = Math.round(y*this.oversampling) + Math.ceil(_y_remainder*this.oversampling) + offset;
+		const _x_base = Math.round(x * this.oversampling);
+		const _y_base = Math.round(y * this.oversampling);
 		const rowWidth = this.width * this.oversampling;
 		const data = this.texture.image.data;
 

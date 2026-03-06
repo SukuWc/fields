@@ -46,6 +46,12 @@ const runner = new Runner(map.world, { speed: 1, fps: 30 });
 runner.start(() => {
   guides = [];
 
+  for (const domain of bm.domains) {
+    for (const seg of domain.worldBorderLines(bm)) {
+      guides.push({ color: 0x000000, type: 'guide', x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2 });
+    }
+  }
+
   executeScenarioFrame();
   processKeys();
 
