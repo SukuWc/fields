@@ -230,31 +230,59 @@ class SimulationCell {
 }
 
 
-// Multi-domain AMR (Lagrava §3.5): a flat rectangular fine grid at 2× coarse resolution.
-// cx0, cy0, cx1, cy1 are corners in coarse grid integer coordinates (exclusive on cx1/cy1).
-// Each domain runs 2 fine sub-steps per 1 coarse step with its own omega_f (Eq. 24).
-// Coarse↔fine coupling: Eq. 29 (coarse→fine, non-eq rescaling) and Eq. 30/33
-// (fine→coarse, box-filter + non-eq rescaling).
+// One full LBM step (collide→stream→bounce→consolidate) on an arbitrary cell array.
+// Module-level so all refinement levels can call it without passing the root Boltzmann around.
+function collideAndStream(cells, omega) {
+	for (let i = 0; i < cells.length; i++) cells[i].collide(omega);
+	for (let i = 0; i < cells.length; i++) cells[i].stream();
+	for (let i = 0; i < cells.length; i++) cells[i].bounce();
+	for (let i = 0; i < cells.length; i++) cells[i].consolidate();
+}
+
+
+// Multi-domain AMR (Lagrava §3.5): a flat rectangular fine grid at 2× parent resolution.
+// cx0, cy0, cx1, cy1 are corners in the PARENT grid's cell coordinates (exclusive on cx1/cy1).
+// parent may be a Boltzmann instance (level-1 domain) or another RefinementDomain (level N+1).
+// Each domain runs 2 fine sub-steps per 1 parent sub-step with its own omega_f (Eq. 24).
+// Coarse↔fine coupling: Eq. 29 (parent→fine, non-eq rescaling) and Eq. 30/33
+// (fine→parent, box-filter + non-eq rescaling).
 // Temporal interpolation (Section 3.5): sub-step 1 uses the t-state ghost boundary
-// (saved before the coarse step); sub-step 2 uses the t+½ interpolation.
+// (saved before the parent step); sub-step 2 uses the t+½ interpolation.
 class RefinementDomain {
 
-	constructor(boltzmann, cx0, cy0, cx1, cy1) {
+	constructor(parent, cx0, cy0, cx1, cy1) {
 		this.cx0 = cx0;
 		this.cy0 = cy0;
 		this.cx1 = cx1;
 		this.cy1 = cy1;
 
-		// Fine grid: 2 fine cells per coarse cell + 1-cell ghost border on each side.
-		// Ghost border cells (fi=0, fi=width-1, fj=0, fj=height-1) will eventually
-		// receive values from the coarse grid via coarse→fine coupling (Eq. 29).
+		// Fine grid: 2 fine cells per parent cell + 1-cell ghost border on each side.
+		// Ghost border cells (fi=0, fi=width-1, fj=0, fj=height-1) receive values from
+		// the parent grid via parent→fine coupling (Eq. 29).
 		this.width  = (cx1 - cx0) * 2 + 2;
 		this.height = (cy1 - cy0) * 2 + 2;
 
-		// Eq. 10: omega_c = 1 / (3*nu + 0.5)
-		// Eq. 24 (Lagrava): omega_f = 2*omega_c / (4 - omega_c)
-		this.omega_c = 1 / (3 * boltzmann.nu + 0.5);
+		// Eq. 24: omega_c for this domain = parent's effective omega.
+		// Recursive application: level-1 uses root omega_c; level-2 uses level-1 omega_f; etc.
+		this.omega_c = (parent instanceof RefinementDomain) ? parent.omega_f : 1 / (3 * parent.nu + 0.5);
 		this.omega_f = 2 * this.omega_c / (4 - this.omega_c);
+
+		// Cell size and top-left corner in ROOT coarse grid coordinates.
+		// Used by paintTexture and worldBorderLines at any depth.
+		// Level-1 (parent = Boltzmann): dx = 0.5, origin = (cx0, cy0) in root coarse coords.
+		// Level-N (parent = RefinementDomain): dx = parent.dx * 0.5, origin mapped from parent.
+		if (parent instanceof RefinementDomain) {
+			this.dx       = parent.dx * 0.5;
+			this.cx0_root = parent.cx0_root + (cx0 - 1) * parent.dx;
+			this.cy0_root = parent.cy0_root + (cy0 - 1) * parent.dx;
+		} else {
+			this.dx       = 0.5;
+			this.cx0_root = cx0;
+			this.cy0_root = cy0;
+		}
+
+		// Child refinement domains (level N+1 relative to this domain).
+		this.domains = [];
 
 		// Allocate cells
 		this.cells = new Array(this.width * this.height);
@@ -281,20 +309,20 @@ class RefinementDomain {
 			}
 		}
 
-		// Propagate barrier flags from the coarse grid into fine cells (item 3).
-		// A fine cell is a barrier if any coarse cell it overlaps is a barrier.
+		// Propagate barrier flags from the parent grid into fine cells.
+		// A fine cell is a barrier if any parent cell it overlaps is a barrier.
 		for (let fj = 1; fj < this.height - 1; fj++) {
 			for (let fi = 1; fi < this.width - 1; fi++) {
 				const cx = cx0 + (fi - 1) * 0.5;
 				const cy = cy0 + (fj - 1) * 0.5;
 				const bx0 = Math.max(0, Math.floor(cx));
 				const by0 = Math.max(0, Math.floor(cy));
-				const bx1 = Math.min(boltzmann.width  - 1, Math.ceil(cx));
-				const by1 = Math.min(boltzmann.height - 1, Math.ceil(cy));
+				const bx1 = Math.min(parent.width  - 1, Math.ceil(cx));
+				const by1 = Math.min(parent.height - 1, Math.ceil(cy));
 				let isBarrier = false;
 				outer: for (let by = by0; by <= by1; by++) {
 					for (let bx = bx0; bx <= bx1; bx++) {
-						if (boltzmann.cells[bx + by * boltzmann.width].barrier) {
+						if (parent.cells[bx + by * parent.width].barrier) {
 							isBarrier = true;
 							break outer;
 						}
@@ -304,11 +332,12 @@ class RefinementDomain {
 			}
 		}
 
-		// Eq. 3: initialize all cells to equilibrium at coarse wind speed
-		const hspeed = Math.cos(boltzmann.direction / 180 * Math.PI) * boltzmann.speed;
-		const vspeed = Math.sin(boltzmann.direction / 180 * Math.PI) * boltzmann.speed;
+		// Eq. 3: initialize all cells to equilibrium at the parent's center-cell velocity.
+		const cx_mid = Math.max(0, Math.min(Math.floor((cx0 + cx1) / 2), parent.width  - 1));
+		const cy_mid = Math.max(0, Math.min(Math.floor((cy0 + cy1) / 2), parent.height - 1));
+		const midCell = parent.cells[cx_mid + cy_mid * parent.width];
 		for (let k = 0; k < this.cells.length; k++) {
-			this.cells[k].setEquil(hspeed, vspeed, 1);
+			this.cells[k].setEquil(midCell.ux, midCell.uy, midCell.rho);
 		}
 
 		// Flat list of ghost border cells for temporal interpolation.
@@ -335,32 +364,46 @@ class RefinementDomain {
 	// Eq. 29 rescaling applied on injection; Eq. 30/33 applied on averaging.
 	// Temporal interpolation: sub-step 1 uses the t-state saved in ghostSnapshot;
 	// sub-step 2 uses the t+½ interpolation (0.5*t + 0.5*(t+1)).
-	step(boltzmann) {
-		// Sub-step 1: restore ghost boundary to t-state (saved before coarse step ran)
-		this._restoreGhostFromSnapshot();
-		boltzmann.collideAndStream(this.interiorCells, this.omega_f);
-
-		// Re-inject energy before sub-step 2: the boat force applies each fine sub-step
-		// (§3.5 sub-cycling). After sub-step 1, the perturbed cell's f_i have streamed
-		// away, so we re-apply before sub-step 2 to keep the wake visible.
+	step(parent) {
+		// Sub-step 1: restore t-state ghost boundary, inject energy, run.
+		// Inject before the step so the perturbation is present when collide runs.
 		for (const inj of this.pendingInjections) {
 			this._applyForceFineCell(inj.fi, inj.fj, inj.direction, inj.strength);
 		}
-		this.pendingInjections.length = 0;
+		this._restoreGhostFromSnapshot();
+		collideAndStream(this.interiorCells, this.omega_f);
 
-		// Sub-step 2: inject t+1 coarse state, then interpolate to t+½ (Section 3.5)
-		this.injectFromCoarse(boltzmann);
+		// Run child domains for this sub-interval (this domain is now at t+½)
+		for (const child of this.domains) {
+			child.saveCoarseBoundary(this);
+			child.step(this);
+		}
+
+		// Sub-step 2: inject t+1 parent state, interpolate to t+½, inject energy again, run.
+		// Re-inject so the boat wake persists through the second sub-step (§3.5).
+		// pendingInjections is NOT cleared here — Boltzmann.physics_model_step clears it
+		// after all domain steps, so recursive child calls also see the injections.
+		this.injectFromCoarse(parent);
 		this._interpolateGhostCells(0.5); // 0.5*(t-snapshot) + 0.5*(t+1) = t+½
-		boltzmann.collideAndStream(this.interiorCells, this.omega_f);
+		for (const inj of this.pendingInjections) {
+			this._applyForceFineCell(inj.fi, inj.fj, inj.direction, inj.strength);
+		}
+		collideAndStream(this.interiorCells, this.omega_f);
 
-		this.averageToCoarse(boltzmann);
+		// Run child domains for this sub-interval (this domain is now at t+1)
+		for (const child of this.domains) {
+			child.saveCoarseBoundary(this);
+			child.step(this);
+		}
+
+		this.averageToCoarse(parent);
 	}
 
-	// Section 3.5 (Lagrava): capture t-state ghost boundary BEFORE the coarse step runs.
-	// Injects from coarse into ghost cells (Eq. 29) and snapshots the resulting populations.
-	// Must be called in Boltzmann.physics_model_step() before collideAndStream on root grid.
-	saveCoarseBoundary(boltzmann) {
-		this.injectFromCoarse(boltzmann);
+	// Section 3.5 (Lagrava): capture t-state ghost boundary BEFORE the parent step runs.
+	// Injects from parent into ghost cells (Eq. 29) and snapshots the resulting populations.
+	// Must be called before the parent's collideAndStream for correct temporal interpolation.
+	saveCoarseBoundary(parent) {
+		this.injectFromCoarse(parent);
 		for (let k = 0; k < this.ghostCells.length; k++) {
 			const g    = this.ghostCells[k];
 			const base = k * 9;
@@ -417,27 +460,27 @@ class RefinementDomain {
 	// of coarse populations and macroscopic fields. Ghost cell (fi, fj) maps to coarse coord
 	// cx = cx0 + (fi-1)*0.5, cy = cy0 + (fj-1)*0.5. Cells at half-integer positions use
 	// Eq. 38 (centered 4-point) or Eq. 39 (one-sided 3-point) along each axis.
-	injectFromCoarse(boltzmann) {
+	injectFromCoarse(parent) {
 		for (let fi = 0; fi < this.width; fi++) {
-			this._injectGhostCell(boltzmann, fi, 0);
-			this._injectGhostCell(boltzmann, fi, this.height - 1);
+			this._injectGhostCell(parent, fi, 0);
+			this._injectGhostCell(parent, fi, this.height - 1);
 		}
 		for (let fj = 1; fj < this.height - 1; fj++) {
-			this._injectGhostCell(boltzmann, 0, fj);
-			this._injectGhostCell(boltzmann, this.width - 1, fj);
+			this._injectGhostCell(parent, 0, fj);
+			this._injectGhostCell(parent, this.width - 1, fj);
 		}
 	}
 
-	_injectGhostCell(boltzmann, fi, fj) {
+	_injectGhostCell(parent, fi, fj) {
 		const cx = this.cx0 + (fi - 1) * 0.5;
 		const cy = this.cy0 + (fj - 1) * 0.5;
 
 		const icx = Math.floor(cx);
 		const icy = Math.floor(cy);
 
-		const W = boltzmann.width;
-		const H = boltzmann.height;
-		const get = (x, y) => boltzmann.cells[Math.max(0, Math.min(x, W-1)) + Math.max(0, Math.min(y, H-1)) * W];
+		const W = parent.width;
+		const H = parent.height;
+		const get = (x, y) => parent.cells[Math.max(0, Math.min(x, W-1)) + Math.max(0, Math.min(y, H-1)) * W];
 
 		// halfX/halfY: true when this fine cell sits at a half-integer coarse coordinate
 		// (fi even → cx is half-integer; fj even → cy is half-integer).
@@ -521,7 +564,7 @@ class RefinementDomain {
 
 	// Fine→coarse: box-filter average the 4 fine cells covering each coarse cell,
 	// then apply non-equilibrium rescaling (Eq. 30/33).
-	averageToCoarse(boltzmann) {
+	averageToCoarse(parent) {
 		const scale = (2 * this.omega_f) / this.omega_c; // Eq. 30 rescaling factor
 
 		for (let cy = this.cy0; cy < this.cy1; cy++) {
@@ -557,7 +600,7 @@ class RefinementDomain {
 
 				// Eq. 30: f_{i,c} = f_i^eq + (2ω_f / ω_c) * f_i^neq_avg
 				//         f_i^neq_avg = f_i^avg - f_i^eq(ρ_avg, u_avg)
-				const coarse = boltzmann.cells[cx + cy * boltzmann.width];
+				const coarse = parent.cells[cx + cy * parent.width];
 				coarse.f0  = feq0  + scale * (f0_avg  - feq0);
 				coarse.fN  = feqN  + scale * (fN_avg  - feqN);
 				coarse.fS  = feqS  + scale * (fS_avg  - feqS);
@@ -574,18 +617,55 @@ class RefinementDomain {
 		}
 	}
 
-	// Paint fine cells onto the shared texture, overwriting the coarse cells in this region.
-	// Fine cell (fi, fj) has coarse coordinate x = cx0 + (fi-1)*0.5, y = cy0 + (fj-1)*0.5.
+	// Add a child refinement domain in this domain's cell coordinates.
+	// Removes covered cells from interiorCells (same pattern as Boltzmann.addDomain).
+	addDomain(cx0, cy0, cx1, cy1) {
+		this.domains.push(new RefinementDomain(this, cx0, cy0, cx1, cy1));
+		const dominated = new Set();
+		for (let y = cy0; y < cy1; y++) {
+			for (let x = cx0; x < cx1; x++) {
+				dominated.add(this.cells[x + y * this.width]);
+			}
+		}
+		this.interiorCells = this.interiorCells.filter(cell => !dominated.has(cell));
+	}
+
+	// Paint fine cells onto the shared texture, then recursively paint child domains on top.
+	// Uses cx0_root + (fi-1)*dx for position and dx for size — works at any refinement depth.
 	paintTexture(boltzmann, plot_type, contrast) {
 		for (let fj = 1; fj < this.height - 1; fj++) {
 			for (let fi = 1; fi < this.width - 1; fi++) {
 				const cell = this.cells[fi + fj * this.width];
 				const color = cell.calculate_color(plot_type, contrast);
-				const cx = this.cx0 + (fi - 1) * 0.5;
-				const cy = this.cy0 + (fj - 1) * 0.5;
-				boltzmann.colorSquare(cx, cy, 0.5, color.red, color.green, color.blue);
+				const cx = this.cx0_root + (fi - 1) * this.dx;
+				const cy = this.cy0_root + (fj - 1) * this.dx;
+				boltzmann.colorSquare(cx, cy, this.dx, color.red, color.green, color.blue);
 			}
 		}
+		for (const child of this.domains) {
+			child.paintTexture(boltzmann, plot_type, contrast);
+		}
+	}
+
+	// Returns the domain boundary as four world-space line segments {x1,y1,x2,y2}.
+	// Uses cx0_root/cy0_root and dx — works at any refinement depth.
+	worldBorderLines(boltzmann) {
+		const cx1_root = this.cx0_root + (this.width  - 2) * this.dx;
+		const cy1_root = this.cy0_root + (this.height - 2) * this.dx;
+		const toWorld = (cx, cy) => ({
+			x: (cx - boltzmann.width  / 2) / boltzmann.resolution,
+			y: (cy - boltzmann.height / 2) / boltzmann.resolution,
+		});
+		const tl = toWorld(this.cx0_root, this.cy0_root);
+		const tr = toWorld(cx1_root,      this.cy0_root);
+		const br = toWorld(cx1_root,      cy1_root);
+		const bl = toWorld(this.cx0_root, cy1_root);
+		return [
+			{ x1: tl.x, y1: tl.y, x2: tr.x, y2: tr.y },
+			{ x1: tr.x, y1: tr.y, x2: br.x, y2: br.y },
+			{ x1: br.x, y1: br.y, x2: bl.x, y2: bl.y },
+			{ x1: bl.x, y1: bl.y, x2: tl.x, y2: tl.y },
+		];
 	}
 
 	// Returns true when a continuous coarse coordinate falls inside this domain.
@@ -594,11 +674,15 @@ class RefinementDomain {
 		       cy_cont >= this.cy0 && cy_cont < this.cy1;
 	}
 
-	// Bilinear interpolation of fine-grid velocity at a continuous coarse coordinate.
-	// Fine index: fi = 1 + (cx_cont - cx0) * 2,  fj = 1 + (cy_cont - cy0) * 2.
+	// Bilinear interpolation of fine-grid velocity at a coordinate in the PARENT's cell space.
+	// cx_cont/cy_cont are in parent cell coords; converted to continuous fine index internally.
+	// Delegates to child domains if the point falls inside one (recursive).
 	getVelocityAt(cx_cont, cy_cont) {
 		const fi_f = 1 + (cx_cont - this.cx0) * 2;
 		const fj_f = 1 + (cy_cont - this.cy0) * 2;
+		for (const child of this.domains) {
+			if (child.containsCoarse(fi_f, fj_f)) return child.getVelocityAt(fi_f, fj_f);
+		}
 		const fi0 = Math.max(1, Math.min(this.width  - 2, Math.floor(fi_f)));
 		const fj0 = Math.max(1, Math.min(this.height - 2, Math.floor(fj_f)));
 		const fi1 = Math.min(this.width  - 2, fi0 + 1);
@@ -614,11 +698,20 @@ class RefinementDomain {
 		return { x: vx / 4, y: vy / 4 };
 	}
 
-	// Apply an energy impulse to the single nearest fine cell, and store it for re-injection
-	// before sub-step 2 (fine sub-cycling means the boat force applies each fine sub-step).
+	// Apply an energy impulse at a coordinate in the PARENT's cell space.
+	// Delegates to the deepest child domain that contains the point (recursive),
+	// so energy always goes to the finest available grid level.
 	applyEnergyAt(cx_cont, cy_cont, direction, strength) {
-		const fi = Math.max(1, Math.min(this.width  - 2, Math.round(1 + (cx_cont - this.cx0) * 2)));
-		const fj = Math.max(1, Math.min(this.height - 2, Math.round(1 + (cy_cont - this.cy0) * 2)));
+		const fi_f = 1 + (cx_cont - this.cx0) * 2;
+		const fj_f = 1 + (cy_cont - this.cy0) * 2;
+		for (const child of this.domains) {
+			if (child.containsCoarse(fi_f, fj_f)) {
+				child.applyEnergyAt(fi_f, fj_f, direction, strength);
+				return;
+			}
+		}
+		const fi = Math.max(1, Math.min(this.width  - 2, Math.round(fi_f)));
+		const fj = Math.max(1, Math.min(this.height - 2, Math.round(fj_f)));
 		this.pendingInjections.push({ fi, fj, direction, strength });
 		this._applyForceFineCell(fi, fj, direction, strength);
 	}
@@ -630,24 +723,6 @@ class RefinementDomain {
 		cell.setEquil(cell.ux + dvx, cell.uy + dvy);
 	}
 
-	// Returns the domain boundary as four world-space line segments {x1,y1,x2,y2}.
-	// Caller passes the root Boltzmann instance to resolve the coarse→world transform.
-	worldBorderLines(boltzmann) {
-		const toWorld = (cx, cy) => ({
-			x: (cx - boltzmann.width  / 2) / boltzmann.resolution,
-			y: (cy - boltzmann.height / 2) / boltzmann.resolution,
-		});
-		const tl = toWorld(this.cx0, this.cy0);
-		const tr = toWorld(this.cx1, this.cy0);
-		const br = toWorld(this.cx1, this.cy1);
-		const bl = toWorld(this.cx0, this.cy1);
-		return [
-			{ x1: tl.x, y1: tl.y, x2: tr.x, y2: tr.y },
-			{ x1: tr.x, y1: tr.y, x2: br.x, y2: br.y },
-			{ x1: br.x, y1: br.y, x2: bl.x, y2: bl.y },
-			{ x1: bl.x, y1: bl.y, x2: tl.x, y2: tl.y },
-		];
-	}
 }
 
 
@@ -715,11 +790,7 @@ export class Boltzmann {
 			for (var x = 0; x < this.width; x++) {
 				this.cells[x + y * this.width].barrier = false;
 
-				// Circular wall obstacle
-				const r = 5;
-				if (Math.pow(this.width/2 - x, 2) + Math.pow(this.height*0.75 - y, 2) < Math.pow(r, 2)) {
-					this.cells[x + y * this.width].barrier = true;
-				}
+				// No barriers
 			}
 		}
 
@@ -795,6 +866,14 @@ export class Boltzmann {
 			this.domains[d].step(this);
 		}
 
+		// Clear pending injections for all domains after all sub-steps are done.
+		// Must happen here (not inside step()) so recursive child calls at any level
+		// still see the injections when they run their own sub-steps.
+		function clearInjections(domains) {
+			for (const d of domains) { d.pendingInjections.length = 0; clearInjections(d.domains); }
+		}
+		clearInjections(this.domains);
+
 		this.computeCurl();
 
 		this.t_delta = new Date() - t_start;
@@ -803,19 +882,9 @@ export class Boltzmann {
 		this.paintTexture();
 	}
 
-	// One full LBM step (collide→stream→bounce→consolidate) on an arbitrary cell array.
-	// omega: BGK relaxation frequency for this grid level (Eq. 10 / Eq. 24).
-	// Neighbour references (nbN, nbS, ...) must be pre-cached on each cell.
-	//
-	// For AMR sub-cycling (Section 3.5, Lagrava): call once per coarse step for the root
-	// grid (interiorCells, omega_c), and twice per coarse step for each fine sub-grid
-	// (domain.interiorCells, omega_f). Fine-grid omega from Eq. 24: omega_f = 2*omega_c / (4 - omega_c).
-	collideAndStream(cells, omega) {
-		for (let i = 0; i < cells.length; i++) cells[i].collide(omega);
-		for (let i = 0; i < cells.length; i++) cells[i].stream();
-		for (let i = 0; i < cells.length; i++) cells[i].bounce();
-		for (let i = 0; i < cells.length; i++) cells[i].consolidate();
-	}
+	// Delegates to the module-level collideAndStream function (defined before RefinementDomain).
+	// Kept as a method so existing call sites on Boltzmann instances continue to work.
+	collideAndStream(cells, omega) { collideAndStream(cells, omega); }
 
 	// Enforce Dirichlet inlet/outlet BCs on all four edges: f_i = f_i^eq(rho=1, u=u_wind).
 	// Eq. 3: equilibrium distribution used to prescribe the boundary state each step.

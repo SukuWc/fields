@@ -26,7 +26,8 @@ planeMat.needsUpdate = true;
 
 // Core simulation instances
 const bm = new Boltzmann(map_w, map_h, bm_resolution, wind_angle, wind_speed, dataTextureMaterial, texture_oversampling);
-bm.addDomain(35, 35, 57, 57);
+bm.addDomain(10, 10, 90, 90);
+bm.domains[0].addDomain(40, 40, 120, 120); // level-2 domain, coords in level-1 fine cell space
 const map = new Map(map_w, map_h, wind_angle, wind_speed, bm);
 map.physics_model_init();
 
@@ -46,11 +47,15 @@ const runner = new Runner(map.world, { speed: 1, fps: 30 });
 runner.start(() => {
   guides = [];
 
-  for (const domain of bm.domains) {
-    for (const seg of domain.worldBorderLines(bm)) {
-      guides.push({ color: 0x000000, type: 'guide', x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2 });
+  function pushDomainLines(domains) {
+    for (const domain of domains) {
+      for (const seg of domain.worldBorderLines(bm)) {
+        guides.push({ color: 0x000000, type: 'guide', x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2 });
+      }
+      pushDomainLines(domain.domains);
     }
   }
+  pushDomainLines(bm.domains);
 
   executeScenarioFrame();
   processKeys();
