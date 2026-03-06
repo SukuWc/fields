@@ -281,6 +281,29 @@ class RefinementDomain {
 			}
 		}
 
+		// Propagate barrier flags from the coarse grid into fine cells (item 3).
+		// A fine cell is a barrier if any coarse cell it overlaps is a barrier.
+		for (let fj = 1; fj < this.height - 1; fj++) {
+			for (let fi = 1; fi < this.width - 1; fi++) {
+				const cx = cx0 + (fi - 1) * 0.5;
+				const cy = cy0 + (fj - 1) * 0.5;
+				const bx0 = Math.max(0, Math.floor(cx));
+				const by0 = Math.max(0, Math.floor(cy));
+				const bx1 = Math.min(boltzmann.width  - 1, Math.ceil(cx));
+				const by1 = Math.min(boltzmann.height - 1, Math.ceil(cy));
+				let isBarrier = false;
+				outer: for (let by = by0; by <= by1; by++) {
+					for (let bx = bx0; bx <= bx1; bx++) {
+						if (boltzmann.cells[bx + by * boltzmann.width].barrier) {
+							isBarrier = true;
+							break outer;
+						}
+					}
+				}
+				this.cells[fi + fj * this.width].barrier = isBarrier;
+			}
+		}
+
 		// Eq. 3: initialize all cells to equilibrium at coarse wind speed
 		const hspeed = Math.cos(boltzmann.direction / 180 * Math.PI) * boltzmann.speed;
 		const vspeed = Math.sin(boltzmann.direction / 180 * Math.PI) * boltzmann.speed;
@@ -303,6 +326,9 @@ class RefinementDomain {
 		// Snapshot buffer: 9 populations per ghost cell, stores the t-state for
 		// temporal interpolation (sub-step 1 uses t, sub-step 2 uses t+½).
 		this.ghostSnapshot = new Float64Array(this.ghostCells.length * 9);
+
+		// Energy injections from apply_energy(), re-applied before each fine sub-step.
+		this.pendingInjections = [];
 	}
 
 	// Section 3.5 (Lagrava): coarse→fine injection, 2 fine sub-steps, fine→coarse averaging.
@@ -313,6 +339,14 @@ class RefinementDomain {
 		// Sub-step 1: restore ghost boundary to t-state (saved before coarse step ran)
 		this._restoreGhostFromSnapshot();
 		boltzmann.collideAndStream(this.interiorCells, this.omega_f);
+
+		// Re-inject energy before sub-step 2: the boat force applies each fine sub-step
+		// (§3.5 sub-cycling). After sub-step 1, the perturbed cell's f_i have streamed
+		// away, so we re-apply before sub-step 2 to keep the wake visible.
+		for (const inj of this.pendingInjections) {
+			this._applyForceFineCell(inj.fi, inj.fj, inj.direction, inj.strength);
+		}
+		this.pendingInjections.length = 0;
 
 		// Sub-step 2: inject t+1 coarse state, then interpolate to t+½ (Section 3.5)
 		this.injectFromCoarse(boltzmann);
@@ -554,6 +588,48 @@ class RefinementDomain {
 		}
 	}
 
+	// Returns true when a continuous coarse coordinate falls inside this domain.
+	containsCoarse(cx_cont, cy_cont) {
+		return cx_cont >= this.cx0 && cx_cont < this.cx1 &&
+		       cy_cont >= this.cy0 && cy_cont < this.cy1;
+	}
+
+	// Bilinear interpolation of fine-grid velocity at a continuous coarse coordinate.
+	// Fine index: fi = 1 + (cx_cont - cx0) * 2,  fj = 1 + (cy_cont - cy0) * 2.
+	getVelocityAt(cx_cont, cy_cont) {
+		const fi_f = 1 + (cx_cont - this.cx0) * 2;
+		const fj_f = 1 + (cy_cont - this.cy0) * 2;
+		const fi0 = Math.max(1, Math.min(this.width  - 2, Math.floor(fi_f)));
+		const fj0 = Math.max(1, Math.min(this.height - 2, Math.floor(fj_f)));
+		const fi1 = Math.min(this.width  - 2, fi0 + 1);
+		const fj1 = Math.min(this.height - 2, fj0 + 1);
+		const hf = fi_f - fi0;
+		const vf = fj_f - fj0;
+		const c00 = this.cells[fi0 + fj0 * this.width];
+		const c10 = this.cells[fi1 + fj0 * this.width];
+		const c01 = this.cells[fi0 + fj1 * this.width];
+		const c11 = this.cells[fi1 + fj1 * this.width];
+		const vx = c00.ux*(1-hf)*(1-vf) + c10.ux*hf*(1-vf) + c01.ux*(1-hf)*vf + c11.ux*hf*vf;
+		const vy = c00.uy*(1-hf)*(1-vf) + c10.uy*hf*(1-vf) + c01.uy*(1-hf)*vf + c11.uy*hf*vf;
+		return { x: vx / 4, y: vy / 4 };
+	}
+
+	// Apply an energy impulse to the single nearest fine cell, and store it for re-injection
+	// before sub-step 2 (fine sub-cycling means the boat force applies each fine sub-step).
+	applyEnergyAt(cx_cont, cy_cont, direction, strength) {
+		const fi = Math.max(1, Math.min(this.width  - 2, Math.round(1 + (cx_cont - this.cx0) * 2)));
+		const fj = Math.max(1, Math.min(this.height - 2, Math.round(1 + (cy_cont - this.cy0) * 2)));
+		this.pendingInjections.push({ fi, fj, direction, strength });
+		this._applyForceFineCell(fi, fj, direction, strength);
+	}
+
+	_applyForceFineCell(fi, fj, direction, s) {
+		const cell = this.cells[fi + fj * this.width];
+		const dvx = Math.cos(direction / 180 * Math.PI) * s / cell.rho * -1;
+		const dvy = Math.sin(direction / 180 * Math.PI) * s / cell.rho * -1;
+		cell.setEquil(cell.ux + dvx, cell.uy + dvy);
+	}
+
 	// Returns the domain boundary as four world-space line segments {x1,y1,x2,y2}.
 	// Caller passes the root Boltzmann instance to resolve the coarse→world transform.
 	worldBorderLines(boltzmann) {
@@ -656,8 +732,19 @@ export class Boltzmann {
 
 	// Add a rectangular fine refinement domain in coarse grid coordinates.
 	// cx0, cy0: top-left corner; cx1, cy1: bottom-right corner (exclusive).
+	// Coarse cells covered by the domain are removed from interiorCells — they are
+	// evolved by the fine grid and written back via averageToCoarse, so running the
+	// coarse collide+stream on them would be wasted work and inconsistent with the
+	// multi-domain approach (Lagrava Fig. 3).
 	addDomain(cx0, cy0, cx1, cy1) {
 		this.domains.push(new RefinementDomain(this, cx0, cy0, cx1, cy1));
+		const dominated = new Set();
+		for (let y = cy0; y < cy1; y++) {
+			for (let x = cx0; x < cx1; x++) {
+				dominated.add(this.cells[x + y * this.width]);
+			}
+		}
+		this.interiorCells = this.interiorCells.filter(cell => !dominated.has(cell));
 	}
 
 	// Initialize all cells to global equilibrium at the configured wind velocity.
@@ -750,6 +837,15 @@ export class Boltzmann {
 
 		document.getElementById("wind_info").innerHTML = "dir: " + direction + "stre : " + strength + "<br>";
 
+		const cx_cont = this.width/2  + pushX * this.resolution;
+		const cy_cont = this.height/2 + pushY * this.resolution;
+		for (let d = 0; d < this.domains.length; d++) {
+			if (this.domains[d].containsCoarse(cx_cont, cy_cont)) {
+				this.domains[d].applyEnergyAt(cx_cont, cy_cont, direction, strength);
+				return;
+			}
+		}
+
 		let x = this.width/2  + Math.floor(pushX * this.resolution);
 		let y = this.height/2 + Math.floor(pushY * this.resolution);
 
@@ -791,9 +887,16 @@ export class Boltzmann {
 		cell.setEquil(vx + dvx, vy + dvy);
 	}
 
-	get_field_velocity(x, y) {
-		x = this.width/2  + Math.floor(x * this.resolution);
-		y = this.height/2 + Math.floor(y * this.resolution);
+	get_field_velocity(worldX, worldY) {
+		const cx_cont = this.width/2  + worldX * this.resolution;
+		const cy_cont = this.height/2 + worldY * this.resolution;
+		for (let d = 0; d < this.domains.length; d++) {
+			if (this.domains[d].containsCoarse(cx_cont, cy_cont)) {
+				return this.domains[d].getVelocityAt(cx_cont, cy_cont);
+			}
+		}
+		let x = this.width/2  + Math.floor(worldX * this.resolution);
+		let y = this.height/2 + Math.floor(worldY * this.resolution);
 
 		const x0 = Math.floor(x);
 		const y0 = Math.floor(y);
