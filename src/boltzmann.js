@@ -379,9 +379,10 @@ class RefinementDomain {
 		}
 	}
 
-	// Coarse→fine: fill ghost border cells from bilinear interpolation of coarse macroscopic
-	// fields, then set to equilibrium (Eq. 3). Ghost cell (fi, fj) maps to coarse coord
-	// cx = cx0 + (fi-1)*0.5, cy = cy0 + (fj-1)*0.5.
+	// Coarse→fine: fill ghost border cells using cubic spatial interpolation (Eq. 38/39)
+	// of coarse populations and macroscopic fields. Ghost cell (fi, fj) maps to coarse coord
+	// cx = cx0 + (fi-1)*0.5, cy = cy0 + (fj-1)*0.5. Cells at half-integer positions use
+	// Eq. 38 (centered 4-point) or Eq. 39 (one-sided 3-point) along each axis.
 	injectFromCoarse(boltzmann) {
 		for (let fi = 0; fi < this.width; fi++) {
 			this._injectGhostCell(boltzmann, fi, 0);
@@ -397,41 +398,70 @@ class RefinementDomain {
 		const cx = this.cx0 + (fi - 1) * 0.5;
 		const cy = this.cy0 + (fj - 1) * 0.5;
 
-		// Bilinear interpolation of surrounding coarse cells
 		const icx = Math.floor(cx);
 		const icy = Math.floor(cy);
-		const wx  = cx - icx; // 0 or 0.5
-		const wy  = cy - icy; // 0 or 0.5
 
 		const W = boltzmann.width;
 		const H = boltzmann.height;
 		const get = (x, y) => boltzmann.cells[Math.max(0, Math.min(x, W-1)) + Math.max(0, Math.min(y, H-1)) * W];
 
-		const c00 = get(icx,   icy);
-		const c10 = get(icx+1, icy);
-		const c01 = get(icx,   icy+1);
-		const c11 = get(icx+1, icy+1);
+		// halfX/halfY: true when this fine cell sits at a half-integer coarse coordinate
+		// (fi even → cx is half-integer; fj even → cy is half-integer).
+		const halfX = (fi % 2 === 0);
+		const halfY = (fj % 2 === 0);
 
-		const w00 = (1-wx)*(1-wy);
-		const w10 =    wx *(1-wy);
-		const w01 = (1-wx)*   wy;
-		const w11 =    wx *   wy;
+		// Eq. 38: centered 4-point cubic at x = ix+0.5 along a coarse row/column.
+		//   g(x) = (9/16)(g(x−h)+g(x+h)) − (1/16)(g(x−3h)+g(x+3h)),  h = half coarse spacing
+		//   → neighbours: ix−1, ix, ix+1, ix+2
+		// Eq. 39: one-sided 3-point cubic when the outer neighbour is unavailable.
+		//   right-biased (left boundary): g = (3/8)g(ix) + (3/4)g(ix+1) − (1/8)g(ix+2)
+		//   left-biased  (right boundary): g = (3/8)g(ix+1) + (3/4)g(ix) − (1/8)g(ix−1)
+		const interpX = (fn, ix, iy) => {
+			if (ix - 1 >= 0 && ix + 2 <= W - 1) // Eq. 38: centered
+				return (9/16)*(fn(get(ix,iy)) + fn(get(ix+1,iy))) - (1/16)*(fn(get(ix-1,iy)) + fn(get(ix+2,iy)));
+			if (ix - 1 < 0)                      // Eq. 39: right-biased
+				return (3/8)*fn(get(ix,iy)) + (3/4)*fn(get(ix+1,iy)) - (1/8)*fn(get(ix+2,iy));
+			return                               // Eq. 39: left-biased
+				(3/8)*fn(get(ix+1,iy)) + (3/4)*fn(get(ix,iy)) - (1/8)*fn(get(ix-1,iy));
+		};
+		const interpY = (fn, ix, iy) => {
+			if (iy - 1 >= 0 && iy + 2 <= H - 1) // Eq. 38: centered
+				return (9/16)*(fn(get(ix,iy)) + fn(get(ix,iy+1))) - (1/16)*(fn(get(ix,iy-1)) + fn(get(ix,iy+2)));
+			if (iy - 1 < 0)                      // Eq. 39: right-biased
+				return (3/8)*fn(get(ix,iy)) + (3/4)*fn(get(ix,iy+1)) - (1/8)*fn(get(ix,iy+2));
+			return                               // Eq. 39: left-biased
+				(3/8)*fn(get(ix,iy+1)) + (3/4)*fn(get(ix,iy)) - (1/8)*fn(get(ix,iy-1));
+		};
+		// Separable 2D: cubic in x for each needed y-row, then cubic in y over those results.
+		const interpXY = (fn) => {
+			const gX = (iy) => interpX(fn, icx, iy);
+			if (icy - 1 >= 0 && icy + 2 <= H - 1) // Eq. 38: centered in y
+				return (9/16)*(gX(icy) + gX(icy+1)) - (1/16)*(gX(icy-1) + gX(icy+2));
+			if (icy - 1 < 0)                        // Eq. 39: right-biased in y
+				return (3/8)*gX(icy) + (3/4)*gX(icy+1) - (1/8)*gX(icy+2);
+			return                                  // Eq. 39: left-biased in y
+				(3/8)*gX(icy+1) + (3/4)*gX(icy) - (1/8)*gX(icy-1);
+		};
 
-		// Bilinear interpolation of macroscopic fields (for equilibrium)
-		const ux  = c00.ux  * w00 + c10.ux  * w10 + c01.ux  * w01 + c11.ux  * w11;
-		const uy  = c00.uy  * w00 + c10.uy  * w10 + c01.uy  * w01 + c11.uy  * w11;
-		const rho = c00.rho * w00 + c10.rho * w10 + c01.rho * w01 + c11.rho * w11;
+		// Select scheme: Eq. 34 (direct copy) when coincident, 1D or 2D cubic otherwise.
+		const interp = (!halfX && !halfY) ? (fn) => fn(get(icx, icy))    // Eq. 34
+		             : (!halfY)           ? (fn) => interpX(fn, icx, icy) // 1D cubic in x
+		             : (!halfX)           ? (fn) => interpY(fn, icx, icy) // 1D cubic in y
+		             :                      interpXY;                      // 2D separable cubic
 
-		// Bilinear interpolation of coarse populations
-		const f0_c  = c00.f0  * w00 + c10.f0  * w10 + c01.f0  * w01 + c11.f0  * w11;
-		const fN_c  = c00.fN  * w00 + c10.fN  * w10 + c01.fN  * w01 + c11.fN  * w11;
-		const fS_c  = c00.fS  * w00 + c10.fS  * w10 + c01.fS  * w01 + c11.fS  * w11;
-		const fE_c  = c00.fE  * w00 + c10.fE  * w10 + c01.fE  * w01 + c11.fE  * w11;
-		const fW_c  = c00.fW  * w00 + c10.fW  * w10 + c01.fW  * w01 + c11.fW  * w11;
-		const fNE_c = c00.fNE * w00 + c10.fNE * w10 + c01.fNE * w01 + c11.fNE * w11;
-		const fNW_c = c00.fNW * w00 + c10.fNW * w10 + c01.fNW * w01 + c11.fNW * w11;
-		const fSE_c = c00.fSE * w00 + c10.fSE * w10 + c01.fSE * w01 + c11.fSE * w11;
-		const fSW_c = c00.fSW * w00 + c10.fSW * w10 + c01.fSW * w01 + c11.fSW * w11;
+		// Interpolate macroscopic fields and all 9 populations from the coarse grid.
+		const ux  = interp(c => c.ux);
+		const uy  = interp(c => c.uy);
+		const rho = interp(c => c.rho);
+		const f0_c  = interp(c => c.f0);
+		const fN_c  = interp(c => c.fN);
+		const fS_c  = interp(c => c.fS);
+		const fE_c  = interp(c => c.fE);
+		const fW_c  = interp(c => c.fW);
+		const fNE_c = interp(c => c.fNE);
+		const fNW_c = interp(c => c.fNW);
+		const fSE_c = interp(c => c.fSE);
+		const fSW_c = interp(c => c.fSW);
 
 		// Eq. 3: equilibrium at interpolated macroscopic fields
 		const { f0: feq0, fN: feqN, fS: feqS, fE: feqE, fW: feqW,
