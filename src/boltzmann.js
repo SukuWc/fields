@@ -11,12 +11,33 @@ const four9ths = 4.0 / 9.0;  // w_0
 const one9th   = 1.0 / 9.0;  // w_j  (j = E, W, N, S)
 const one36th  = 1.0 / 36.0; // w_k  (k = NE, NW, SE, SW)
 
+// Eq. 3: f_i^eq = w_i * rho * (1 + 3(xi.u) + 4.5(xi.u)^2 - 1.5|u|^2)
+function computeEquil(ux, uy, rho) {
+	const ux3   = 3 * ux;
+	const uy3   = 3 * uy;
+	const ux2   = ux * ux;
+	const uy2   = uy * uy;
+	const uxuy2 = 2 * ux * uy;
+	const u2    = ux2 + uy2;
+	const u215  = 1.5 * u2;
+	return {
+		f0:  four9ths * rho * (1                              - u215),
+		fE:    one9th * rho * (1 + ux3       + 4.5*ux2        - u215),
+		fW:    one9th * rho * (1 - ux3       + 4.5*ux2        - u215),
+		fN:    one9th * rho * (1 + uy3       + 4.5*uy2        - u215),
+		fS:    one9th * rho * (1 - uy3       + 4.5*uy2        - u215),
+		fNE:  one36th * rho * (1 + ux3 + uy3 + 4.5*(u2+uxuy2) - u215),
+		fSE:  one36th * rho * (1 + ux3 - uy3 + 4.5*(u2-uxuy2) - u215),
+		fNW:  one36th * rho * (1 - ux3 + uy3 + 4.5*(u2-uxuy2) - u215),
+		fSW:  one36th * rho * (1 - ux3 - uy3 + 4.5*(u2+uxuy2) - u215),
+	};
+}
+
 
 
 // Set up the array of colors for plotting (mimicks matplotlib "jet" colormap):
 // (Kludge: Index nColors+1 labels the color used for drawing barriers.)
 var nColors = 400;							// there are actually nColors+2 colors
-var hexColorList = new Array(nColors+2);
 var redList = new Array(nColors+2);
 var greenList = new Array(nColors+2);
 var blueList = new Array(nColors+2);
@@ -34,10 +55,8 @@ for (var c=0; c<=nColors; c++) {
 		r = Math.round(255 * (9*nColors/8 - c) / (nColors/4)); g = 0; b = 0;
 	}
 	redList[c] = r; greenList[c] = g; blueList[c] = b;
-	hexColorList[c] = rgbToHex(r, g, b);
 }
 redList[nColors+1] = 0; greenList[nColors+1] = 0; blueList[nColors+1] = 0;	// barriers are black
-hexColorList[nColors+1] = rgbToHex(0, 0, 0);
 
 function get_color(cIndex){
 
@@ -46,16 +65,6 @@ function get_color(cIndex){
 
 	return {red: redList[cIndex], green: greenList[cIndex], blue: blueList[cIndex]};
 }
-
-// Functions to convert rgb to hex color string (from stackoverflow):
-function componentToHex(c) {
-	var hex = c.toString(16);
-	return hex.length == 1 ? "0" + hex : hex;
-}
-function rgbToHex(r, g, b) {
-	return "#" + componentToHex(r) + componentToHex(g) + componentToHex(b);
-}
-
 
 
 class SimulationCell {
@@ -106,22 +115,12 @@ class SimulationCell {
 		if (typeof newrho == 'undefined') {
 			newrho = this.rho;
 		}
-		const ux3   = 3 * newux;
-		const uy3   = 3 * newuy;
-		const ux2   = newux * newux;
-		const uy2   = newuy * newuy;
-		const uxuy2 = 2 * newux * newuy;
-		const u2    = ux2 + uy2;
-		const u215  = 1.5 * u2;
-		this.f0  = four9ths * newrho * (1                              - u215);
-		this.fE  =   one9th * newrho * (1 + ux3       + 4.5*ux2        - u215);
-		this.fW  =   one9th * newrho * (1 - ux3       + 4.5*ux2        - u215);
-		this.fN  =   one9th * newrho * (1 + uy3       + 4.5*uy2        - u215);
-		this.fS  =   one9th * newrho * (1 - uy3       + 4.5*uy2        - u215);
-		this.fNE =  one36th * newrho * (1 + ux3 + uy3 + 4.5*(u2+uxuy2) - u215);
-		this.fSE =  one36th * newrho * (1 + ux3 - uy3 + 4.5*(u2-uxuy2) - u215);
-		this.fNW =  one36th * newrho * (1 - ux3 + uy3 + 4.5*(u2-uxuy2) - u215);
-		this.fSW =  one36th * newrho * (1 - ux3 - uy3 + 4.5*(u2+uxuy2) - u215);
+		const eq = computeEquil(newux, newuy, newrho);
+		this.f0  = eq.f0;
+		this.fN  = eq.fN;  this.fS  = eq.fS;
+		this.fE  = eq.fE;  this.fW  = eq.fW;
+		this.fNE = eq.fNE; this.fSE = eq.fSE;
+		this.fNW = eq.fNW; this.fSW = eq.fSW;
 		this.rho = newrho;
 		this.ux  = newux;
 		this.uy  = newuy;
@@ -435,22 +434,8 @@ class RefinementDomain {
 		const fSW_c = c00.fSW * w00 + c10.fSW * w10 + c01.fSW * w01 + c11.fSW * w11;
 
 		// Eq. 3: equilibrium at interpolated macroscopic fields
-		const ux3   = 3 * ux;
-		const uy3   = 3 * uy;
-		const ux2   = ux * ux;
-		const uy2   = uy * uy;
-		const uxuy2 = 2 * ux * uy;
-		const u2    = ux2 + uy2;
-		const u215  = 1.5 * u2;
-		const feq0  = four9ths * rho * (1                              - u215);
-		const feqE  =   one9th * rho * (1 + ux3       + 4.5*ux2        - u215);
-		const feqW  =   one9th * rho * (1 - ux3       + 4.5*ux2        - u215);
-		const feqN  =   one9th * rho * (1 + uy3       + 4.5*uy2        - u215);
-		const feqS  =   one9th * rho * (1 - uy3       + 4.5*uy2        - u215);
-		const feqNE =  one36th * rho * (1 + ux3 + uy3 + 4.5*(u2+uxuy2) - u215);
-		const feqSE =  one36th * rho * (1 + ux3 - uy3 + 4.5*(u2-uxuy2) - u215);
-		const feqNW =  one36th * rho * (1 - ux3 + uy3 + 4.5*(u2-uxuy2) - u215);
-		const feqSW =  one36th * rho * (1 - ux3 - uy3 + 4.5*(u2+uxuy2) - u215);
+		const { f0: feq0, fN: feqN, fS: feqS, fE: feqE, fW: feqW,
+		        fNE: feqNE, fNW: feqNW, fSE: feqSE, fSW: feqSW } = computeEquil(ux, uy, rho);
 
 		// Eq. 29: f_{i,f} = f_i^eq + (ω_c / 2ω_f) * f_i^neq_c
 		//         f_i^neq_c = f_{i,c} - f_i^eq(ρ_c, u_c)
@@ -503,22 +488,8 @@ class RefinementDomain {
 				const uy  = (fN_avg + fNE_avg + fNW_avg - fS_avg - fSE_avg - fSW_avg) / rho;
 
 				// Eq. 3: equilibrium at averaged macroscopic fields
-				const ux3   = 3 * ux;
-				const uy3   = 3 * uy;
-				const ux2   = ux * ux;
-				const uy2   = uy * uy;
-				const uxuy2 = 2 * ux * uy;
-				const u2    = ux2 + uy2;
-				const u215  = 1.5 * u2;
-				const feq0  = four9ths * rho * (1                              - u215);
-				const feqE  =   one9th * rho * (1 + ux3       + 4.5*ux2        - u215);
-				const feqW  =   one9th * rho * (1 - ux3       + 4.5*ux2        - u215);
-				const feqN  =   one9th * rho * (1 + uy3       + 4.5*uy2        - u215);
-				const feqS  =   one9th * rho * (1 - uy3       + 4.5*uy2        - u215);
-				const feqNE =  one36th * rho * (1 + ux3 + uy3 + 4.5*(u2+uxuy2) - u215);
-				const feqSE =  one36th * rho * (1 + ux3 - uy3 + 4.5*(u2-uxuy2) - u215);
-				const feqNW =  one36th * rho * (1 - ux3 + uy3 + 4.5*(u2-uxuy2) - u215);
-				const feqSW =  one36th * rho * (1 - ux3 - uy3 + 4.5*(u2+uxuy2) - u215);
+				const { f0: feq0, fN: feqN, fS: feqS, fE: feqE, fW: feqW,
+				        fNE: feqNE, fNW: feqNW, fSE: feqSE, fSW: feqSW } = computeEquil(ux, uy, rho);
 
 				// Eq. 30: f_{i,c} = f_i^eq + (2ω_f / ω_c) * f_i^neq_avg
 				//         f_i^neq_avg = f_i^avg - f_i^eq(ρ_avg, u_avg)
@@ -755,9 +726,7 @@ export class Boltzmann {
 		const y_array = [y0, y1, y2, y3];
 		const s_array = [s0, s1, s2, s3];
 
-		for (let i = 0; i < 1; i++) {
-			this.apply_force_to_cell(x_array[i], y_array[i], direction, s_array[i] * strength);
-		}
+		this.apply_force_to_cell(x_array[0], y_array[0], direction, s_array[0] * strength);
 	}
 
 	apply_force_to_cell(x, y, direction, s) {

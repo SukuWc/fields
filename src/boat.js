@@ -133,8 +133,7 @@ export class Boat{
 
 
     
-    this.wind_speed = this.map.get_wind_speed(this.x, this.y)
-    this.wind_direction = this.map.get_wind_direction(this.x, this.y)
+    ;({ speed: this.wind_speed, direction: this.wind_direction } = this.map.get_wind(this.x, this.y));
 
     var angle = this.physics_model.getAngle();
     this.angle = angle;
@@ -190,12 +189,13 @@ export class Boat{
 
 
     // Calculate True wind and apparent wind
-    let twa = (this.map.get_wind_direction(this.x, this.y) - angle/Math.PI*180 + 90 )
+    let twa = (this.wind_direction - angle/Math.PI*180 + 90 )
 
+    const wind_rad = this.wind_direction / 180 * Math.PI;
     let aw_vector = {}
 
-    aw_vector.x = this.physics_model.m_linearVelocity.x + Math.cos(this.map.get_wind_direction(this.x, this.y) /180*Math.PI) * this.map.get_wind_speed(this.x, this.y);
-    aw_vector.y = this.physics_model.m_linearVelocity.y + Math.sin(this.map.get_wind_direction(this.x, this.y) /180*Math.PI) * this.map.get_wind_speed(this.x, this.y);
+    aw_vector.x = this.physics_model.m_linearVelocity.x + Math.cos(wind_rad) * this.wind_speed;
+    aw_vector.y = this.physics_model.m_linearVelocity.y + Math.sin(wind_rad) * this.wind_speed;
 
     let awa = Math.atan2(aw_vector.y, aw_vector.x)/Math.PI*180 - angle/Math.PI*180 + 90 ;
     let aws = Math.sqrt(aw_vector.x*aw_vector.x + aw_vector.y*aw_vector.y)

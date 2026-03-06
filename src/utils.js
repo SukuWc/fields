@@ -1,3 +1,11 @@
+export function meanAngleDeg(a) {
+  function degToRad(x) { return Math.PI / 180 * x; }
+  const n = a.length;
+  const sinSum = a.reduce((s, x) => s + Math.sin(degToRad(x)), 0);
+  const cosSum = a.reduce((s, x) => s + Math.cos(degToRad(x)), 0);
+  return 180 / Math.PI * Math.atan2(sinSum / n, cosSum / n);
+}
+
 export const range_map = function(input, in_min, in_max, out_min, out_max) {
   return (input - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }

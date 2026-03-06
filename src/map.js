@@ -1,27 +1,9 @@
 import planck, { random } from 'planck-js/dist/planck-with-testbed';
-
-
 import { World, Circle } from 'planck-js'
+import { meanAngleDeg } from './utils.js';
+
 let pl = planck, Vec2 = pl.Vec2;
 
-
-function sum(a) {
-	var s = 0;
-	for (var i = 0; i < a.length; i++) s += a[i];
-	return s;
-  } 
-  
-  function degToRad(a) {
-	return Math.PI / 180 * a;
-  }
-  
-  function meanAngleDeg(a) {
-	return 180 / Math.PI * Math.atan2(
-		sum(a.map(degToRad).map(Math.sin)) / a.length,
-		sum(a.map(degToRad).map(Math.cos)) / a.length
-	);
-  }
-  
 
 
 export class Map{
@@ -89,43 +71,30 @@ export class Map{
 
 	}
 
-	get_wind_speed(x, y){
-	
-	
-		let v0 = this.bm.get_field_velocity(x,y)
-		let v1 = this.bm.get_field_velocity(x-1,y)
-		let v2 = this.bm.get_field_velocity(x+1,y)
-		let v3 = this.bm.get_field_velocity(x,y-1)
-		let v4 = this.bm.get_field_velocity(x,y+1)
-	
-		let tws = 0
-		tws += Math.sqrt(v0.x*v0.x + v0.y*v0.y)
-		tws += Math.sqrt(v1.x*v1.x + v1.y*v1.y)
-		tws += Math.sqrt(v2.x*v2.x + v2.y*v2.y)
-		tws += Math.sqrt(v3.x*v3.x + v3.y*v3.y)
-		tws += Math.sqrt(v4.x*v4.x + v4.y*v4.y)
-	
-		return tws/5*100*4;
-	}
-	
-	get_wind_direction(x, y){
-	
-	
-		let v0 = this.bm.get_field_velocity(x,y)
-		let v1 = this.bm.get_field_velocity(x-1,y)
-		let v2 = this.bm.get_field_velocity(x+1,y)
-		let v3 = this.bm.get_field_velocity(x,y-1)
-		let v4 = this.bm.get_field_velocity(x,y+1)
-	
-		let angle_array = [Math.atan2(v0.y, v0.x)/Math.PI*180 + 180,
-		Math.atan2(v1.y, v1.x)/Math.PI*180 + 180,
-		Math.atan2(v2.y, v2.x)/Math.PI*180 + 180,
-		Math.atan2(v3.y, v3.x)/Math.PI*180 + 180,
-		Math.atan2(v4.y, v4.x)/Math.PI*180 + 180 
-		]
-		let twa = meanAngleDeg(angle_array)
-	
-		return twa;
+	get_wind(x, y){
+		const v0 = this.bm.get_field_velocity(x,   y);
+		const v1 = this.bm.get_field_velocity(x-1, y);
+		const v2 = this.bm.get_field_velocity(x+1, y);
+		const v3 = this.bm.get_field_velocity(x,   y-1);
+		const v4 = this.bm.get_field_velocity(x,   y+1);
+
+		const speed = (
+			Math.sqrt(v0.x*v0.x + v0.y*v0.y) +
+			Math.sqrt(v1.x*v1.x + v1.y*v1.y) +
+			Math.sqrt(v2.x*v2.x + v2.y*v2.y) +
+			Math.sqrt(v3.x*v3.x + v3.y*v3.y) +
+			Math.sqrt(v4.x*v4.x + v4.y*v4.y)
+		) / 5 * 100 * 4;
+
+		const direction = meanAngleDeg([
+			Math.atan2(v0.y, v0.x)/Math.PI*180 + 180,
+			Math.atan2(v1.y, v1.x)/Math.PI*180 + 180,
+			Math.atan2(v2.y, v2.x)/Math.PI*180 + 180,
+			Math.atan2(v3.y, v3.x)/Math.PI*180 + 180,
+			Math.atan2(v4.y, v4.x)/Math.PI*180 + 180,
+		]);
+
+		return { speed, direction };
 	}
 	
 	set_camera_follow_target(obj){
