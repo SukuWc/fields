@@ -24,6 +24,8 @@ export class Boat{
 
     this.wind_direction = 0;
     this.wind_speed = 0;
+    this.wind_vx_smooth = 0;
+    this.wind_vy_smooth = 0;
 
     this.hull_mass = 6; // was 6
     this.hull_shape = pl.Polygon([Vec2(0, -2.25), Vec2(-0.5, -1.25), Vec2(-0.75, -0.25),  Vec2(-0.75, 0.5),  Vec2(-0.5, 1.75), Vec2(0.5, 1.75),  Vec2(0.75, 0.5), Vec2(0.75, -0.25), Vec2(0.5, -1.25), Vec2(0, -2.25)])
@@ -133,7 +135,12 @@ export class Boat{
 
 
     
-    ;({ speed: this.wind_speed, direction: this.wind_direction } = this.map.get_wind(this.x, this.y));
+    const wind_raw = this.map.get_wind(this.x, this.y);
+    const alpha = 0.2;
+    this.wind_vx_smooth = alpha * wind_raw.vx + (1 - alpha) * this.wind_vx_smooth;
+    this.wind_vy_smooth = alpha * wind_raw.vy + (1 - alpha) * this.wind_vy_smooth;
+    this.wind_speed     = Math.sqrt(this.wind_vx_smooth**2 + this.wind_vy_smooth**2) * 100 * 4;
+    this.wind_direction = Math.atan2(this.wind_vy_smooth, this.wind_vx_smooth) / Math.PI * 180 + 180;
 
     var angle = this.physics_model.getAngle();
     this.angle = angle;
@@ -417,6 +424,7 @@ export class Boat{
 
     this.power = Math.sqrt(mainsail_f.x*mainsail_f.x + mainsail_f.y*mainsail_f.y)
     this.power_direction = Math.atan2(mainsail_f.y, mainsail_f.x) / Math.PI * 180;
+    this.mainsail_force = { x: mainsail_f.x, y: mainsail_f.y };
 
     
     document.getElementById("info").innerHTML += "Power: "+ Math.floor( this.power *10) /10 + "<br>"; 
@@ -695,6 +703,28 @@ export class Boat{
   }
   
 
+
+  // Returns world-space line segments for each sail with the aerodynamic reaction
+  // force (equal and opposite to the force on the boat) as {x0,y0,x1,y1,fx,fy}.
+  getSailSegments() {
+    const angle   = this.hull_angle;
+    const segments = [];
+
+    if (this.mainsail_force) {
+      const boomRad = this.mainsail_boom_angle / 180 * Math.PI;
+      const bow  = this.physics_model.getWorldPoint(planck.Vec2(0.0, -2.25));
+      const mast = this.physics_model.getWorldPoint(planck.Vec2(0.0, this.mainsail_leading_edge_position));
+      segments.push({
+        x0: bow.x, y0: bow.y,
+        x1: mast.x + Math.cos(angle + Math.PI/2 + boomRad) * this.mainsail_boom_length,
+        y1: mast.y + Math.sin(angle + Math.PI/2 + boomRad) * this.mainsail_boom_length,
+        fx: -this.mainsail_force.x,
+        fy: -this.mainsail_force.y,
+      });
+    }
+
+    return segments;
+  }
 
   input_rudder_left(){
     this.rudder_input = 1

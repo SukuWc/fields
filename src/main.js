@@ -6,17 +6,19 @@ import { Map } from './map.js';
 import { initRenderer, startAnimation, getCamera } from './renderer.js';
 import { setupControls, getPlayers, getPhysicsFrame, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 
-const map_w = 50;
-const map_h = 50;
+const map_w = 75;
+const map_h = 75;
 const wind_angle = 90;
 const wind_speed = 15;
-const bm_resolution = 2;
+const bm_resolution = 1;
 const texture_oversampling = 4;
 
 // Fine domain tracking: half-width in coarse cells, and margin before triggering a move.
-const DOMAIN_HALF    = 10;
+const SAIL_EFFICIENCY = 0.0003 * bm_resolution; // scales sail aerodynamic force → fluid momentum transfer
+
+const DOMAIN_HALF    = 20;
 const DOMAIN_MARGIN  = 10;
-const DOMAIN2_HALF   = 10; // half-width of level-2 domain in level-1 fine cell coords
+const DOMAIN2_HALF   = 20; // half-width of level-2 domain in level-1 fine cell coords
 const DOMAIN2_MARGIN = 10;
 
 // Data texture for fluid field visualisation
@@ -85,27 +87,18 @@ runner.start(() => {
     player.physics_model_step();
     guides.push(...player.graphics_model_render());
 
-    const wind_angle_rad = (player.awa) / 180 * Math.PI + player.hull_angle - Math.PI / 2;
-    const offset = 1.5;
-
-    const px0 = player.x + Math.cos(player.hull_angle + 90 / 180 * Math.PI) * (-offset) + Math.cos(wind_angle_rad) * (-2);
-    const py0 = player.y + Math.sin(player.hull_angle + 90 / 180 * Math.PI) * (-offset) + Math.sin(wind_angle_rad) * (-2);
-    const px1 = player.x + Math.cos(player.hull_angle + 90 / 180 * Math.PI) * 0      + Math.cos(wind_angle_rad) * (-2);
-    const py1 = player.y + Math.sin(player.hull_angle + 90 / 180 * Math.PI) * 0      + Math.sin(wind_angle_rad) * (-2);
-    const px2 = player.x + Math.cos(player.hull_angle + 90 / 180 * Math.PI) * (+offset) + Math.cos(wind_angle_rad) * (-2);
-    const py2 = player.y + Math.sin(player.hull_angle + 90 / 180 * Math.PI) * (+offset) + Math.sin(wind_angle_rad) * (-2);
-
     if (document.getElementById('boat_energy').checked) {
-      map.bm.apply_energy(px0, py0, player.power_direction, player.power / 5000);
-      map.bm.apply_energy(px1, py1, player.power_direction, player.power / 2000);
-      map.bm.apply_energy(px2, py2, player.power_direction, player.power / 5000);
+      for (const seg of player.getSailSegments()) {
+        map.bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1,
+          seg.fx * SAIL_EFFICIENCY, seg.fy * SAIL_EFFICIENCY);
+      }
     }
 
     infoEl.innerHTML += "Phys Time: " + bm.t_delta + "<br>";
   });
 
   // Dynamic domain placement: keep one fine domain per boat, with a level-2 domain inside.
-  getPlayers().forEach((player, index) => {
+  if (document.getElementById('amr').checked) getPlayers().forEach((player, index) => {
     const cx = Math.round(bm.width/2  + player.x * bm.resolution);
     const cy = Math.round(bm.height/2 + player.y * bm.resolution);
     const cx0 = Math.max(1, cx - DOMAIN_HALF);
@@ -144,7 +137,7 @@ runner.start(() => {
         level1.moveDomain(0, fi2_0, fj2_0, fi2_1, fj2_1);
       }
     }
-  });
+  }); // end AMR block
 
   map.bm.physics_model_step();
 

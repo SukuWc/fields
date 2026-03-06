@@ -72,29 +72,24 @@ export class Map{
 	}
 
 	get_wind(x, y){
-		const v0 = this.bm.get_field_velocity(x,   y);
-		const v1 = this.bm.get_field_velocity(x-1, y);
-		const v2 = this.bm.get_field_velocity(x+1, y);
-		const v3 = this.bm.get_field_velocity(x,   y-1);
-		const v4 = this.bm.get_field_velocity(x,   y+1);
+		// Spatially average velocity vectors over a grid within WIND_SAMPLE_RADIUS world units.
+		// Averaging vectors before deriving speed/direction avoids angle wraparound issues.
+		const WIND_SAMPLE_RADIUS = 2; // world units
+		const WIND_SAMPLE_STEP   = 1; // world units between samples
 
-		const speed = (
-			Math.sqrt(v0.x*v0.x + v0.y*v0.y) +
-			Math.sqrt(v1.x*v1.x + v1.y*v1.y) +
-			Math.sqrt(v2.x*v2.x + v2.y*v2.y) +
-			Math.sqrt(v3.x*v3.x + v3.y*v3.y) +
-			Math.sqrt(v4.x*v4.x + v4.y*v4.y)
-		) / 5 * 100 * 4;
+		let vx = 0, vy = 0, n = 0;
+		for (let dx = -WIND_SAMPLE_RADIUS; dx <= WIND_SAMPLE_RADIUS; dx += WIND_SAMPLE_STEP) {
+			for (let dy = -WIND_SAMPLE_RADIUS; dy <= WIND_SAMPLE_RADIUS; dy += WIND_SAMPLE_STEP) {
+				const v = this.bm.get_field_velocity(x + dx, y + dy);
+				vx += v.x; vy += v.y; n++;
+			}
+		}
+		vx /= n; vy /= n;
 
-		const direction = meanAngleDeg([
-			Math.atan2(v0.y, v0.x)/Math.PI*180 + 180,
-			Math.atan2(v1.y, v1.x)/Math.PI*180 + 180,
-			Math.atan2(v2.y, v2.x)/Math.PI*180 + 180,
-			Math.atan2(v3.y, v3.x)/Math.PI*180 + 180,
-			Math.atan2(v4.y, v4.x)/Math.PI*180 + 180,
-		]);
+		const speed     = Math.sqrt(vx*vx + vy*vy) * 100 * 4;
+		const direction = Math.atan2(vy, vx) / Math.PI * 180 + 180;
 
-		return { speed, direction };
+		return { speed, direction, vx, vy };
 	}
 	
 	set_camera_follow_target(obj){

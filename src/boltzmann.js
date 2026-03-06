@@ -371,7 +371,7 @@ class RefinementDomain {
 		// Sub-step 1: restore t-state ghost boundary, inject energy, run.
 		// Inject before the step so the perturbation is present when collide runs.
 		for (const inj of this.pendingInjections) {
-			this._applyForceFineCell(inj.fi, inj.fj, inj.direction, inj.strength);
+			this._applyForceFineCell(inj.fi, inj.fj, inj.fx, inj.fy);
 		}
 		this._restoreGhostFromSnapshot();
 		collideAndStream(this.interiorCells, this.omega_f);
@@ -389,7 +389,7 @@ class RefinementDomain {
 		this.injectFromCoarse(parent);
 		this._interpolateGhostCells(0.5); // 0.5*(t-snapshot) + 0.5*(t+1) = t+½
 		for (const inj of this.pendingInjections) {
-			this._applyForceFineCell(inj.fi, inj.fj, inj.direction, inj.strength);
+			this._applyForceFineCell(inj.fi, inj.fj, inj.fx, inj.fy);
 		}
 		collideAndStream(this.interiorCells, this.omega_f);
 
@@ -737,26 +737,24 @@ class RefinementDomain {
 	// Apply an energy impulse at a coordinate in the PARENT's cell space.
 	// Delegates to the deepest child domain that contains the point (recursive),
 	// so energy always goes to the finest available grid level.
-	applyEnergyAt(cx_cont, cy_cont, direction, strength) {
+	applyEnergyAt(cx_cont, cy_cont, fx, fy) {
 		const fi_f = 1 + (cx_cont - this.cx0) * 2;
 		const fj_f = 1 + (cy_cont - this.cy0) * 2;
 		for (const child of this.domains) {
 			if (child.containsCoarse(fi_f, fj_f)) {
-				child.applyEnergyAt(fi_f, fj_f, direction, strength);
+				child.applyEnergyAt(fi_f, fj_f, fx, fy);
 				return;
 			}
 		}
 		const fi = Math.max(1, Math.min(this.width  - 2, Math.round(fi_f)));
 		const fj = Math.max(1, Math.min(this.height - 2, Math.round(fj_f)));
-		this.pendingInjections.push({ fi, fj, direction, strength });
-		this._applyForceFineCell(fi, fj, direction, strength);
+		this.pendingInjections.push({ fi, fj, fx, fy });
+		this._applyForceFineCell(fi, fj, fx, fy);
 	}
 
-	_applyForceFineCell(fi, fj, direction, s) {
+	_applyForceFineCell(fi, fj, fx, fy) {
 		const cell = this.cells[fi + fj * this.width];
-		const dvx = Math.cos(direction / 180 * Math.PI) * s / cell.rho * -1;
-		const dvy = Math.sin(direction / 180 * Math.PI) * s / cell.rho * -1;
-		cell.setEquil(cell.ux + dvx, cell.uy + dvy);
+		cell.setEquil(cell.ux + fx / cell.rho, cell.uy + fy / cell.rho);
 	}
 
 }
@@ -994,58 +992,52 @@ export class Boltzmann {
 		}
 	}
 
-	apply_energy(pushX, pushY, direction, strength) {
-
-		document.getElementById("wind_info").innerHTML = "dir: " + direction + "stre : " + strength + "<br>";
-
-		const cx_cont = this.width/2  + pushX * this.resolution;
-		const cy_cont = this.height/2 + pushY * this.resolution;
+	// Apply a force vector (fx, fy) to the fluid at world position (wx, wy).
+	// Routes to the finest domain that contains the point.
+	apply_energy(wx, wy, fx, fy) {
+		const cx_cont = this.width/2  + wx * this.resolution;
+		const cy_cont = this.height/2 + wy * this.resolution;
 		for (let d = 0; d < this.domains.length; d++) {
 			if (this.domains[d].containsCoarse(cx_cont, cy_cont)) {
-				this.domains[d].applyEnergyAt(cx_cont, cy_cont, direction, strength);
+				this.domains[d].applyEnergyAt(cx_cont, cy_cont, fx, fy);
 				return;
 			}
 		}
-
-		let x = this.width/2  + Math.floor(pushX * this.resolution);
-		let y = this.height/2 + Math.floor(pushY * this.resolution);
-
-		const x0 = Math.floor(x);
-		const y0 = Math.floor(y);
-		const x1 = x0 + 1;
-		const y1 = y0;
-		const x2 = x0;
-		const y2 = y0 + 1;
-		const x3 = x0 + 1;
-		const y3 = y0 + 1;
-
-		const hf = x - x0;
-		const vf = y - y0;
-
-		const s0 = (1-hf) * (1-vf);
-		const s1 =   hf   * (1-vf);
-		const s2 = (1-hf) *   vf;
-		const s3 =   hf   *   vf;
-
-		const x_array = [x0, x1, x2, x3];
-		const y_array = [y0, y1, y2, y3];
-		const s_array = [s0, s1, s2, s3];
-
-		this.apply_force_to_cell(x_array[0], y_array[0], direction, s_array[0] * strength);
+		const x = Math.max(1, Math.min(this.width  - 2, Math.round(cx_cont)));
+		const y = Math.max(1, Math.min(this.height - 2, Math.round(cy_cont)));
+		this.apply_force_to_cell(x, y, fx, fy);
 	}
 
-	apply_force_to_cell(x, y, direction, s) {
-		// F = m * a  →  dv = F/m * dt
+	// Distribute a total force (fx, fy) evenly along a world-space line segment.
+	// Steps at the finest grid cell size so every cell along the sail span is hit once.
+	apply_energy_segment(x0, y0, x1, y1, fx, fy) {
+		const dx = x1 - x0;
+		const dy = y1 - y0;
+		const length = Math.sqrt(dx*dx + dy*dy);
+		if (length < 1e-9) return;
 
+		// Step size = world size of the finest available cell
+		let minDx = 1;
+		const walkDx = (domains) => { for (const d of domains) { minDx = Math.min(minDx, d.dx); walkDx(d.domains); } };
+		walkDx(this.domains);
+		const step = minDx / this.resolution;
+
+		const ux = dx / length;
+		const uy = dy / length;
+
+		let t = 0;
+		while (t < length) {
+			const actualStep = Math.min(step, length - t);
+			const wx = x0 + ux * (t + actualStep * 0.5);
+			const wy = y0 + uy * (t + actualStep * 0.5);
+			this.apply_energy(wx, wy, fx * actualStep / length, fy * actualStep / length);
+			t += step;
+		}
+	}
+
+	apply_force_to_cell(x, y, fx, fy) {
 		const cell = this.cells[x + y * this.width];
-		const vx = cell.ux;
-		const vy = cell.uy;
-		const m  = cell.rho;
-
-		const dvx = Math.cos(direction / 180 * Math.PI) * s / m * -1;
-		const dvy = Math.sin(direction / 180 * Math.PI) * s / m * -1;
-
-		cell.setEquil(vx + dvx, vy + dvy);
+		cell.setEquil(cell.ux + fx / cell.rho, cell.uy + fy / cell.rho);
 	}
 
 	get_field_velocity(worldX, worldY) {
