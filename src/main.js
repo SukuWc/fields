@@ -13,6 +13,12 @@ const wind_speed = 15;
 const bm_resolution = 2;
 const texture_oversampling = 4;
 
+// Fine domain tracking: half-width in coarse cells, and margin before triggering a move.
+const DOMAIN_HALF    = 10;
+const DOMAIN_MARGIN  = 10;
+const DOMAIN2_HALF   = 10; // half-width of level-2 domain in level-1 fine cell coords
+const DOMAIN2_MARGIN = 10;
+
 // Data texture for fluid field visualisation
 const _side1 = texture_oversampling * map_w * bm_resolution;
 const _side2 = texture_oversampling * map_h * bm_resolution;
@@ -26,8 +32,7 @@ planeMat.needsUpdate = true;
 
 // Core simulation instances
 const bm = new Boltzmann(map_w, map_h, bm_resolution, wind_angle, wind_speed, dataTextureMaterial, texture_oversampling);
-bm.addDomain(10, 10, 90, 90);
-bm.domains[0].addDomain(40, 40, 120, 120); // level-2 domain, coords in level-1 fine cell space
+// Domains are created dynamically in the physics loop as players spawn.
 const map = new Map(map_w, map_h, wind_angle, wind_speed, bm);
 map.physics_model_init();
 
@@ -37,6 +42,8 @@ setupControls(map, getCamera, bm);
 
 let guides = [];
 startAnimation(map, () => guides);
+
+document.getElementById('barrier').addEventListener('change', e => bm.setBarriers(e.target.checked));
 
 const infoEl = document.getElementById('info');
 const distInfoEl = document.getElementById('dist_info');
@@ -88,11 +95,55 @@ runner.start(() => {
     const px2 = player.x + Math.cos(player.hull_angle + 90 / 180 * Math.PI) * (+offset) + Math.cos(wind_angle_rad) * (-2);
     const py2 = player.y + Math.sin(player.hull_angle + 90 / 180 * Math.PI) * (+offset) + Math.sin(wind_angle_rad) * (-2);
 
-    map.bm.apply_energy(px0, py0, player.power_direction, player.power / 5000);
-    map.bm.apply_energy(px1, py1, player.power_direction, player.power / 2000);
-    map.bm.apply_energy(px2, py2, player.power_direction, player.power / 5000);
+    if (document.getElementById('boat_energy').checked) {
+      map.bm.apply_energy(px0, py0, player.power_direction, player.power / 5000);
+      map.bm.apply_energy(px1, py1, player.power_direction, player.power / 2000);
+      map.bm.apply_energy(px2, py2, player.power_direction, player.power / 5000);
+    }
 
     infoEl.innerHTML += "Phys Time: " + bm.t_delta + "<br>";
+  });
+
+  // Dynamic domain placement: keep one fine domain per boat, with a level-2 domain inside.
+  getPlayers().forEach((player, index) => {
+    const cx = Math.round(bm.width/2  + player.x * bm.resolution);
+    const cy = Math.round(bm.height/2 + player.y * bm.resolution);
+    const cx0 = Math.max(1, cx - DOMAIN_HALF);
+    const cy0 = Math.max(1, cy - DOMAIN_HALF);
+    const cx1 = Math.min(bm.width  - 1, cx + DOMAIN_HALF);
+    const cy1 = Math.min(bm.height - 1, cy + DOMAIN_HALF);
+
+    let level1Moved = false;
+    if (index >= bm.domains.length) {
+      bm.addDomain(cx0, cy0, cx1, cy1);
+      level1Moved = true;
+    } else {
+      const d = bm.domains[index];
+      if (cx < d.cx0 + DOMAIN_MARGIN || cx > d.cx1 - DOMAIN_MARGIN ||
+          cy < d.cy0 + DOMAIN_MARGIN || cy > d.cy1 - DOMAIN_MARGIN) {
+        bm.moveDomain(index, cx0, cy0, cx1, cy1);
+        level1Moved = true;
+      }
+    }
+
+    // Level-2 domain: boat position in level-1 fine cell coords.
+    const level1 = bm.domains[index];
+    const fi_f = 1 + (cx - level1.cx0) * 2;
+    const fj_f = 1 + (cy - level1.cy0) * 2;
+    const fi2_0 = Math.max(1, fi_f - DOMAIN2_HALF);
+    const fj2_0 = Math.max(1, fj_f - DOMAIN2_HALF);
+    const fi2_1 = Math.min(level1.width  - 1, fi_f + DOMAIN2_HALF);
+    const fj2_1 = Math.min(level1.height - 1, fj_f + DOMAIN2_HALF);
+
+    if (level1Moved || level1.domains.length === 0) {
+      level1.addDomain(fi2_0, fj2_0, fi2_1, fj2_1);
+    } else {
+      const d2 = level1.domains[0];
+      if (fi_f < d2.cx0 + DOMAIN2_MARGIN || fi_f > d2.cx1 - DOMAIN2_MARGIN ||
+          fj_f < d2.cy0 + DOMAIN2_MARGIN || fj_f > d2.cy1 - DOMAIN2_MARGIN) {
+        level1.moveDomain(0, fi2_0, fj2_0, fi2_1, fj2_1);
+      }
+    }
   });
 
   map.bm.physics_model_step();

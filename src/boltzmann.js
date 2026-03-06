@@ -308,6 +308,7 @@ class RefinementDomain {
 				this.interiorCells.push(cell);
 			}
 		}
+		this._allInteriorCells = [...this.interiorCells];
 
 		// Propagate barrier flags from the parent grid into fine cells.
 		// A fine cell is a barrier if any parent cell it overlaps is a barrier.
@@ -332,12 +333,14 @@ class RefinementDomain {
 			}
 		}
 
-		// Eq. 3: initialize all cells to equilibrium at the parent's center-cell velocity.
-		const cx_mid = Math.max(0, Math.min(Math.floor((cx0 + cx1) / 2), parent.width  - 1));
-		const cy_mid = Math.max(0, Math.min(Math.floor((cy0 + cy1) / 2), parent.height - 1));
-		const midCell = parent.cells[cx_mid + cy_mid * parent.width];
-		for (let k = 0; k < this.cells.length; k++) {
-			this.cells[k].setEquil(midCell.ux, midCell.uy, midCell.rho);
+		// Initialize every cell from the parent grid using the same cubic interpolation +
+		// non-eq rescaling as ghost injection (Eq. 29). This ensures the fine grid starts
+		// consistent with the coarse flow state, preventing shockwaves when a domain is
+		// created or moved to a new position.
+		for (let fj = 0; fj < this.height; fj++) {
+			for (let fi = 0; fi < this.width; fi++) {
+				this._injectGhostCell(parent, fi, fj);
+			}
 		}
 
 		// Flat list of ghost border cells for temporal interpolation.
@@ -618,16 +621,49 @@ class RefinementDomain {
 	}
 
 	// Add a child refinement domain in this domain's cell coordinates.
-	// Removes covered cells from interiorCells (same pattern as Boltzmann.addDomain).
 	addDomain(cx0, cy0, cx1, cy1) {
 		this.domains.push(new RefinementDomain(this, cx0, cy0, cx1, cy1));
-		const dominated = new Set();
-		for (let y = cy0; y < cy1; y++) {
-			for (let x = cx0; x < cx1; x++) {
-				dominated.add(this.cells[x + y * this.width]);
+		this._rebuildInteriorCells();
+	}
+
+	// Replace a child domain at index, preserving overlapping cell state.
+	moveDomain(index, cx0, cy0, cx1, cy1) {
+		const old = this.domains[index];
+		const nd  = new RefinementDomain(this, cx0, cy0, cx1, cy1);
+
+		for (let fj = 1; fj < nd.height - 1; fj++) {
+			for (let fi = 1; fi < nd.width - 1; fi++) {
+				const cx = cx0 + (fi - 1) * 0.5;
+				const cy = cy0 + (fj - 1) * 0.5;
+				if (cx >= old.cx0 && cx < old.cx1 && cy >= old.cy0 && cy < old.cy1) {
+					const fi_o = 1 + (cx - old.cx0) * 2;
+					const fj_o = 1 + (cy - old.cy0) * 2;
+					const src = old.cells[fi_o + fj_o * old.width];
+					const dst = nd.cells[fi   + fj   * nd.width];
+					dst.f0  = src.f0;
+					dst.fN  = src.fN;  dst.fS  = src.fS;
+					dst.fE  = src.fE;  dst.fW  = src.fW;
+					dst.fNE = src.fNE; dst.fNW = src.fNW;
+					dst.fSE = src.fSE; dst.fSW = src.fSW;
+					dst.rho = src.rho; dst.ux  = src.ux; dst.uy  = src.uy;
+				}
 			}
 		}
-		this.interiorCells = this.interiorCells.filter(cell => !dominated.has(cell));
+
+		this.domains[index] = nd;
+		this._rebuildInteriorCells();
+	}
+
+	_rebuildInteriorCells() {
+		const dominated = new Set();
+		for (const d of this.domains) {
+			for (let y = d.cy0; y < d.cy1; y++) {
+				for (let x = d.cx0; x < d.cx1; x++) {
+					dominated.add(this.cells[x + y * this.width]);
+				}
+			}
+		}
+		this.interiorCells = this._allInteriorCells.filter(cell => !dominated.has(cell));
 	}
 
 	// Paint fine cells onto the shared texture, then recursively paint child domains on top.
@@ -767,6 +803,9 @@ export class Boltzmann {
 				this.interiorCells.push(this.cells[x + y * this.width]);
 			}
 		}
+		// Full interior set before any domain exclusions — used to rebuild interiorCells
+		// when domains are added or moved.
+		this._allInteriorCells = [...this.interiorCells];
 
 		// Cache geographic neighbour references on each interior cell.
 		// Coordinate convention: x increases rightward, y increases upward (math coords).
@@ -809,13 +848,66 @@ export class Boltzmann {
 	// multi-domain approach (Lagrava Fig. 3).
 	addDomain(cx0, cy0, cx1, cy1) {
 		this.domains.push(new RefinementDomain(this, cx0, cy0, cx1, cy1));
-		const dominated = new Set();
-		for (let y = cy0; y < cy1; y++) {
-			for (let x = cx0; x < cx1; x++) {
-				dominated.add(this.cells[x + y * this.width]);
+		this._rebuildInteriorCells();
+	}
+
+	// Replace an existing domain at index with a new one at the given coarse coordinates.
+	// Cells that overlap with the old domain are copied directly so fine-grid structure
+	// (wakes, pressure variation) is preserved. Only the newly exposed strip is
+	// initialised from the coarse grid, keeping the shockwave minimal.
+	moveDomain(index, cx0, cy0, cx1, cy1) {
+		const old = this.domains[index];
+		const nd  = new RefinementDomain(this, cx0, cy0, cx1, cy1);
+
+		for (let fj = 1; fj < nd.height - 1; fj++) {
+			for (let fi = 1; fi < nd.width - 1; fi++) {
+				const cx = cx0 + (fi - 1) * 0.5;
+				const cy = cy0 + (fj - 1) * 0.5;
+				if (cx >= old.cx0 && cx < old.cx1 && cy >= old.cy0 && cy < old.cy1) {
+					const fi_o = 1 + (cx - old.cx0) * 2;
+					const fj_o = 1 + (cy - old.cy0) * 2;
+					const src = old.cells[fi_o + fj_o * old.width];
+					const dst = nd.cells[fi   + fj   * nd.width];
+					dst.f0  = src.f0;
+					dst.fN  = src.fN;  dst.fS  = src.fS;
+					dst.fE  = src.fE;  dst.fW  = src.fW;
+					dst.fNE = src.fNE; dst.fNW = src.fNW;
+					dst.fSE = src.fSE; dst.fSW = src.fSW;
+					dst.rho = src.rho; dst.ux  = src.ux; dst.uy  = src.uy;
+				}
 			}
 		}
-		this.interiorCells = this.interiorCells.filter(cell => !dominated.has(cell));
+
+		this.domains[index] = nd;
+		this._rebuildInteriorCells();
+	}
+
+	// Recompute interiorCells from the full pre-exclusion set, removing cells covered
+	// by any current domain. Called after addDomain/moveDomain.
+	_rebuildInteriorCells() {
+		const dominated = new Set();
+		for (const d of this.domains) {
+			for (let y = d.cy0; y < d.cy1; y++) {
+				for (let x = d.cx0; x < d.cx1; x++) {
+					dominated.add(this.cells[x + y * this.width]);
+				}
+			}
+		}
+		this.interiorCells = this._allInteriorCells.filter(cell => !dominated.has(cell));
+	}
+
+	// Enable or disable a circular barrier obstacle at the grid centre.
+	// Radius is in coarse cells; fine domains pick up the flag via their constructor.
+	setBarriers(enabled) {
+		const cx = this.width  / 2;
+		const cy = this.height / 2;
+		const r2 = 6 * 6; // radius 6 coarse cells ≈ 3 world units
+		for (let y = 0; y < this.height; y++) {
+			for (let x = 0; x < this.width; x++) {
+				const dx = x - cx, dy = y - cy;
+				this.cells[x + y * this.width].barrier = enabled && (dx*dx + dy*dy <= r2);
+			}
+		}
 	}
 
 	// Initialize all cells to global equilibrium at the configured wind velocity.
