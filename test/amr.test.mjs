@@ -1,9 +1,17 @@
 // Headless checks for the AMR coupling (steps 1–5).
 // Stubs the DOM bits boltzmann.js touches at import time.
 globalThis.document = {
-	getElementById: () => ({ value: '0', selectedIndex: 3, addEventListener() {} }),
+	getElementById: () => ({
+		value: '0', selectedIndex: 3, checked: true, innerHTML: '', textContent: '', style: {},
+		addEventListener() {}, appendChild() {},
+	}),
+	getElementsByTagName: () => [],
+	createElement: () => ({ addEventListener() {}, appendChild() {}, style: {} }),
+	body: { appendChild() {} },
+	currentScript: null,
 };
 globalThis.window = globalThis;
+globalThis.addEventListener = globalThis.addEventListener || (() => {});
 
 const { Boltzmann } = await import('../src/boltzmann.js');
 
@@ -288,6 +296,87 @@ function shearStats(bm, domain) {
 	results.oob = { southEdge, northEdge, southWithDomain, boatItself, inside, cy0, cy1 };
 	console.log(`INFO  get_field_velocity OOB: south edge throws=${southEdge}, north edge throws=${northEdge}, south edge with wall-clamped domain throws=${southWithDomain}, boat on the wall throws=${boatItself}, interior sample throws=${inside}`);
 	check('sample inside a domain does not throw', !inside && !boatItself);
+}
+
+// --- 8. Scenario 0 stays on the autopilot heading with a settled speed ---
+// Open water only: the hull meets the map wall later and that is a separate limit.
+{
+	const { Map } = await import('../src/map.js');
+	const { Boat } = await import('../src/boat.js');
+	const HALF = 20, THRESH = 1;
+	const toward = (px, py, d, gw, gh) => {
+		const cx = (d.cx0 + d.cx1) / 2, cy = (d.cy0 + d.cy1) / 2;
+		let dcx = 0, dcy = 0;
+		if (px - cx > THRESH) dcx = 1; else if (cx - px > THRESH) dcx = -1;
+		else if (py - cy > THRESH) dcy = 1; else if (cy - py > THRESH) dcy = -1;
+		if (d.cx0 + dcx < 1 || d.cx1 + dcx > gw - 1) dcx = 0;
+		if (d.cy0 + dcy < 1 || d.cy1 + dcy > gh - 1) dcy = 0;
+		return { dcx, dcy };
+	};
+	const bm = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
+	const map = new Map(75, 75, 90, 15, bm);
+	map.physics_model_init();
+	const boat = new Boat(map, 10, -9, 5 * Math.PI / 4);
+	let bmMs = 0;
+	const N = 600;
+	let bsAt500 = 0;
+	for (let frame = 0; frame < N; frame++) {
+		if (frame === 1) boat.input_autopilot_enabled_toggle();
+		map.world.step(1 / 30);
+		boat.physics_model_step();
+		if (boat.mainsail_force) {
+			for (const seg of boat.getSailSegments()) {
+				bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * 0.0003, seg.fy * 0.0003);
+			}
+		}
+		const boatCx = bm.width / 2 + boat.x, boatCy = bm.height / 2 + boat.y;
+		let shifted = false;
+		if (bm.domains.length === 0) {
+			const cx = Math.round(boatCx), cy = Math.round(boatCy);
+			bm.addDomain(Math.max(1, cx - HALF), Math.max(1, cy - HALF), Math.min(bm.width - 1, cx + HALF), Math.min(bm.height - 1, cy + HALF));
+		} else {
+			const step = toward(boatCx, boatCy, bm.domains[0], bm.width, bm.height);
+			if (step.dcx || step.dcy) { bm.shiftDomain(0, step.dcx, step.dcy); shifted = true; }
+		}
+		const level1 = bm.domains[0];
+		const fx = 1 + (boatCx - level1.cx0) * 2, fy = 1 + (boatCy - level1.cy0) * 2;
+		if (level1.domains.length === 0) {
+			const fi = Math.round(fx), fj = Math.round(fy);
+			level1.addDomain(Math.max(1, fi - HALF), Math.max(1, fj - HALF), Math.min(level1.width - 1, fi + HALF), Math.min(level1.height - 1, fj + HALF));
+		} else if (!shifted) {
+			const d2 = level1.domains[0];
+			const step2 = toward(fx, fy, d2, level1.width, level1.height);
+			if (step2.dcx || step2.dcy) { d2.shiftBy(level1, step2.dcx, step2.dcy); level1._rebuildInteriorCells(); }
+		}
+		const a = Date.now();
+		bm.physics_model_step();
+		bmMs += Date.now() - a;
+		if (frame === 500) bsAt500 = Math.hypot(boat.physics_model.m_linearVelocity.x, boat.physics_model.m_linearVelocity.y);
+	}
+	const twa = boat.twa;
+	const bs = Math.hypot(boat.physics_model.m_linearVelocity.x, boat.physics_model.m_linearVelocity.y);
+	const st = fieldStats(bm);
+	const stepMs = bmMs / N;
+	results.scenario0 = { twa, bs, tws: boat.wind_speed, stepMs, maxU: st.maxU, bad: st.bad, bsAt500 };
+	check('scenario 0 heading near 45°', Math.abs(twa) >= 40 && Math.abs(twa) <= 55, `twa = ${twa.toFixed(1)}`);
+	check('scenario 0 speed settled', bs > 1.8 && bs < 2.8 && Math.abs(bs - bsAt500) < 0.15,
+		`bs = ${bs.toFixed(3)} (at 500: ${bsAt500.toFixed(3)})`);
+	check('scenario 0 wind still blowing', boat.wind_speed > 12 && st.bad === 0 && st.maxU < 0.3 && st.maxU > 0.1,
+		`TWS = ${boat.wind_speed.toFixed(2)}, max|u| = ${st.maxU.toExponential(2)}, bad = ${st.bad}`);
+	check('scenario 0 step stays cheap', stepMs < 12, `mean step ${stepMs.toFixed(2)} ms`);
+	check('scenario 0 keeps a single level-2 grid', bm.domains[0].domains.length === 1);
+}
+
+function fieldStats(bm) {
+	let maxU = 0, bad = 0;
+	const acc = (c) => {
+		if (!Number.isFinite(c.rho) || !Number.isFinite(c.ux) || !Number.isFinite(c.uy)) { bad++; return; }
+		maxU = Math.max(maxU, Math.hypot(c.ux, c.uy));
+	};
+	for (const c of bm.cells) acc(c);
+	const walk = (ds) => { for (const d of ds) { for (const c of d.cells) acc(c); walk(d.domains); } };
+	walk(bm.domains);
+	return { maxU, bad };
 }
 
 console.log('MEASUREMENTS ' + JSON.stringify(results));

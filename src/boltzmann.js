@@ -273,24 +273,45 @@ const NEQ_DIRS = [
 	['fSW',-1, -1, one36th],
 ];
 
-function zeroNeq() {
-	return { f0:0, fN:0, fS:0, fE:0, fW:0, fNE:0, fNW:0, fSE:0, fSW:0 };
+// NEQ_DIRS order. One buffer for the whole restriction so a 40² window does not
+// allocate an object per cell (that allocation dropped the browser to a few fps).
+const NEQ_CX = NEQ_DIRS.map(d => d[1]);
+const NEQ_CY = NEQ_DIRS.map(d => d[2]);
+const NEQ_W  = NEQ_DIRS.map(d => d[3]);
+const NEQ_ACC = new Float64Array(9);
+
+// f_i^neq = f_i - f_i^eq(ρ, u), added into acc. Eq. 3 for the equilibrium.
+function addNeq(cell, acc) {
+	const ux = cell.ux, uy = cell.uy, rho = cell.rho;
+	const ux3 = 3 * ux, uy3 = 3 * uy;
+	const ux2 = ux * ux, uy2 = uy * uy;
+	const uxuy2 = 2 * ux * uy;
+	const u2 = ux2 + uy2;
+	const u215 = 1.5 * u2;
+	const r1 = one9th * rho;
+	const r36 = one36th * rho;
+	acc[0] += cell.f0  - four9ths * rho * (1 - u215);
+	acc[1] += cell.fE  - r1 * (1 + ux3 + 4.5 * ux2 - u215);
+	acc[2] += cell.fW  - r1 * (1 - ux3 + 4.5 * ux2 - u215);
+	acc[3] += cell.fN  - r1 * (1 + uy3 + 4.5 * uy2 - u215);
+	acc[4] += cell.fS  - r1 * (1 - uy3 + 4.5 * uy2 - u215);
+	acc[5] += cell.fNE - r36 * (1 + ux3 + uy3 + 4.5 * (u2 + uxuy2) - u215);
+	acc[6] += cell.fNW - r36 * (1 - ux3 + uy3 + 4.5 * (u2 - uxuy2) - u215);
+	acc[7] += cell.fSE - r36 * (1 + ux3 - uy3 + 4.5 * (u2 - uxuy2) - u215);
+	acc[8] += cell.fSW - r36 * (1 - ux3 - uy3 + 4.5 * (u2 + uxuy2) - u215);
 }
 
 // Remove Σ f_neq and Σ ξ f_neq. w_i and w_i * 3 ξ_i are the D2Q9 mass/momentum modes.
-function stripNeqMoments(neq) {
+function stripNeqAcc(acc) {
 	let dm = 0, jx = 0, jy = 0;
-	for (let i = 0; i < NEQ_DIRS.length; i++) {
-		const [k, cx, cy] = NEQ_DIRS[i];
-		dm += neq[k];
-		jx += cx * neq[k];
-		jy += cy * neq[k];
+	for (let i = 0; i < 9; i++) {
+		dm += acc[i];
+		jx += NEQ_CX[i] * acc[i];
+		jy += NEQ_CY[i] * acc[i];
 	}
-	for (let i = 0; i < NEQ_DIRS.length; i++) {
-		const [k, cx, cy, w] = NEQ_DIRS[i];
-		neq[k] -= w * (dm + 3 * (cx * jx + cy * jy));
+	for (let i = 0; i < 9; i++) {
+		acc[i] -= NEQ_W[i] * (dm + 3 * (NEQ_CX[i] * jx + NEQ_CY[i] * jy));
 	}
-	return neq;
 }
 
 
@@ -660,41 +681,55 @@ class RefinementDomain {
 		const fj0 = 1 + (cy - this.cy0) * 2;
 		if (fi0 < 0 || fj0 < 0 || fi0 >= this.width || fj0 >= this.height) return;
 		const center = this.cells[fi0 + fj0 * this.width];
-		center.recomputeMacros();
 		const rho = center.rho;
 		const ux  = center.ux;
 		const uy  = center.uy;
 
 		// Eq. 33: average f_neq over the fine-grid D2Q9 neighbourhood (width = one coarse cell).
-		const acc = zeroNeq();
+		const acc = NEQ_ACC;
+		acc.fill(0);
 		let n = 0;
+		const w = this.width, h = this.height;
 		for (let dj = -1; dj <= 1; dj++) {
+			const fj = fj0 + dj;
+			if (fj < 0 || fj >= h) continue;
+			const row = fj * w;
 			for (let di = -1; di <= 1; di++) {
 				const fi = fi0 + di;
-				const fj = fj0 + dj;
-				if (fi < 0 || fj < 0 || fi >= this.width || fj >= this.height) continue;
-				const c = this.cells[fi + fj * this.width];
-				const eq = computeEquil(c.ux, c.uy, c.rho);
-				for (let p = 0; p < POP_KEYS.length; p++) {
-					const k = POP_KEYS[p];
-					acc[k] += c[k] - eq[k];
-				}
+				if (fi < 0 || fi >= w) continue;
+				addNeq(this.cells[fi + row], acc);
 				n++;
 			}
 		}
 		if (n === 0) return;
-		for (let p = 0; p < POP_KEYS.length; p++) acc[POP_KEYS[p]] /= n;
-		stripNeqMoments(acc);
+		const inv = 1 / n;
+		for (let i = 0; i < 9; i++) acc[i] *= inv;
+		stripNeqAcc(acc);
 
 		// Eq. 3 at the coincident node, Eq. 30: f_c = f_eq + (2 ω_f / ω_c) f_neq_filtered
-		const feq = computeEquil(ux, uy, rho);
+		const ux3 = 3 * ux, uy3 = 3 * uy;
+		const ux2 = ux * ux, uy2 = uy * uy;
+		const uxuy2 = 2 * ux * uy;
+		const u2 = ux2 + uy2;
+		const u215 = 1.5 * u2;
+		const r1 = one9th * rho;
+		const r36 = one36th * rho;
 		const scale = (2 * this.omega_f) / this.omega_c;
 		const coarse = parent.cells[cx + cy * parent.width];
-		for (let p = 0; p < POP_KEYS.length; p++) {
-			const k = POP_KEYS[p];
-			coarse[k] = feq[k] + scale * acc[k];
-		}
-		coarse.recomputeMacros();
+		coarse.f0  = four9ths * rho * (1 - u215)                       + scale * acc[0];
+		coarse.fE  = r1 * (1 + ux3 + 4.5 * ux2 - u215)                 + scale * acc[1];
+		coarse.fW  = r1 * (1 - ux3 + 4.5 * ux2 - u215)                 + scale * acc[2];
+		coarse.fN  = r1 * (1 + uy3 + 4.5 * uy2 - u215)                 + scale * acc[3];
+		coarse.fS  = r1 * (1 - uy3 + 4.5 * uy2 - u215)                 + scale * acc[4];
+		coarse.fNE = r36 * (1 + ux3 + uy3 + 4.5 * (u2 + uxuy2) - u215) + scale * acc[5];
+		coarse.fNW = r36 * (1 - ux3 + uy3 + 4.5 * (u2 - uxuy2) - u215) + scale * acc[6];
+		coarse.fSE = r36 * (1 + ux3 - uy3 + 4.5 * (u2 - uxuy2) - u215) + scale * acc[7];
+		coarse.fSW = r36 * (1 - ux3 - uy3 + 4.5 * (u2 + uxuy2) - u215) + scale * acc[8];
+		// ρ and u are the coincident node's, unfiltered. f_neq was stripped of moments,
+		// so these match the populations just written.
+		coarse.rho = rho;
+		coarse.ux = ux;
+		coarse.uy = uy;
 	}
 
 	// Add a child refinement domain in this domain's cell coordinates.
