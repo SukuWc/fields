@@ -7,10 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 npm install        # Install dependencies
 npm start          # Start dev server (Vite, hot reload, typically http://localhost:5173)
+npm test           # Headless AMR coupling checks (node test/amr.test.mjs)
 npm run build      # Production build with base path /fields (output: dist/)
 ```
-
-No test suite is currently configured.
 
 ## Dependency notes
 
@@ -53,10 +52,10 @@ The physics runner (`planck-renderer` `Runner`) in `main.js` runs at 30 FPS:
 
 Uses the **D2Q9 lattice** (9-velocity 2D LBM). Key classes:
 
-- `SimulationCell` — single lattice node. Fields match paper notation: `f0, fN, fS, fE, fW, fNE, fNW, fSE, fSW` (post-collision populations), `fN_in … fSW_in` (incoming buffers), `rho`, `ux`, `uy`, `curl`. `sub_mesh_depth`: `0` = root, `1` = standard cell, `2` = first submesh level, `3` = second submesh level.
-- `Boltzmann` — top-level class. Owns `cells[]` (all cells), `interiorCells[]` (pre-computed interior subset for efficient stepping), and the `collideAndStream(cells, omega)` helper that runs one full LBM step (collide→stream→bounce→consolidate) on any cell array. Step order in `physics_model_step`: collide → stream → bounce → consolidate → `setBoundaries` (boundaries enforced after propagation, per paper).
-- **Adaptive mesh refinement (AMR) is early/experimental** — not fully implemented. Depth-2 and depth-3 child cells exist and are initialised via `convert_to_finer_mesh`, which samples a 3×3 neighbourhood at the parent's grid spacing (`step = Math.pow(0.5, sub_mesh_depth - 1)`) so depth-3 cells draw from depth-2 neighbours rather than the root grid. Sub-cells do not yet participate in the main stream/collide/bounce loop.
-- **AMR reference paper**: Lagrava, Malaspinas, Latt, Chopard — *"Advances in multi-domain lattice Boltzmann grid refinement"*, J. Comput. Phys. 231:4808–4822, 2012. DOI: 10.1016/j.jcp.2012.03.015. PDF at `research/lagrava_gr_2012.pdf`. This is the paper we are following for the full AMR implementation (multi-domain, cell-vertex, convective scaling, Dupuis-Chopard non-equilibrium rescaling with cubic spatial interpolation and box-filter fine→coarse).
+- `SimulationCell` — single lattice node. Fields match paper notation: `f0, fN, fS, fE, fW, fNE, fNW, fSE, fSW` (post-collision populations), `fN_in … fSW_in` (incoming buffers), `rho`, `ux`, `uy`, `curl`. `recomputeMacros()` refreshes ρ and u from the populations after streaming or a grid transfer.
+- `Boltzmann` — top-level class. Owns `cells[]` (all cells), `interiorCells[]` (interior nodes not covered by a child), `_allInteriorCells[]` (every interior node, including covered ones), and the `collideAndStream(cells, omega)` helper that runs one full LBM step (collide→stream→bounce→consolidate) on any cell array. Step order in `physics_model_step`: collide → stream → bounce → consolidate → `setBoundaries` (boundaries enforced after propagation, per paper). The coarse step runs on `_allInteriorCells` so a pull from a covered neighbour sees post-collision populations; `averageToCoarse` then overwrites the covered nodes.
+- **Adaptive mesh refinement** is multi-domain and rectangular (`RefinementDomain`). Each level runs two sub-steps per parent step (convective scaling, ratio 2). `omega_f` follows Eq. 24. Coarse→fine coupling rescales non-equilibrium populations (Eq. 29) with cubic spatial interpolation (Eqs. 38/39) or a direct copy on coincident nodes (Eq. 34). Fine→coarse restriction takes ρ and u from the coincident fine node and filters only `f_neq` on the centered D2Q9 stencil (Eq. 33), then rescales (Eq. 30). Ghost boundaries interpolate ρ, u, and `f_neq` between the two parent time levels (§3.5). A window moves with `shiftDomain` / `shiftBy`: one parent cell at a time, in place, restricting cells that leave and carrying nested domains with it. `main.js` recenters a window when the boat is more than one cell from its center.
+- **AMR reference paper**: Lagrava, Malaspinas, Latt, Chopard — *"Advances in multi-domain lattice Boltzmann grid refinement"*, J. Comput. Phys. 231:4808–4822, 2012. DOI: 10.1016/j.jcp.2012.03.015. PDF at `research/lagrava_gr_2012.pdf`. This is the paper the multi-domain coupling follows (cell-vertex, convective scaling, Dupuis–Chopard non-equilibrium rescaling).
 - **Debug visualisation**: `RefinementDomain.worldBorderLines(bm)` returns 4 world-space line segments for the domain boundary; `main.js` pushes these into `guides` each frame so they render as thin Three.js lines.
 
 ### Boat Physics (`boat.js`)
@@ -82,7 +81,7 @@ Scenarios are defined in `src/controls.js` as sparse arrays indexed by physics f
 The LBM implementation is kept as close as possible to the Lagrava paper. Follow these rules when editing:
 
 - **Variable names match paper notation**: `f0, fN, fS, fE, fW, fNE, fNW, fSE, fSW` (Eq. 2), `rho` (ρ), `ux/uy` (u), `nu` (ν), `omega` / `omega_c` / `omega_f` (ω).
-- **Equation comments**: every calculation that has a numbered formula in the paper must have a `// Eq. N:` comment on or above it. Current coverage: Eq. 2 (weights), Eq. 3 (equilibrium), Eq. 4/5 (macro fields), Eq. 10 (ω from ν), Eq. 15 (BGK collision), Eq. 16 (streaming), Eq. 24 (fine-grid ω), §3.5 (sub-cycling).
+- **Equation comments**: every calculation that has a numbered formula in the paper must have a `// Eq. N:` comment on or above it. Current coverage: Eq. 2 (weights), Eq. 3 (equilibrium), Eq. 4/5 (macro fields), Eq. 10 (ω from ν), Eq. 15 (BGK collision), Eq. 16 (streaming), Eq. 24 (fine-grid ω), Eq. 29/30 (non-equilibrium rescaling), Eq. 33 (centered `f_neq` filter), Eq. 34/38/39 (spatial interpolation), §3.5 (sub-cycling and time interpolation).
 - **Geographic neighbour naming**: `nbN` = y+1 (north), `nbS` = y−1, `nbE` = x+1, `nbW` = x−1, and diagonals accordingly. Pull-scheme streaming reads from the *upstream* geographic direction (e.g. `fN_in = nbS.fN`).
 - **No dead code**: remove stale methods rather than commenting them out.
 

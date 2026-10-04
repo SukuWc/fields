@@ -226,6 +226,24 @@ class SimulationCell {
 		this.fSE_in = 0;
 		this.fNW_in = 0;
 		this.fSW_in = 0;
+
+		// Streaming replaced f. Stored macros must match the post-stream populations
+		// or the next coarse→fine split treats the advected equilibrium as f_neq.
+		this.recomputeMacros();
+	}
+
+	// Eq. 4/5: ρ = Σ f_i, ρu = Σ ξ_i f_i. Call after any write to the populations.
+	recomputeMacros() {
+		const rho = this.f0 + this.fN + this.fS + this.fE + this.fW
+		          + this.fNE + this.fNW + this.fSE + this.fSW;
+		this.rho = rho;
+		if (rho > 1e-30) {
+			this.ux = (this.fE + this.fNE + this.fSE - this.fW - this.fNW - this.fSW) / rho;
+			this.uy = (this.fN + this.fNE + this.fNW - this.fS - this.fSE - this.fSW) / rho;
+		} else {
+			this.ux = 0;
+			this.uy = 0;
+		}
 	}
 }
 
@@ -239,18 +257,57 @@ function collideAndStream(cells, omega) {
 	for (let i = 0; i < cells.length; i++) cells[i].consolidate();
 }
 
+const POP_KEYS = ['f0','fN','fS','fE','fW','fNE','fNW','fSE','fSW'];
+
+// D2Q9 directions and weights, used to strip mass and momentum out of a filtered f_neq
+// so the restriction keeps the coincident node's ρ and u (Lagrava §3.3: do not filter them).
+const NEQ_DIRS = [
+	['f0',  0,  0, four9ths],
+	['fE',  1,  0, one9th],
+	['fW', -1,  0, one9th],
+	['fN',  0,  1, one9th],
+	['fS',  0, -1, one9th],
+	['fNE', 1,  1, one36th],
+	['fNW',-1,  1, one36th],
+	['fSE', 1, -1, one36th],
+	['fSW',-1, -1, one36th],
+];
+
+function zeroNeq() {
+	return { f0:0, fN:0, fS:0, fE:0, fW:0, fNE:0, fNW:0, fSE:0, fSW:0 };
+}
+
+// Remove Σ f_neq and Σ ξ f_neq. w_i and w_i * 3 ξ_i are the D2Q9 mass/momentum modes.
+function stripNeqMoments(neq) {
+	let dm = 0, jx = 0, jy = 0;
+	for (let i = 0; i < NEQ_DIRS.length; i++) {
+		const [k, cx, cy] = NEQ_DIRS[i];
+		dm += neq[k];
+		jx += cx * neq[k];
+		jy += cy * neq[k];
+	}
+	for (let i = 0; i < NEQ_DIRS.length; i++) {
+		const [k, cx, cy, w] = NEQ_DIRS[i];
+		neq[k] -= w * (dm + 3 * (cx * jx + cy * jy));
+	}
+	return neq;
+}
+
 
 // Multi-domain AMR (Lagrava §3.5): a flat rectangular fine grid at 2× parent resolution.
 // cx0, cy0, cx1, cy1 are corners in the PARENT grid's cell coordinates (exclusive on cx1/cy1).
 // parent may be a Boltzmann instance (level-1 domain) or another RefinementDomain (level N+1).
 // Each domain runs 2 fine sub-steps per 1 parent sub-step with its own omega_f (Eq. 24).
-// Coarse↔fine coupling: Eq. 29 (parent→fine, non-eq rescaling) and Eq. 30/33
-// (fine→parent, box-filter + non-eq rescaling).
+// Coarse↔fine coupling: Eq. 29 (parent→fine, non-eq rescaling) and Eq. 30
+// (fine→parent). Eq. 33 filters f_neq only, on a centered fine-grid stencil;
+// ρ and u are taken from the coincident fine node and are not filtered.
 // Temporal interpolation (Section 3.5): sub-step 1 uses the t-state ghost boundary
-// (saved before the parent step); sub-step 2 uses the t+½ interpolation.
+// (saved before the parent step); sub-step 2 rebuilds f from ρ, u and f_neq
+// interpolated between t and t+1.
 class RefinementDomain {
 
 	constructor(parent, cx0, cy0, cx1, cy1) {
+		this.parent = parent;
 		this.cx0 = cx0;
 		this.cy0 = cy0;
 		this.cx1 = cx1;
@@ -355,9 +412,9 @@ class RefinementDomain {
 			this.ghostCells.push(this.cells[(this.width-1)  + fj * this.width]);
 		}
 
-		// Snapshot buffer: 9 populations per ghost cell, stores the t-state for
-		// temporal interpolation (sub-step 1 uses t, sub-step 2 uses t+½).
-		this.ghostSnapshot = new Float64Array(this.ghostCells.length * 9);
+		// Snapshot buffer per ghost: 9 populations + rho, ux, uy.
+		// Sub-step 1 restores t; sub-step 2 interpolates ρ, u and f_neq (§3.5).
+		this.ghostSnapshot = new Float64Array(this.ghostCells.length * 12);
 
 		// Energy injections from apply_energy(), re-applied before each fine sub-step.
 		this.pendingInjections = [];
@@ -370,11 +427,14 @@ class RefinementDomain {
 	step(parent) {
 		// Sub-step 1: restore t-state ghost boundary, inject energy, run.
 		// Inject before the step so the perturbation is present when collide runs.
+		// _allInteriorCells includes nodes covered by a child. Those nodes are
+		// collided (and streamed) so neighbours pull post-collision populations;
+		// the child then overwrites them in averageToCoarse.
 		for (const inj of this.pendingInjections) {
 			this._applyForceFineCell(inj.fi, inj.fj, inj.fx, inj.fy);
 		}
 		this._restoreGhostFromSnapshot();
-		collideAndStream(this.interiorCells, this.omega_f);
+		collideAndStream(this._allInteriorCells, this.omega_f);
 
 		// Run child domains for this sub-interval (this domain is now at t+½)
 		for (const child of this.domains) {
@@ -382,16 +442,16 @@ class RefinementDomain {
 			child.step(this);
 		}
 
-		// Sub-step 2: inject t+1 parent state, interpolate to t+½, inject energy again, run.
+		// Sub-step 2: inject t+1 parent state, interpolate ρ, u, f_neq to t+½, run.
 		// Re-inject so the boat wake persists through the second sub-step (§3.5).
 		// pendingInjections is NOT cleared here — Boltzmann.physics_model_step clears it
 		// after all domain steps, so recursive child calls also see the injections.
 		this.injectFromCoarse(parent);
-		this._interpolateGhostCells(0.5); // 0.5*(t-snapshot) + 0.5*(t+1) = t+½
+		this._interpolateGhostCells(0.5); // t+½ from ρ, u, f_neq at t and t+1
 		for (const inj of this.pendingInjections) {
 			this._applyForceFineCell(inj.fi, inj.fj, inj.fx, inj.fy);
 		}
-		collideAndStream(this.interiorCells, this.omega_f);
+		collideAndStream(this._allInteriorCells, this.omega_f);
 
 		// Run child domains for this sub-interval (this domain is now at t+1)
 		for (const child of this.domains) {
@@ -399,6 +459,9 @@ class RefinementDomain {
 			child.step(this);
 		}
 
+		// Ghosts were left at t+½. The restriction stencil reads them, so rebuild
+		// the pure t+1 boundary first (Lagrava §3.5 step 3, then step 4).
+		this.injectFromCoarse(parent);
 		this.averageToCoarse(parent);
 	}
 
@@ -409,7 +472,7 @@ class RefinementDomain {
 		this.injectFromCoarse(parent);
 		for (let k = 0; k < this.ghostCells.length; k++) {
 			const g    = this.ghostCells[k];
-			const base = k * 9;
+			const base = k * 12;
 			this.ghostSnapshot[base+0] = g.f0;
 			this.ghostSnapshot[base+1] = g.fN;
 			this.ghostSnapshot[base+2] = g.fS;
@@ -419,6 +482,9 @@ class RefinementDomain {
 			this.ghostSnapshot[base+6] = g.fNW;
 			this.ghostSnapshot[base+7] = g.fSE;
 			this.ghostSnapshot[base+8] = g.fSW;
+			this.ghostSnapshot[base+9]  = g.rho;
+			this.ghostSnapshot[base+10] = g.ux;
+			this.ghostSnapshot[base+11] = g.uy;
 		}
 	}
 
@@ -427,7 +493,7 @@ class RefinementDomain {
 	_restoreGhostFromSnapshot() {
 		for (let k = 0; k < this.ghostCells.length; k++) {
 			const g    = this.ghostCells[k];
-			const base = k * 9;
+			const base = k * 12;
 			g.f0  = this.ghostSnapshot[base+0];
 			g.fN  = this.ghostSnapshot[base+1];
 			g.fS  = this.ghostSnapshot[base+2];
@@ -437,25 +503,37 @@ class RefinementDomain {
 			g.fNW = this.ghostSnapshot[base+6];
 			g.fSE = this.ghostSnapshot[base+7];
 			g.fSW = this.ghostSnapshot[base+8];
+			g.rho = this.ghostSnapshot[base+9];
+			g.ux  = this.ghostSnapshot[base+10];
+			g.uy  = this.ghostSnapshot[base+11];
 		}
 	}
 
-	// Interpolate ghost cells between the t-snapshot and their current (t+1) values.
-	// alpha=0 → pure t-state, alpha=0.5 → t+½ (Section 3.5 temporal interpolation).
+	// Section 3.5: linear interpolation of ρ, u and f_neq, then rebuild f.
+	// Blending the populations directly is not the same, because f_eq is quadratic in u.
+	// alpha=0 → pure t-state, alpha=0.5 → t+½. Current ghost populations are the t+1 state.
 	_interpolateGhostCells(alpha) {
 		const beta = 1 - alpha;
 		for (let k = 0; k < this.ghostCells.length; k++) {
 			const g    = this.ghostCells[k];
-			const base = k * 9;
-			g.f0  = beta * this.ghostSnapshot[base+0] + alpha * g.f0;
-			g.fN  = beta * this.ghostSnapshot[base+1] + alpha * g.fN;
-			g.fS  = beta * this.ghostSnapshot[base+2] + alpha * g.fS;
-			g.fE  = beta * this.ghostSnapshot[base+3] + alpha * g.fE;
-			g.fW  = beta * this.ghostSnapshot[base+4] + alpha * g.fW;
-			g.fNE = beta * this.ghostSnapshot[base+5] + alpha * g.fNE;
-			g.fNW = beta * this.ghostSnapshot[base+6] + alpha * g.fNW;
-			g.fSE = beta * this.ghostSnapshot[base+7] + alpha * g.fSE;
-			g.fSW = beta * this.ghostSnapshot[base+8] + alpha * g.fSW;
+			const base = k * 12;
+			const rhoT = this.ghostSnapshot[base+9];
+			const uxT  = this.ghostSnapshot[base+10];
+			const uyT  = this.ghostSnapshot[base+11];
+			const feqT = computeEquil(uxT, uyT, rhoT);
+			const feq1 = computeEquil(g.ux, g.uy, g.rho);
+			const rho = beta * rhoT + alpha * g.rho;
+			const ux  = beta * uxT  + alpha * g.ux;
+			const uy  = beta * uyT  + alpha * g.uy;
+			const feq = computeEquil(ux, uy, rho);
+			for (let p = 0; p < POP_KEYS.length; p++) {
+				const key = POP_KEYS[p];
+				const fneq = beta * (this.ghostSnapshot[base+p] - feqT[key]) + alpha * (g[key] - feq1[key]);
+				g[key] = feq[key] + fneq;
+			}
+			g.rho = rho;
+			g.ux  = ux;
+			g.uy  = uy;
 		}
 	}
 
@@ -560,64 +638,63 @@ class RefinementDomain {
 		ghost.fNW = feqNW + scale * (fNW_c - feqNW);
 		ghost.fSE = feqSE + scale * (fSE_c - feqSE);
 		ghost.fSW = feqSW + scale * (fSW_c - feqSW);
-		ghost.ux  = ux;
-		ghost.uy  = uy;
-		ghost.rho = rho;
+		// Moments of the written populations. For a coincident node with consistent
+		// parent macros these equal the parent moments (f_neq has zero moments).
+		ghost.recomputeMacros();
 	}
 
-	// Fine→coarse: box-filter average the 4 fine cells covering each coarse cell,
-	// then apply non-equilibrium rescaling (Eq. 30/33).
+	// Fine→coarse. ρ and u come from the coincident fine node (cell-vertex, unfiltered).
+	// f_neq is averaged on the centered D2Q9 stencil (Eq. 33: one coarse cell wide)
+	// and then rescaled (Eq. 30). Mass and momentum are stripped from the averaged
+	// f_neq so the filter cannot shift ρ or u the way the old north-east 2×2 did.
 	averageToCoarse(parent) {
-		const scale = (2 * this.omega_f) / this.omega_c; // Eq. 30 rescaling factor
-
 		for (let cy = this.cy0; cy < this.cy1; cy++) {
 			for (let cx = this.cx0; cx < this.cx1; cx++) {
-				const fi0 = 1 + (cx - this.cx0) * 2;
-				const fj0 = 1 + (cy - this.cy0) * 2;
-
-				const f00 = this.cells[ fi0      +  fj0      * this.width];
-				const f10 = this.cells[(fi0 + 1) +  fj0      * this.width];
-				const f01 = this.cells[ fi0      + (fj0 + 1) * this.width];
-				const f11 = this.cells[(fi0 + 1) + (fj0 + 1) * this.width];
-
-				// Eq. 33: box-filter average of fine populations
-				const f0_avg  = (f00.f0  + f10.f0  + f01.f0  + f11.f0)  * 0.25;
-				const fN_avg  = (f00.fN  + f10.fN  + f01.fN  + f11.fN)  * 0.25;
-				const fS_avg  = (f00.fS  + f10.fS  + f01.fS  + f11.fS)  * 0.25;
-				const fE_avg  = (f00.fE  + f10.fE  + f01.fE  + f11.fE)  * 0.25;
-				const fW_avg  = (f00.fW  + f10.fW  + f01.fW  + f11.fW)  * 0.25;
-				const fNE_avg = (f00.fNE + f10.fNE + f01.fNE + f11.fNE) * 0.25;
-				const fNW_avg = (f00.fNW + f10.fNW + f01.fNW + f11.fNW) * 0.25;
-				const fSE_avg = (f00.fSE + f10.fSE + f01.fSE + f11.fSE) * 0.25;
-				const fSW_avg = (f00.fSW + f10.fSW + f01.fSW + f11.fSW) * 0.25;
-
-				// Eq. 4/5: macroscopic fields from averaged populations
-				const rho = f0_avg + fN_avg + fS_avg + fE_avg + fW_avg +
-				            fNE_avg + fNW_avg + fSE_avg + fSW_avg;
-				const ux  = (fE_avg + fNE_avg + fSE_avg - fW_avg - fNW_avg - fSW_avg) / rho;
-				const uy  = (fN_avg + fNE_avg + fNW_avg - fS_avg - fSE_avg - fSW_avg) / rho;
-
-				// Eq. 3: equilibrium at averaged macroscopic fields
-				const { f0: feq0, fN: feqN, fS: feqS, fE: feqE, fW: feqW,
-				        fNE: feqNE, fNW: feqNW, fSE: feqSE, fSW: feqSW } = computeEquil(ux, uy, rho);
-
-				// Eq. 30: f_{i,c} = f_i^eq + (2ω_f / ω_c) * f_i^neq_avg
-				//         f_i^neq_avg = f_i^avg - f_i^eq(ρ_avg, u_avg)
-				const coarse = parent.cells[cx + cy * parent.width];
-				coarse.f0  = feq0  + scale * (f0_avg  - feq0);
-				coarse.fN  = feqN  + scale * (fN_avg  - feqN);
-				coarse.fS  = feqS  + scale * (fS_avg  - feqS);
-				coarse.fE  = feqE  + scale * (fE_avg  - feqE);
-				coarse.fW  = feqW  + scale * (fW_avg  - feqW);
-				coarse.fNE = feqNE + scale * (fNE_avg - feqNE);
-				coarse.fNW = feqNW + scale * (fNW_avg - feqNW);
-				coarse.fSE = feqSE + scale * (fSE_avg - feqSE);
-				coarse.fSW = feqSW + scale * (fSW_avg - feqSW);
-				coarse.rho = rho;
-				coarse.ux  = ux;
-				coarse.uy  = uy;
+				this._restrictCell(parent, cx, cy);
 			}
 		}
+	}
+
+	_restrictCell(parent, cx, cy) {
+		const fi0 = 1 + (cx - this.cx0) * 2;
+		const fj0 = 1 + (cy - this.cy0) * 2;
+		if (fi0 < 0 || fj0 < 0 || fi0 >= this.width || fj0 >= this.height) return;
+		const center = this.cells[fi0 + fj0 * this.width];
+		center.recomputeMacros();
+		const rho = center.rho;
+		const ux  = center.ux;
+		const uy  = center.uy;
+
+		// Eq. 33: average f_neq over the fine-grid D2Q9 neighbourhood (width = one coarse cell).
+		const acc = zeroNeq();
+		let n = 0;
+		for (let dj = -1; dj <= 1; dj++) {
+			for (let di = -1; di <= 1; di++) {
+				const fi = fi0 + di;
+				const fj = fj0 + dj;
+				if (fi < 0 || fj < 0 || fi >= this.width || fj >= this.height) continue;
+				const c = this.cells[fi + fj * this.width];
+				const eq = computeEquil(c.ux, c.uy, c.rho);
+				for (let p = 0; p < POP_KEYS.length; p++) {
+					const k = POP_KEYS[p];
+					acc[k] += c[k] - eq[k];
+				}
+				n++;
+			}
+		}
+		if (n === 0) return;
+		for (let p = 0; p < POP_KEYS.length; p++) acc[POP_KEYS[p]] /= n;
+		stripNeqMoments(acc);
+
+		// Eq. 3 at the coincident node, Eq. 30: f_c = f_eq + (2 ω_f / ω_c) f_neq_filtered
+		const feq = computeEquil(ux, uy, rho);
+		const scale = (2 * this.omega_f) / this.omega_c;
+		const coarse = parent.cells[cx + cy * parent.width];
+		for (let p = 0; p < POP_KEYS.length; p++) {
+			const k = POP_KEYS[p];
+			coarse[k] = feq[k] + scale * acc[k];
+		}
+		coarse.recomputeMacros();
 	}
 
 	// Add a child refinement domain in this domain's cell coordinates.
@@ -626,31 +703,165 @@ class RefinementDomain {
 		this._rebuildInteriorCells();
 	}
 
-	// Replace a child domain at index, preserving overlapping cell state.
-	moveDomain(index, cx0, cy0, cx1, cy1) {
-		const old = this.domains[index];
-		const nd  = new RefinementDomain(this, cx0, cy0, cx1, cy1);
+	// Slide this window by (dcx, dcy) parent cells. Same allocation: fluid parcels stay
+	// on the root grid, the window origin moves, and every child is carried along.
+	// Refuses a step that would enter the parent's Dirichlet frame.
+	shiftBy(parent, dcx, dcy) {
+		dcx = Math.trunc(dcx);
+		dcy = Math.trunc(dcy);
+		if (!dcx && !dcy) return;
+		if (this.cx0 + dcx < 1 || this.cy0 + dcy < 1) return;
+		if (this.cx1 + dcx > parent.width - 1 || this.cy1 + dcy > parent.height - 1) return;
 
-		for (let fj = 1; fj < nd.height - 1; fj++) {
-			for (let fi = 1; fi < nd.width - 1; fi++) {
-				const cx = cx0 + (fi - 1) * 0.5;
-				const cy = cy0 + (fj - 1) * 0.5;
-				if (cx >= old.cx0 && cx < old.cx1 && cy >= old.cy0 && cy < old.cy1) {
-					const fi_o = 1 + (cx - old.cx0) * 2;
-					const fj_o = 1 + (cy - old.cy0) * 2;
-					const src = old.cells[fi_o + fj_o * old.width];
-					const dst = nd.cells[fi   + fj   * nd.width];
-					dst.f0  = src.f0;
-					dst.fN  = src.fN;  dst.fS  = src.fS;
-					dst.fE  = src.fE;  dst.fW  = src.fW;
-					dst.fNE = src.fNE; dst.fNW = src.fNW;
-					dst.fSE = src.fSE; dst.fSW = src.fSW;
-					dst.rho = src.rho; dst.ux  = src.ux; dst.uy  = src.uy;
+		const parentCell = (parent instanceof RefinementDomain) ? parent.dx : 1;
+		const rootDx = dcx * parentCell;
+		const rootDy = dcy * parentCell;
+
+		// Finest first: a leaving coincident node is restricted before its storage slides away.
+		for (const child of this.domains) child._restrictCascade(rootDx, rootDy);
+		this._restrictLeaving(parent, rootDx, rootDy);
+		this._slideAndRebuild(parent, rootDx, rootDy, true);
+		for (const child of this.domains) child._slideCascade(rootDx, rootDy, false);
+		this._rebuildInteriorCells();
+	}
+
+	_restrictCascade(rootDx, rootDy) {
+		for (const child of this.domains) child._restrictCascade(rootDx, rootDy);
+		this._restrictLeaving(this.parent, rootDx, rootDy);
+	}
+
+	// moveOrigin is true for the window that was asked to move. Carried children keep
+	// their parent-index origin and only slide storage, so they follow the parent in world space.
+	_slideCascade(rootDx, rootDy, moveOrigin) {
+		this._slideAndRebuild(this.parent, rootDx, rootDy, moveOrigin);
+		for (const child of this.domains) child._slideCascade(rootDx, rootDy, false);
+		this._rebuildInteriorCells();
+	}
+
+	_indexDelta(rootD) {
+		return Math.round(rootD / this.dx);
+	}
+
+	// A fine index is still a copy source when its destination index stays inside the array.
+	_indexKept(i, delta, n) {
+		const ni = i - delta;
+		return ni >= 0 && ni < n;
+	}
+
+	_restrictLeaving(parent, rootDx, rootDy) {
+		const di = this._indexDelta(rootDx);
+		const dj = this._indexDelta(rootDy);
+		for (let cy = this.cy0; cy < this.cy1; cy++) {
+			for (let cx = this.cx0; cx < this.cx1; cx++) {
+				const fi = 1 + (cx - this.cx0) * 2;
+				const fj = 1 + (cy - this.cy0) * 2;
+				if (this._indexKept(fi, di, this.width) && this._indexKept(fj, dj, this.height)) continue;
+				this._restrictCell(parent, cx, cy);
+			}
+		}
+	}
+
+	_syncRootOrigin(parent) {
+		if (parent instanceof RefinementDomain) {
+			this.cx0_root = parent.cx0_root + (this.cx0 - 1) * parent.dx;
+			this.cy0_root = parent.cy0_root + (this.cy0 - 1) * parent.dx;
+		} else {
+			this.cx0_root = this.cx0;
+			this.cy0_root = this.cy0;
+		}
+	}
+
+	_packCell(cell) {
+		return {
+			f0: cell.f0, fN: cell.fN, fS: cell.fS, fE: cell.fE, fW: cell.fW,
+			fNE: cell.fNE, fNW: cell.fNW, fSE: cell.fSE, fSW: cell.fSW,
+			rho: cell.rho, ux: cell.ux, uy: cell.uy, barrier: cell.barrier,
+		};
+	}
+
+	_unpackCell(cell, src) {
+		cell.f0  = src.f0;
+		cell.fN  = src.fN;  cell.fS  = src.fS;
+		cell.fE  = src.fE;  cell.fW  = src.fW;
+		cell.fNE = src.fNE; cell.fNW = src.fNW;
+		cell.fSE = src.fSE; cell.fSW = src.fSW;
+		cell.rho = src.rho; cell.ux  = src.ux; cell.uy = src.uy;
+		cell.barrier = src.barrier;
+	}
+
+	// Same overlap rule as the constructor: a fine cell is a barrier if any parent cell it overlaps is.
+	_setBarrierFromParent(parent, fi, fj) {
+		const cx = this.cx0 + (fi - 1) * 0.5;
+		const cy = this.cy0 + (fj - 1) * 0.5;
+		const bx0 = Math.max(0, Math.floor(cx));
+		const by0 = Math.max(0, Math.floor(cy));
+		const bx1 = Math.min(parent.width  - 1, Math.ceil(cx));
+		const by1 = Math.min(parent.height - 1, Math.ceil(cy));
+		let isBarrier = false;
+		for (let by = by0; by <= by1 && !isBarrier; by++) {
+			for (let bx = bx0; bx <= bx1; bx++) {
+				if (parent.cells[bx + by * parent.width].barrier) isBarrier = true;
+			}
+		}
+		this.cells[fi + fj * this.width].barrier = isBarrier;
+	}
+
+	// new[fi] = old[fi+di]: the parcel now under the shifted window. Cells with no source
+	// are filled from the parent (Eq. 29). Pending sail impulses move with their cell.
+	_slideAndRebuild(parent, rootDx, rootDy, moveOrigin) {
+		const di = this._indexDelta(rootDx);
+		const dj = this._indexDelta(rootDy);
+		const snap = new Array(this.cells.length);
+		for (let k = 0; k < this.cells.length; k++) snap[k] = this._packCell(this.cells[k]);
+
+		if (moveOrigin) {
+			const parentCell = (parent instanceof RefinementDomain) ? parent.dx : 1;
+			const dcx = Math.round(rootDx / parentCell);
+			const dcy = Math.round(rootDy / parentCell);
+			this.cx0 += dcx; this.cy0 += dcy;
+			this.cx1 += dcx; this.cy1 += dcy;
+		}
+		this._syncRootOrigin(parent);
+
+		for (let fj = 0; fj < this.height; fj++) {
+			for (let fi = 0; fi < this.width; fi++) {
+				const si = fi + di;
+				const sj = fj + dj;
+				const dst = this.cells[fi + fj * this.width];
+				if (si >= 0 && sj >= 0 && si < this.width && sj < this.height) {
+					this._unpackCell(dst, snap[si + sj * this.width]);
+				} else {
+					this._injectGhostCell(parent, fi, fj);
+					this._setBarrierFromParent(parent, fi, fj);
 				}
 			}
 		}
 
-		this.domains[index] = nd;
+		const kept = [];
+		for (const inj of this.pendingInjections) {
+			const fi = inj.fi - di;
+			const fj = inj.fj - dj;
+			if (fi >= 1 && fj >= 1 && fi < this.width - 1 && fj < this.height - 1) {
+				kept.push({ fi, fj, fx: inj.fx, fy: inj.fy });
+			}
+		}
+		this.pendingInjections = kept;
+	}
+
+	// Translate a child onto (cx0, cy0) one parent cell at a time. The rectangle size
+	// stays what it was: a size change would reallocate and drop nested grids.
+	moveDomain(index, cx0, cy0, cx1, cy1) {
+		const d = this.domains[index];
+		if (!d) return;
+		if ((cx1 - cx0) !== (d.cx1 - d.cx0) || (cy1 - cy0) !== (d.cy1 - d.cy0)) return;
+		let guard = Math.abs(cx0 - d.cx0) + Math.abs(cy0 - d.cy0) + 2;
+		while ((d.cx0 !== cx0 || d.cy0 !== cy0) && guard-- > 0) {
+			const dcx = Math.sign(cx0 - d.cx0);
+			const dcy = Math.sign(cy0 - d.cy0);
+			const ox = d.cx0, oy = d.cy0;
+			d.shiftBy(this, dcx, dcy);
+			if (d.cx0 === ox && d.cy0 === oy) break;
+		}
 		this._rebuildInteriorCells();
 	}
 
@@ -840,43 +1051,35 @@ export class Boltzmann {
 
 	// Add a rectangular fine refinement domain in coarse grid coordinates.
 	// cx0, cy0: top-left corner; cx1, cy1: bottom-right corner (exclusive).
-	// Coarse cells covered by the domain are removed from interiorCells — they are
-	// evolved by the fine grid and written back via averageToCoarse, so running the
-	// coarse collide+stream on them would be wasted work and inconsistent with the
-	// multi-domain approach (Lagrava Fig. 3).
+	// Covered coarse nodes stay in _allInteriorCells so the pull stream reads
+	// post-collision populations; averageToCoarse overwrites them afterward.
 	addDomain(cx0, cy0, cx1, cy1) {
 		this.domains.push(new RefinementDomain(this, cx0, cy0, cx1, cy1));
 		this._rebuildInteriorCells();
 	}
 
-	// Replace an existing domain at index with a new one at the given coarse coordinates.
-	// Cells that overlap with the old domain are copied directly so fine-grid structure
-	// (wakes, pressure variation) is preserved. Only the newly exposed strip is
-	// initialised from the coarse grid, keeping the shockwave minimal.
+	// Slide domain `index` by (dcx, dcy) coarse cells. In place: level-2 children are carried.
+	shiftDomain(index, dcx, dcy) {
+		const d = this.domains[index];
+		if (!d) return;
+		d.shiftBy(this, dcx, dcy);
+		this._rebuildInteriorCells();
+	}
+
+	// Translate a domain onto (cx0, cy0) one coarse cell at a time, keeping its size.
+	// A different width or height is ignored so a nested grid is never dropped.
 	moveDomain(index, cx0, cy0, cx1, cy1) {
-		const old = this.domains[index];
-		const nd  = new RefinementDomain(this, cx0, cy0, cx1, cy1);
-
-		for (let fj = 1; fj < nd.height - 1; fj++) {
-			for (let fi = 1; fi < nd.width - 1; fi++) {
-				const cx = cx0 + (fi - 1) * 0.5;
-				const cy = cy0 + (fj - 1) * 0.5;
-				if (cx >= old.cx0 && cx < old.cx1 && cy >= old.cy0 && cy < old.cy1) {
-					const fi_o = 1 + (cx - old.cx0) * 2;
-					const fj_o = 1 + (cy - old.cy0) * 2;
-					const src = old.cells[fi_o + fj_o * old.width];
-					const dst = nd.cells[fi   + fj   * nd.width];
-					dst.f0  = src.f0;
-					dst.fN  = src.fN;  dst.fS  = src.fS;
-					dst.fE  = src.fE;  dst.fW  = src.fW;
-					dst.fNE = src.fNE; dst.fNW = src.fNW;
-					dst.fSE = src.fSE; dst.fSW = src.fSW;
-					dst.rho = src.rho; dst.ux  = src.ux; dst.uy  = src.uy;
-				}
-			}
+		const d = this.domains[index];
+		if (!d) return;
+		if ((cx1 - cx0) !== (d.cx1 - d.cx0) || (cy1 - cy0) !== (d.cy1 - d.cy0)) return;
+		let guard = Math.abs(cx0 - d.cx0) + Math.abs(cy0 - d.cy0) + 2;
+		while ((d.cx0 !== cx0 || d.cy0 !== cy0) && guard-- > 0) {
+			const dcx = Math.sign(cx0 - d.cx0);
+			const dcy = Math.sign(cy0 - d.cy0);
+			const ox = d.cx0, oy = d.cy0;
+			d.shiftBy(this, dcx, dcy);
+			if (d.cx0 === ox && d.cy0 === oy) break;
 		}
-
-		this.domains[index] = nd;
 		this._rebuildInteriorCells();
 	}
 
@@ -948,8 +1151,10 @@ export class Boltzmann {
 			this.domains[d].saveCoarseBoundary(this);
 		}
 
-		// 1 coarse step (Eq. 15→16→bounce-back→consolidate→boundary):
-		this.collideAndStream(this.interiorCells, omega_c);
+		// 1 coarse step (Eq. 15→16→bounce-back→consolidate→boundary).
+		// Covered nodes are included: the pull stream reads their post-collision f.
+		// Each domain's averageToCoarse replaces those nodes after the fine sub-steps.
+		this.collideAndStream(this._allInteriorCells, omega_c);
 		this.setBoundaries();
 
 		for (let d = 0; d < this.domains.length; d++) {
