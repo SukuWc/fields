@@ -59,6 +59,20 @@ const distInfoEl = document.getElementById('dist_info');
 // Physics loop
 const runner = new Runner(map.world, { speed: 1, fps: 30 });
 
+// Level-2 box in the parent's fine-cell coordinates. The parent is clamped to
+// the lattice, so a boat past the wall maps outside it and fi±HALF can invert
+// (fi2_1 < fi2_0). That used to call addDomain with a negative size and throw.
+function level2Box(parent, fi, fj) {
+  if (!parent || !(parent.width >= 4) || !(parent.height >= 4)) return null;
+  if (!Number.isFinite(fi) || !Number.isFinite(fj)) return null;
+  const x0 = Math.max(1, Math.min(parent.width - 3, Math.round(fi - DOMAIN2_HALF)));
+  const y0 = Math.max(1, Math.min(parent.height - 3, Math.round(fj - DOMAIN2_HALF)));
+  const x1 = Math.max(x0 + 2, Math.min(parent.width - 1, Math.round(fi + DOMAIN2_HALF)));
+  const y1 = Math.max(y0 + 2, Math.min(parent.height - 1, Math.round(fj + DOMAIN2_HALF)));
+  if (!(x1 > x0 && y1 > y0 && x1 < parent.width && y1 < parent.height)) return null;
+  return { x0, y0, x1, y1 };
+}
+
 runner.start(() => {
   guides = [];
 
@@ -109,12 +123,18 @@ runner.start(() => {
 
   // Dynamic domain placement: keep one fine domain per boat, with a level-2 domain inside.
   if (!map.devMode && document.getElementById('amr').checked) getPlayers().forEach((player, index) => {
+    // A NaN body (bad sail force or a collapsed lattice sample) must not be
+    // rounded into a domain corner. NaN comparisons are all false, so the
+    // move check would keep a stale box, and addDomain(NaN) throws.
+    if (!Number.isFinite(player.x) || !Number.isFinite(player.y)) return;
+
     const cx = Math.round(bm.width/2  + player.x * bm.resolution);
     const cy = Math.round(bm.height/2 + player.y * bm.resolution);
     const cx0 = Math.max(1, cx - DOMAIN_HALF);
     const cy0 = Math.max(1, cy - DOMAIN_HALF);
     const cx1 = Math.min(bm.width  - 1, cx + DOMAIN_HALF);
     const cy1 = Math.min(bm.height - 1, cy + DOMAIN_HALF);
+    if (!(cx1 > cx0 && cy1 > cy0)) return;
 
     let level1Moved = false;
     if (index >= bm.domains.length) {
@@ -131,20 +151,19 @@ runner.start(() => {
 
     // Level-2 domain: boat position in level-1 fine cell coords.
     const level1 = bm.domains[index];
+    if (!level1) return;
     const fi_f = 1 + (cx - level1.cx0) * 2;
     const fj_f = 1 + (cy - level1.cy0) * 2;
-    const fi2_0 = Math.max(1, fi_f - DOMAIN2_HALF);
-    const fj2_0 = Math.max(1, fj_f - DOMAIN2_HALF);
-    const fi2_1 = Math.min(level1.width  - 1, fi_f + DOMAIN2_HALF);
-    const fj2_1 = Math.min(level1.height - 1, fj_f + DOMAIN2_HALF);
+    const box = level2Box(level1, fi_f, fj_f);
+    if (!box) return;
 
-    if (level1Moved || level1.domains.length === 0) {
-      level1.addDomain(fi2_0, fj2_0, fi2_1, fj2_1);
+    if (level1.domains.length === 0) {
+      level1.addDomain(box.x0, box.y0, box.x1, box.y1);
     } else {
       const d2 = level1.domains[0];
-      if (fi_f < d2.cx0 + DOMAIN2_MARGIN || fi_f > d2.cx1 - DOMAIN2_MARGIN ||
+      if (level1Moved || fi_f < d2.cx0 + DOMAIN2_MARGIN || fi_f > d2.cx1 - DOMAIN2_MARGIN ||
           fj_f < d2.cy0 + DOMAIN2_MARGIN || fj_f > d2.cy1 - DOMAIN2_MARGIN) {
-        level1.moveDomain(0, fi2_0, fj2_0, fi2_1, fj2_1);
+        level1.moveDomain(0, box.x0, box.y0, box.x1, box.y1);
       }
     }
   }); // end AMR block

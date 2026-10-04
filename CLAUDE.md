@@ -113,6 +113,9 @@ The LBM implementation is kept as close as possible to the Lagrava paper. Follow
 - **Geographic neighbour naming**: `nbN` = y+1 (north), `nbS` = y−1, `nbE` = x+1, `nbW` = x−1, and diagonals accordingly. Pull-scheme streaming reads from the *upstream* geographic direction (e.g. `fN_in = nbS.fN`).
 - **No dead code**: remove stale methods rather than commenting them out.
 - **`return` and its expression stay on one line.** A newline after `return` is parsed as `return;`. The left-biased Eq. 39 branch in `_injectGhostCell` (`interpX`, `interpY`, `interpXY`) used to do that, which stored `undefined` velocities on the high-index edge of a refinement domain and, once that domain was stepped, NaN'd the lattice.
+- **Eq. 5 divides by rho.** If density collapses (rho ≤ 0) the velocity is NaN and streaming spreads it. `collide` and `averageToCoarse` reset or skip that cell instead. Boat forcing (`pushCellVelocity`) also refuses a result faster than lattice speed 0.35, which is how a sail pinned on one cell used to run the field into that collapse.
+- **Domain boxes are non-empty integer rectangles.** `addDomain` / `moveDomain` drop inverted or non-finite corners (a boat past the wall, or a NaN body). Level-2 boxes are clamped inside the parent in `main.js`.
+- **Sail lookup stops at the last table entry.** `aeroCoefficients` clamps the index so awa = ±180 does not read past the 21-entry lift/drag tables (`undefined * 0` is NaN).
 
 ### Visualization Modes
 
