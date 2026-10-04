@@ -676,7 +676,13 @@ export class Boat{
             let x = Math.floor(this.x*res)/res + i/res;
             let y = Math.floor(this.y*res)/res + j/res;
     
-            let velo = this.map.bm.get_field_velocity(x, y)
+            let velo;
+            if (this.map.devMode) {
+              const w = this.map.get_wind(x, y);
+              velo = { x: w.vx, y: w.vy };
+            } else {
+              velo = this.map.bm.get_field_velocity(x, y);
+            }
     
             graphics.push({ color: 0x8866ff, type: "sail",
               x1: x,

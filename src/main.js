@@ -3,11 +3,15 @@ import { Runner } from 'planck-renderer';
 
 import { Boltzmann } from './boltzmann.js';
 import { Map } from './map.js';
+import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera } from './renderer.js';
 import { setupControls, getPlayers, getPhysicsFrame, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 
 const map_w = 75;
 const map_h = 75;
+// UI wind, and the uniform wind used while dev mode is on.
+// Angle is degrees in the boat convention: 0 = toward +X, 90 = toward +Y.
+// Speed is true-wind speed (the value boats report as TWS).
 const wind_angle = 90;
 const wind_speed = 15;
 const bm_resolution = 1;
@@ -34,8 +38,10 @@ planeMat.needsUpdate = true;
 
 // Core simulation instances
 const bm = new Boltzmann(map_w, map_h, bm_resolution, wind_angle, wind_speed, dataTextureMaterial, texture_oversampling);
+const fluidWind = new FluidWind(bm);
+const constantWind = new ConstantWind(wind_angle, wind_speed);
 // Domains are created dynamically in the physics loop as players spawn.
-const map = new Map(map_w, map_h, wind_angle, wind_speed, bm);
+const map = new Map(map_w, map_h, wind_angle, wind_speed, bm, fluidWind, constantWind);
 map.physics_model_init();
 
 // Renderer and controls — must init renderer before controls (controls needs getCamera)
@@ -64,7 +70,11 @@ runner.start(() => {
       pushDomainLines(domain.domains);
     }
   }
-  pushDomainLines(bm.domains);
+  // Dev mode leaves the lattice frozen: no domain guides, no energy injection,
+  // no AMR tracking, no Boltzmann step. Boats read map.get_wind instead.
+  if (!map.devMode) {
+    pushDomainLines(bm.domains);
+  }
 
   executeScenarioFrame();
   processKeys();
@@ -87,7 +97,7 @@ runner.start(() => {
     player.physics_model_step();
     guides.push(...player.graphics_model_render());
 
-    if (document.getElementById('boat_energy').checked) {
+    if (!map.devMode && document.getElementById('boat_energy').checked) {
       for (const seg of player.getSailSegments()) {
         map.bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1,
           seg.fx * SAIL_EFFICIENCY, seg.fy * SAIL_EFFICIENCY);
@@ -98,7 +108,7 @@ runner.start(() => {
   });
 
   // Dynamic domain placement: keep one fine domain per boat, with a level-2 domain inside.
-  if (document.getElementById('amr').checked) getPlayers().forEach((player, index) => {
+  if (!map.devMode && document.getElementById('amr').checked) getPlayers().forEach((player, index) => {
     const cx = Math.round(bm.width/2  + player.x * bm.resolution);
     const cy = Math.round(bm.height/2 + player.y * bm.resolution);
     const cx0 = Math.max(1, cx - DOMAIN_HALF);
@@ -139,11 +149,20 @@ runner.start(() => {
     }
   }); // end AMR block
 
-  map.bm.physics_model_step();
+  if (map.devMode) {
+    const wind = map.get_wind(0, 0);
+    const ox = map.camera_position_x - 14;
+    const oy = map.camera_position_y + 4;
+    for (const seg of windArrowSegments(ox, oy, wind.direction, 8)) {
+      guides.push({ color: 0x66eeff, type: 'guide', x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2 });
+    }
+  } else {
+    map.bm.physics_model_step();
+  }
 
   incrementPhysicsFrame();
 
-  if (bm.step_ready) {
+  if (!map.devMode && bm.step_ready) {
     dataTextureMaterial.needsUpdate = true;
     bm.step_ready = false;
   }

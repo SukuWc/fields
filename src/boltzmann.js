@@ -1051,17 +1051,26 @@ export class Boltzmann {
 		let x = this.width/2  + Math.floor(worldX * this.resolution);
 		let y = this.height/2 + Math.floor(worldY * this.resolution);
 
-		const x0 = Math.floor(x);
-		const y0 = Math.floor(y);
+		// The ±2 world-unit wind stencil (and the mouse probe) can land past the
+		// outer cells. An unclamped index is undefined there — negative y underflows
+		// the array, and y past the last row walks off the end (positive x wraps
+		// into the next row). Pinning to the edge cell leaves in-range samples
+		// unchanged: those already have floor(x) in [0, width-2].
+		let x0 = Math.floor(x);
+		let y0 = Math.floor(y);
+		let hf = x - x0;
+		let vf = y - y0;
+		if (x0 < 0) { x0 = 0; hf = 0; }
+		if (y0 < 0) { y0 = 0; vf = 0; }
+		if (x0 > this.width - 2)  { x0 = this.width  - 2; hf = 1; }
+		if (y0 > this.height - 2) { y0 = this.height - 2; vf = 1; }
+
 		const x1 = x0 + 1;
 		const y1 = y0;
 		const x2 = x0;
 		const y2 = y0 + 1;
 		const x3 = x0 + 1;
 		const y3 = y0 + 1;
-
-		const hf = x - x0;
-		const vf = y - y0;
 
 		const s0 = (1-hf) * (1-vf);
 		const s1 =   hf   * (1-vf);
