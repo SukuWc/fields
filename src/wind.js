@@ -7,8 +7,10 @@
 // speed is true-wind speed, |v| * FIELD_TO_WIND_SPEED, which recovers the
 // UI wind speed (Boltzmann stores inlet speed as uiSpeed / 100, then
 // get_field_velocity divides by 4).
-// direction is degrees, atan2(vy, vx) * 180/π + 180 — the same angle boats
-// already treat as the wind direction (0 = toward +X, 90 = toward +Y).
+// direction is degrees, atan2(vy, vx) * 180/π + 180. That is where the wind
+// comes from (0 = from +X, 90 = from +Y), matching the Wind angle input.
+// (vx, vy) themselves point the other way: downwind, which is the lattice
+// flow and the direction sail drag pushes the boat.
 
 const FIELD_TO_WIND_SPEED = 100 * 4;
 
@@ -85,8 +87,9 @@ export class FluidWind {
   }
 }
 
-// Three line segments (shaft + two head barbs) along `directionDeg`, which is
-// a windSample direction. Drawn the same way as the per-boat wind ticks.
+// Three line segments (shaft + two head barbs). directionDeg is the heading
+// the arrow points (0 = +X, 90 = +Y). Pass the downwind / flow angle,
+// atan2(vy, vx), not windSample.direction (that one is 180° off, upwind).
 export function windArrowSegments(x, y, directionDeg, length) {
   const ang = directionDeg / 180 * Math.PI;
   const x2 = x + Math.cos(ang) * length;

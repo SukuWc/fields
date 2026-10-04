@@ -501,16 +501,17 @@ class RefinementDomain {
 				return (9/16)*(fn(get(ix,iy)) + fn(get(ix+1,iy))) - (1/16)*(fn(get(ix-1,iy)) + fn(get(ix+2,iy)));
 			if (ix - 1 < 0)                      // Eq. 39: right-biased
 				return (3/8)*fn(get(ix,iy)) + (3/4)*fn(get(ix+1,iy)) - (1/8)*fn(get(ix+2,iy));
-			return                               // Eq. 39: left-biased
-				(3/8)*fn(get(ix+1,iy)) + (3/4)*fn(get(ix,iy)) - (1/8)*fn(get(ix-1,iy));
+			// Eq. 39: left-biased. The expression must stay on the return line;
+			// a newline after return is a semicolon and yields undefined.
+			return (3/8)*fn(get(ix+1,iy)) + (3/4)*fn(get(ix,iy)) - (1/8)*fn(get(ix-1,iy));
 		};
 		const interpY = (fn, ix, iy) => {
 			if (iy - 1 >= 0 && iy + 2 <= H - 1) // Eq. 38: centered
 				return (9/16)*(fn(get(ix,iy)) + fn(get(ix,iy+1))) - (1/16)*(fn(get(ix,iy-1)) + fn(get(ix,iy+2)));
 			if (iy - 1 < 0)                      // Eq. 39: right-biased
 				return (3/8)*fn(get(ix,iy)) + (3/4)*fn(get(ix,iy+1)) - (1/8)*fn(get(ix,iy+2));
-			return                               // Eq. 39: left-biased
-				(3/8)*fn(get(ix,iy+1)) + (3/4)*fn(get(ix,iy)) - (1/8)*fn(get(ix,iy-1));
+			// Eq. 39: left-biased. Keep this on the return line (see interpX).
+			return (3/8)*fn(get(ix,iy+1)) + (3/4)*fn(get(ix,iy)) - (1/8)*fn(get(ix,iy-1));
 		};
 		// Separable 2D: cubic in x for each needed y-row, then cubic in y over those results.
 		const interpXY = (fn) => {
@@ -519,8 +520,8 @@ class RefinementDomain {
 				return (9/16)*(gX(icy) + gX(icy+1)) - (1/16)*(gX(icy-1) + gX(icy+2));
 			if (icy - 1 < 0)                        // Eq. 39: right-biased in y
 				return (3/8)*gX(icy) + (3/4)*gX(icy+1) - (1/8)*gX(icy+2);
-			return                                  // Eq. 39: left-biased in y
-				(3/8)*gX(icy+1) + (3/4)*gX(icy) - (1/8)*gX(icy-1);
+			// Eq. 39: left-biased in y. Keep this on the return line (see interpX).
+			return (3/8)*gX(icy+1) + (3/4)*gX(icy) - (1/8)*gX(icy-1);
 		};
 
 		// Select scheme: Eq. 34 (direct copy) when coincident, 1D or 2D cubic otherwise.
@@ -1041,6 +1042,11 @@ export class Boltzmann {
 	}
 
 	get_field_velocity(worldX, worldY) {
+		// NaN comparisons are all false, so a non-finite probe would skip the
+		// clamp below and read cells[NaN].ux. Return a zero sample instead.
+		if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) {
+			return { x: 0, y: 0 };
+		}
 		const cx_cont = this.width/2  + worldX * this.resolution;
 		const cy_cont = this.height/2 + worldY * this.resolution;
 		for (let d = 0; d < this.domains.length; d++) {

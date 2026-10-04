@@ -75,20 +75,22 @@ Each `Boat` instance:
 Boats never sample the lattice. `Map.get_wind(x, y)` delegates to the active provider:
 
 - `FluidWind` — averages `bm.get_field_velocity` over a ±2 world-unit stencil (the historical `Map.get_wind` body). `vx`/`vy` are lattice velocity / 4. `speed` is `|v| * 400`, which recovers the UI wind speed (`Boltzmann` stores inlet speed as `uiSpeed / 100`, and `get_field_velocity` divides by 4). `direction` is `atan2(vy, vx)` in degrees + 180.
-- `ConstantWind` — the same vector at every position. Constructed from the `wind_angle` and `wind_speed` constants at the top of `main.js`.
+- `ConstantWind` — the same vector at every position. Constructed from the `wind_angle` and `wind_speed` constants at the top of `main.js`. For a given angle and speed it matches `FluidWind` on a uniform field, so boats feel the same force in both modes.
+
+`direction` is where the wind **comes from** (0 = from +X, 90 = from +Y). `(vx, vy)` points **downwind**, which is the lattice flow and the direction sail drag pushes the boat. Wind indicators (the dev-mode arrow and the per-boat true-wind ticks) point downwind. The dev-mode banner prints both: `from 90° to 270°`.
 
 `Map.setDevMode(on)` selects `ConstantWind` or `FluidWind`. `Map.setWindProvider(provider)` installs any object with `getWind(x, y)` and is reset the next time `setDevMode` runs.
 
 ### Dev mode (constant wind)
 
-Dev mode is for working on a racing-rules engine without the fluid sim's cost or variability. Boats, autopilot, scenarios, camera, and physics-body rendering keep running. The fluid texture plane is hidden, and a cyan wind arrow follows the camera. A banner at the top of the page shows the uniform wind.
+Dev mode is for working on a racing-rules engine without the fluid sim's cost or variability. Boats, autopilot, scenarios, camera, and physics-body rendering keep running. The fluid texture plane is hidden. A cyan arrow follows the camera and points downwind; the banner states where the wind comes from and where it blows.
 
 Turn it on either way:
 
 - **Dev mode** checkbox at the top of the `#settings` panel. Fluid-only controls (mesh refinement, barrier, boat energy, plot sliders) are disabled while it is on; their checked state is kept and applies again when dev mode is turned off.
 - URL query `?devmode=1` (also `true`). The checkbox matches the query on load. Toggling the checkbox does not rewrite the URL.
 
-Defaults are `wind_angle = 90` (toward +Y) and `wind_speed = 15` in `src/main.js`, the same inlet wind the lattice is initialized with. The **Wind angle** and **Wind speed** inputs edit the live `ConstantWind`. Wind angle still writes `bm.direction` (UI angle + 180), as before. Wind speed writes `bm.speed` as `value / 100`, so the fluid inlet matches if you leave dev mode. The lattice is still constructed and initialized at startup so leaving dev mode resumes the field that was already there; it is just not stepped while dev mode is on.
+Defaults are `wind_angle = 90` (from +Y, blowing toward −Y) and `wind_speed = 15` in `src/main.js`, the same inlet wind the lattice is initialized with. The **Wind angle** and **Wind speed** inputs edit the live `ConstantWind`. Wind angle still writes `bm.direction` (UI angle + 180), as before. Wind speed writes `bm.speed` as `value / 100`, so the fluid inlet matches if you leave dev mode. The lattice is still constructed and initialized at startup so leaving dev mode resumes the field that was already there; it is just not stepped while dev mode is on.
 
 `get_field_velocity` clamps its bilinear sample to the lattice. The ±2 world-unit stencil used to read `undefined.ux` once a probe crossed the north edge or either negative edge (positive x past the last column wraps into the next row and returns a wrong cell instead of throwing). In-range samples are unchanged.
 
@@ -110,6 +112,7 @@ The LBM implementation is kept as close as possible to the Lagrava paper. Follow
 - **Equation comments**: every calculation that has a numbered formula in the paper must have a `// Eq. N:` comment on or above it. Current coverage: Eq. 2 (weights), Eq. 3 (equilibrium), Eq. 4/5 (macro fields), Eq. 10 (ω from ν), Eq. 15 (BGK collision), Eq. 16 (streaming), Eq. 24 (fine-grid ω), §3.5 (sub-cycling).
 - **Geographic neighbour naming**: `nbN` = y+1 (north), `nbS` = y−1, `nbE` = x+1, `nbW` = x−1, and diagonals accordingly. Pull-scheme streaming reads from the *upstream* geographic direction (e.g. `fN_in = nbS.fN`).
 - **No dead code**: remove stale methods rather than commenting them out.
+- **`return` and its expression stay on one line.** A newline after `return` is parsed as `return;`. The left-biased Eq. 39 branch in `_injectGhostCell` (`interpX`, `interpY`, `interpXY`) used to do that, which stored `undefined` velocities on the high-index edge of a refinement domain and, once that domain was stepped, NaN'd the lattice.
 
 ### Visualization Modes
 

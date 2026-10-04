@@ -10,7 +10,7 @@ import { setupControls, getPlayers, getPhysicsFrame, incrementPhysicsFrame, proc
 const map_w = 75;
 const map_h = 75;
 // UI wind, and the uniform wind used while dev mode is on.
-// Angle is degrees in the boat convention: 0 = toward +X, 90 = toward +Y.
+// Angle is where the wind comes from: 0 = from +X, 90 = from +Y (blows toward −Y).
 // Speed is true-wind speed (the value boats report as TWS).
 const wind_angle = 90;
 const wind_speed = 15;
@@ -151,9 +151,12 @@ runner.start(() => {
 
   if (map.devMode) {
     const wind = map.get_wind(0, 0);
+    // wind.direction is where the wind comes from. The arrow points downwind,
+    // along (vx, vy), matching the lattice flow and the sail-drag push.
+    const flowDeg = Math.atan2(wind.vy, wind.vx) * 180 / Math.PI;
     const ox = map.camera_position_x - 14;
     const oy = map.camera_position_y + 4;
-    for (const seg of windArrowSegments(ox, oy, wind.direction, 8)) {
+    for (const seg of windArrowSegments(ox, oy, flowDeg, 8)) {
       guides.push({ color: 0x66eeff, type: 'guide', x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2 });
     }
   } else {

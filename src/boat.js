@@ -484,7 +484,10 @@ export class Boat{
     // wind indicator
 
     
-    let wind_angle = (this.wind_direction)/180*Math.PI
+    // wind_direction is where the wind comes from (atan2(vy, vx) + 180).
+    // The tick points downwind, along the flow (vx, vy), which is also the
+    // direction sail drag pushes the boat.
+    let wind_angle = Math.atan2(this.wind_vy_smooth, this.wind_vx_smooth)
 
     graphics.push({ color: 0x554477, type: "guide",
       x1: this.x + Math.cos(wind_angle)*3,

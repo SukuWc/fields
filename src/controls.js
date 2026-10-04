@@ -57,7 +57,7 @@ function mouse_monitor(e) {
   document.getElementById("wind_info").innerHTML = "Speed: " + Math.floor(wspe * 1000) / 10 + "<br>Direction: " + Math.floor(wdir * 10) / 10;
 }
 
-const DEV_MODE_FLUID_CONTROLS = ["amr", "barrier", "boat_energy", "plotSelect", "contrastSlider", "mirrorSlider", "stepsSlider", "rafCheck"];
+const DEV_MODE_FLUID_CONTROLS = ["amr", "barrier", "boat_energy", "plotSelect", "contrastSlider", "mirrorSlider"];
 
 function devModeFromQuery() {
   const value = new URLSearchParams(window.location.search).get("devmode");
@@ -69,8 +69,12 @@ function syncDevModeUi() {
   const banner = document.getElementById("devmode_banner");
   banner.style.display = on ? "block" : "none";
   const wind = _map.constantWind;
-  document.getElementById("dev_wind_label").textContent = wind.angleDeg + "° @ " + wind.speed;
-  document.getElementById("dev_wind_arrow").style.transform = "rotate(" + (-wind.angleDeg) + "deg)";
+  const fromDeg = wind.angleDeg;
+  const toDeg = (fromDeg + 180) % 360;
+  document.getElementById("dev_wind_label").textContent =
+    "from " + fromDeg + "° to " + toDeg + "° @ " + wind.speed;
+  // CSS rotation is clockwise; world +Y is up. Point the arrow downwind ("to").
+  document.getElementById("dev_wind_arrow").style.transform = "rotate(" + (-toDeg) + "deg)";
   for (const id of DEV_MODE_FLUID_CONTROLS) {
     document.getElementById(id).disabled = on;
   }
