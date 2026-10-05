@@ -7,9 +7,14 @@ let pl = planck, Vec2 = pl.Vec2;
 
 
 export class Map{
-	constructor(width, height, direction, speed, boltzmann){
+	constructor(width, height, direction, speed, boltzmann, fluidWind, constantWind){
 	
 		this.bm = boltzmann
+		// Active wind source. Boats only call get_wind(); setDevMode swaps this.
+		this.fluidWind = fluidWind
+		this.constantWind = constantWind
+		this.wind = fluidWind
+		this.devMode = false
 		this.world = undefined
 	
 
@@ -71,25 +76,21 @@ export class Map{
 
 	}
 
+	// Single wind seam. Returns { speed, direction, vx, vy } from the active provider.
 	get_wind(x, y){
-		// Spatially average velocity vectors over a grid within WIND_SAMPLE_RADIUS world units.
-		// Averaging vectors before deriving speed/direction avoids angle wraparound issues.
-		const WIND_SAMPLE_RADIUS = 2; // world units
-		const WIND_SAMPLE_STEP   = 1; // world units between samples
+		return this.wind.getWind(x, y)
+	}
 
-		let vx = 0, vy = 0, n = 0;
-		for (let dx = -WIND_SAMPLE_RADIUS; dx <= WIND_SAMPLE_RADIUS; dx += WIND_SAMPLE_STEP) {
-			for (let dy = -WIND_SAMPLE_RADIUS; dy <= WIND_SAMPLE_RADIUS; dy += WIND_SAMPLE_STEP) {
-				const v = this.bm.get_field_velocity(x + dx, y + dy);
-				vx += v.x; vy += v.y; n++;
-			}
-		}
-		vx /= n; vy /= n;
+	// Replace the active provider without changing dev mode. setDevMode resets
+	// the provider to the built-in constant or fluid wind.
+	setWindProvider(provider){
+		this.wind = provider
+	}
 
-		const speed     = Math.sqrt(vx*vx + vy*vy) * 100 * 4;
-		const direction = Math.atan2(vy, vx) / Math.PI * 180 + 180;
-
-		return { speed, direction, vx, vy };
+	// Dev mode: boats read ConstantWind, and the physics loop skips the fluid sim.
+	setDevMode(enabled){
+		this.devMode = !!enabled
+		this.wind = this.devMode ? this.constantWind : this.fluidWind
 	}
 	
 	set_camera_follow_target(obj){

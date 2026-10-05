@@ -27,6 +27,13 @@ function checkKeyRelease(e) {
 }
 
 function mouse_monitor(e) {
+  if (_map.devMode) {
+    const w = _map.get_wind(0, 0);
+    document.getElementById("wind_info").innerHTML =
+      "Speed: " + Math.floor(w.speed * 10) / 10 + "<br>Direction: " + Math.floor(w.direction * 10) / 10;
+    return;
+  }
+
   const camera = _getCamera();
   const vec = new THREE.Vector3();
   const pos = new THREE.Vector3();
@@ -48,6 +55,47 @@ function mouse_monitor(e) {
   const wspe = Math.sqrt(vx * vx + vy * vy);
 
   document.getElementById("wind_info").innerHTML = "Speed: " + Math.floor(wspe * 1000) / 10 + "<br>Direction: " + Math.floor(wdir * 10) / 10;
+}
+
+const DEV_MODE_FLUID_CONTROLS = ["amr", "barrier", "boat_energy", "plotSelect", "contrastSlider", "mirrorSlider"];
+
+function devModeFromQuery() {
+  const value = new URLSearchParams(window.location.search).get("devmode");
+  return value === "1" || (value || "").toLowerCase() === "true";
+}
+
+function syncDevModeUi() {
+  const on = _map.devMode;
+  const banner = document.getElementById("devmode_banner");
+  banner.style.display = on ? "block" : "none";
+  const wind = _map.constantWind;
+  const fromDeg = wind.angleDeg;
+  const toDeg = (fromDeg + 180) % 360;
+  document.getElementById("dev_wind_label").textContent =
+    "from " + fromDeg + "° to " + toDeg + "° @ " + wind.speed;
+  // CSS rotation is clockwise; world +Y is up. Point the arrow downwind ("to").
+  document.getElementById("dev_wind_arrow").style.transform = "rotate(" + (-toDeg) + "deg)";
+  for (const id of DEV_MODE_FLUID_CONTROLS) {
+    document.getElementById(id).disabled = on;
+  }
+}
+
+function applyWindAngle() {
+  const angle = parseInt(document.getElementById("windAngle").value, 10);
+  if (!Number.isFinite(angle)) return;
+  _map.wind_direction = angle;
+  _map.bm.direction = angle + 180;
+  _map.constantWind.setAngle(angle);
+  syncDevModeUi();
+}
+
+function applyWindSpeed() {
+  const speed = parseFloat(document.getElementById("windSpeed").value);
+  if (!Number.isFinite(speed)) return;
+  _map.wind_speed = speed;
+  _map.bm.speed = speed / 100;
+  _map.constantWind.setSpeed(speed);
+  syncDevModeUi();
 }
 
 function scenario_clear() {
@@ -134,6 +182,18 @@ export function setupControls(map, getCamera, bm) {
   document.getElementById("show_forces").checked = true;
   document.getElementById("show_field").checked = false;
 
+  document.getElementById("windAngle").value = map.wind_direction;
+  document.getElementById("windSpeed").value = map.wind_speed;
+  const devMode = devModeFromQuery();
+  document.getElementById("devmode").checked = devMode;
+  map.setDevMode(devMode);
+  syncDevModeUi();
+
+  document.getElementById("devmode").addEventListener("change", () => {
+    map.setDevMode(document.getElementById("devmode").checked);
+    syncDevModeUi();
+  });
+
   document.getElementById("show_forces").addEventListener("change", () => {
     map.input_show_forces(document.getElementById("show_forces").checked);
   });
@@ -150,9 +210,8 @@ export function setupControls(map, getCamera, bm) {
     map.input_show_fields(document.getElementById("show_field").checked);
   });
 
-  document.getElementById("windAngle").addEventListener("change", () => {
-    map.bm.direction = parseInt(document.getElementById("windAngle").value) + 180;
-  });
+  document.getElementById("windAngle").addEventListener("change", applyWindAngle);
+  document.getElementById("windSpeed").addEventListener("change", applyWindSpeed);
 
   document.getElementById("camera_follow").addEventListener("change", () => {
     map.input_camera_follow(document.getElementById("camera_follow").checked);

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-let camera, scene, renderer;
+let camera, scene, renderer, fluidPlane;
 let _map, _getGuides;
 
 const fpsEl = document.getElementById('fps');
@@ -79,9 +79,9 @@ export function initRenderer(map, planeMat) {
   camera.position.y = 20;
   scene = new THREE.Scene();
 
-  const plane = new THREE.Mesh(new THREE.PlaneGeometry(map.width, map.height), planeMat);
-  plane.position.z = -0.01;
-  scene.add(plane);
+  fluidPlane = new THREE.Mesh(new THREE.PlaneGeometry(map.width, map.height), planeMat);
+  fluidPlane.position.z = -0.01;
+  scene.add(fluidPlane);
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -95,6 +95,7 @@ export function getCamera() {
 export function startAnimation(map, getGuides) {
   _map = map;
   _getGuides = getGuides;
+  if (fluidPlane) fluidPlane.visible = !map.devMode;
   renderer.setAnimationLoop(animation);
 }
 
@@ -102,6 +103,7 @@ function animation() {
   camera.position.x = _map.camera_position_x;
   camera.position.y = _map.camera_position_y;
   camera.position.z = _map.camera_zoom;
+  if (fluidPlane) fluidPlane.visible = !_map.devMode;
 
   // Update persistent fixture lines — create/remove only when fixture set changes
   const seenFixtures = new Set();

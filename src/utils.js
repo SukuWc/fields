@@ -1,3 +1,20 @@
+// Lift/drag tables are 21 entries: 0° through 100° at 5°. The boom is clamped
+// to ±80°, so |boom − awa| is 100° when the apparent wind is dead aft
+// (awa = ±180). Reading index 21 is undefined, and `undefined * 0` is NaN.
+export function aeroCoefficients(diffDeg, lift, drag, resolution) {
+  const maxIndex = Math.min(lift.length, drag.length) - 2;
+  let lookup = diffDeg / resolution;
+  if (!Number.isFinite(lookup) || lookup < 0) lookup = 0;
+  if (!(maxIndex >= 0)) return { lift: 0, drag: 0 };
+  if (lookup > maxIndex) lookup = maxIndex;
+  const index = Math.floor(lookup);
+  const t = lookup - index;
+  return {
+    lift: lift[index] * (1 - t) + lift[index + 1] * t,
+    drag: drag[index] * (1 - t) + drag[index + 1] * t,
+  };
+}
+
 export function meanAngleDeg(a) {
   function degToRad(x) { return Math.PI / 180 * x; }
   const n = a.length;
