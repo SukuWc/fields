@@ -13,6 +13,12 @@ const fixtureLines = new Map();
 // Reusable pool for guide (force arrow) lines — shown/hidden rather than created/destroyed
 const guidePool = [];
 
+// Rule-overlay strokes are wider than a 1px WebGL line so the red/green split reads at the default zoom.
+const RULE_STROKE_M = 0.7;
+const ruleRibbonPool = [];
+const ruleLabelPool = [];
+const _labelPoint = new THREE.Vector3();
+
 function createFixtureLine(fixture, body) {
   const type = fixture.getType();
   const shape = fixture.getShape();
@@ -71,6 +77,82 @@ function updateFixtureLine(line, fixture, body) {
   }
 
   line.geometry.attributes.position.needsUpdate = true;
+}
+
+function ruleRibbon(index) {
+  while (ruleRibbonPool.length <= index) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(18), 3));
+    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      side: THREE.DoubleSide,
+      depthTest: false,
+    }));
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 2;
+    scene.add(mesh);
+    ruleRibbonPool.push(mesh);
+  }
+  return ruleRibbonPool[index];
+}
+
+function updateRuleRibbon(mesh, r) {
+  const dx = r.x2 - r.x1;
+  const dy = r.y2 - r.y1;
+  const len = Math.hypot(dx, dy);
+  const nx = len < 1e-6 ? 0 : -dy / len * RULE_STROKE_M * 0.5;
+  const ny = len < 1e-6 ? 0 : dx / len * RULE_STROKE_M * 0.5;
+  const z = r.z !== undefined ? r.z : 0.2;
+  const corners = [
+    [r.x1 + nx, r.y1 + ny],
+    [r.x1 - nx, r.y1 - ny],
+    [r.x2 - nx, r.y2 - ny],
+    [r.x2 + nx, r.y2 + ny],
+  ];
+  const order = [0, 1, 2, 0, 2, 3];
+  const pos = mesh.geometry.attributes.position.array;
+  for (let i = 0; i < order.length; i++) {
+    pos[i * 3] = corners[order[i]][0];
+    pos[i * 3 + 1] = corners[order[i]][1];
+    pos[i * 3 + 2] = z;
+  }
+  mesh.geometry.attributes.position.needsUpdate = true;
+  mesh.material.color.setHex(r.color !== undefined ? r.color : 0xffffff);
+  mesh.visible = true;
+}
+
+function renderRuleLabels(labels) {
+  const layer = document.getElementById('rule_labels');
+  if (!layer) return;
+
+  camera.updateMatrixWorld();
+  const width = renderer.domElement.clientWidth;
+  const height = renderer.domElement.clientHeight;
+
+  for (let i = 0; i < labels.length; i++) {
+    let el = ruleLabelPool[i];
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'rule-label';
+      layer.appendChild(el);
+      ruleLabelPool.push(el);
+    }
+    const label = labels[i];
+    _labelPoint.set(label.x, label.y, 0.2);
+    _labelPoint.project(camera);
+    const onScreen = _labelPoint.z >= -1 && _labelPoint.z <= 1;
+    if (!onScreen) {
+      el.style.display = 'none';
+      continue;
+    }
+    el.textContent = label.text;
+    el.style.display = 'block';
+    el.style.left = ((_labelPoint.x * 0.5 + 0.5) * width) + 'px';
+    el.style.top = ((-_labelPoint.y * 0.5 + 0.5) * height) + 'px';
+  }
+
+  for (let i = labels.length; i < ruleLabelPool.length; i++) {
+    ruleLabelPool[i].style.display = 'none';
+  }
 }
 
 export function initRenderer(map, planeMat) {
@@ -136,11 +218,19 @@ function animation() {
     }
   }
 
-  // Update guide pool — reuse existing lines, hide extras
+  // Update guide pool — reuse existing lines, hide extras.
+  // Rule segments also get a filled stroke (WebGL lines stay 1px). Labels are HTML.
   const guides = _getGuides();
   let poolIdx = 0;
+  let ruleIdx = 0;
+  const ruleLabels = [];
 
   for (const r of guides) {
+    if (r.type === 'label') {
+      ruleLabels.push(r);
+      continue;
+    }
+    if (r.type === 'rule') updateRuleRibbon(ruleRibbon(ruleIdx++), r);
     if (_map.show_forces === false && r.type === 'force') continue;
 
     if (poolIdx >= guidePool.length) {
@@ -153,8 +243,9 @@ function animation() {
 
     const line = guidePool[poolIdx];
     const pos = line.geometry.attributes.position.array;
-    pos[0] = r.x1; pos[1] = r.y1; pos[2] = 0;
-    pos[3] = r.x2; pos[4] = r.y2; pos[5] = 0;
+    const z = r.z !== undefined ? r.z : 0;
+    pos[0] = r.x1; pos[1] = r.y1; pos[2] = z;
+    pos[3] = r.x2; pos[4] = r.y2; pos[5] = z;
     line.geometry.attributes.position.needsUpdate = true;
     line.material.color.setHex(r.color !== undefined ? r.color : 0xff0000);
     line.material.opacity = r.opacity !== undefined ? r.opacity : 1.0;
@@ -165,6 +256,10 @@ function animation() {
   for (let i = poolIdx; i < guidePool.length; i++) {
     guidePool[i].visible = false;
   }
+  for (let i = ruleIdx; i < ruleRibbonPool.length; i++) {
+    ruleRibbonPool[i].visible = false;
+  }
+  renderRuleLabels(ruleLabels);
 
   renderer.render(scene, camera);
 
