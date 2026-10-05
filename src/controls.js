@@ -200,6 +200,45 @@ scenarios[6][2] = () => {
 };
 scenarios[6][90] = () => { players[0].input_autopilot_tack_toggle(); };
 
+// Leeward boat tacks from port onto starboard, into a port-starboard collision.
+// Wind-from defaults to +Y. Both start on port close-hauled. Boat 1 is upwind
+// (higher Y) and well to port, so she is the windward boat and boat 0, to
+// leeward, is the one that tacks. Boat 1 bears away onto a port beam reach and
+// sails across. While boat 0 is short of close-hauled on starboard the pair is
+// Rule 13 and she is give-way. Once |TWA| reaches 40° she is starboard, boat 1
+// is still on port, and the reach meets her hull: Rule 10, port give-way, and
+// the hulls touch. The scenario clock is animation frames. Dev mode:
+// ?devmode=1&scenario_selector=7
+scenarios[7] = [];
+scenarios[7][0] = () => {
+  // Both port close-hauled. Boat 1 is upwind and to port (windward).
+  // Boat 0, to leeward, is the one that tacks.
+  const heading = 3 * Math.PI / 4;
+  players.push(new Boat(_map, 0, 0, heading));
+  // Far enough to port that the reach arrives only after the leeward boat is
+  // close-hauled on starboard, and low enough that the hulls meet.
+  players.push(new Boat(_map, -18.8, 5.15, heading));
+};
+scenarios[7][1] = () => {
+  players[0].input_autopilot_enabled_toggle();
+  players[1].input_autopilot_enabled_toggle();
+};
+scenarios[7][2] = () => {
+  autokeybind(players);
+  const follow = document.getElementById('camera_follow');
+  if (follow && !follow.checked) {
+    follow.checked = true;
+    follow.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  _map.camera_zoom = 16;
+};
+// Windward boat bears away onto a port beam reach (TWA 90°) so she sails
+// across the leeward boat's starboard course instead of climbing away.
+scenarios[7][6] = () => {
+  for (let n = 0; n < 40; n++) players[1].input_autopilot_heading_increase();
+};
+scenarios[7][36] = () => { players[0].input_autopilot_tack_toggle(); };
+
 export function setupControls(map, getCamera, bm) {
   _map = map;
   _getCamera = getCamera;
