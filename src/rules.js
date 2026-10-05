@@ -1,9 +1,8 @@
 // Racing Rules of Sailing, Section A.
 //
 // Implemented: the 12 m interest gate, Rule 10 (opposite tacks), Rule 11
-// (same tack, overlapped) and Rule 12 (same tack, clear astern).
-// Rule 13 (while tacking) stays a stub. Boat has no tacking flag, and a
-// heading rate is not a substitute, so Rule 13 never draws an overlay.
+// (same tack, overlapped), Rule 12 (same tack, clear astern), and Rule 13
+// (while tacking).
 //
 // Distance. 1 world unit = 1 m. The hull in boat.js runs from local y = -2.25
 // (bow) to y = 1.75 (stern), so boat length is 4 m. Section A is considered
@@ -50,6 +49,24 @@
 // of the clear-ahead boat. Clear ahead is right-of-way (green); clear astern
 // is give-way (red).
 //
+// Rule 13: after a boat passes head to wind, and until she is on a
+// close-hauled course, she keeps clear of the other boat. She has no right
+// of way under Rules 10–12 during that window. Close-hauled here is
+// |TWA| >= CLOSE_HAULED_TWA_DEG (40°). The window starts when true-wind
+// angle changes sign through the eye of the wind (the short way across 0°,
+// not a gybe through dead downwind). It ends when |TWA| reaches 40° on the
+// tack she just entered. A reverse crossing before that restarts the window
+// on the side she returned to; if that sample is already close-hauled, the
+// flag clears immediately (she aborted back onto a close-hauled course).
+// Luffing toward head to wind without passing it is not Rule 13.
+//
+// One boat tacking: she is give-way (red), the other is right-of-way (green),
+// label "Rule 13". Both tacking: each must keep clear of the other, so
+// neither is green. Both halves are red and the label is "Rule 13 both".
+// Rule 13 does not draw the stern mark. Pairs in which neither boat is
+// tacking still use Rules 10–12, including other boats racing each other
+// while a third boat is tacking.
+//
 // Stern mark. While Rule 11 or Rule 12 is showing, a short cyan dashed
 // segment is drawn through the aftermost hull point, perpendicular to that
 // boat's course — the same abeam line the clear-astern test uses, so the
@@ -59,8 +76,12 @@
 // centered on the aftermost station, a bit wider than the 1.5 m beam.
 
 export const BOAT_LENGTH_M = 4;
-// Shared Section A gate. The name is historical; Rules 10, 11, and 12 all use it.
+// Shared Section A gate. The name is historical; Rules 10, 11, 12, and 13 all use it.
 export const RULE10_INTEREST_RANGE_M = 3 * BOAT_LENGTH_M;
+// Rule 13 ends once |true wind angle| reaches this on the tack she just
+// entered. 40° is close-hauled for this sim. Tune this without touching
+// the state machine.
+export const CLOSE_HAULED_TWA_DEG = 40;
 
 // A vertex this close to the abeam line, or on the ahead side of it, is not
 // "behind" that line. 1e-6 m is float dust, not a real overlap.
@@ -319,11 +340,108 @@ export function boatClearance(boatA, boatB) {
   return centerDistance(boatA, boatB);
 }
 
-// Rule 13 needs a tacking state. Boat does not record one, and a heading
-// rate is not a substitute (a boat can be head to wind without tacking, and
-// can be tacking before she is head to wind). Skip the rule.
-function rule13(_boatA, _boatB) {
-  return null;
+// Last TWA that was actually on a tack (not head to wind, not dead downwind).
+// Samples of exactly 0° or ±180° leave this alone so the next signed sample
+// can still see a crossing.
+function rememberTwa(boat, twa) {
+  boat._rule13PrevTwa = twa;
+}
+
+function tackSign(twa) {
+  if (twa > 0 && twa < 180) return 1;
+  if (twa < 0 && twa > -180) return -1;
+  return 0;
+}
+
+// True when the short arc from prevTwa to twa crosses head to wind (0°),
+// rather than dead downwind (±180°). Both samples must be on a tack.
+function passedHeadToWind(prevTwa, twa) {
+  const prevSign = tackSign(prevTwa);
+  const sign = tackSign(twa);
+  if (prevSign === 0 || sign === 0 || prevSign === sign) return false;
+  const throughZero = Math.abs(prevTwa) + Math.abs(twa);
+  const throughDead = (180 - Math.abs(prevTwa)) + (180 - Math.abs(twa));
+  return throughZero < throughDead;
+}
+
+function clearTacking(boat) {
+  boat.tacking = false;
+  boat.tackingOnto = null;
+}
+
+function beginTacking(boat, onto) {
+  boat.tacking = true;
+  boat.tackingOnto = onto;
+}
+
+// Per-boat Rule 13 state. Call once per physics step, after hull_angle is
+// current. Reads Map.get_wind so dev mode and the lattice share one path.
+// `boat.tacking` is the flag Section A reads. `boat.tackingOnto` is the tack
+// she must reach close-hauled on ('port' | 'starboard').
+export function updateTackingState(boat) {
+  if (!boat || !boat.map || typeof boat.map.get_wind !== 'function') return;
+  if (!Number.isFinite(boat.hull_angle) || !Number.isFinite(boat.x) || !Number.isFinite(boat.y)) return;
+  const from = windFromDeg(boat.map.get_wind(boat.x, boat.y));
+  if (from === null) return;
+  const twa = trueWindAngleDeg(boat.hull_angle, from);
+  if (!Number.isFinite(twa)) return;
+
+  const sign = tackSign(twa);
+  if (sign === 0) {
+    // Dead downwind is outside the head-to-wind → close-hauled window.
+    if (boat.tacking && Math.abs(twa) > 90) clearTacking(boat);
+    return;
+  }
+
+  const onto = sign > 0 ? 'port' : 'starboard';
+  const prev = boat._rule13PrevTwa;
+  if (typeof prev === 'number' && Number.isFinite(prev)) {
+    if (passedHeadToWind(prev, twa)) {
+      // Already on a close-hauled course on the new tack: the window opened
+      // and closed inside one step. A reverse crossing that lands past 40°
+      // is the same thing — she fell back onto close-hauled, so clear it.
+      if (Math.abs(twa) >= CLOSE_HAULED_TWA_DEG) clearTacking(boat);
+      else beginTacking(boat, onto);
+    } else if (boat.tacking) {
+      if (onto === boat.tackingOnto) {
+        if (Math.abs(twa) >= CLOSE_HAULED_TWA_DEG) clearTacking(boat);
+      } else {
+        // Other side, but not through head to wind (a gybe, or a bad jump).
+        // Drop the stale target instead of keeping her give-way forever.
+        clearTacking(boat);
+      }
+    }
+  }
+
+  rememberTwa(boat, twa);
+}
+
+export function isTacking(boat) {
+  return !!(boat && boat.tacking);
+}
+
+// Rule 13: a tacking boat keeps clear. She is not given Rules 10–12 rights.
+// Both tacking: each keeps clear of the other (no right-of-way boat).
+function rule13(boatA, boatB, clearance) {
+  const aTacking = isTacking(boatA);
+  const bTacking = isTacking(boatB);
+  if (!aTacking && !bTacking) return null;
+  if (aTacking && bTacking) {
+    return {
+      rule: 'Rule 13 both',
+      bothGiveWay: true,
+      boats: [boatA, boatB],
+      clearance,
+    };
+  }
+  const giveWay = aTacking ? boatA : boatB;
+  const rightOfWay = aTacking ? boatB : boatA;
+  return {
+    rule: 'Rule 13',
+    rightOfWay,
+    giveWay,
+    clearance,
+  };
 }
 
 // Rule 11: windward keeps clear of leeward.
@@ -369,7 +487,7 @@ export function evaluateSectionA(boatA, boatB, getWind) {
   const clearance = boatClearance(boatA, boatB);
   if (!(clearance <= RULE10_INTEREST_RANGE_M)) return null;
 
-  const whileTacking = rule13(boatA, boatB);
+  const whileTacking = rule13(boatA, boatB, clearance);
   if (whileTacking) return whileTacking;
 
   const fromA = windFromDeg(getWind(boatA.x, boatA.y));
@@ -448,12 +566,28 @@ function sternMarks(obligation) {
   return [];
 }
 
+function bothGiveWayOverlay(obligation) {
+  const boats = obligation.boats;
+  if (!boats || boats.length < 2) return [];
+  const a = boats[0];
+  const b = boats[1];
+  const mx = (a.x + b.x) / 2;
+  const my = (a.y + b.y) / 2;
+  return [
+    { type: 'rule', color: GIVE_WAY_COLOR, x1: mx, y1: my, x2: a.x, y2: a.y, z: 0.2 },
+    { type: 'rule', color: GIVE_WAY_COLOR, x1: mx, y1: my, x2: b.x, y2: b.y, z: 0.2 },
+    { type: 'label', text: obligation.rule, x: mx, y: my },
+  ];
+}
+
 // Guide records for the debug overlay. Empty when Section A does not apply.
 // Green runs from the midpoint to the right-of-way boat; red to the give-way boat.
 // A cyan dashed stern mark is appended for Rules 11 and 12.
+// Rule 13 with both boats tacking draws two red halves and no stern mark.
 export function sectionAOverlay(boatA, boatB, getWind) {
   const obligation = evaluateSectionA(boatA, boatB, getWind);
   if (!obligation) return [];
+  if (obligation.bothGiveWay) return bothGiveWayOverlay(obligation);
 
   const row = obligation.rightOfWay;
   const give = obligation.giveWay;
