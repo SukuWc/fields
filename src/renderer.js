@@ -17,6 +17,7 @@ const guidePool = [];
 const RULE_STROKE_M = 0.7;
 const ruleRibbonPool = [];
 const ruleLabelPool = [];
+const abeamPool = [];
 const _labelPoint = new THREE.Vector3();
 
 function createFixtureLine(fixture, body) {
@@ -118,6 +119,36 @@ function updateRuleRibbon(mesh, r) {
   mesh.geometry.attributes.position.needsUpdate = true;
   mesh.material.color.setHex(r.color !== undefined ? r.color : 0xffffff);
   mesh.visible = true;
+}
+
+// Dashed stern mark. World-unit dashes, 1px wide, so it stays distinct from the red/green ribbon.
+function abeamLine(index) {
+  while (abeamPool.length <= index) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+    const line = new THREE.Line(geo, new THREE.LineDashedMaterial({
+      color: 0x66eeff,
+      dashSize: 0.45,
+      gapSize: 0.28,
+      depthTest: false,
+    }));
+    line.frustumCulled = false;
+    line.renderOrder = 3;
+    scene.add(line);
+    abeamPool.push(line);
+  }
+  return abeamPool[index];
+}
+
+function updateAbeamLine(line, r) {
+  const pos = line.geometry.attributes.position.array;
+  const z = r.z !== undefined ? r.z : 0.25;
+  pos[0] = r.x1; pos[1] = r.y1; pos[2] = z;
+  pos[3] = r.x2; pos[4] = r.y2; pos[5] = z;
+  line.geometry.attributes.position.needsUpdate = true;
+  line.computeLineDistances();
+  line.material.color.setHex(r.color !== undefined ? r.color : 0x66eeff);
+  line.visible = true;
 }
 
 function renderRuleLabels(labels) {
@@ -223,11 +254,16 @@ function animation() {
   const guides = _getGuides();
   let poolIdx = 0;
   let ruleIdx = 0;
+  let abeamIdx = 0;
   const ruleLabels = [];
 
   for (const r of guides) {
     if (r.type === 'label') {
       ruleLabels.push(r);
+      continue;
+    }
+    if (r.type === 'abeam') {
+      updateAbeamLine(abeamLine(abeamIdx++), r);
       continue;
     }
     if (r.type === 'rule') updateRuleRibbon(ruleRibbon(ruleIdx++), r);
@@ -258,6 +294,9 @@ function animation() {
   }
   for (let i = ruleIdx; i < ruleRibbonPool.length; i++) {
     ruleRibbonPool[i].visible = false;
+  }
+  for (let i = abeamIdx; i < abeamPool.length; i++) {
+    abeamPool[i].visible = false;
   }
   renderRuleLabels(ruleLabels);
 
