@@ -17,6 +17,7 @@ const {
   sameTackGeometry,
   isClearAstern,
   headingForward,
+  hullVerticesWorld,
   RULE10_INTEREST_RANGE_M,
 } = await import("../src/rules.js");
 
@@ -69,7 +70,6 @@ function assertOverlay(obligation, aheadOrLeeward, giveWay, ruleName) {
   assert(obligation.rightOfWay === aheadOrLeeward, ruleName + " right of way");
   assert(obligation.giveWay === giveWay, ruleName + " give way");
   const overlay = sectionAOverlay(obligation.rightOfWay, obligation.giveWay, getWind);
-  assert(overlay.length === 3, ruleName + " overlay has two halves and a label");
   const green = overlay[0];
   const red = overlay[1];
   const label = overlay[2];
@@ -81,6 +81,31 @@ function assertOverlay(obligation, aheadOrLeeward, giveWay, ruleName) {
   assert(Math.abs(label.x - midX) < 1e-9 && Math.abs(label.y - midY) < 1e-9, ruleName + " label is the midpoint");
   assert(Math.abs(green.x1 - midX) < 1e-9 && Math.abs(green.y1 - midY) < 1e-9, ruleName + " green half starts at the midpoint");
   assert(Math.abs(red.x1 - midX) < 1e-9 && Math.abs(red.y1 - midY) < 1e-9, ruleName + " red half starts at the midpoint");
+
+  const marks = overlay.filter((r) => r.type === "abeam");
+  assert(overlay.length === 3 + marks.length, ruleName + " overlay is the ribbon, the label, and stern marks");
+  if (ruleName === "Rule 12") {
+    assert(marks.length === 1, "Rule 12 draws the clear-ahead stern only");
+    assertSternMark(marks[0], aheadOrLeeward);
+  } else if (ruleName === "Rule 11") {
+    assert(marks.length === 2, "Rule 11 draws both sterns");
+    assertSternMark(marks[0], aheadOrLeeward);
+    assertSternMark(marks[1], giveWay);
+  }
+}
+
+function assertSternMark(seg, boat) {
+  assert(seg && seg.type === "abeam" && seg.color === 0x66eeff, "stern mark is a cyan abeam segment");
+  const fwd = headingForward(boat.hull_angle);
+  const dx = seg.x2 - seg.x1;
+  const dy = seg.y2 - seg.y1;
+  assert(Math.abs(Math.hypot(dx, dy) - 4) < 1e-6, "stern mark is 4 m");
+  assert(Math.abs(dx * fwd.x + dy * fwd.y) < 1e-6, "stern mark is perpendicular to course");
+  const mid = ((seg.x1 + seg.x2) / 2) * fwd.x + ((seg.y1 + seg.y2) / 2) * fwd.y;
+  const poly = hullVerticesWorld(boat);
+  let aftermost = Infinity;
+  for (const p of poly) aftermost = Math.min(aftermost, p.x * fwd.x + p.y * fwd.y);
+  assert(Math.abs(mid - aftermost) < 1e-3, "stern mark lies on the aftermost station");
 }
 
 // --- polygon definition, independent of tack ---
@@ -223,6 +248,7 @@ place(windward, 0, -5, STARBOARD);
 const opposite = evaluateSectionA(leeward, windward, getWind);
 assert(opposite && opposite.rule === "Rule 10", "opposite tacks stay on Rule 10");
 assert(opposite.rightOfWay === windward && opposite.giveWay === leeward, "starboard keeps right of way over a leeward port boat");
+assert(!sectionAOverlay(leeward, windward, getWind).some((r) => r.type === "abeam"), "Rule 10 draws no stern mark");
 
 // Head to wind is not a tack, so neither 11 nor 12 applies.
 place(leeward, 0, -8, Math.PI);

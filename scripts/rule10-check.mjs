@@ -116,6 +116,7 @@ const label = overlay[2];
 assert(green.color === 0x00ff00 && green.x2 === starboard.x && green.y2 === starboard.y, "green half ends on starboard");
 assert(red.color === 0xff0000 && red.x2 === port.x && red.y2 === port.y, "red half ends on port");
 assert(label.type === "label" && label.text === "Rule 10", "midpoint label is Rule 10");
+assert(!overlay.some((r) => r.type === "abeam"), "Rule 10 does not draw a stern mark");
 const midX = (port.x + starboard.x) / 2;
 const midY = (port.y + starboard.y) / 2;
 assert(Math.abs(label.x - midX) < 1e-9 && Math.abs(label.y - midY) < 1e-9, "label sits on the midpoint");

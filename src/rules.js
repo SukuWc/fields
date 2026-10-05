@@ -49,6 +49,14 @@
 // Rule 12: same tack and not overlapped. The clear-astern boat keeps clear
 // of the clear-ahead boat. Clear ahead is right-of-way (green); clear astern
 // is give-way (red).
+//
+// Stern mark. While Rule 11 or Rule 12 is showing, a short cyan dashed
+// segment is drawn through the aftermost hull point, perpendicular to that
+// boat's course — the same abeam line the clear-astern test uses, so the
+// mark is where 11 and 12 swap. Rule 12 draws it on the clear-ahead boat
+// only (her stern is the line the trailer must stay behind). Rule 11 draws
+// it on both boats. Rule 10 does not draw it. The segment is 4 m long,
+// centered on the aftermost station, a bit wider than the 1.5 m beam.
 
 export const BOAT_LENGTH_M = 4;
 // Shared Section A gate. The name is historical; Rules 10, 11, and 12 all use it.
@@ -59,6 +67,9 @@ export const RULE10_INTEREST_RANGE_M = 3 * BOAT_LENGTH_M;
 const CLEAR_ASTERN_EPS_M = 1e-6;
 // Neither boat is windward when their upwind projections match this closely.
 const WINDWARD_TIE_M = 1e-4;
+// Half-length of the dashed stern mark. 4 m end to end, wider than the beam.
+const STERN_MARK_HALF_M = 2;
+const STERN_MARK_COLOR = 0x66eeff;
 
 const RIGHT_OF_WAY_COLOR = 0x00ff00;
 const GIVE_WAY_COLOR = 0xff0000;
@@ -380,8 +391,66 @@ export function evaluateSectionA(boatA, boatB, getWind) {
   return null;
 }
 
+// Short segment through the aftermost hull station, perpendicular to course.
+// Null if the hull or heading is missing.
+export function sternAbeamSegment(boat) {
+  const poly = hullVerticesWorld(boat);
+  const forward = headingForward(boat && boat.hull_angle);
+  if (poly.length < 3 || !forward) return null;
+
+  let aftermost = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const d = poly[i].x * forward.x + poly[i].y * forward.y;
+    if (d < aftermost) aftermost = d;
+  }
+  let cx = 0;
+  let cy = 0;
+  let n = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i];
+    const d = p.x * forward.x + p.y * forward.y;
+    if (d <= aftermost + 1e-4) {
+      cx += p.x;
+      cy += p.y;
+      n++;
+    }
+  }
+  if (n === 0) return null;
+  cx /= n;
+  cy /= n;
+  const px = -forward.y;
+  const py = forward.x;
+  return {
+    type: 'abeam',
+    color: STERN_MARK_COLOR,
+    x1: cx - px * STERN_MARK_HALF_M,
+    y1: cy - py * STERN_MARK_HALF_M,
+    x2: cx + px * STERN_MARK_HALF_M,
+    y2: cy + py * STERN_MARK_HALF_M,
+    z: 0.25,
+  };
+}
+
+function sternMarks(obligation) {
+  if (!obligation) return [];
+  if (obligation.rule === 'Rule 12') {
+    const mark = sternAbeamSegment(obligation.rightOfWay);
+    return mark ? [mark] : [];
+  }
+  if (obligation.rule === 'Rule 11') {
+    const marks = [];
+    const leeward = sternAbeamSegment(obligation.rightOfWay);
+    const windward = sternAbeamSegment(obligation.giveWay);
+    if (leeward) marks.push(leeward);
+    if (windward) marks.push(windward);
+    return marks;
+  }
+  return [];
+}
+
 // Guide records for the debug overlay. Empty when Section A does not apply.
 // Green runs from the midpoint to the right-of-way boat; red to the give-way boat.
+// A cyan dashed stern mark is appended for Rules 11 and 12.
 export function sectionAOverlay(boatA, boatB, getWind) {
   const obligation = evaluateSectionA(boatA, boatB, getWind);
   if (!obligation) return [];
@@ -394,5 +463,6 @@ export function sectionAOverlay(boatA, boatB, getWind) {
     { type: 'rule', color: RIGHT_OF_WAY_COLOR, x1: mx, y1: my, x2: row.x, y2: row.y, z: 0.2 },
     { type: 'rule', color: GIVE_WAY_COLOR, x1: mx, y1: my, x2: give.x, y2: give.y, z: 0.2 },
     { type: 'label', text: obligation.rule, x: mx, y: my },
+    ...sternMarks(obligation),
   ];
 }
