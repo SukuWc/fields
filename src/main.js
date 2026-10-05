@@ -7,7 +7,7 @@ import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera } from './renderer.js';
 import { setupControls, getPlayers, getPhysicsFrame, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
-import { sectionAOverlay } from './rules.js';
+import { sectionAOverlay, trueWindAngleDeg } from './rules.js';
 
 const map_w = 75;
 const map_h = 75;
@@ -128,6 +128,12 @@ runner.start(() => {
   // call is constant wind in dev mode and the lattice otherwise.
   const racing = getPlayers();
   for (let i = 0; i < racing.length; i++) {
+    const sample = map.get_wind(racing[i].x, racing[i].y);
+    const from = sample && Number.isFinite(sample.direction) ? sample.direction : null;
+    const twa = from === null ? null : trueWindAngleDeg(racing[i].hull_angle, from);
+    const onto = racing[i].tacking && racing[i].tackingOnto ? ' onto ' + racing[i].tackingOnto : '';
+    const twaText = twa === null ? '?' : String(Math.round(twa));
+    infoEl.innerHTML += 'Boat ' + i + ' TWA ' + twaText + (racing[i].tacking ? ' tacking' + onto : '') + '<br>';
     for (let j = i + 1; j < racing.length; j++) {
       guides.push(...sectionAOverlay(racing[i], racing[j], (x, y) => map.get_wind(x, y)));
     }

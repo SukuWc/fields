@@ -165,6 +165,35 @@ scenarios[4][2000] = () => { scenario_clear(); };
 
 scenarios[5] = [];
 
+// Rule 13 demo. Wind-from defaults to +Y. Both boats start starboard
+// close-hauled, a few metres apart, inside the 12 m gate. Boat 0 tacks on
+// a timer (and Enter tacks her again; Shift tacks boat 1). While her |TWA|
+// is still under 40° the pair is Rule 13: green to the stand-on boat, red
+// to the tacker. After she is close-hauled on the new tack the pair falls
+// back to Rule 10, 11, or 12. Dev mode keeps the wind steady:
+// ?devmode=1&scenario_selector=6
+scenarios[6] = [];
+scenarios[6][0] = () => {
+  players.push(new Boat(_map, 0, 0, 5 * Math.PI / 4));
+  players.push(new Boat(_map, 5, -2, 5 * Math.PI / 4));
+};
+scenarios[6][1] = () => {
+  players[0].input_autopilot_enabled_toggle();
+  players[1].input_autopilot_enabled_toggle();
+};
+scenarios[6][2] = () => {
+  autokeybind(players);
+  const follow = document.getElementById('camera_follow');
+  if (follow && !follow.checked) {
+    follow.checked = true;
+    follow.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  _map.camera_zoom = 18;
+};
+scenarios[6][90] = () => { players[0].input_autopilot_tack_toggle(); };
+scenarios[6][240] = () => { players[0].input_autopilot_tack_toggle(); };
+scenarios[6][390] = () => { players[0].input_autopilot_tack_toggle(); };
+
 export function setupControls(map, getCamera, bm) {
   _map = map;
   _getCamera = getCamera;
