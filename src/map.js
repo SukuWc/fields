@@ -1,6 +1,7 @@
 import planck, { random } from 'planck-js/dist/planck-with-testbed';
 import { World, Circle } from 'planck-js'
 import { meanAngleDeg } from './utils.js';
+import { FluidWind, ConstantWind } from './wind.js';
 
 let pl = planck, Vec2 = pl.Vec2;
 
@@ -11,9 +12,11 @@ export class Map{
 	
 		this.bm = boltzmann
 		// Active wind source. Boats only call get_wind(); setDevMode swaps this.
-		this.fluidWind = fluidWind
-		this.constantWind = constantWind
-		this.wind = fluidWind
+		// Callers that only pass the lattice (the headless checks) still sample
+		// the fluid. main.js passes the two providers explicitly.
+		this.fluidWind = fluidWind || new FluidWind(boltzmann)
+		this.constantWind = constantWind || new ConstantWind(direction, speed)
+		this.wind = this.fluidWind
 		this.devMode = false
 		this.world = undefined
 	

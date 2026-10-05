@@ -145,16 +145,13 @@ runner.start(() => {
   });
 
   // Dynamic domain placement: one reusable window per boat, a disk mask inside it,
-  // and a smaller level-2 disk carried with the level-1 window. The window still
-  // slides one parent cell per frame with hysteresis. A level-1 slide carries level 2.
-  // Dev mode leaves the lattice frozen.
+  // and a smaller level-2 disk carried with the level-1 window. The window slides
+  // one parent cell per frame. A level-1 slide carries level 2.
+  // Dev mode leaves the lattice frozen. A NaN body must not be rounded into a domain corner.
   if (!map.devMode && document.getElementById('amr').checked) getPlayers().forEach((player, index) => {
-    // A NaN body must not be rounded into a domain corner.
     if (!Number.isFinite(player.x) || !Number.isFinite(player.y)) return;
-
     const boatCx = bm.width/2  + player.x * bm.resolution;
     const boatCy = bm.height/2 + player.y * bm.resolution;
-    if (!Number.isFinite(boatCx) || !Number.isFinite(boatCy)) return;
 
     let level1Shifted = false;
     if (index >= bm.domains.length) {

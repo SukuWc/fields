@@ -43,16 +43,6 @@ function latticeCell(cells, width, height, i, j) {
 	return cells[i + j * width];
 }
 
-// Sail momentum. Refuses a missing cell, a non-finite impulse, or a collapsed
-// density — those were the writes that published NaN macros. The previous body
-// rebuilt equilibrium with setEquil and also refused |u| > 0.35. setEquil wipes
-// f_neq and, once per fine substep, stacked until the wake ran away; the cap
-// then deleted the bounded exact-difference kick. addMomentum keeps f_neq and
-// the kick streams, so the speed cap is not applied on this path.
-function pushCellVelocity(cell, fx, fy) {
-	addMomentum(cell, fx, fy);
-}
-
 // Eq. 3: f_i^eq = w_i * rho * (1 + 3(xi.u) + 4.5(xi.u)^2 - 1.5|u|^2)
 function computeEquil(ux, uy, rho) {
 	const ux3   = 3 * ux;
@@ -365,13 +355,15 @@ function addNeq(cell, acc) {
 function addMomentum(cell, fx, fy) {
 	if (!cell || !Number.isFinite(fx) || !Number.isFinite(fy)) return;
 	const rho = cell.rho;
-	if (!(rho > 1e-30) || !Number.isFinite(rho) || (fx === 0 && fy === 0)) return;
+	// Eq. 5. A collapsed or non-finite density used to publish NaN macros.
+	if (!(rho > 1e-6) || !Number.isFinite(rho)) return;
 	if (!Number.isFinite(cell.ux) || !Number.isFinite(cell.uy)) return;
+	if (fx === 0 && fy === 0) return;
 	const ux = cell.ux, uy = cell.uy;
-	const dux = fx / rho, duy = fy / rho;
-	if (!Number.isFinite(ux + dux) || !Number.isFinite(uy + duy)) return;
+	const nux = ux + fx / rho, nuy = uy + fy / rho;
+	if (!Number.isFinite(nux) || !Number.isFinite(nuy)) return;
 	const a = computeEquil(ux, uy, rho);
-	const b = computeEquil(ux + dux, uy + duy, rho);
+	const b = computeEquil(nux, nuy, rho);
 	cell.f0  += b.f0  - a.f0;
 	cell.fN  += b.fN  - a.fN;
 	cell.fS  += b.fS  - a.fS;
@@ -381,8 +373,8 @@ function addMomentum(cell, fx, fy) {
 	cell.fNW += b.fNW - a.fNW;
 	cell.fSE += b.fSE - a.fSE;
 	cell.fSW += b.fSW - a.fSW;
-	cell.ux = ux + dux;
-	cell.uy = uy + duy;
+	cell.ux = nux;
+	cell.uy = nuy;
 }
 
 // Parent nodes sit on odd fine indices (1, 3, 5, …). Snapping the sail sample onto
@@ -861,13 +853,18 @@ class RefinementDomain {
 	_restrictCell(parent, cx, cy) {
 		const fi0 = 1 + (cx - this.cx0) * 2;
 		const fj0 = 1 + (cy - this.cy0) * 2;
+		// Eq. 5. A missing coincident node, or one whose density has collapsed,
+		// must not be written onto the parent: dividing by that rho is what
+		// turns one bad fine cell into a NaN coarse cell.
 		const center = latticeCell(this.cells, this.width, this.height, fi0, fj0);
 		if (!center) return;
 		const rho = center.rho;
 		const ux  = center.ux;
 		const uy  = center.uy;
-		// A collapsed or non-finite coincident node must not be copied onto the parent.
-		if (!(rho > 1e-6) || !Number.isFinite(rho) || !Number.isFinite(ux) || !Number.isFinite(uy)) return;
+		if (!(rho > 1e-6) || !Number.isFinite(rho)) return;
+		if (!Number.isFinite(ux) || !Number.isFinite(uy)) return;
+		const coarse = latticeCell(parent.cells, parent.width, parent.height, cx, cy);
+		if (!coarse) return;
 
 		// Eq. 33: average f_neq over the fine-grid D2Q9 neighbourhood (width = one coarse cell).
 		const acc = NEQ_ACC;
@@ -877,11 +874,12 @@ class RefinementDomain {
 		for (let dj = -1; dj <= 1; dj++) {
 			const fj = fj0 + dj;
 			if (fj < 0 || fj >= h) continue;
-			const row = fj * w;
 			for (let di = -1; di <= 1; di++) {
 				const fi = fi0 + di;
-				if (fi < 0 || fi >= w) continue;
-				addNeq(this.cells[fi + row], acc);
+				const cell = latticeCell(this.cells, w, h, fi, fj);
+				if (!cell || !(cell.rho > 1e-6) || !Number.isFinite(cell.rho)) continue;
+				if (!Number.isFinite(cell.ux) || !Number.isFinite(cell.uy)) continue;
+				addNeq(cell, acc);
 				n++;
 			}
 		}
@@ -899,8 +897,6 @@ class RefinementDomain {
 		const r1 = one9th * rho;
 		const r36 = one36th * rho;
 		const scale = (2 * this.omega_f) / this.omega_c;
-		const coarse = latticeCell(parent.cells, parent.width, parent.height, cx, cy);
-		if (!coarse) return;
 		coarse.f0  = four9ths * rho * (1 - u215)                       + scale * acc[0];
 		coarse.fE  = r1 * (1 + ux3 + 4.5 * ux2 - u215)                 + scale * acc[1];
 		coarse.fW  = r1 * (1 - ux3 + 4.5 * ux2 - u215)                 + scale * acc[2];
@@ -1118,9 +1114,12 @@ class RefinementDomain {
 
 	// Translate a child onto (cx0, cy0) one parent cell at a time. The rectangle size
 	// stays what it was: a size change would reallocate and drop nested grids.
+	// Non-finite or inverted corners are dropped before that size check.
 	moveDomain(index, cx0, cy0, cx1, cy1) {
+		const box = normalizeDomainBox(cx0, cy0, cx1, cy1);
 		const d = this.domains[index];
-		if (!d) return;
+		if (!box || !d) return;
+		cx0 = box.cx0; cy0 = box.cy0; cx1 = box.cx1; cy1 = box.cy1;
 		if ((cx1 - cx0) !== (d.cx1 - d.cx0) || (cy1 - cy0) !== (d.cy1 - d.cy0)) return;
 		let guard = Math.abs(cx0 - d.cx0) + Math.abs(cy0 - d.cy0) + 2;
 		while ((d.cx0 !== cx0 || d.cy0 !== cy0) && guard-- > 0) {
@@ -1529,9 +1528,10 @@ class RefinementDomain {
 	// node and the moment strip threw it away. The kick is streamed, so it does
 	// not pile up on one cell the way setEquil did.
 	_applyForceFineCell(fi, fj, fx, fy) {
-		const s = 1 / (this.dx * this.dx);
 		const cell = latticeCell(this.cells, this.width, this.height, fi, fj);
-		pushCellVelocity(cell, fx * s, fy * s);
+		if (!cell) return;
+		const s = 1 / (this.dx * this.dx);
+		addMomentum(cell, fx * s, fy * s);
 	}
 
 }
@@ -1823,7 +1823,8 @@ export class Boltzmann {
 
 	apply_force_to_cell(x, y, fx, fy) {
 		const cell = latticeCell(this.cells, this.width, this.height, x, y);
-		pushCellVelocity(cell, fx, fy);
+		if (!cell) return;
+		addMomentum(cell, fx, fy);
 	}
 
 	get_field_velocity(worldX, worldY) {
