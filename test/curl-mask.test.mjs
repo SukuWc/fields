@@ -15,7 +15,8 @@ globalThis.addEventListener = globalThis.addEventListener || (() => {});
 const { Boltzmann, buildClosedDiskMask } = await import('../src/boltzmann.js');
 const {
 	trackBoats, stepCurlMask, normalizedCurl,
-	DISK_RADIUS, DISK2_RADIUS, DOMAIN_HALF, CURL_HOLD, CURL_TAU_ON, CURL_TAU_OFF, MASK_CELL_CAP,
+	DISK_RADIUS, DISK2_RADIUS, DISK3_RADIUS, DOMAIN_HALF, DOMAIN2_HALF, DOMAIN3_HALF,
+	CURL_HOLD, CURL_TAU_ON, CURL_TAU_OFF, MASK_CELL_CAP, MASK2_CELL_CAP, MASK3_CELL_CAP,
 } = await import('../src/domainTrack.js');
 
 let failed = 0;
@@ -86,10 +87,15 @@ function diagonalContact(mask) {
 }
 
 check('normalized curl divides by 2 Δx U', Math.abs(normalizedCurl(0.06, 0.15) - 0.2) < 1e-12
-	&& normalizedCurl(0, 0.15) === 0 && normalizedCurl(1, 0) === 0 && normalizedCurl(NaN, 0.15) === 0);
+	&& Math.abs(normalizedCurl(0.03, 0.15, 0.5) - 0.2) < 1e-12
+	&& Math.abs(normalizedCurl(0.015, 0.15, 0.25) - 0.2) < 1e-12
+	&& normalizedCurl(0, 0.15) === 0 && normalizedCurl(1, 0) === 0 && normalizedCurl(NaN, 0.15) === 0
+	&& normalizedCurl(1, 0.15, 0) === 0);
 check('thresholds satisfy τ_on > τ_off and a few frames of hold',
-	CURL_TAU_ON > CURL_TAU_OFF && CURL_TAU_OFF > 0 && CURL_HOLD >= 4 && CURL_HOLD <= 8 && MASK_CELL_CAP === 400,
-	`τ_on=${CURL_TAU_ON} τ_off=${CURL_TAU_OFF} hold=${CURL_HOLD}`);
+	CURL_TAU_ON > CURL_TAU_OFF && CURL_TAU_OFF > 0 && CURL_HOLD >= 4 && CURL_HOLD <= 8 && MASK_CELL_CAP === 400
+	&& MASK2_CELL_CAP > 200 && MASK2_CELL_CAP < DOMAIN2_HALF * DOMAIN2_HALF
+	&& MASK3_CELL_CAP > 200 && MASK3_CELL_CAP < MASK2_CELL_CAP && MASK3_CELL_CAP < DOMAIN3_HALF * DOMAIN3_HALF * 4,
+	`τ_on=${CURL_TAU_ON} τ_off=${CURL_TAU_OFF} hold=${CURL_HOLD} caps=${MASK_CELL_CAP}/${MASK2_CELL_CAP}/${MASK3_CELL_CAP}`);
 
 // Calm water: the mask is the floor, and the floor never leaves.
 {
@@ -286,7 +292,27 @@ function share(a, b) {
 	return false;
 }
 
-// Lattice wiring: root curl only, enter injects, leave restricts, level 2 stays a disk.
+// A parent node may seed the child only when it is fluid and its cell is
+// strictly inside the parent mask (every 4-neighbor on).
+function sensorNode(parent, fi, fj) {
+	if (!parent._isFluid(fi, fj)) return false;
+	const pcx = Math.floor(parent.cx0 + (fi - 1) * 0.5);
+	const pcy = Math.floor(parent.cy0 + (fj - 1) * 0.5);
+	return parent._maskAt(pcx, pcy)
+		&& parent._maskAt(pcx - 1, pcy) && parent._maskAt(pcx + 1, pcy)
+		&& parent._maskAt(pcx, pcy - 1) && parent._maskAt(pcx, pcy + 1);
+}
+
+function paintNonSensor(parent, value) {
+	for (let fj = 0; fj < parent.height; fj++) {
+		for (let fi = 0; fi < parent.width; fi++) {
+			if (sensorNode(parent, fi, fj)) continue;
+			parent.cells[fi + fj * parent.width].curl = value;
+		}
+	}
+}
+
+// Lattice wiring: root curl only on level 1, parent fluid curl on the children.
 {
 	const bm = make(75, 75, 15);
 	const boat = { x: 0, y: 0 };
@@ -294,17 +320,29 @@ function share(a, b) {
 	const d = bm.domains[0];
 	const w0 = d.cx1 - d.cx0;
 	const h0 = d.cy1 - d.cy0;
+	const l2 = d.domains[0];
+	const l3 = l2 && l2.domains[0];
 	check('calm trackBoats installs the disk floor', maskEqualsFloor(d, DISK_RADIUS)
 		&& w0 === DOMAIN_HALF * 2 && h0 === DOMAIN_HALF * 2 && !d.hasDiagonalOnlyContact());
-	check('level 2 is the nested disk', d.domains.length === 1 && maskEqualsFloor(d.domains[0], DISK2_RADIUS));
+	check('calm water keeps level 2 and level 3 on their disk floors',
+		!!l3 && d.domains.length === 1 && l2.domains.length === 1
+		&& maskEqualsFloor(l2, DISK2_RADIUS) && maskEqualsFloor(l3, DISK3_RADIUS)
+		&& l2.cx1 - l2.cx0 === DOMAIN2_HALF * 2 && l3.cx1 - l3.cx0 === DOMAIN3_HALF * 2);
 
 	const floorN = countMask(d);
-	for (const c of d.cells) c.curl = 20;
-	for (const c of d.domains[0].cells) c.curl = 20;
+	const floor2 = countMask(l2);
+	const floor3 = countMask(l3);
+	paintNonSensor(d, 20);
+	paintNonSensor(l2, 20);
+	for (const c of l3.cells) c.curl = 20;
 	for (let i = 0; i < CURL_HOLD + 4; i++) trackBoats(bm, [boat]);
-	check('fine-grid curl does not expand the mask', countMask(d) === floorN && maskEqualsFloor(d, DISK_RADIUS));
+	check('ghost and rind curl do not expand any level',
+		countMask(d) === floorN && maskEqualsFloor(d, DISK_RADIUS)
+		&& countMask(l2) === floor2 && maskEqualsFloor(l2, DISK2_RADIUS)
+		&& countMask(l3) === floor3 && maskEqualsFloor(l3, DISK3_RADIUS));
 	for (const c of d.cells) c.curl = 0;
-	for (const c of d.domains[0].cells) c.curl = 0;
+	for (const c of l2.cells) c.curl = 0;
+	for (const c of l3.cells) c.curl = 0;
 
 	const target = eastTarget(d);
 	const beyond = { cx: target.cx + 1, cy: target.cy };
@@ -326,7 +364,9 @@ function share(a, b) {
 		`target=(${target.cx},${target.cy}) detached=${beyondDetached} waited=${waited} rho=${fine.rho}`);
 	trackBoats(bm, [boat]);
 	check('the following frame takes the next cell only', d._maskAt(beyond.cx, beyond.cy)
-		&& d.cx1 - d.cx0 === w0 && maskEqualsFloor(d.domains[0], DISK2_RADIUS));
+		&& d.cx1 - d.cx0 === w0
+		&& maskEqualsFloor(d.domains[0], DISK2_RADIUS)
+		&& maskEqualsFloor(d.domains[0].domains[0], DISK3_RADIUS));
 
 	root(target.cx, target.cy).curl = 0;
 	root(beyond.cx, beyond.cy).curl = 0;
@@ -385,7 +425,8 @@ function share(a, b) {
 		floorOn && countMask(d) > count(floor) && countMask(d) <= MASK_CELL_CAP + 16
 		&& maxR > DISK_RADIUS && maxR < 16 && d.mask[0] === 0 && d.mask[d.mask.length - 1] === 0
 		&& d.cx1 - d.cx0 === cw && d.cy1 - d.cy0 === ch && !d.hasDiagonalOnlyContact()
-		&& maskEqualsFloor(d.domains[0], DISK2_RADIUS),
+		&& maskEqualsFloor(d.domains[0], DISK2_RADIUS)
+		&& maskEqualsFloor(d.domains[0].domains[0], DISK3_RADIUS),
 		`cells=${countMask(d)} maxR=${maxR.toFixed(2)}`);
 }
 
@@ -402,9 +443,104 @@ function share(a, b) {
 	for (let i = 0; i < CURL_HOLD; i++) trackBoats(bm, [a, b]);
 	check('two boats keep separate windows and the union is per-mask',
 		bm.domains.length === 2 && da.domains.length === 1 && db.domains.length === 1
+		&& da.domains[0].domains.length === 1 && db.domains[0].domains.length === 1
 		&& da._maskAt(target.cx, target.cy) && maskEqualsFloor(db, DISK_RADIUS)
 		&& !share(da, db) && da.cx1 - da.cx0 === DOMAIN_HALF * 2 && db.cx1 - db.cx0 === DOMAIN_HALF * 2
-		&& maskEqualsFloor(da.domains[0], DISK2_RADIUS) && maskEqualsFloor(db.domains[0], DISK2_RADIUS));
+		&& maskEqualsFloor(da.domains[0], DISK2_RADIUS) && maskEqualsFloor(db.domains[0], DISK2_RADIUS)
+		&& maskEqualsFloor(da.domains[0].domains[0], DISK3_RADIUS)
+		&& maskEqualsFloor(db.domains[0].domains[0], DISK3_RADIUS));
+}
+
+// Interior parent curl grows the next level one layer at a time, then erodes
+// back to the disk. The floor never leaves. A hot parent cannot fill the window.
+{
+	const bm = make(75, 75, 15);
+	const boat = { x: 0, y: 0 };
+	trackBoats(bm, [boat]);
+	const d = bm.domains[0];
+	const l2 = d.domains[0];
+	const l3 = l2.domains[0];
+	const w2 = l2.cx1 - l2.cx0;
+	const w3 = l3.cx1 - l3.cx0;
+	const target2 = eastTarget(l2);
+	const sensed = sensorNode(d, target2.cx, target2.cy) && !l2._maskAt(target2.cx, target2.cy);
+	d.cells[target2.cx + target2.cy * d.width].curl = 1;
+	let early2 = false;
+	for (let i = 0; i < CURL_HOLD - 1; i++) {
+		trackBoats(bm, [boat]);
+		if (l2._maskAt(target2.cx, target2.cy)) early2 = true;
+	}
+	trackBoats(bm, [boat]);
+	const grew2 = l2._maskAt(target2.cx, target2.cy);
+	const l3still = maskEqualsFloor(l3, DISK3_RADIUS);
+	const target3 = eastTarget(l3);
+	const sensed3 = sensorNode(l2, target3.cx, target3.cy) && !l3._maskAt(target3.cx, target3.cy);
+	l2.cells[target3.cx + target3.cy * l2.width].curl = 1;
+	let early3 = false;
+	for (let i = 0; i < CURL_HOLD - 1; i++) {
+		trackBoats(bm, [boat]);
+		d.cells[target2.cx + target2.cy * d.width].curl = 1;
+		l2.cells[target3.cx + target3.cy * l2.width].curl = 1;
+		if (l3._maskAt(target3.cx, target3.cy)) early3 = true;
+	}
+	trackBoats(bm, [boat]);
+	const grew3 = l3._maskAt(target3.cx, target3.cy);
+	check('level 2 and level 3 grow one layer from interior parent curl',
+		sensed && sensed3 && !early2 && grew2 && l3still && !early3 && grew3
+		&& maskEqualsFloor(d, DISK_RADIUS),
+		`sensed2=${sensed} early2=${early2} grew2=${grew2} sensed3=${sensed3} early3=${early3} grew3=${grew3}`);
+	const floor2 = buildClosedDiskMask(l2.cx0, l2.cy0, l2.cx1, l2.cy1, l2.disk.cx, l2.disk.cy, DISK2_RADIUS,
+		(cx, cy) => l2._parentAllows(cx, cy));
+	const floor3 = buildClosedDiskMask(l3.cx0, l3.cy0, l3.cx1, l3.cy1, l3.disk.cx, l3.disk.cy, DISK3_RADIUS,
+		(cx, cy) => l3._parentAllows(cx, cy));
+	let floorsOn = true;
+	for (let i = 0; i < floor2.length; i++) if (floor2[i] === 1 && l2.mask[i] !== 1) floorsOn = false;
+	for (let i = 0; i < floor3.length; i++) if (floor3[i] === 1 && l3.mask[i] !== 1) floorsOn = false;
+
+	for (const c of d.cells) c.curl = 0;
+	for (const c of l2.cells) c.curl = 0;
+	let wiped = false;
+	for (let i = 0; i < CURL_HOLD - 1; i++) {
+		trackBoats(bm, [boat]);
+		if (!l2._maskAt(target2.cx, target2.cy) || !l3._maskAt(target3.cx, target3.cy)) wiped = true;
+	}
+	trackBoats(bm, [boat]);
+	const peeled2 = !l2._maskAt(target2.cx, target2.cy);
+	const peeled3 = !l3._maskAt(target3.cx, target3.cy);
+	for (let i = 0; i < floor2.length; i++) if (floor2[i] === 1 && l2.mask[i] !== 1) floorsOn = false;
+	for (let i = 0; i < floor3.length; i++) if (floor3[i] === 1 && l3.mask[i] !== 1) floorsOn = false;
+	check('quiet water retracts level 2 and level 3 to the disk floors',
+		floorsOn && !wiped && peeled2 && peeled3
+		&& maskEqualsFloor(l2, DISK2_RADIUS) && maskEqualsFloor(l3, DISK3_RADIUS)
+		&& l2.cx1 - l2.cx0 === w2 && l3.cx1 - l3.cx0 === w3,
+		`wiped=${wiped} peeled2=${peeled2} peeled3=${peeled3}`);
+
+	for (let fj = 0; fj < d.height; fj++) {
+		for (let fi = 0; fi < d.width; fi++) d.cells[fi + fj * d.width].curl = 1;
+	}
+	for (let i = 0; i < 24; i++) trackBoats(bm, [boat]);
+	let floor2on = true;
+	const floor2b = buildClosedDiskMask(l2.cx0, l2.cy0, l2.cx1, l2.cy1, l2.disk.cx, l2.disk.cy, DISK2_RADIUS,
+		(cx, cy) => l2._parentAllows(cx, cy));
+	for (let i = 0; i < floor2b.length; i++) if (floor2b[i] === 1 && l2.mask[i] !== 1) floor2on = false;
+	check('level 2 wake stays inside its cap and window',
+		floor2on && countMask(l2) > count(floor2b) && countMask(l2) <= MASK2_CELL_CAP + 16
+		&& l2.mask[0] === 0 && l2.cx1 - l2.cx0 === w2 && !l2.hasDiagonalOnlyContact()
+		&& maskEqualsFloor(l3, DISK3_RADIUS),
+		`cells=${countMask(l2)}`);
+
+	for (let fj = 0; fj < l2.height; fj++) {
+		for (let fi = 0; fi < l2.width; fi++) l2.cells[fi + fj * l2.width].curl = 1;
+	}
+	for (let i = 0; i < 24; i++) trackBoats(bm, [boat]);
+	let floor3on = true;
+	const floor3b = buildClosedDiskMask(l3.cx0, l3.cy0, l3.cx1, l3.cy1, l3.disk.cx, l3.disk.cy, DISK3_RADIUS,
+		(cx, cy) => l3._parentAllows(cx, cy));
+	for (let i = 0; i < floor3b.length; i++) if (floor3b[i] === 1 && l3.mask[i] !== 1) floor3on = false;
+	check('level 3 wake stays inside its cap and window',
+		floor3on && countMask(l3) > count(floor3b) && countMask(l3) <= MASK3_CELL_CAP + 16
+		&& l3.mask[0] === 0 && l3.cx1 - l3.cx0 === w3 && !l3.hasDiagonalOnlyContact(),
+		`cells=${countMask(l3)}`);
 }
 
 if (failed) {

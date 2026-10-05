@@ -2,49 +2,64 @@
 // the player list: a skipped boat (NaN, or a window that will not fit) must
 // not let the next boat's domain fall into an earlier slot.
 //
-// Level 1 mask = disk floor (DISK_RADIUS) plus a root-curl wake that also
-// erodes. The rectangle stays DOMAIN_HALF; shiftBy refuses a size change.
-// Level 2 is only the DISK2_RADIUS disk.
+// Each level's mask is a disk floor plus a curl wake that also erodes. The
+// rectangle stays fixed: shiftBy refuses a size change. Level 1 reads root
+// curl (Δx = 1). Level 2 reads level-1 fluid curl (Δx = 0.5), level 3 reads
+// level-2 fluid curl (Δx = 0.25). Ghosts and the parent-mask rind are not
+// sensors, so the staircase cannot refine itself forever. Dividing by that
+// level's Δx keeps one τ meaningful on every grid.
+//
+// Sub-steps per root step (convective ratio 2): level 1 ×2, level 2 ×4,
+// level 3 ×8. A masked parent cell is about four fine nodes. Caps bound the
+// variable wake (the disk floors, ~200 cells, are the fixed cost):
+//   MASK_CELL_CAP  400 root cells    → ≤ 400×4×2 =  3200 node-steps
+//   MASK2_CELL_CAP 320 level-1 cells → ≤ 320×4×4 =  5120
+//   MASK3_CELL_CAP 280 level-2 cells → ≤ 280×4×8 =  8960
+// together ≤ ~17k node-steps plus the root lattice. Scenario 0's mean
+// Boltzmann step stays under 12 ms at these caps.
 
 import { buildClosedDiskMask, closeDiagonalContacts } from './boltzmann.js';
 
 export const DOMAIN_HALF = 20;
 export const DOMAIN2_HALF = 20;
+export const DOMAIN3_HALF = 16;
 export const SHIFT_THRESHOLD = 1;
-export const DISK_RADIUS = 8;  // coarse cells
+export const DISK_RADIUS = 8;  // coarse cells (8 world units at dx = 1)
 export const DISK2_RADIUS = 8; // level-1 fine cells (4 coarse)
+export const DISK3_RADIUS = 8; // level-2 fine cells (2 coarse)
 
-// Stored root curl is uy_E − uy_W − (ux_N − ux_S) = 2 Δx ω, Δx = 1 on the
-// root stencil (neighbor spacing, not the fine-grid spacing). Divide by
-// 2 Δx U, U = bm.speed, so one threshold tracks the same physical vorticity
-// at every inlet speed. Fine-grid curl is not a sensor: ghost nodes on the
-// staircase would keep the mask growing.
+// Stored curl is uy_E − uy_W − (ux_N − ux_S) = 2 Δx ω, with Δx the neighbor
+// spacing of the lattice that stored it. Divide by 2 Δx U, U = bm.speed, so
+// one threshold tracks the same physical vorticity at every inlet speed and
+// every refinement level. The level being decided never reads its own nodes.
 //
 // τ_on > τ_off. A cell must hold for CURL_HOLD frames (about 0.2 s at 30 FPS)
 // before it joins, and the same before it leaves. Growth and erosion are one
 // 4-connected layer per frame, seeded from the mask already on, so a speckle
 // cannot open an island. The hysteresis band is the quiet margin around the
 // τ_on contour: a geometric rind of calm cells would be removed by erosion
-// and chatter. MASK_CELL_CAP trims the tail, never the disk.
+// and chatter. The cell cap trims the tail, never the disk.
 //
-// Scenario 0 probe (close-hauled, U = 0.15): cells touching the disk reach
-// about 0.03 downwind for a few dozen frames, then settle near 0.009.
+// Scenario 0 probe (close-hauled, U = 0.15): cells touching the level-1 disk
+// reach about 0.03 downwind for a few dozen frames, then settle near 0.009.
 // Upwind of the disk stays under 0.003, so 0.02 does not climb the staircase.
 // The 0.05–0.1 band was only a pre-probe guess.
 // Raise CURL_TAU_ON if the outline grows in calm water.
-// Lower it if a visible downwind wake stays on the coarse grid.
+// Lower it if a visible wake stays on the coarser grid.
 // Keep CURL_TAU_OFF near half of CURL_TAU_ON.
 export const CURL_DX = 1;
 export const CURL_TAU_ON = 0.02;
 export const CURL_TAU_OFF = 0.01;
 export const CURL_HOLD = 6;
 export const MASK_CELL_CAP = 400;
+export const MASK2_CELL_CAP = 320;
+export const MASK3_CELL_CAP = 280;
 
 const domainByBoat = new WeakMap();
 
-export function normalizedCurl(curl, speed) {
-	if (!(speed > 0) || !Number.isFinite(curl)) return 0;
-	return Math.abs(curl) / (2 * CURL_DX * speed);
+export function normalizedCurl(curl, speed, dx = CURL_DX) {
+	if (!(speed > 0) || !(dx > 0) || !Number.isFinite(curl)) return 0;
+	return Math.abs(curl) / (2 * dx * speed);
 }
 
 function countOnes(mask) {
@@ -170,6 +185,15 @@ export function stepCurlMask(opts) {
 	const mask = new Uint8Array(n);
 	if (opts.prev && opts.prev.length === n) mask.set(opts.prev);
 	for (let i = 0; i < n; i++) if (floor[i] === 1) mask[i] = 1;
+	// A child cannot outlive its parent mask. Dropping those cells is the
+	// coverage rule, not the one-layer sensor erosion.
+	if (opts.allow) {
+		for (let ly = 0; ly < ch; ly++) {
+			for (let lx = 0; lx < cw; lx++) {
+				if (!opts.allow(opts.cx0 + lx, opts.cy0 + ly)) mask[lx + ly * cw] = 0;
+			}
+		}
+	}
 
 	updateHolds(opts.curlNorm, above, below, tauOn, tauOff, hold);
 	growOneLayer(mask, above, hold, cap, cw, ch, opts.cx0, opts.cy0, opts.centerX, opts.centerY, opts.allow);
@@ -195,15 +219,15 @@ export function shiftToward(posX, posY, domain, gridW, gridH) {
 	return { dcx, dcy };
 }
 
-// Level-2 box in the parent's fine-cell coordinates. The parent is clamped to
-// the lattice, so a boat past the wall maps outside it and fi±HALF can invert.
-function level2Box(parent, fi, fj) {
+// Child box in the parent's fine-cell coordinates. The parent is clamped to
+// the lattice, so a boat past the wall maps outside it and fi±half can invert.
+function nestedBox(parent, fi, fj, half) {
 	if (!parent || !(parent.width >= 4) || !(parent.height >= 4)) return null;
 	if (!Number.isFinite(fi) || !Number.isFinite(fj)) return null;
-	const x0 = Math.max(1, Math.min(parent.width - 3, Math.round(fi - DOMAIN2_HALF)));
-	const y0 = Math.max(1, Math.min(parent.height - 3, Math.round(fj - DOMAIN2_HALF)));
-	const x1 = Math.max(x0 + 2, Math.min(parent.width - 1, Math.round(fi + DOMAIN2_HALF)));
-	const y1 = Math.max(y0 + 2, Math.min(parent.height - 1, Math.round(fj + DOMAIN2_HALF)));
+	const x0 = Math.max(1, Math.min(parent.width - 3, Math.round(fi - half)));
+	const y0 = Math.max(1, Math.min(parent.height - 3, Math.round(fj - half)));
+	const x1 = Math.max(x0 + 2, Math.min(parent.width - 1, Math.round(fi + half)));
+	const y1 = Math.max(y0 + 2, Math.min(parent.height - 1, Math.round(fj + half)));
 	if (!(x1 > x0 && y1 > y0 && x1 < parent.width && y1 < parent.height)) return null;
 	return { x0, y0, x1, y1 };
 }
@@ -229,32 +253,81 @@ function sampleRootCurl(bm, domain) {
 	return norm;
 }
 
-function installLevel1Mask(bm, domain, boatCx, boatCy) {
+// Parent fluid curl at this child cell, normalized by the parent's Δx.
+// The child cell index is the parent's fine-node index. Ghosts are not fluid.
+// A parent cell with any 4-neighbor off the mask is rind: its curl is the
+// interface, or a value left from before the cell was injected, and must not
+// open the next level.
+function sampleParentFluidCurl(parent, domain, speed) {
 	const cw = domain.cx1 - domain.cx0;
 	const ch = domain.cy1 - domain.cy0;
-	const n = cw * ch;
-	if (!(n > 0)) return;
+	const norm = new Float64Array(cw * ch);
+	const dx = parent.dx;
+	const pw = parent.width;
+	for (let ly = 0; ly < ch; ly++) {
+		const cy = domain.cy0 + ly;
+		for (let lx = 0; lx < cw; lx++) {
+			const cx = domain.cx0 + lx;
+			if (!parent._isFluid(cx, cy)) continue;
+			const pcx = Math.floor(parent.cx0 + (cx - 1) * 0.5);
+			const pcy = Math.floor(parent.cy0 + (cy - 1) * 0.5);
+			if (!parent._maskAt(pcx, pcy)) continue;
+			if (!parent._maskAt(pcx - 1, pcy) || !parent._maskAt(pcx + 1, pcy)) continue;
+			if (!parent._maskAt(pcx, pcy - 1) || !parent._maskAt(pcx, pcy + 1)) continue;
+			const cell = parent.cells[cx + cy * pw];
+			norm[lx + ly * cw] = normalizedCurl(cell ? cell.curl : 0, speed, dx);
+		}
+	}
+	return norm;
+}
+
+function installSensorMask(domain, centerX, centerY, radius, cap, curlNorm) {
+	const cw = domain.cx1 - domain.cx0;
+	const ch = domain.cy1 - domain.cy0;
+	if (!(cw * ch > 0)) return;
 	const allow = (cx, cy) => domain._parentAllows(cx, cy);
 	const floor = buildClosedDiskMask(
 		domain.cx0, domain.cy0, domain.cx1, domain.cy1,
-		boatCx, boatCy, DISK_RADIUS, allow,
+		centerX, centerY, radius, allow,
 	);
 	const stepped = stepCurlMask({
 		floor,
 		prev: domain.mask,
-		curlNorm: sampleRootCurl(bm, domain),
+		curlNorm,
 		above: domain._curlAbove,
 		below: domain._curlBelow,
 		cw, ch,
 		cx0: domain.cx0,
 		cy0: domain.cy0,
-		centerX: boatCx,
-		centerY: boatCy,
+		centerX,
+		centerY,
 		allow,
+		cap,
 	});
 	domain._curlAbove = stepped.above;
 	domain._curlBelow = stepped.below;
-	domain.setMask(stepped.mask, { cx: boatCx, cy: boatCy, radius: DISK_RADIUS });
+	domain.setMask(stepped.mask, { cx: centerX, cy: centerY, radius });
+}
+
+// Place or slide the single child window. A parent slide already carried it
+// (moveOrigin false), so this frame does not shift it again. Returns whether
+// this call itself slid the child.
+function placeChild(parent, parentShifted, fx, fy, half) {
+	let shifted = false;
+	if (parent.domains.length === 0 || outside(parent.domains[0], fx, fy)) {
+		const box = nestedBox(parent, fx, fy, half);
+		if (!box) return { domain: parent.domains[0] || null, shifted: false };
+		parent.replaceDomain(0, box.x0, box.y0, box.x1, box.y1);
+	} else if (!parentShifted) {
+		const child = parent.domains[0];
+		const step = shiftToward(fx, fy, child, parent.width, parent.height);
+		if (step.dcx || step.dcy) {
+			child.shiftBy(parent, step.dcx, step.dcy);
+			parent._rebuildInteriorCells();
+			shifted = true;
+		}
+	}
+	return { domain: parent.domains[0] || null, shifted };
 }
 
 // Returns the level-1 domain for this boat, and whether that window slid.
@@ -285,23 +358,22 @@ function trackOne(bm, player) {
 		}
 	}
 
-	installLevel1Mask(bm, level1, boatCx, boatCy);
+	installSensorMask(level1, boatCx, boatCy, DISK_RADIUS, MASK_CELL_CAP, sampleRootCurl(bm, level1));
 
 	const fx = 1 + (boatCx - level1.cx0) * 2;
 	const fy = 1 + (boatCy - level1.cy0) * 2;
-	if (level1.domains.length === 0 || outside(level1.domains[0], fx, fy)) {
-		const box = level2Box(level1, fx, fy);
-		if (!box) return { domain: level1, shifted: level1Shifted };
-		level1.replaceDomain(0, box.x0, box.y0, box.x1, box.y1);
-	} else if (!level1Shifted) {
-		const d2 = level1.domains[0];
-		const step2 = shiftToward(fx, fy, d2, level1.width, level1.height);
-		if (step2.dcx || step2.dcy) {
-			d2.shiftBy(level1, step2.dcx, step2.dcy);
-			level1._rebuildInteriorCells();
-		}
+	const placed2 = placeChild(level1, level1Shifted, fx, fy, DOMAIN2_HALF);
+	const level2 = placed2.domain;
+	if (!level2) return { domain: level1, shifted: level1Shifted };
+	installSensorMask(level2, fx, fy, DISK2_RADIUS, MASK2_CELL_CAP, sampleParentFluidCurl(level1, level2, bm.speed));
+
+	const f2x = 1 + (fx - level2.cx0) * 2;
+	const f2y = 1 + (fy - level2.cy0) * 2;
+	const placed3 = placeChild(level2, level1Shifted || placed2.shifted, f2x, f2y, DOMAIN3_HALF);
+	const level3 = placed3.domain;
+	if (level3) {
+		installSensorMask(level3, f2x, f2y, DISK3_RADIUS, MASK3_CELL_CAP, sampleParentFluidCurl(level2, level3, bm.speed));
 	}
-	if (level1.domains[0]) level1.domains[0].setDisk(fx, fy, DISK2_RADIUS);
 	return { domain: level1, shifted: level1Shifted };
 }
 

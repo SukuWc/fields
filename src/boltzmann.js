@@ -608,7 +608,7 @@ class RefinementDomain {
 		// setDisk() installs the per-cell disk inside this same allocation.
 		this.mask = null;
 		this.disk = null;
-		// Curl-sensor holds, parent-cell indexing, slid with the mask. Level 2 leaves these null.
+		// Curl-sensor holds, parent-cell indexing, slid with the mask.
 		this._curlAbove = null;
 		this._curlBelow = null;
 		this._role = null;

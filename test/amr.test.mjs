@@ -14,7 +14,10 @@ globalThis.window = globalThis;
 globalThis.addEventListener = globalThis.addEventListener || (() => {});
 
 const { Boltzmann, unionMaskBorderLines, buildClosedDiskMask } = await import('../src/boltzmann.js');
-const { trackBoats, DISK_RADIUS, DISK2_RADIUS, MASK_CELL_CAP, normalizedCurl } = await import('../src/domainTrack.js');
+const {
+	trackBoats, DISK_RADIUS, DISK2_RADIUS, DISK3_RADIUS,
+	MASK_CELL_CAP, MASK2_CELL_CAP, MASK3_CELL_CAP, normalizedCurl,
+} = await import('../src/domainTrack.js');
 
 const results = {};
 let failed = 0;
@@ -335,12 +338,6 @@ function enclosedHole(domain) {
 	return false;
 }
 
-function maskBitsEqual(a, b) {
-	if (!a || !b || a.length !== b.length) return false;
-	for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
-	return true;
-}
-
 // --- 8. Scenario 0 stays on the autopilot heading with a settled speed ---
 // Open water only: the hull meets the map wall later and that is a separate limit.
 {
@@ -356,19 +353,59 @@ function maskBitsEqual(a, b) {
 	const N = 600;
 	let bsAt500 = 0;
 	let floorMissing = 0;
+	let floorMissing2 = 0;
+	let floorMissing3 = 0;
 	let holes = 0;
+	let holes2 = 0;
+	let holes3 = 0;
 	let maxCells = 0;
+	let maxCells2 = 0;
+	let maxCells3 = 0;
 	let maxExtra = 0;
+	let maxExtra2 = 0;
+	let maxExtra3 = 0;
 	let maxAdded = 0;
+	let maxAdded2 = 0;
+	let maxAdded3 = 0;
 	let maxNorm = 0;
 	let maxNormDown = 0;
 	let maxNormUp = 0;
 	let maxNormOutside = 0;
 	let sizeChanged = 0;
 	let prevWorld = null;
+	let prevExtra2 = null;
+	let prevExtra3 = null;
 	let tracked = null;
 	let trackedW = 0;
 	let trackedH = 0;
+	let tracked2W = 0;
+	let tracked3W = 0;
+	let sizeChanged2 = 0;
+	let sizeChanged3 = 0;
+	const coverage = (domain, radius) => {
+		if (!domain || !domain.mask || !domain.disk) return null;
+		const floor = buildClosedDiskMask(
+			domain.cx0, domain.cy0, domain.cx1, domain.cy1,
+			domain.disk.cx, domain.disk.cy, radius,
+			(cx, cy) => domain._parentAllows(cx, cy),
+		);
+		const cw = domain.cx1 - domain.cx0;
+		const ch = domain.cy1 - domain.cy0;
+		let missing = 0;
+		let n = 0;
+		const extra = new Set();
+		for (let ly = 0; ly < ch; ly++) {
+			for (let lx = 0; lx < cw; lx++) {
+				const i = lx + ly * cw;
+				const key = (domain.cx0 + lx) + ',' + (domain.cy0 + ly);
+				if (floor[i] === 1 && domain.mask[i] !== 1) missing++;
+				if (domain.mask[i] !== 1) continue;
+				n++;
+				if (floor[i] !== 1) extra.add(key);
+			}
+		}
+		return { missing, n, extra };
+	};
 	for (let frame = 0; frame < N; frame++) {
 		if (frame === 1) boat.input_autopilot_enabled_toggle();
 		map.world.step(1 / 30);
@@ -431,12 +468,49 @@ function maskBitsEqual(a, b) {
 				if (level1.mask[lx + ly * cw] !== 1 && norm > maxNormOutside) maxNormOutside = norm;
 			}
 		}
+		const level2 = level1.domains[0];
+		const level3 = level2 && level2.domains[0];
+		const cov2 = coverage(level2, DISK2_RADIUS);
+		const cov3 = coverage(level3, DISK3_RADIUS);
+		if (!cov2) floorMissing2++;
+		else {
+			floorMissing2 += cov2.missing;
+			if (cov2.n > maxCells2) maxCells2 = cov2.n;
+			if (cov2.extra.size > maxExtra2) maxExtra2 = cov2.extra.size;
+			if (level2.cx1 - level2.cx0 !== tracked2W && tracked2W !== 0) sizeChanged2++;
+			tracked2W = level2.cx1 - level2.cx0;
+			if (prevExtra2) {
+				let added = 0;
+				for (const key of cov2.extra) if (!prevExtra2.has(key)) added++;
+				if (added > maxAdded2) maxAdded2 = added;
+			}
+			prevExtra2 = cov2.extra;
+		}
+		if (!cov3) floorMissing3++;
+		else {
+			floorMissing3 += cov3.missing;
+			if (cov3.n > maxCells3) maxCells3 = cov3.n;
+			if (cov3.extra.size > maxExtra3) maxExtra3 = cov3.extra.size;
+			if (level3.cx1 - level3.cx0 !== tracked3W && tracked3W !== 0) sizeChanged3++;
+			tracked3W = level3.cx1 - level3.cx0;
+			if (prevExtra3) {
+				let added = 0;
+				for (const key of cov3.extra) if (!prevExtra3.has(key)) added++;
+				if (added > maxAdded3) maxAdded3 = added;
+			}
+			prevExtra3 = cov3.extra;
+		}
+		if (enclosedHole(level2)) holes2++;
+		if (enclosedHole(level3)) holes3++;
 		const c1 = outlineCenter(level1, bm);
-		const c2 = level1.domains[0] ? outlineCenter(level1.domains[0], bm) : null;
+		const c2 = level2 ? outlineCenter(level2, bm) : null;
+		const c3 = level3 ? outlineCenter(level3, bm) : null;
 		const off1 = c1 ? Math.hypot(c1.x - boat.x, c1.y - boat.y) : Infinity;
 		const off2 = c2 ? Math.hypot(c2.x - boat.x, c2.y - boat.y) : Infinity;
+		const off3 = c3 ? Math.hypot(c3.x - boat.x, c3.y - boat.y) : Infinity;
 		if (off1 > diskOff) diskOff = off1;
 		if (off2 > diskOff) diskOff = off2;
+		if (off3 > diskOff) diskOff = off3;
 		const a = Date.now();
 		bm.physics_model_step();
 		bmMs += Date.now() - a;
@@ -447,13 +521,12 @@ function maskBitsEqual(a, b) {
 	const st = fieldStats(bm);
 	const stepMs = bmMs / N;
 	const l2 = bm.domains[0].domains[0];
-	const l2pure = l2 && buildClosedDiskMask(
-		l2.cx0, l2.cy0, l2.cx1, l2.cy1, l2.disk.cx, l2.disk.cy, DISK2_RADIUS,
-		(cx, cy) => l2._parentAllows(cx, cy),
-	);
+	const l3 = l2 && l2.domains[0];
 	results.scenario0 = {
 		twa, bs, tws: boat.wind_speed, stepMs, maxU: st.maxU, bad: st.bad, bsAt500,
 		maxCells, maxExtra, maxAdded, floorMissing, holes, sizeChanged,
+		maxCells2, maxExtra2, maxAdded2, floorMissing2, holes2, sizeChanged2,
+		maxCells3, maxExtra3, maxAdded3, floorMissing3, holes3, sizeChanged3,
 		maxNorm, maxNormDown, maxNormUp, maxNormOutside,
 	};
 	check('scenario 0 heading near 45°', Math.abs(twa) >= 40 && Math.abs(twa) <= 55, `twa = ${twa.toFixed(1)}`);
@@ -462,25 +535,32 @@ function maskBitsEqual(a, b) {
 	check('scenario 0 wind still blowing', boat.wind_speed > 12 && st.bad === 0 && st.maxU < 0.3 && st.maxU > 0.1,
 		`TWS = ${boat.wind_speed.toFixed(2)}, max|u| = ${st.maxU.toExponential(2)}, bad = ${st.bad}`);
 	check('scenario 0 step stays cheap', stepMs < 12, `mean step ${stepMs.toFixed(2)} ms`);
-	check('scenario 0 keeps a single level-2 grid', bm.domains[0].domains.length === 1 && bm.domains.length === 1);
-	check('scenario 0 both disk outlines stay on the boat', diskOff < 1,
+	check('scenario 0 keeps nested level-2 and level-3 grids',
+		bm.domains.length === 1 && bm.domains[0].domains.length === 1 && !!(l2 && l3 && l2.domains.length === 1));
+	check('scenario 0 disk outlines stay on the boat', diskOff < 1,
 		`max outline offset = ${diskOff.toExponential(2)} world units`);
 	const boatCx = bm.width / 2 + boat.x, boatCy = bm.height / 2 + boat.y;
 	const underDisk = bm.domains[0].containsCoarse(boatCx, boatCy);
 	const fx = 1 + (boatCx - bm.domains[0].cx0) * 2, fy = 1 + (boatCy - bm.domains[0].cy0) * 2;
-	const underFine = bm.domains[0].domains[0] && bm.domains[0].domains[0].containsCoarse(fx, fy);
-	check('scenario 0 boat stays under both disks', underDisk && underFine,
-		`level1=${underDisk} level2=${underFine}`);
+	const underFine = l2 && l2.containsCoarse(fx, fy);
+	const f2x = l2 ? 1 + (fx - l2.cx0) * 2 : NaN, f2y = l2 ? 1 + (fy - l2.cy0) * 2 : NaN;
+	const underL3 = l3 && l3.containsCoarse(f2x, f2y);
+	check('scenario 0 boat stays under every disk floor', underDisk && underFine && underL3,
+		`level1=${underDisk} level2=${underFine} level3=${underL3}`);
 	check('scenario 0 disks stay closed', !bm.domains[0].hasDiagonalOnlyContact()
-		&& !bm.domains[0].domains[0].hasDiagonalOnlyContact());
-	check('scenario 0 disk floor stays refined', floorMissing === 0, `missing ${floorMissing}`);
-	check('scenario 0 mask has no enclosed hole', holes === 0, `frames ${holes}`);
-	check('scenario 0 window size stays fixed', sizeChanged === 0, `changes ${sizeChanged}`);
-	check('scenario 0 wake mask stays inside the cell cap', maxCells <= MASK_CELL_CAP + 16,
-		`max cells ${maxCells}`);
-	check('scenario 0 wake adds at most one layer per frame', maxAdded <= 96,
-		`max non-floor additions ${maxAdded}`);
-	check('scenario 0 level-2 mask stays the geometric disk', !!(l2 && maskBitsEqual(l2.mask, l2pure)));
+		&& l2 && !l2.hasDiagonalOnlyContact() && l3 && !l3.hasDiagonalOnlyContact());
+	check('scenario 0 disk floors stay refined', floorMissing === 0 && floorMissing2 === 0 && floorMissing3 === 0,
+		`missing L1=${floorMissing} L2=${floorMissing2} L3=${floorMissing3}`);
+	check('scenario 0 masks have no enclosed hole', holes === 0 && holes2 === 0 && holes3 === 0,
+		`frames L1=${holes} L2=${holes2} L3=${holes3}`);
+	check('scenario 0 window sizes stay fixed', sizeChanged === 0 && sizeChanged2 === 0 && sizeChanged3 === 0,
+		`changes L1=${sizeChanged} L2=${sizeChanged2} L3=${sizeChanged3}`);
+	check('scenario 0 wake masks stay inside their cell caps',
+		maxCells <= MASK_CELL_CAP + 16 && maxCells2 <= MASK2_CELL_CAP + 16 && maxCells3 <= MASK3_CELL_CAP + 16,
+		`cells L1=${maxCells} L2=${maxCells2} L3=${maxCells3}`);
+	check('scenario 0 wakes add at most one layer per frame',
+		maxAdded <= 96 && maxAdded2 <= 128 && maxAdded3 <= 128,
+		`additions L1=${maxAdded} L2=${maxAdded2} L3=${maxAdded3} extra L2=${maxExtra2} L3=${maxExtra3}`);
 	let maxCurl = 0, minS = Infinity, maxS = 0;
 	const d2 = bm.domains[0].domains[0];
 	for (let fj = 1; fj < d2.height - 1; fj++) {
