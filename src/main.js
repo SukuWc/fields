@@ -7,6 +7,7 @@ import { Map } from './map.js';
 import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera } from './renderer.js';
 import { setupControls, getPlayers, getPhysicsFrame, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
+import { sectionAOverlay } from './rules.js';
 
 const map_w = 75;
 const map_h = 75;
@@ -124,6 +125,15 @@ runner.start(() => {
 
     infoEl.innerHTML += "Phys Time: " + bm.t_delta + "<br>";
   });
+
+  // Section A overlay. map.get_wind follows the active provider, so the same
+  // call is constant wind in dev mode and the lattice otherwise.
+  const racing = getPlayers();
+  for (let i = 0; i < racing.length; i++) {
+    for (let j = i + 1; j < racing.length; j++) {
+      guides.push(...sectionAOverlay(racing[i], racing[j], (x, y) => map.get_wind(x, y)));
+    }
+  }
 
   // Dynamic domain placement: one reusable window per boat, a disk mask inside it,
   // and a smaller level-2 disk carried with the level-1 window. The window slides

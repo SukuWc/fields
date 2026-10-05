@@ -2,6 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
+    <link rel="icon" href="data:,">
     <title>New webpage</title>
   
     <style>
@@ -46,6 +47,27 @@
         display: inline-block;
         margin-left: 8px;
       }
+      #rule_labels {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 80;
+        overflow: hidden;
+      }
+      .rule-label {
+        position: absolute;
+        transform: translate(-50%, -150%);
+        color: #fff;
+        background: rgba(0, 0, 0, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        border-radius: 3px;
+        padding: 2px 7px;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        white-space: nowrap;
+      }
 
     </style>
   
@@ -53,6 +75,7 @@
   <body style="padding:0px; margin:0px">  
 
     <div id="info"></div>
+    <div id="rule_labels"></div>
     <div id="devmode_banner" title="The angle is where the wind comes from. The arrow points downwind, the way it blows.">DEV MODE · fluid off · wind <span id="dev_wind_label"></span><span id="dev_wind_arrow">➤</span></div>
     <div id="fps" style="position:absolute; bottom:10px; left:10px; color:white; font-family:'Courier New',monospace; z-index:100;"></div>
     <div id="settings">
