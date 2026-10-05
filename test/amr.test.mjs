@@ -299,7 +299,7 @@ function shearStats(bm, domain) {
 	const cy0 = Math.max(1, cy - 20);
 	const cy1 = Math.min(74, cy + 20);
 	bm.addDomain(20, cy0, 55, cy1);
-	bm.domains[0].setDisk(37.5, boatCy, 16);
+	bm.domains[0].setDisk(37.5, boatCy, 8);
 	const southWithDomain = throwsAt(0, -37.5);
 	const boatItself = throwsAt(0, -35.5);
 	const inside = throwsAt(0, 0);
@@ -429,11 +429,11 @@ function shearStats(bm, domain) {
 	// sits in the middle of level 2, not on the coarse grid outside it.
 	bm.addDomain(28, 9, 68, 49);
 	const boatCx0 = 75 / 2 + 10, boatCy0 = 75 / 2 - 9;
-	bm.domains[0].setDisk(boatCx0, boatCy0, 16);
+	bm.domains[0].setDisk(boatCx0, boatCy0, 8);
 	bm.domains[0].addDomain(20, 20, 60, 60);
 	const fx0 = 1 + (boatCx0 - bm.domains[0].cx0) * 2;
 	const fy0 = 1 + (boatCy0 - bm.domains[0].cy0) * 2;
-	bm.domains[0].domains[0].setDisk(fx0, fy0, 16);
+	bm.domains[0].domains[0].setDisk(fx0, fy0, 8);
 	const N = 80;
 	for (let frame = 0; frame < N; frame++) {
 		if (frame === 1) boat.input_autopilot_enabled_toggle();
@@ -597,10 +597,10 @@ function shearStats(bm, domain) {
 	const boatX = 10, boatY = -9;
 	const boatCx = 75 / 2 + boatX, boatCy = 75 / 2 + boatY;
 	bm.addDomain(28, 9, 68, 49);
-	bm.domains[0].setDisk(boatCx, boatCy, 16);
+	bm.domains[0].setDisk(boatCx, boatCy, 8);
 	const fx = 1 + (boatCx - 28) * 2, fy = 1 + (boatCy - 9) * 2;
 	bm.domains[0].addDomain(20, 20, 60, 60);
-	bm.domains[0].domains[0].setDisk(fx, fy, 16);
+	bm.domains[0].domains[0].setDisk(fx, fy, 8);
 	const c1 = outlineCenter(bm.domains[0], bm);
 	const c2 = outlineCenter(bm.domains[0].domains[0], bm);
 	const e1 = Math.hypot(c1.x - boatX, c1.y - boatY);
@@ -614,11 +614,11 @@ function shearStats(bm, domain) {
 	const level1 = bm.replaceDomain(0, nx - 20, ny - 20, nx + 20, ny + 20);
 	bm.domains.length = 1;
 	bm._rebuildInteriorCells();
-	level1.setDisk(boatCx, boatCy, 16);
+	level1.setDisk(boatCx, boatCy, 8);
 	const nfx = 1 + (boatCx - level1.cx0) * 2, nfy = 1 + (boatCy - level1.cy0) * 2;
 	const fi = Math.round(nfx), fj = Math.round(nfy);
 	level1.replaceDomain(0, fi - 20, fj - 20, fi + 20, fj + 20);
-	level1.domains[0].setDisk(nfx, nfy, 16);
+	level1.domains[0].setDisk(nfx, nfy, 8);
 	const d1 = outlineCenter(level1, bm);
 	const d2 = outlineCenter(level1.domains[0], bm);
 	check('retarget leaves one pair of disks on the boat', bm.domains.length === 1
@@ -631,14 +631,14 @@ function shearStats(bm, domain) {
 		const x = boatX - step * 0.4, y = boatY + step * 0.3;
 		const cx = 75 / 2 + x, cy = 75 / 2 + y;
 		level1.shiftBy(bm, -1, 0);
-		level1.setDisk(cx, cy, 16);
+		level1.setDisk(cx, cy, 8);
 		const sfx = 1 + (cx - level1.cx0) * 2, sfy = 1 + (cy - level1.cy0) * 2;
 		const child = level1.domains[0];
 		if (sfx < child.cx0 || sfy < child.cy0 || sfx >= child.cx1 || sfy >= child.cy1) {
 			const sfi = Math.round(sfx), sfj = Math.round(sfy);
 			level1.replaceDomain(0, sfi - 20, sfj - 20, sfi + 20, sfj + 20);
 		}
-		level1.domains[0].setDisk(sfx, sfy, 16);
+		level1.domains[0].setDisk(sfx, sfy, 8);
 		const p1 = outlineCenter(level1, bm);
 		const p2 = outlineCenter(level1.domains[0], bm);
 		slideOff = Math.max(slideOff, Math.hypot(p1.x - x, p1.y - y), Math.hypot(p2.x - x, p2.y - y));
@@ -812,20 +812,20 @@ function maskShare(a, b) {
 	}
 	bm.domains.length = 0;
 	bm._rebuildInteriorCells();
-	const p1 = place(20, 38, 16);
-	const p2 = place(55, 38, 16);
-	const c1 = nest(p1, 20, 38, 16);
-	const c2 = nest(p2, 55, 38, 16);
+	const p1 = place(20, 38, 8);
+	const p2 = place(55, 38, 8);
+	const c1 = nest(p1, 20, 38, 8);
+	const c2 = nest(p2, 55, 38, 8);
 	const l2apart = borderRelation([c1, c2], bm);
 	check('apart level-2 disks keep two islands', l2apart.subset && !l2apart.merged && !maskShare(c1, c2),
 		`own=${l2apart.own} uni=${l2apart.uni}`);
 
 	bm.domains.length = 0;
 	bm._rebuildInteriorCells();
-	const q1 = place(30, 38, 16);
-	const q2 = place(36, 38, 16);
-	const d1 = nest(q1, 30, 38, 16);
-	const d2 = nest(q2, 36, 38, 16);
+	const q1 = place(30, 38, 8);
+	const q2 = place(36, 38, 8);
+	const d1 = nest(q1, 30, 38, 8);
+	const d2 = nest(q2, 36, 38, 8);
 	const l2close = borderRelation([d1, d2], bm);
 	check('overlapping level-2 disks merge', l2close.subset && l2close.merged && maskShare(d1, d2),
 		`own=${l2close.own} uni=${l2close.uni}`);

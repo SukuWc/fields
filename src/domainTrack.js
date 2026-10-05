@@ -5,8 +5,8 @@
 export const DOMAIN_HALF = 20;
 export const DOMAIN2_HALF = 20;
 export const SHIFT_THRESHOLD = 1;
-export const DISK_RADIUS = 16;  // coarse cells
-export const DISK2_RADIUS = 16; // level-1 fine cells (8 coarse)
+export const DISK_RADIUS = 8;  // coarse cells
+export const DISK2_RADIUS = 8; // level-1 fine cells (4 coarse)
 
 const domainByBoat = new WeakMap();
 
