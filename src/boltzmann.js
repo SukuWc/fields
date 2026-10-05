@@ -1330,6 +1330,7 @@ class RefinementDomain {
 		for (let i = 0; i < entered.length; i++) {
 			this._injectCoarseCell(parent, entered[i].cx, entered[i].cy);
 		}
+		this._refreshBarriers(parent);
 		this._classifyNodes();
 		this._retargetInjections();
 	}
@@ -1811,6 +1812,16 @@ export class Boltzmann {
 				this.cells[x + y * this.width].barrier = enabled && (dx*dx + dy*dy <= r2);
 			}
 		}
+		// Windows already on the lattice copied the flag at construction. A
+		// toggle has to reach them too, parent before child, or the refined
+		// obstacle streams through and the waves never form.
+		const refresh = (parent, domains) => {
+			for (let i = 0; i < domains.length; i++) {
+				domains[i]._refreshBarriers(parent);
+				refresh(domains[i], domains[i].domains);
+			}
+		};
+		refresh(this, this.domains);
 	}
 
 	// Initialize all cells to global equilibrium at the configured wind velocity.

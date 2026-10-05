@@ -536,7 +536,8 @@ function enclosedHole(domain) {
 		`TWS = ${boat.wind_speed.toFixed(2)}, max|u| = ${st.maxU.toExponential(2)}, bad = ${st.bad}`);
 	check('scenario 0 step stays cheap', stepMs < 12, `mean step ${stepMs.toFixed(2)} ms`);
 	check('scenario 0 keeps nested level-2 and level-3 grids',
-		bm.domains.length === 1 && bm.domains[0].domains.length === 1 && !!(l2 && l3 && l2.domains.length === 1));
+		bm.domains[0].disk && bm.domains[0].domains.length === 1 && !!(l2 && l3 && l2.domains.length === 1)
+		&& bm.domains.slice(1).every(d => !d.disk));
 	check('scenario 0 disk outlines stay on the boat', diskOff < 1,
 		`max outline offset = ${diskOff.toExponential(2)} world units`);
 	const boatCx = bm.width / 2 + boat.x, boatCy = bm.height / 2 + boat.y;
@@ -1116,8 +1117,10 @@ function maskShare(a, b) {
 	const st1 = fieldStats(s1.bm);
 	const ov1 = borderFollowsMasks(s1.bm, 'scenario 1');
 	results.scenario1 = { off: s1.maxOff, saw: ov1.saw, share1: ov1.share1, share2: ov1.share2, maxU: st1.maxU, bad: st1.bad };
-	check('scenario 1 has two boats and two level-2 grids', s1.bm.domains.length === 2
-		&& s1.bm.domains[0].domains.length === 1 && s1.bm.domains[1].domains.length === 1);
+	check('scenario 1 has two boats and two level-2 grids', s1.bm.domains.length >= 2
+		&& s1.bm.domains[0].disk && s1.bm.domains[1].disk
+		&& s1.bm.domains[0].domains.length === 1 && s1.bm.domains[1].domains.length === 1
+		&& s1.bm.domains.slice(2).every(d => !d.disk));
 	check('scenario 1 disk centers stay on each boat', s1.maxOff < 1, `max offset ${s1.maxOff.toExponential(2)}`);
 	check('scenario 1 disks overlap and the finest writes', ov1.share1 && ov1.share2 && ov1.saw > 0 && ov1.finestOk,
 		`shared=${ov1.saw} finest=${ov1.finestOk}`);
@@ -1128,8 +1131,10 @@ function maskShare(a, b) {
 	const ov2 = borderFollowsMasks(s2.bm, 'scenario 2');
 	const dist2 = Math.hypot(s2.boats[0].x - s2.boats[1].x, s2.boats[0].y - s2.boats[1].y);
 	results.scenario2 = { off: s2.maxOff, dist: dist2, share1: ov2.share1, share2: ov2.share2, maxU: st2.maxU, bad: st2.bad };
-	check('scenario 2 has a domain on each boat', s2.bm.domains.length === 2
-		&& s2.bm.domains[0].domains.length === 1 && s2.bm.domains[1].domains.length === 1);
+	check('scenario 2 has a domain on each boat', s2.bm.domains.length >= 2
+		&& s2.bm.domains[0].disk && s2.bm.domains[1].disk
+		&& s2.bm.domains[0].domains.length === 1 && s2.bm.domains[1].domains.length === 1
+		&& s2.bm.domains.slice(2).every(d => !d.disk));
 	check('scenario 2 disk centers stay on each boat', s2.maxOff < 1, `max offset ${s2.maxOff.toExponential(2)}`);
 	check('scenario 2 level-2 islands are separate', !ov2.share2, `dist=${dist2.toFixed(2)}`);
 	check('scenario 2 fleet stays finite', st2.bad === 0 && st2.maxU < 1, `max|u|=${st2.maxU.toExponential(2)} bad=${st2.bad}`);
@@ -1139,8 +1144,10 @@ function maskShare(a, b) {
 	const ov3 = borderFollowsMasks(s3.bm, 'scenario 3');
 	const dist3 = Math.hypot(s3.boats[0].x - s3.boats[1].x, s3.boats[0].y - s3.boats[1].y);
 	results.scenario3 = { off: s3.maxOff, dist: dist3, share1: ov3.share1, share2: ov3.share2, maxU: st3.maxU, bad: st3.bad };
-	check('scenario 3 has a domain on each boat', s3.bm.domains.length === 2
-		&& s3.bm.domains[0].domains.length === 1 && s3.bm.domains[1].domains.length === 1);
+	check('scenario 3 has a domain on each boat', s3.bm.domains.length >= 2
+		&& s3.bm.domains[0].disk && s3.bm.domains[1].disk
+		&& s3.bm.domains[0].domains.length === 1 && s3.bm.domains[1].domains.length === 1
+		&& s3.bm.domains.slice(2).every(d => !d.disk));
 	check('scenario 3 disk centers stay on each boat', s3.maxOff < 1, `max offset ${s3.maxOff.toExponential(2)}`);
 	check('scenario 3 level-2 islands are separate', !ov3.share2, `dist=${dist3.toFixed(2)}`);
 	check('scenario 3 fleet stays finite', st3.bad === 0 && st3.maxU < 1, `max|u|=${st3.maxU.toExponential(2)} bad=${st3.bad}`);

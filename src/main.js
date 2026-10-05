@@ -62,12 +62,18 @@ const runner = new Runner(map.world, { speed: 1, fps: 30 });
 runner.start(() => {
   guides = [];
 
-  // Smooth circle per boat. The light staircase is the union of every mask at
-  // that level, so overlapping boats share one border and separate boats keep
-  // one island each. A rectangle with no disk still uses its four sides.
+  // Smooth circle per boat disk. A field island has a mask and no disk, so
+  // only its staircase is drawn. The light staircase is the union of every
+  // mask at that level: overlapping boats share one border, and a detached
+  // curl island keeps its own outline. A rectangle with no disk and no mask
+  // still uses its four sides.
   function pushRefinementGuides(domains) {
     const masked = [];
     for (const domain of domains) {
+      if (domain.mask && !domain.disk) {
+        masked.push(domain);
+        continue;
+      }
       for (const seg of domain.worldBorderLines(bm)) {
         if (domain.disk && seg.dim) continue;
         guides.push({
@@ -137,10 +143,12 @@ runner.start(() => {
     }
   }
 
-  // Dynamic domain placement: one reusable window per boat. Each level is a
-  // disk floor plus a parent-curl wake (one layer in or out per frame). A
-  // slide of the parent carries the nested windows. Dev mode leaves the
-  // lattice frozen. A NaN body must not be rounded into a domain corner.
+  // Dynamic domain placement: one reusable window per boat, plus a field
+  // window where curl stays high away from every boat. Each boat level is a
+  // disk floor plus curl (one layer in or out per frame, including a detached
+  // island once a small cluster has held). A slide of the parent carries the
+  // nested windows. Dev mode leaves the lattice frozen. A NaN body must not
+  // be rounded into a domain corner.
   if (!map.devMode && document.getElementById('amr').checked) trackBoats(bm, getPlayers());
 
   // AMR off: a restart that removed a boat would keep drawing a ring.

@@ -2,12 +2,16 @@
 // the player list: a skipped boat (NaN, or a window that will not fit) must
 // not let the next boat's domain fall into an earlier slot.
 //
-// Each level's mask is a disk floor plus a curl wake that also erodes. The
-// rectangle stays fixed: shiftBy refuses a size change. Level 1 reads root
-// curl (Δx = 1). Level 2 reads level-1 fluid curl (Δx = 0.5), level 3 reads
-// level-2 fluid curl (Δx = 0.25). Ghosts and the parent-mask rind are not
-// sensors, so the staircase cannot refine itself forever. Dividing by that
-// level's Δx keeps one τ meaningful on every grid.
+// Each level's mask is a disk floor plus curl, and it also erodes. Curl that
+// stays high away from the boat can seed its own island (SEED_MIN cells that
+// have held), then that island grows and shrinks one layer per frame like the
+// wake. A cluster outside every boat window opens a field window of its own,
+// so a barrier wave refines without touching a disk. The rectangle stays
+// fixed: shiftBy refuses a size change. Level 1 reads root curl (Δx = 1).
+// Level 2 reads level-1 fluid curl (Δx = 0.5), level 3 reads level-2 fluid
+// curl (Δx = 0.25). Ghosts and the parent-mask rind are not sensors, so the
+// staircase cannot refine itself forever. Dividing by that level's Δx keeps
+// one τ meaningful on every grid.
 //
 // Sub-steps per root step (convective ratio 2): level 1 ×2, level 2 ×4,
 // level 3 ×8. A masked parent cell is about four fine nodes. Caps bound the
@@ -15,7 +19,9 @@
 //   MASK_CELL_CAP  400 root cells    → ≤ 400×4×2 =  3200 node-steps
 //   MASK2_CELL_CAP 320 level-1 cells → ≤ 320×4×4 =  5120
 //   MASK3_CELL_CAP 280 level-2 cells → ≤ 280×4×8 =  8960
-// together ≤ ~17k node-steps plus the root lattice. Scenario 0's mean
+// together ≤ ~17k node-steps plus the root lattice. A field island is coarser
+// than a boat: at most FIELD_DOMAIN_MAX windows, each ≤ FIELD_CELL_CAP cells
+// and no nested levels (≤ 2×160×4×2 = 2560 node-steps). Scenario 0's mean
 // Boltzmann step stays under 12 ms at these caps.
 
 import { buildClosedDiskMask, closeDiagonalContacts } from './boltzmann.js';
@@ -35,8 +41,9 @@ export const DISK3_RADIUS = 8; // level-2 fine cells (2 coarse)
 //
 // τ_on > τ_off. A cell must hold for CURL_HOLD frames (about 0.2 s at 30 FPS)
 // before it joins, and the same before it leaves. Growth and erosion are one
-// 4-connected layer per frame, seeded from the mask already on, so a speckle
-// cannot open an island. The hysteresis band is the quiet margin around the
+// 4-connected layer per frame. A detached island needs SEED_MIN held cells
+// that do not already touch the mask; a smaller speckle cannot open one.
+// The hysteresis band is the quiet margin around the
 // τ_on contour: a geometric rind of calm cells would be removed by erosion
 // and chatter. The cell cap trims the tail, never the disk.
 //
@@ -54,6 +61,16 @@ export const CURL_HOLD = 6;
 export const MASK_CELL_CAP = 400;
 export const MASK2_CELL_CAP = 320;
 export const MASK3_CELL_CAP = 280;
+// A new island is born as this many 4-connected cells, after the same hold
+// as a wake cell. One cell of curl cannot flicker a speckle into the mask.
+export const SEED_MIN = 4;
+// Disturbances outside the boat windows. The Barrier checkbox (off by
+// default) puts a radius-6 obstacle at the lattice centre. Check Barrier and
+// set wind speed to about 25: the waves refine as their own island. Higher
+// speeds can destabilize the lattice. FIELD_CELL_CAP trims that island.
+export const FIELD_HALF = 12;
+export const FIELD_CELL_CAP = 160;
+export const FIELD_DOMAIN_MAX = 2;
 
 const domainByBoat = new WeakMap();
 
@@ -144,24 +161,143 @@ function erodeOneLayer(mask, floor, below, hold, cw, ch) {
 	for (let k = 0; k < drop.length; k++) mask[drop[k]] = 0;
 }
 
-// One boundary layer, farthest from the boat first. The disk floor stays.
-function trimOneLayer(mask, floor, cap, cw, ch, cx0, cy0, centerX, centerY) {
+// Distance in cells to the nearest floor cell or cell still above τ_on.
+// A hot island is its own anchor, so the cap trims a calm tail before it.
+function anchorDistance(mask, floor, curlNorm, tauOn, cw, ch) {
+	const n = cw * ch;
+	const dist = new Int16Array(n);
+	const q = [];
+	for (let i = 0; i < n; i++) {
+		const hot = curlNorm && curlNorm[i] > tauOn;
+		if (floor[i] === 1 || hot) {
+			dist[i] = 0;
+			q.push(i);
+		} else dist[i] = -1;
+	}
+	for (let qi = 0; qi < q.length; qi++) {
+		const i = q[qi];
+		const lx = i % cw;
+		const ly = (i / cw) | 0;
+		const step = dist[i] + 1;
+		const nbrs = [];
+		if (lx > 0) nbrs.push(i - 1);
+		if (lx + 1 < cw) nbrs.push(i + 1);
+		if (ly > 0) nbrs.push(i - cw);
+		if (ly + 1 < ch) nbrs.push(i + cw);
+		for (let k = 0; k < nbrs.length; k++) {
+			const nb = nbrs[k];
+			if (dist[nb] >= 0) continue;
+			dist[nb] = step;
+			q.push(nb);
+		}
+	}
+	return dist;
+}
+
+// One boundary layer. Cells far from the disk and from any still-hot curl
+// go first, so a detached island that is still disturbed survives the cap.
+// The disk floor stays.
+function trimOneLayer(mask, floor, cap, cw, ch, cx0, cy0, centerX, centerY, curlNorm, tauOn) {
 	let count = countOnes(mask);
 	if (count <= cap) return;
+	const dist = anchorDistance(mask, floor, curlNorm, tauOn, cw, ch);
 	const cand = [];
 	for (let ly = 0; ly < ch; ly++) {
 		for (let lx = 0; lx < cw; lx++) {
 			const i = lx + ly * cw;
 			if (mask[i] !== 1 || floor[i] === 1) continue;
 			if (!isBoundary(mask, i, lx, ly, cw, ch)) continue;
-			cand.push({ i, d: dist2(lx, ly, cx0, cy0, centerX, centerY) });
+			cand.push({
+				i,
+				a: dist[i] < 0 ? 32767 : dist[i],
+				d: dist2(lx, ly, cx0, cy0, centerX, centerY),
+			});
 		}
 	}
-	cand.sort((a, b) => b.d - a.d || b.i - a.i);
+	cand.sort((a, b) => b.a - a.a || b.d - a.d || b.i - a.i);
 	for (let k = 0; k < cand.length && count > cap; k++) {
 		mask[cand[k].i] = 0;
 		count--;
 	}
+}
+
+// Birth of one island: SEED_MIN connected cells that have held above τ_on and
+// do not touch the mask yet. Adjacent growth already ran this frame, so this
+// cannot add a second layer onto the boat. One island per frame.
+function seedIslands(mask, above, hold, minCount, cap, cw, ch, allow, cx0, cy0) {
+	const n = cw * ch;
+	if (countOnes(mask) + minCount > cap) return;
+	const cand = new Uint8Array(n);
+	for (let ly = 0; ly < ch; ly++) {
+		for (let lx = 0; lx < cw; lx++) {
+			const i = lx + ly * cw;
+			if (mask[i] === 1 || above[i] < hold) continue;
+			if (allow && !allow(cx0 + lx, cy0 + ly)) continue;
+			if (hasOnEdge(mask, lx, ly, cw, ch)) continue;
+			cand[i] = 1;
+		}
+	}
+	const seen = new Uint8Array(n);
+	const stack = [];
+	let best = null;
+	for (let i = 0; i < n; i++) {
+		if (!cand[i] || seen[i]) continue;
+		const comp = [];
+		stack.push(i);
+		seen[i] = 1;
+		while (stack.length) {
+			const k = stack.pop();
+			comp.push(k);
+			const lx = k % cw;
+			const ly = (k / cw) | 0;
+			if (lx > 0 && cand[k - 1] && !seen[k - 1]) { seen[k - 1] = 1; stack.push(k - 1); }
+			if (lx + 1 < cw && cand[k + 1] && !seen[k + 1]) { seen[k + 1] = 1; stack.push(k + 1); }
+			if (ly > 0 && cand[k - cw] && !seen[k - cw]) { seen[k - cw] = 1; stack.push(k - cw); }
+			if (ly + 1 < ch && cand[k + cw] && !seen[k + cw]) { seen[k + cw] = 1; stack.push(k + cw); }
+		}
+		if (comp.length >= minCount && (!best || comp.length > best.length)) best = comp;
+	}
+	if (!best) return;
+	let sx = 0, sy = 0;
+	for (let k = 0; k < best.length; k++) {
+		sx += best[k] % cw;
+		sy += (best[k] / cw) | 0;
+	}
+	const mx = sx / best.length;
+	const my = sy / best.length;
+	const inComp = new Uint8Array(n);
+	for (let k = 0; k < best.length; k++) inComp[best[k]] = 1;
+	let start = best[0];
+	let startD = Infinity;
+	for (let k = 0; k < best.length; k++) {
+		const i = best[k];
+		const dx = (i % cw) - mx;
+		const dy = ((i / cw) | 0) - my;
+		const d = dx * dx + dy * dy;
+		if (d < startD || (d === startD && i < start)) { startD = d; start = i; }
+	}
+	const q = [start];
+	const used = new Uint8Array(n);
+	used[start] = 1;
+	const seed = [];
+	for (let qi = 0; qi < q.length && seed.length < minCount; qi++) {
+		const k = q[qi];
+		seed.push(k);
+		const lx = k % cw;
+		const ly = (k / cw) | 0;
+		const nbrs = [];
+		if (lx > 0) nbrs.push(k - 1);
+		if (lx + 1 < cw) nbrs.push(k + 1);
+		if (ly > 0) nbrs.push(k - cw);
+		if (ly + 1 < ch) nbrs.push(k + cw);
+		for (let b = 0; b < nbrs.length; b++) {
+			const nb = nbrs[b];
+			if (!inComp[nb] || used[nb]) continue;
+			used[nb] = 1;
+			q.push(nb);
+		}
+	}
+	for (let k = 0; k < seed.length; k++) mask[seed[k]] = 1;
 }
 
 // One frame of disk-floor + curl expansion (C) and boundary erosion (F).
@@ -197,10 +333,11 @@ export function stepCurlMask(opts) {
 
 	updateHolds(opts.curlNorm, above, below, tauOn, tauOff, hold);
 	growOneLayer(mask, above, hold, cap, cw, ch, opts.cx0, opts.cy0, opts.centerX, opts.centerY, opts.allow);
+	seedIslands(mask, above, hold, opts.seedMin ?? SEED_MIN, cap, cw, ch, opts.allow, opts.cx0, opts.cy0);
 	erodeOneLayer(mask, floor, below, hold, cw, ch);
-	trimOneLayer(mask, floor, cap, cw, ch, opts.cx0, opts.cy0, opts.centerX, opts.centerY);
+	trimOneLayer(mask, floor, cap, cw, ch, opts.cx0, opts.cy0, opts.centerX, opts.centerY, opts.curlNorm, tauOn);
 	closeDiagonalContacts(mask, opts.cx0, opts.cy0, cw, ch, opts.centerX, opts.centerY, opts.allow);
-	trimOneLayer(mask, floor, cap, cw, ch, opts.cx0, opts.cy0, opts.centerX, opts.centerY);
+	trimOneLayer(mask, floor, cap, cw, ch, opts.cx0, opts.cy0, opts.centerX, opts.centerY, opts.curlNorm, tauOn);
 	closeDiagonalContacts(mask, opts.cx0, opts.cy0, cw, ch, opts.centerX, opts.centerY, opts.allow);
 	return { mask, above, below };
 }
@@ -377,8 +514,223 @@ function trackOne(bm, player) {
 	return { domain: level1, shifted: level1Shifted };
 }
 
+// Per lattice. Tests build many Boltzmann instances; a module-level list would
+// slide one sim's island across the next.
+const fieldState = new WeakMap();
+
+function stateOf(bm) {
+	const n = bm.width * bm.height;
+	let state = fieldState.get(bm);
+	if (!state || state.above.length !== n) {
+		state = { above: new Uint8Array(n), below: new Uint8Array(n), domains: [] };
+		fieldState.set(bm, state);
+	}
+	return state;
+}
+
+function inRect(domain, x, y) {
+	return x >= domain.cx0 && x < domain.cx1 && y >= domain.cy0 && y < domain.cy1;
+}
+
+function coveredBy(domains, x, y) {
+	for (let i = 0; i < domains.length; i++) if (inRect(domains[i], x, y)) return true;
+	return false;
+}
+
+// Holds for root cells that no window owns yet. Cells inside a window are
+// cleared so a window sliding off them does not reopen from a stale count.
+function updateFieldHolds(bm, boats) {
+	const state = stateOf(bm);
+	const fieldAbove = state.above;
+	const fieldBelow = state.below;
+	const fieldDomains = state.domains;
+	const U = bm.speed;
+	for (let y = 0; y < bm.height; y++) {
+		for (let x = 0; x < bm.width; x++) {
+			const i = x + y * bm.width;
+			if (coveredBy(boats, x, y) || coveredBy(fieldDomains, x, y)) {
+				fieldAbove[i] = 0;
+				fieldBelow[i] = 0;
+				continue;
+			}
+			const cell = bm.cells[i];
+			const norm = normalizedCurl(cell ? cell.curl : 0, U);
+			if (norm > CURL_TAU_ON) {
+				if (fieldAbove[i] < CURL_HOLD) fieldAbove[i]++;
+				fieldBelow[i] = 0;
+			} else if (norm < CURL_TAU_OFF) {
+				if (fieldBelow[i] < CURL_HOLD) fieldBelow[i]++;
+				fieldAbove[i] = 0;
+			} else {
+				fieldAbove[i] = 0;
+				fieldBelow[i] = 0;
+			}
+		}
+	}
+}
+
+function largestHeldCluster(bm, boats) {
+	const state = stateOf(bm);
+	const fieldAbove = state.above;
+	const fieldDomains = state.domains;
+	const w = bm.width;
+	const h = bm.height;
+	const seen = new Uint8Array(w * h);
+	const stack = [];
+	let best = null;
+	for (let y = 1; y < h - 1; y++) {
+		for (let x = 1; x < w - 1; x++) {
+			const i = x + y * w;
+			if (seen[i] || fieldAbove[i] < CURL_HOLD) continue;
+			if (coveredBy(boats, x, y) || coveredBy(fieldDomains, x, y)) continue;
+			const comp = [];
+			stack.push(i);
+			seen[i] = 1;
+			while (stack.length) {
+				const k = stack.pop();
+				comp.push(k);
+				const cx = k % w;
+				const cy = (k / w) | 0;
+				const nbrs = [];
+				if (cx > 1) nbrs.push(k - 1);
+				if (cx + 2 < w) nbrs.push(k + 1);
+				if (cy > 1) nbrs.push(k - w);
+				if (cy + 2 < h) nbrs.push(k + w);
+				for (let b = 0; b < nbrs.length; b++) {
+					const nb = nbrs[b];
+					if (seen[nb] || fieldAbove[nb] < CURL_HOLD) continue;
+					const nx = nb % w;
+					const ny = (nb / w) | 0;
+					if (coveredBy(boats, nx, ny) || coveredBy(fieldDomains, nx, ny)) continue;
+					seen[nb] = 1;
+					stack.push(nb);
+				}
+			}
+			if (comp.length >= SEED_MIN && (!best || comp.length > best.length)) best = comp;
+		}
+	}
+	return best;
+}
+
+function openFieldWindow(bm, cluster) {
+	const w = bm.width;
+	let sx = 0, sy = 0;
+	for (let k = 0; k < cluster.length; k++) {
+		sx += cluster[k] % w;
+		sy += (cluster[k] / w) | 0;
+	}
+	const cx = Math.round(sx / cluster.length);
+	const cy = Math.round(sy / cluster.length);
+	const cx0 = Math.max(1, cx - FIELD_HALF);
+	const cy0 = Math.max(1, cy - FIELD_HALF);
+	const cx1 = Math.min(bm.width - 1, cx + FIELD_HALF);
+	const cy1 = Math.min(bm.height - 1, cy + FIELD_HALF);
+	if (!(cx1 > cx0 && cy1 > cy0)) return null;
+	const domain = bm.replaceDomain(bm.domains.length, cx0, cy0, cx1, cy1);
+	if (!domain) return null;
+	const cw = domain.cx1 - domain.cx0;
+	const ch = domain.cy1 - domain.cy0;
+	const state = stateOf(bm);
+	const above = new Uint8Array(cw * ch);
+	const below = new Uint8Array(cw * ch);
+	for (let ly = 0; ly < ch; ly++) {
+		for (let lx = 0; lx < cw; lx++) {
+			const src = (domain.cx0 + lx) + (domain.cy0 + ly) * w;
+			above[lx + ly * cw] = state.above[src];
+			below[lx + ly * cw] = state.below[src];
+		}
+	}
+	domain._curlAbove = above;
+	domain._curlBelow = below;
+	return domain;
+}
+
+function fieldCentroid(bm, domain) {
+	const cw = domain.cx1 - domain.cx0;
+	const ch = domain.cy1 - domain.cy0;
+	let sx = 0, sy = 0, n = 0;
+	const U = bm.speed;
+	for (let ly = 0; ly < ch; ly++) {
+		const cy = domain.cy0 + ly;
+		for (let lx = 0; lx < cw; lx++) {
+			const cx = domain.cx0 + lx;
+			const norm = normalizedCurl(bm.cells[cx + cy * bm.width].curl, U);
+			const on = domain.mask && domain.mask[lx + ly * cw] === 1;
+			if (norm <= CURL_TAU_ON && !on) continue;
+			sx += cx + 0.5;
+			sy += cy + 0.5;
+			n++;
+		}
+	}
+	if (!n) return { x: (domain.cx0 + domain.cx1) / 2, y: (domain.cy0 + domain.cy1) / 2 };
+	return { x: sx / n, y: sy / n };
+}
+
+function installFieldMask(bm, domain, boats) {
+	const cw = domain.cx1 - domain.cx0;
+	const ch = domain.cy1 - domain.cy0;
+	if (!(cw * ch > 0)) return false;
+	const floor = new Uint8Array(cw * ch);
+	const allow = (cx, cy) => {
+		for (let i = 0; i < boats.length; i++) if (boats[i]._maskAt(cx, cy)) return false;
+		return true;
+	};
+	const center = fieldCentroid(bm, domain);
+	const stepped = stepCurlMask({
+		floor,
+		prev: domain.mask,
+		curlNorm: sampleRootCurl(bm, domain),
+		above: domain._curlAbove,
+		below: domain._curlBelow,
+		cw, ch,
+		cx0: domain.cx0,
+		cy0: domain.cy0,
+		centerX: center.x,
+		centerY: center.y,
+		allow,
+		cap: FIELD_CELL_CAP,
+	});
+	domain._curlAbove = stepped.above;
+	domain._curlBelow = stepped.below;
+	domain.setMask(stepped.mask, null);
+	return countOnes(stepped.mask) > 0;
+}
+
+// Windows for curl that never touches a boat. At most one new window a frame,
+// and FIELD_DOMAIN_MAX in total. An empty mask is the island coarsening away.
+function trackFieldDomains(bm, boats) {
+	const fieldDomains = stateOf(bm).domains;
+	updateFieldHolds(bm, boats);
+	let shifted = false;
+	for (let i = fieldDomains.length - 1; i >= 0; i--) {
+		const domain = fieldDomains[i];
+		const center = fieldCentroid(bm, domain);
+		const step = shiftToward(center.x, center.y, domain, bm.width, bm.height);
+		if (step.dcx || step.dcy) {
+			domain.shiftBy(bm, step.dcx, step.dcy);
+			shifted = true;
+		}
+		if (!installFieldMask(bm, domain, boats)) {
+			fieldDomains.splice(i, 1);
+			shifted = true;
+		}
+	}
+	if (fieldDomains.length < FIELD_DOMAIN_MAX) {
+		const cluster = largestHeldCluster(bm, boats);
+		if (cluster) {
+			const domain = openFieldWindow(bm, cluster);
+			if (domain) {
+				if (installFieldMask(bm, domain, boats)) fieldDomains.push(domain);
+				shifted = true;
+			}
+		}
+	}
+	return shifted;
+}
+
 // Install one level-1 window per finite boat, in player order. Later boats are
 // later siblings, so a same-level overlap still lets the later boat write.
+// Field islands follow the boats and do not own a disk floor.
 export function trackBoats(bm, players) {
 	const live = [];
 	let shifted = false;
@@ -389,10 +741,12 @@ export function trackBoats(bm, players) {
 		live.push(placed.domain);
 		if (placed.shifted) shifted = true;
 	}
-	let same = live.length === bm.domains.length;
-	for (let i = 0; same && i < live.length; i++) if (live[i] !== bm.domains[i]) same = false;
+	if (trackFieldDomains(bm, live)) shifted = true;
+	const next = live.concat(stateOf(bm).domains);
+	let same = next.length === bm.domains.length;
+	for (let i = 0; same && i < next.length; i++) if (next[i] !== bm.domains[i]) same = false;
 	if (!same || shifted) {
-		bm.domains = live;
+		bm.domains = next;
 		bm._rebuildInteriorCells();
 	}
 }

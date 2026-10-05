@@ -17,6 +17,7 @@ const {
 	trackBoats, stepCurlMask, normalizedCurl,
 	DISK_RADIUS, DISK2_RADIUS, DISK3_RADIUS, DOMAIN_HALF, DOMAIN2_HALF, DOMAIN3_HALF,
 	CURL_HOLD, CURL_TAU_ON, CURL_TAU_OFF, MASK_CELL_CAP, MASK2_CELL_CAP, MASK3_CELL_CAP,
+	SEED_MIN, FIELD_CELL_CAP, FIELD_DOMAIN_MAX,
 } = await import('../src/domainTrack.js');
 
 let failed = 0;
@@ -126,6 +127,49 @@ check('thresholds satisfy τ_on > τ_off and a few frames of hold',
 		&& atHold[idx(10, 5)] !== 1, `second=${atHold[idx(8, 5)]} island=${atHold[idx(10, 5)]}`);
 	check('the next cell waits until the following frame', next[idx(8, 5)] === 1 && next[idx(10, 5)] !== 1
 		&& floorHeld(next, floor) && !diagonalContact(next));
+}
+
+// A cluster that never touches the disk becomes its own island after the hold.
+// Three cells are not enough. Once quiet, the island peels away and the floor stays.
+{
+	const floor = blockFloor();
+	const tooSmall = stepper(floor);
+	const speckle = zeros();
+	speckle[idx(0, 0)] = 0.2;
+	speckle[idx(1, 0)] = 0.2;
+	speckle[idx(0, 1)] = 0.2;
+	let speckleOn = false;
+	for (let i = 0; i < HOLD + 2; i++) {
+		const mask = tooSmall.step(speckle);
+		if (mask[idx(0, 0)] === 1 || mask[idx(1, 0)] === 1 || mask[idx(0, 1)] === 1) speckleOn = true;
+	}
+	const run = stepper(floor);
+	const curl = zeros();
+	for (let y = 0; y <= 1; y++) for (let x = 0; x <= 1; x++) curl[idx(x, y)] = 0.2;
+	let early = false;
+	for (let i = 0; i < HOLD - 1; i++) if (run.step(curl)[idx(0, 0)] === 1) early = true;
+	const born = run.step(curl);
+	let extra = 0;
+	let bridge = false;
+	for (let y = 0; y < CH; y++) {
+		for (let x = 0; x < CW; x++) {
+			if (born[idx(x, y)] !== 1 || floor[idx(x, y)] === 1) continue;
+			extra++;
+			if ((x > 0 && floor[idx(x - 1, y)] === 1) || (x + 1 < CW && floor[idx(x + 1, y)] === 1)
+				|| (y > 0 && floor[idx(x, y - 1)] === 1) || (y + 1 < CH && floor[idx(x, y + 1)] === 1)) bridge = true;
+		}
+	}
+	check('a held cluster seeds an island that does not touch the disk',
+		!speckleOn && !early && extra === SEED_MIN && born[idx(0, 0)] === 1 && born[idx(1, 1)] === 1
+		&& !bridge && floorHeld(born, floor) && SEED_MIN === 4,
+		`extra=${extra} early=${early} speckle=${speckleOn}`);
+	for (let i = 0; i < curl.length; i++) curl[i] = 0;
+	let wiped = false;
+	for (let i = 0; i < HOLD - 1; i++) if (run.step(curl)[idx(0, 0)] !== 1) wiped = true;
+	const gone = run.step(curl);
+	check('a quiet island coarsens away and the disk floor stays',
+		!wiped && gone[idx(0, 0)] !== 1 && gone[idx(1, 1)] !== 1 && floorHeld(gone, floor)
+		&& count(gone) === count(floor));
 }
 
 // Exactly τ_on is not enough (the test is strict), and the band does not arm a cell.
@@ -541,6 +585,107 @@ function paintNonSensor(parent, value) {
 		floor3on && countMask(l3) > count(floor3b) && countMask(l3) <= MASK3_CELL_CAP + 16
 		&& l3.mask[0] === 0 && l3.cx1 - l3.cx0 === w3 && !l3.hasDiagonalOnlyContact(),
 		`cells=${countMask(l3)}`);
+}
+
+// Curl that never enters the boat window opens its own island. The disk stays a disk.
+{
+	const bm = make(75, 75, 30);
+	const boat = { x: -21.5, y: 22.5 };
+	trackBoats(bm, [boat]);
+	const boatDom = bm.domains[0];
+	const hot = [];
+	for (let y = 36; y <= 38; y++) {
+		for (let x = 50; x <= 52; x++) hot.push(bm.cells[x + y * bm.width]);
+	}
+	for (let i = 0; i < CURL_HOLD + 1; i++) {
+		for (const c of hot) c.curl = 1;
+		trackBoats(bm, [boat]);
+	}
+	const field = bm.domains.filter(d => !d.disk);
+	let disjoint = field.length === 1;
+	if (disjoint) {
+		const cw = field[0].cx1 - field[0].cx0;
+		for (let ly = 0; ly < field[0].cy1 - field[0].cy0 && disjoint; ly++) {
+			for (let lx = 0; lx < cw; lx++) {
+				if (field[0].mask[lx + ly * cw] !== 1) continue;
+				if (boatDom._maskAt(field[0].cx0 + lx, field[0].cy0 + ly)) disjoint = false;
+			}
+		}
+	}
+	check('curl outside the boat window opens one detached field island',
+		field.length === 1 && disjoint && countMask(field[0]) >= SEED_MIN
+		&& countMask(field[0]) <= FIELD_CELL_CAP && field.length <= FIELD_DOMAIN_MAX
+		&& maskEqualsFloor(boatDom, DISK_RADIUS) && !field[0].domains.length,
+		`islands=${field.length} cells=${field[0] ? countMask(field[0]) : 0}`);
+}
+
+// The barrier checkbox has to mark windows that are already open, not only the root.
+{
+	const bm = make(48, 48, 25);
+	trackBoats(bm, [{ x: 0, y: 0 }]);
+	const d = bm.domains[0];
+	bm.setBarriers(true);
+	const cx = Math.round(bm.width / 2);
+	const cy = Math.round(bm.height / 2);
+	const fi = 1 + (cx - d.cx0) * 2;
+	const fj = 1 + (cy - d.cy0) * 2;
+	const fine = d.cells[fi + fj * d.width];
+	const l2 = d.domains[0];
+	let nested = false;
+	if (l2) {
+		for (let k = 0; k < l2.cells.length && !nested; k++) if (l2.cells[k].barrier) nested = true;
+	}
+	const marked = bm.cells[cx + cy * bm.width].barrier === true && fine.barrier === true && nested;
+	bm.setBarriers(false);
+	const cleared = bm.cells[cx + cy * bm.width].barrier === false && fine.barrier === false;
+	check('the barrier checkbox reaches open refinement windows', marked && cleared,
+		`root=${bm.cells[cx + cy * bm.width].barrier} fine=${fine.barrier} nested=${nested}`);
+}
+
+// Centre obstacle, boat parked upwind of it. The shed waves must refine as a
+// mask that does not touch the boat disk, and the lattice must stay finite.
+{
+	const bm = make(75, 75, 25);
+	bm.setBarriers(true);
+	const boat = { x: -21.5, y: 22.5 };
+	let bad = 0;
+	let maxU = 0;
+	for (let frame = 0; frame < 100; frame++) {
+		trackBoats(bm, [boat]);
+		bm.physics_model_step();
+		for (let i = 0; i < bm.cells.length; i++) {
+			const c = bm.cells[i];
+			if (!Number.isFinite(c.ux) || !Number.isFinite(c.uy) || !Number.isFinite(c.rho)) bad++;
+			else {
+				const s = Math.hypot(c.ux, c.uy);
+				if (s > maxU) maxU = s;
+			}
+		}
+	}
+	const boatDom = bm.domains.find(d => d.disk);
+	const field = bm.domains.filter(d => !d.disk);
+	let disjoint = field.length > 0 && !!boatDom;
+	for (let f = 0; f < field.length && disjoint; f++) {
+		const domain = field[f];
+		const cw = domain.cx1 - domain.cx0;
+		for (let ly = 0; ly < domain.cy1 - domain.cy0 && disjoint; ly++) {
+			for (let lx = 0; lx < cw; lx++) {
+				if (domain.mask[lx + ly * cw] !== 1) continue;
+				if (boatDom._maskAt(domain.cx0 + lx, domain.cy0 + ly)) disjoint = false;
+			}
+		}
+	}
+	const cells = field.reduce((n, d) => n + countMask(d), 0);
+	const boatFloor = boatDom && buildClosedDiskMask(
+		boatDom.cx0, boatDom.cy0, boatDom.cx1, boatDom.cy1,
+		boatDom.disk.cx, boatDom.disk.cy, DISK_RADIUS,
+		(cx, cy) => boatDom._parentAllows(cx, cy),
+	);
+	const floorOk = !!boatFloor && floorHeld(boatDom.mask, boatFloor);
+	check('barrier waves at wind 25 refine as an island away from the boat',
+		bad === 0 && maxU < 1 && disjoint && cells >= SEED_MIN && cells <= FIELD_CELL_CAP * FIELD_DOMAIN_MAX
+		&& floorOk,
+		`bad=${bad} max|u|=${maxU.toExponential(2)} islands=${field.length} cells=${cells} floor=${floorOk}`);
 }
 
 if (failed) {
