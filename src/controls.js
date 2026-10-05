@@ -59,11 +59,6 @@ function mouse_monitor(e) {
 
 const DEV_MODE_FLUID_CONTROLS = ["amr", "barrier", "boat_energy", "plotSelect", "contrastSlider", "mirrorSlider"];
 
-function devModeFromQuery() {
-  const value = new URLSearchParams(window.location.search).get("devmode");
-  return value === "1" || (value || "").toLowerCase() === "true";
-}
-
 function syncDevModeUi() {
   const on = _map.devMode;
   const banner = document.getElementById("devmode_banner");
@@ -179,14 +174,15 @@ export function setupControls(map, getCamera, bm) {
   document.onkeyup = checkKeyRelease;
 
   document.getElementById("camera_follow").checked = false;
-  document.getElementById("show_forces").checked = true;
+  document.getElementById("show_forces").checked = false;
   document.getElementById("show_field").checked = false;
 
   document.getElementById("windAngle").value = map.wind_direction;
   document.getElementById("windSpeed").value = map.wind_speed;
-  const devMode = devModeFromQuery();
-  document.getElementById("devmode").checked = devMode;
-  map.setDevMode(devMode);
+  // Query-string settings, including ?devmode=1, are applied by installUrlSettings
+  // after these listeners exist. Leave the checkbox at its default so that
+  // default can be captured; the change listener below turns dev mode on.
+  map.setDevMode(false);
   syncDevModeUi();
 
   document.getElementById("devmode").addEventListener("change", () => {
