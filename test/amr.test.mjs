@@ -18,6 +18,14 @@ const { Boltzmann } = await import('../src/boltzmann.js');
 const results = {};
 let failed = 0;
 
+function outlineCenter(domain, bm) {
+	const lines = domain.worldBorderLines(bm).filter(s => !s.dim);
+	if (!lines.length) return null;
+	let sx = 0, sy = 0;
+	for (const s of lines) { sx += s.x1; sy += s.y1; }
+	return { x: sx / lines.length, y: sy / lines.length };
+}
+
 function check(name, cond, detail) {
 	const ok = !!cond;
 	if (!ok) failed++;
@@ -321,6 +329,7 @@ function shearStats(bm, domain) {
 	map.physics_model_init();
 	const boat = new Boat(map, 10, -9, 5 * Math.PI / 4);
 	let bmMs = 0;
+	let diskOff = 0;
 	const N = 600;
 	let bsAt500 = 0;
 	for (let frame = 0; frame < N; frame++) {
@@ -353,6 +362,12 @@ function shearStats(bm, domain) {
 			if (step2.dcx || step2.dcy) { d2.shiftBy(level1, step2.dcx, step2.dcy); level1._rebuildInteriorCells(); }
 		}
 		if (level1.domains[0]) level1.domains[0].setDisk(fx, fy, 16);
+		const c1 = outlineCenter(level1, bm);
+		const c2 = level1.domains[0] ? outlineCenter(level1.domains[0], bm) : null;
+		const off1 = c1 ? Math.hypot(c1.x - boat.x, c1.y - boat.y) : Infinity;
+		const off2 = c2 ? Math.hypot(c2.x - boat.x, c2.y - boat.y) : Infinity;
+		if (off1 > diskOff) diskOff = off1;
+		if (off2 > diskOff) diskOff = off2;
 		const a = Date.now();
 		bm.physics_model_step();
 		bmMs += Date.now() - a;
@@ -369,7 +384,9 @@ function shearStats(bm, domain) {
 	check('scenario 0 wind still blowing', boat.wind_speed > 12 && st.bad === 0 && st.maxU < 0.3 && st.maxU > 0.1,
 		`TWS = ${boat.wind_speed.toFixed(2)}, max|u| = ${st.maxU.toExponential(2)}, bad = ${st.bad}`);
 	check('scenario 0 step stays cheap', stepMs < 12, `mean step ${stepMs.toFixed(2)} ms`);
-	check('scenario 0 keeps a single level-2 grid', bm.domains[0].domains.length === 1);
+	check('scenario 0 keeps a single level-2 grid', bm.domains[0].domains.length === 1 && bm.domains.length === 1);
+	check('scenario 0 both disk outlines stay on the boat', diskOff < 1,
+		`max outline offset = ${diskOff.toExponential(2)} world units`);
 	const boatCx = bm.width / 2 + boat.x, boatCy = bm.height / 2 + boat.y;
 	const underDisk = bm.domains[0].containsCoarse(boatCx, boatCy);
 	const fx = 1 + (boatCx - bm.domains[0].cx0) * 2, fy = 1 + (boatCy - bm.domains[0].cy0) * 2;
@@ -598,6 +615,64 @@ function shearStats(bm, domain) {
 	const tie = 24;
 	check('same level, later disk writes', bm2.domains[1]._ownsWrite(tie, 24) && !bm2.domains[0]._ownsWrite(tie, 24)
 		&& bm2._finestDomain(tie + 0.1, 24.1) === bm2.domains[1]);
+}
+
+// The level-1 window (28, 9) is not square in world space. Mapping the inner
+// disk's Y through cx0_root used to draw it at world y = 10 while the boat
+// was at y = -9.
+{
+	const bm = make(75, 75, 0);
+	const boatX = 10, boatY = -9;
+	const boatCx = 75 / 2 + boatX, boatCy = 75 / 2 + boatY;
+	bm.addDomain(28, 9, 68, 49);
+	bm.domains[0].setDisk(boatCx, boatCy, 16);
+	const fx = 1 + (boatCx - 28) * 2, fy = 1 + (boatCy - 9) * 2;
+	bm.domains[0].addDomain(20, 20, 60, 60);
+	bm.domains[0].domains[0].setDisk(fx, fy, 16);
+	const c1 = outlineCenter(bm.domains[0], bm);
+	const c2 = outlineCenter(bm.domains[0].domains[0], bm);
+	const e1 = Math.hypot(c1.x - boatX, c1.y - boatY);
+	const e2 = Math.hypot(c2.x - boatX, c2.y - boatY);
+	check('asymmetric window keeps both disks on the boat', e1 < 1e-9 && e2 < 1e-9,
+		`offsets ${e1.toExponential(2)}, ${e2.toExponential(2)}`);
+	// Boat leaves the window (restart). Replacing it once must not leave a second ring.
+	bm.addDomain(2, 2, 30, 30);
+	check('stray domain is present before retarget', bm.domains.length === 2);
+	const nx = Math.round(boatCx), ny = Math.round(boatCy);
+	const level1 = bm.replaceDomain(0, nx - 20, ny - 20, nx + 20, ny + 20);
+	bm.domains.length = 1;
+	bm._rebuildInteriorCells();
+	level1.setDisk(boatCx, boatCy, 16);
+	const nfx = 1 + (boatCx - level1.cx0) * 2, nfy = 1 + (boatCy - level1.cy0) * 2;
+	const fi = Math.round(nfx), fj = Math.round(nfy);
+	level1.replaceDomain(0, fi - 20, fj - 20, fi + 20, fj + 20);
+	level1.domains[0].setDisk(nfx, nfy, 16);
+	const d1 = outlineCenter(level1, bm);
+	const d2 = outlineCenter(level1.domains[0], bm);
+	check('retarget leaves one pair of disks on the boat', bm.domains.length === 1
+		&& level1.domains.length === 1
+		&& Math.hypot(d1.x - boatX, d1.y - boatY) < 1e-9
+		&& Math.hypot(d2.x - boatX, d2.y - boatY) < 1e-9);
+	// Slide the window and keep the mask center on a moving boat.
+	let slideOff = 0;
+	for (let step = 0; step < 6; step++) {
+		const x = boatX - step * 0.4, y = boatY + step * 0.3;
+		const cx = 75 / 2 + x, cy = 75 / 2 + y;
+		level1.shiftBy(bm, -1, 0);
+		level1.setDisk(cx, cy, 16);
+		const sfx = 1 + (cx - level1.cx0) * 2, sfy = 1 + (cy - level1.cy0) * 2;
+		const child = level1.domains[0];
+		if (sfx < child.cx0 || sfy < child.cy0 || sfx >= child.cx1 || sfy >= child.cy1) {
+			const sfi = Math.round(sfx), sfj = Math.round(sfy);
+			level1.replaceDomain(0, sfi - 20, sfj - 20, sfi + 20, sfj + 20);
+		}
+		level1.domains[0].setDisk(sfx, sfy, 16);
+		const p1 = outlineCenter(level1, bm);
+		const p2 = outlineCenter(level1.domains[0], bm);
+		slideOff = Math.max(slideOff, Math.hypot(p1.x - x, p1.y - y), Math.hypot(p2.x - x, p2.y - y));
+	}
+	check('sliding window keeps both disk centers on the boat', slideOff < 1e-9,
+		`max offset ${slideOff.toExponential(2)}`);
 }
 
 {

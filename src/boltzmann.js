@@ -921,6 +921,18 @@ class RefinementDomain {
 		this._rebuildInteriorCells();
 	}
 
+	// Swap the child at `index` for a new window. Used when a boat is outside the
+	// allocation: crawling one cell per frame would leave the old staircase behind.
+	replaceDomain(index, cx0, cy0, cx1, cy1) {
+		const box = normalizeDomainBox(cx0, cy0, cx1, cy1);
+		if (!box) return null;
+		const domain = new RefinementDomain(this, box.cx0, box.cy0, box.cx1, box.cy1);
+		if (index < this.domains.length) this.domains[index] = domain;
+		else this.domains.push(domain);
+		this._rebuildInteriorCells();
+		return domain;
+	}
+
 	// Slide this window by (dcx, dcy) parent cells. Same allocation: fluid parcels stay
 	// on the root grid, the window origin moves, and every child is carried along.
 	// Refuses a step that would enter the parent's Dirichlet frame.
@@ -1163,10 +1175,16 @@ class RefinementDomain {
 		}
 	}
 
-	// Parent-cell coordinate → root coarse coordinate. Integer parent cells land
-	// on the node the rectangle already uses for its corners.
-	_rootOfParentCoord(c) {
+	// Parent-cell coordinate → root coarse coordinate, one axis at a time.
+	// The two origins differ once a nested window is not square in world space
+	// (level 1 at coarse (28, 9) puts level 2's cx0_root 19 cells above cy0_root).
+	// Mapping Y through cx0_root drew that disk as a second ring off the boat.
+	_rootX(c) {
 		return this.cx0_root + (c - this.cx0) * (this.dx * 2);
+	}
+
+	_rootY(c) {
+		return this.cy0_root + (c - this.cy0) * (this.dx * 2);
 	}
 
 	// Smooth circle of the disk, plus the dim staircase of mask edges.
@@ -1192,8 +1210,8 @@ class RefinementDomain {
 		}
 		const segs = [];
 		const n = 64;
-		const ccx = this._rootOfParentCoord(this.disk.cx);
-		const ccy = this._rootOfParentCoord(this.disk.cy);
+		const ccx = this._rootX(this.disk.cx);
+		const ccy = this._rootY(this.disk.cy);
 		const rr = this.disk.radius * this.dx * 2;
 		for (let i = 0; i < n; i++) {
 			const a0 = (i / n) * Math.PI * 2;
@@ -1209,10 +1227,10 @@ class RefinementDomain {
 					if (this.mask[lx + ly * cw] !== 1) continue;
 					const cx = this.cx0 + lx;
 					const cy = this.cy0 + ly;
-					const x0 = this._rootOfParentCoord(cx);
-					const y0 = this._rootOfParentCoord(cy);
-					const x1 = this._rootOfParentCoord(cx + 1);
-					const y1 = this._rootOfParentCoord(cy + 1);
+					const x0 = this._rootX(cx);
+					const y0 = this._rootY(cy);
+					const x1 = this._rootX(cx + 1);
+					const y1 = this._rootY(cy + 1);
 					const edge = (xa, ya, xb, yb) => {
 						const p = toWorld(xa, ya);
 						const q = toWorld(xb, yb);
@@ -1624,6 +1642,19 @@ export class Boltzmann {
 		if (!box) return;
 		this.domains.push(new RefinementDomain(this, box.cx0, box.cy0, box.cx1, box.cy1));
 		this._rebuildInteriorCells();
+	}
+
+	// Replace domain `index`, or append if it does not exist yet. A boat that has
+	// left the window uses this once; sliding the old disk across the map leaves
+	// its outline behind.
+	replaceDomain(index, cx0, cy0, cx1, cy1) {
+		const box = normalizeDomainBox(cx0, cy0, cx1, cy1);
+		if (!box) return null;
+		const domain = new RefinementDomain(this, box.cx0, box.cy0, box.cx1, box.cy1);
+		if (index < this.domains.length) this.domains[index] = domain;
+		else this.domains.push(domain);
+		this._rebuildInteriorCells();
+		return domain;
 	}
 
 	// Slide domain `index` by (dcx, dcy) coarse cells. In place: level-2 children are carried.

@@ -107,11 +107,9 @@ runner.start(() => {
       pushDomainLines(domain.domains);
     }
   }
-  // Dev mode leaves the lattice frozen: no domain guides, no energy injection,
-  // no AMR tracking, no Boltzmann step. Boats read map.get_wind instead.
-  if (!map.devMode) {
-    pushDomainLines(bm.domains);
-  }
+  // Dev mode leaves the lattice frozen: no energy injection, no AMR tracking,
+  // no Boltzmann step. Boats read map.get_wind instead. Disk guides are drawn
+  // after the windows move, so they match this frame's boat.
 
   executeScenarioFrame();
   processKeys();
@@ -154,7 +152,12 @@ runner.start(() => {
     const boatCy = bm.height/2 + player.y * bm.resolution;
 
     let level1Shifted = false;
-    if (index >= bm.domains.length) {
+    const outside = (domain, x, y) => !domain
+      || x < domain.cx0 || y < domain.cy0 || x >= domain.cx1 || y >= domain.cy1;
+    let level1 = bm.domains[index];
+    if (outside(level1, boatCx, boatCy)) {
+      // One new window on the boat. Crawling the old one would keep a ring
+      // where the boat used to be (scenario restart, or a boat past the edge).
       const cx = Math.round(boatCx);
       const cy = Math.round(boatCy);
       const cx0 = Math.max(1, cx - DOMAIN_HALF);
@@ -162,10 +165,10 @@ runner.start(() => {
       const cx1 = Math.min(bm.width  - 1, cx + DOMAIN_HALF);
       const cy1 = Math.min(bm.height - 1, cy + DOMAIN_HALF);
       if (!(cx1 > cx0 && cy1 > cy0)) return;
-      bm.addDomain(cx0, cy0, cx1, cy1);
+      level1 = bm.replaceDomain(index, cx0, cy0, cx1, cy1);
+      if (!level1) return;
     } else {
-      const d = bm.domains[index];
-      const step = shiftToward(boatCx, boatCy, d, bm.width, bm.height);
+      const step = shiftToward(boatCx, boatCy, level1, bm.width, bm.height);
       if (step.dcx || step.dcy) {
         bm.shiftDomain(index, step.dcx, step.dcy);
         level1Shifted = true;
@@ -173,7 +176,6 @@ runner.start(() => {
     }
 
     // Level-1 disk follows the boat inside the window. The mask, not the rectangle, is the refined region.
-    const level1 = bm.domains[index];
     if (!level1) return;
     level1.setDisk(boatCx, boatCy, DISK_RADIUS);
 
@@ -181,10 +183,10 @@ runner.start(() => {
     // that slide already carried this window, and the boat's fine coordinate moved with it.
     const fx = 1 + (boatCx - level1.cx0) * 2;
     const fy = 1 + (boatCy - level1.cy0) * 2;
-    if (level1.domains.length === 0) {
+    if (level1.domains.length === 0 || outside(level1.domains[0], fx, fy)) {
       const box = level2Box(level1, fx, fy);
       if (!box) return;
-      level1.addDomain(box.x0, box.y0, box.x1, box.y1);
+      level1.replaceDomain(0, box.x0, box.y0, box.x1, box.y1);
     } else if (!level1Shifted) {
       const d2 = level1.domains[0];
       const step2 = shiftToward(fx, fy, d2, level1.width, level1.height);
@@ -195,6 +197,13 @@ runner.start(() => {
     }
     if (level1.domains[0]) level1.domains[0].setDisk(fx, fy, DISK2_RADIUS);
   }); // end AMR block
+
+  // Extra windows (a restart that removed a boat) would keep drawing a ring.
+  if (!map.devMode && bm.domains.length > getPlayers().length) {
+    bm.domains.length = getPlayers().length;
+    bm._rebuildInteriorCells();
+  }
+  if (!map.devMode) pushDomainLines(bm.domains);
 
   if (map.devMode) {
     const wind = map.get_wind(0, 0);
