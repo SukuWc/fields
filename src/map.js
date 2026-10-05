@@ -24,7 +24,7 @@ export class Map{
 		this.wind_direction = direction;  
 		this.wind_speed = speed;
 	
-		this.show_forces = true;
+		this.show_forces = false;
 		this.show_fields = false;
 	
 		this.camera_follow_target = undefined;

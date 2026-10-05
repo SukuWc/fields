@@ -174,7 +174,7 @@ export function setupControls(map, getCamera, bm) {
   document.onkeyup = checkKeyRelease;
 
   document.getElementById("camera_follow").checked = false;
-  document.getElementById("show_forces").checked = true;
+  document.getElementById("show_forces").checked = false;
   document.getElementById("show_field").checked = false;
 
   document.getElementById("windAngle").value = map.wind_direction;

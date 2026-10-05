@@ -1,8 +1,9 @@
 // Keep the #settings controls and the page query string in sync.
 //
 // Defaults are whatever the controls hold when this runs, so JS that adjusts
-// the initial HTML (show_forces, the wind inputs) is the default — not the raw
-// markup. Only values that differ from those defaults are written. Unknown
+// the initial HTML (the wind inputs) is the default — not the raw markup.
+// show_forces stays unchecked, matching the HTML and Map. Only values that
+// differ from those defaults are written. Unknown
 // query keys are left alone. `devmode=1` (also `true`) is the existing link
 // for the dev-mode checkbox; we still write it as `devmode=1` and omit it
 // when the box is off.
