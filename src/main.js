@@ -18,8 +18,12 @@ const texture_oversampling = 4;
 const SAIL_EFFICIENCY = 0.0003 * bm_resolution; // scales sail aerodynamic force → fluid momentum transfer
 
 const DOMAIN_HALF     = 20;
-const DOMAIN2_HALF    = 20; // half-width of level-2 domain in level-1 fine cell coords
+const DOMAIN2_HALF    = 20; // half-width of level-2 window in level-1 fine cell coords
 const SHIFT_THRESHOLD = 1;  // one cell: half a cell of rounding plus half a cell of hysteresis
+// Disks sit inside those windows. The margin leaves the 1D cubic (Eq. 38) a
+// couple of parent cells of real neighbours. Level 2 is the smaller disk.
+const DISK_RADIUS     = 16; // coarse cells
+const DISK2_RADIUS    = 16; // level-1 fine cells (8 coarse)
 
 // One axis, one cell. Refused when the step would enter the Dirichlet frame.
 function shiftToward(posX, posY, domain, gridW, gridH) {
@@ -73,7 +77,12 @@ runner.start(() => {
   function pushDomainLines(domains) {
     for (const domain of domains) {
       for (const seg of domain.worldBorderLines(bm)) {
-        guides.push({ color: 0x000000, type: 'guide', x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2 });
+        guides.push({
+          color: seg.dim ? 0x8899aa : 0x000000,
+          opacity: seg.dim ? 0.35 : 1,
+          type: 'guide',
+          x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2,
+        });
       }
       pushDomainLines(domain.domains);
     }
@@ -111,8 +120,9 @@ runner.start(() => {
     infoEl.innerHTML += "Phys Time: " + bm.t_delta + "<br>";
   });
 
-  // Dynamic domain placement: keep one fine domain per boat, with a level-2 domain inside.
-  // The window slides one parent cell per frame. A level-1 slide carries level 2.
+  // Dynamic domain placement: one reusable window per boat, a disk mask inside it,
+  // and a smaller level-2 disk carried with the level-1 window. The window still
+  // slides one parent cell per frame with hysteresis. A level-1 slide carries level 2.
   if (document.getElementById('amr').checked) getPlayers().forEach((player, index) => {
     const boatCx = bm.width/2  + player.x * bm.resolution;
     const boatCy = bm.height/2 + player.y * bm.resolution;
@@ -135,9 +145,12 @@ runner.start(() => {
       }
     }
 
+    // Level-1 disk follows the boat inside the window. The mask, not the rectangle, is the refined region.
+    const level1 = bm.domains[index];
+    level1.setDisk(boatCx, boatCy, DISK_RADIUS);
+
     // Level-2 domain, in level-1 fine cell coords. Skipped on a level-1 slide:
     // that slide already carried this window, and the boat's fine coordinate moved with it.
-    const level1 = bm.domains[index];
     const fx = 1 + (boatCx - level1.cx0) * 2;
     const fy = 1 + (boatCy - level1.cy0) * 2;
     if (level1.domains.length === 0) {
@@ -156,6 +169,7 @@ runner.start(() => {
         level1._rebuildInteriorCells();
       }
     }
+    if (level1.domains[0]) level1.domains[0].setDisk(fx, fy, DISK2_RADIUS);
   }); // end AMR block
 
   map.bm.physics_model_step();

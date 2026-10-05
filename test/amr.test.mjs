@@ -272,7 +272,7 @@ function shearStats(bm, domain) {
 		`ρ = ${landed.rho}, uy = ${landed.uy}`);
 }
 
-// --- 7. Diagnostic: coarse get_field_velocity is still unclamped. Not fixed here. ---
+// --- 7. Edge samples are clamped instead of reading off the lattice ---
 {
 	const bm = make(75, 75, 0);
 	const throwsAt = (x, y) => {
@@ -280,22 +280,25 @@ function shearStats(bm, domain) {
 		catch { return true; }
 	};
 	// A 5×5 wind sample of radius 2 around a boat on the south wall (y = -35.5)
-	// includes world y = -37.5. That index is off the grid and throws.
+	// includes world y = -37.5. That index is off the grid. Sampling pins it to
+	// the edge cell instead of throwing.
 	const southEdge = throwsAt(0, -37.5);
 	const northEdge = throwsAt(0, 37.5);
-	// Domain placed the way main.js places it for that boat: clamped to cell 1,
-	// so the off-grid sample is still on the coarse path.
+	const southSample = bm.get_field_velocity(0, -37.5);
+	const nanSample = bm.get_field_velocity(NaN, 0);
 	const boatCy = 75 / 2 + (-35.5);
 	const cy = Math.round(boatCy);
 	const cy0 = Math.max(1, cy - 20);
 	const cy1 = Math.min(74, cy + 20);
 	bm.addDomain(20, cy0, 55, cy1);
+	bm.domains[0].setDisk(37.5, boatCy, 16);
 	const southWithDomain = throwsAt(0, -37.5);
 	const boatItself = throwsAt(0, -35.5);
 	const inside = throwsAt(0, 0);
 	results.oob = { southEdge, northEdge, southWithDomain, boatItself, inside, cy0, cy1 };
-	console.log(`INFO  get_field_velocity OOB: south edge throws=${southEdge}, north edge throws=${northEdge}, south edge with wall-clamped domain throws=${southWithDomain}, boat on the wall throws=${boatItself}, interior sample throws=${inside}`);
-	check('sample inside a domain does not throw', !inside && !boatItself);
+	check('edge wind sample does not throw', !southEdge && !northEdge && !southWithDomain && !inside && !boatItself);
+	check('edge wind sample is finite', Number.isFinite(southSample.x) && Number.isFinite(southSample.y) && nanSample.x === 0 && nanSample.y === 0,
+		`south=(${southSample.x}, ${southSample.y}) nan=(${nanSample.x}, ${nanSample.y})`);
 }
 
 // --- 8. Scenario 0 stays on the autopilot heading with a settled speed ---
@@ -339,6 +342,7 @@ function shearStats(bm, domain) {
 			if (step.dcx || step.dcy) { bm.shiftDomain(0, step.dcx, step.dcy); shifted = true; }
 		}
 		const level1 = bm.domains[0];
+		level1.setDisk(boatCx, boatCy, 16);
 		const fx = 1 + (boatCx - level1.cx0) * 2, fy = 1 + (boatCy - level1.cy0) * 2;
 		if (level1.domains.length === 0) {
 			const fi = Math.round(fx), fj = Math.round(fy);
@@ -348,6 +352,7 @@ function shearStats(bm, domain) {
 			const step2 = toward(fx, fy, d2, level1.width, level1.height);
 			if (step2.dcx || step2.dcy) { d2.shiftBy(level1, step2.dcx, step2.dcy); level1._rebuildInteriorCells(); }
 		}
+		if (level1.domains[0]) level1.domains[0].setDisk(fx, fy, 16);
 		const a = Date.now();
 		bm.physics_model_step();
 		bmMs += Date.now() - a;
@@ -365,6 +370,32 @@ function shearStats(bm, domain) {
 		`TWS = ${boat.wind_speed.toFixed(2)}, max|u| = ${st.maxU.toExponential(2)}, bad = ${st.bad}`);
 	check('scenario 0 step stays cheap', stepMs < 12, `mean step ${stepMs.toFixed(2)} ms`);
 	check('scenario 0 keeps a single level-2 grid', bm.domains[0].domains.length === 1);
+	const boatCx = bm.width / 2 + boat.x, boatCy = bm.height / 2 + boat.y;
+	const underDisk = bm.domains[0].containsCoarse(boatCx, boatCy);
+	const fx = 1 + (boatCx - bm.domains[0].cx0) * 2, fy = 1 + (boatCy - bm.domains[0].cy0) * 2;
+	const underFine = bm.domains[0].domains[0] && bm.domains[0].domains[0].containsCoarse(fx, fy);
+	check('scenario 0 boat stays under both disks', underDisk && underFine,
+		`level1=${underDisk} level2=${underFine}`);
+	check('scenario 0 disks stay closed', !bm.domains[0].hasDiagonalOnlyContact()
+		&& !bm.domains[0].domains[0].hasDiagonalOnlyContact());
+	let maxCurl = 0, minS = Infinity, maxS = 0;
+	const d2 = bm.domains[0].domains[0];
+	for (let fj = 1; fj < d2.height - 1; fj++) {
+		for (let fi = 1; fi < d2.width - 1; fi++) {
+			if (d2._role[fi + fj * d2.width] !== 1) continue;
+			const c = d2.cells[fi + fj * d2.width];
+			const wx = d2.cx0_root + (fi - 1) * d2.dx - bm.width / 2;
+			const wy = d2.cy0_root + (fj - 1) * d2.dx - bm.height / 2;
+			if (Math.hypot(wx - boat.x, wy - boat.y) > 8) continue;
+			const speed = Math.hypot(c.ux, c.uy);
+			minS = Math.min(minS, speed);
+			maxS = Math.max(maxS, speed);
+			if (Number.isFinite(c.curl)) maxCurl = Math.max(maxCurl, Math.abs(c.curl));
+		}
+	}
+	results.scenario0.wake = { maxCurl, minS, maxS };
+	check('scenario 0 wake is visible under the disk', maxCurl > 0.02 && (maxS - minS) > 0.015,
+		`|curl| = ${maxCurl.toExponential(3)}, speed ${minS.toFixed(3)}–${maxS.toFixed(3)}`);
 }
 
 // --- 9. Sail momentum reaches the refined field and stays bounded ---
@@ -376,7 +407,9 @@ function shearStats(bm, domain) {
 	const uy0 = -0.15;
 	const bm = new Boltzmann(48, 48, 1, 90, 15, undefined, 1);
 	bm.addDomain(12, 12, 36, 36);
+	bm.domains[0].setDisk(24, 24, 8);
 	bm.domains[0].addDomain(16, 16, 48, 48);
+	bm.domains[0].domains[0].setDisk(25, 25, 6);
 	let j0 = 0;
 	for (const c of bm.cells) j0 += c.rho * (c.uy - uy0);
 	bm.apply_energy(0, 0, 0, 0.05);
@@ -405,7 +438,12 @@ function shearStats(bm, domain) {
 	// Same initial window main.js would place on the boat at (10, −9): the sail
 	// sits in the middle of level 2, not on the coarse grid outside it.
 	bm.addDomain(28, 9, 68, 49);
+	const boatCx0 = 75 / 2 + 10, boatCy0 = 75 / 2 - 9;
+	bm.domains[0].setDisk(boatCx0, boatCy0, 16);
 	bm.domains[0].addDomain(20, 20, 60, 60);
+	const fx0 = 1 + (boatCx0 - bm.domains[0].cx0) * 2;
+	const fy0 = 1 + (boatCy0 - bm.domains[0].cy0) * 2;
+	bm.domains[0].domains[0].setDisk(fx0, fy0, 16);
 	const N = 80;
 	for (let frame = 0; frame < N; frame++) {
 		if (frame === 1) boat.input_autopilot_enabled_toggle();
@@ -448,6 +486,181 @@ function shearStats(bm, domain) {
 	check('boat energy leaves a wake', maxCurl > 0.02 && (maxS - minS) > 0.015,
 		`near-boat |curl| = ${maxCurl.toExponential(3)}, speed ${minS.toFixed(3)}–${maxS.toFixed(3)}`);
 	check('boat wake stays bounded', bad === 0 && maxU < 1, `max|u| = ${maxU.toExponential(3)}, bad = ${bad}`);
+}
+
+// --- 10. Disk mask: closure, overlap, uniform walk, shear ---
+{
+	const bm = make(64, 64, 15);
+	bm.addDomain(8, 12, 48, 52);
+	const d = bm.domains[0];
+	let cx = 28, cy = 32;
+	d.setDisk(cx, cy, 10);
+	d.addDomain(22, 22, 62, 62);
+	const child = d.domains[0];
+	const fi = 1 + (cx - d.cx0) * 2;
+	const fj = 1 + (cy - d.cy0) * 2;
+	child.setDisk(fi, fj, 8);
+	const lines = d.worldBorderLines(bm);
+	const circle = lines.filter(s => !s.dim).length;
+	const stair = lines.filter(s => s.dim).length;
+	results.diskDraw = { circle, stair, mask: d.maskCount(), child: child.maskCount() };
+	check('disk outline is a circle plus a staircase', circle >= 32 && stair > 8,
+		`circle=${circle} stair=${stair}`);
+	check('closed disk has no diagonal-only contact', !d.hasDiagonalOnlyContact() && !child.hasDiagonalOnlyContact());
+	const counts = d.overlapCounts();
+	check('disk boundary classifies edge and corner nodes', counts.edge > 0 && counts.corner > 0 && counts.fluid > 0,
+		`fluid=${counts.fluid} edge=${counts.edge} corner=${counts.corner}`);
+	// Several centers, including half-cell offsets that rasterize checkerboard steps.
+	let closed = true;
+	for (const [ox, oy, r] of [[0, 0, 9], [0.5, 0.2, 11], [0.3, 0.7, 7.5], [1.2, -0.4, 13]]) {
+		d.setDisk(cx + ox, cy + oy, r);
+		if (d.hasDiagonalOnlyContact()) closed = false;
+	}
+	d.setDisk(cx, cy, 10);
+	check('closed mask stays free of diagonal contacts', closed);
+	const area = d.maskCount();
+	check('closure does not fill the window', area > 250 && area < 450, `mask cells = ${area}`);
+
+	const { ux, uy } = windOf(bm);
+	for (let i = 0; i < 20; i++) bm.physics_model_step();
+	const stat = maxDeviation(bm, ux, uy);
+	results.diskUniformStatic = stat;
+	check('uniform wind, static disk', stat.dr < 1e-12 && stat.du < 1e-12,
+		`|ρ−1| = ${stat.dr.toExponential(3)}, |u−uwind| = ${stat.du.toExponential(3)}`);
+
+	for (let i = 0; i < 8; i++) {
+		bm.shiftDomain(0, 1, 0);
+		cx += 1;
+		d.setDisk(cx, cy, 10);
+		const fi2 = 1 + (cx - d.cx0) * 2;
+		const fj2 = 1 + (cy - d.cy0) * 2;
+		child.setDisk(fi2, fj2, 8);
+		bm.physics_model_step();
+	}
+	const walked = maxDeviation(bm, ux, uy);
+	results.diskUniformWalk = walked;
+	check('uniform wind, walking disk', walked.dr < 1e-12 && walked.du < 1e-12,
+		`|ρ−1| = ${walked.dr.toExponential(3)}, |u−uwind| = ${walked.du.toExponential(3)}`);
+	check('walking disk stays closed', !d.hasDiagonalOnlyContact() && !child.hasDiagonalOnlyContact());
+	check('nested disk survived the walk', d.domains[0] === child);
+}
+
+{
+	// Pending sail kick survives a one-cell shift of a disk, then still sits on a fluid node.
+	const bm = make(48, 48, 0);
+	bm.addDomain(8, 8, 40, 40);
+	const d = bm.domains[0];
+	d.setDisk(24, 24, 8);
+	const fi = 1 + (24 - d.cx0) * 2;
+	const fj = 1 + (24 - d.cy0) * 2;
+	d.pendingInjections.push({ fi, fj, fx: 0, fy: 0.02 });
+	bm.shiftDomain(0, 1, 0);
+	d.setDisk(25, 24, 8);
+	const inj = d.pendingInjections[0];
+	results.pendingShift = inj;
+	check('pending injection survives a disk shift', d.pendingInjections.length === 1 && inj && d._isFluid(inj.fi, inj.fj),
+		inj ? `fi=${inj.fi} fj=${inj.fj} fluid=${d._isFluid(inj.fi, inj.fj)}` : 'missing');
+}
+
+{
+	// Two boats: union of masks, finest level wins, later sibling wins a tie.
+	const bm = make(64, 64, 0);
+	bm.addDomain(10, 16, 50, 56);
+	bm.addDomain(10, 16, 50, 56);
+	const a = bm.domains[0];
+	const b = bm.domains[1];
+	a.setDisk(28, 36, 8);
+	b.setDisk(34, 36, 8);
+	b.addDomain(20, 20, 60, 60);
+	const overlap = 31; // coarse cell in both disks, and inside b's level-2 window
+	const onlyA = 22;
+	const onlyB = 40;
+	b.domains[0].setDisk(1 + (overlap - b.cx0) * 2, 1 + (36 - b.cy0) * 2, 6);
+	results.overlap = {
+		a: a.levelAt(overlap, 36),
+		b: b.levelAt(overlap, 36),
+		aOwns: a._ownsWrite(overlap, 36),
+		bOwns: b._ownsWrite(overlap, 36),
+		onlyA: a._maskAt(onlyA, 36) && !b._maskAt(onlyA, 36),
+		onlyB: b._maskAt(onlyB, 36) && !a._maskAt(onlyB, 36),
+		sample: bm._finestDomain(overlap + 0.2, 36.2) === b,
+	};
+	check('overlap is the union of the two disks', results.overlap.onlyA && results.overlap.onlyB && a._maskAt(overlap, 36) && b._maskAt(overlap, 36));
+	check('finest disk wins the overlap', results.overlap.b === 2 && results.overlap.a === 1 && !results.overlap.aOwns && results.overlap.bOwns && results.overlap.sample,
+		JSON.stringify(results.overlap));
+	// Same level, no child: the later domain writes.
+	const bm2 = make(48, 48, 0);
+	bm2.addDomain(8, 8, 40, 40);
+	bm2.addDomain(8, 8, 40, 40);
+	bm2.domains[0].setDisk(22, 24, 6);
+	bm2.domains[1].setDisk(26, 24, 6);
+	const tie = 24;
+	check('same level, later disk writes', bm2.domains[1]._ownsWrite(tie, 24) && !bm2.domains[0]._ownsWrite(tie, 24)
+		&& bm2._finestDomain(tie + 0.1, 24.1) === bm2.domains[1]);
+}
+
+{
+	const ySample = 32;
+	const xSample = 24;
+	const bare = make(64, 64, 0);
+	const uxAt = imposeShear(bare);
+	for (let i = 0; i < 30; i++) bare.physics_model_step();
+	const bare30 = shearStats(bare, null);
+
+	function outsideDisk(bm, domain) {
+		let mass = 0, outRho = 0;
+		for (let y = 0; y < bm.height; y++) {
+			for (let x = 0; x < bm.width; x++) {
+				const c = bm.cells[x + y * bm.width];
+				mass += c.rho - 1;
+				if (!domain._maskAt(x, y)) outRho = Math.max(outRho, Math.abs(c.rho - 1));
+			}
+		}
+		return { mass, outRho };
+	}
+
+	const bm = make(64, 64, 0);
+	imposeShear(bm);
+	bm.addDomain(12, 16, 52, 56);
+	let cx = 32, cy = 36;
+	bm.domains[0].setDisk(cx, cy, 10);
+	bm.physics_model_step();
+	const ux1 = bm.cells[xSample + ySample * bm.width].ux;
+	const uxErr = Math.abs(ux1 - uxAt(ySample));
+	results.shearDiskUx1 = { ux: ux1, err: uxErr };
+	check('shear disk interior ux after 1 step', uxErr < 1e-4,
+		`ux = ${ux1.toExponential(6)}, |ux−analytic| = ${uxErr.toExponential(3)}`);
+
+	for (let i = 0; i < 29; i++) bm.physics_model_step();
+	const st = outsideDisk(bm, bm.domains[0]);
+	results.shearDiskStatic30 = st;
+	check('shear disk outside density after 30 steps', st.outRho < bare30.outRho * 1.05 + 2e-4,
+		`max |ρ−1| outside = ${st.outRho.toExponential(3)} (bare ${bare30.outRho.toExponential(3)})`);
+	check('shear disk mass drift after 30 steps', Math.abs(st.mass) < 0.02,
+		`Σ(ρ−1) = ${st.mass.toExponential(3)} (bare ${bare30.mass.toExponential(3)})`);
+
+	const walk = make(64, 64, 0);
+	imposeShear(walk);
+	walk.addDomain(8, 20, 48, 60);
+	let wcx = 28, wcy = 40;
+	walk.domains[0].setDisk(wcx, wcy, 10);
+	let walkOut = 0;
+	let walkMass = 0;
+	for (let i = 0; i < 10; i++) {
+		walk.shiftDomain(0, 1, 0);
+		wcx += 1;
+		walk.domains[0].setDisk(wcx, wcy, 10);
+		walk.physics_model_step();
+		const s = outsideDisk(walk, walk.domains[0]);
+		walkOut = Math.max(walkOut, s.outRho);
+		walkMass = s.mass;
+	}
+	results.shearDiskWalk = { walkOut, walkMass, bare: bare30.outRho };
+	// A flat edge on this shear stays within ~2e-4 of the bare run. The staircase
+	// is a longer interface, so the outside density sits a little higher (7.5e-4
+	// here) and still far under the old one-cell move, which reached 2.5e-3.
+	check('shear walking disk stays quiet', walkOut < 1e-3 && Math.abs(walkMass) < 0.03,
+		`max |ρ−1| outside = ${walkOut.toExponential(3)}, Σ(ρ−1) = ${walkMass.toExponential(3)} (bare ${bare30.outRho.toExponential(3)})`);
 }
 
 function fieldStats(bm) {

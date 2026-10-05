@@ -305,10 +305,13 @@ function addNeq(cell, acc) {
 // Adds momentum (fx, fy) = ρ Δu and leaves f_neq untouched. setEquil would replace
 // the populations and stack a new equilibrium on top of the old velocity.
 function addMomentum(cell, fx, fy) {
+	if (!cell || !Number.isFinite(fx) || !Number.isFinite(fy)) return;
 	const rho = cell.rho;
-	if (!(rho > 1e-30) || (fx === 0 && fy === 0)) return;
+	if (!(rho > 1e-30) || !Number.isFinite(rho) || (fx === 0 && fy === 0)) return;
+	if (!Number.isFinite(cell.ux) || !Number.isFinite(cell.uy)) return;
 	const ux = cell.ux, uy = cell.uy;
 	const dux = fx / rho, duy = fy / rho;
+	if (!Number.isFinite(ux + dux) || !Number.isFinite(uy + duy)) return;
 	const a = computeEquil(ux, uy, rho);
 	const b = computeEquil(ux + dux, uy + duy, rho);
 	cell.f0  += b.f0  - a.f0;
@@ -349,17 +352,88 @@ function stripNeqAcc(acc) {
 	}
 }
 
+// Overlap roles for fine nodes. Edge and corner are the mask-boundary ghosts
+// the existing 1D / 2D cubic writes; fluid nodes are the ones the fine step advances.
+const ROLE_FLUID = 1;
+const ROLE_EDGE = 2;
+const ROLE_CORNER = 3;
+
+function masksEqual(a, b) {
+	if (!a || !b || a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+	return true;
+}
+
+// Rasterize a disk on the parent lattice and close diagonal-only contacts.
+// A 2×2 that is only a checkerboard has no shared edge, so the 1D cubic
+// (Eq. 38/39) would have nothing to run along. Promoting the empty cell
+// closer to the disk center removes that contact. Cells `allow` rejects
+// stay empty, so a nested disk cannot grow outside its parent mask.
+function buildClosedDiskMask(cx0, cy0, cx1, cy1, centerX, centerY, radius, allow) {
+	const cw = cx1 - cx0;
+	const ch = cy1 - cy0;
+	const mask = new Uint8Array(cw * ch);
+	const r2 = radius * radius;
+	for (let ly = 0; ly < ch; ly++) {
+		for (let lx = 0; lx < cw; lx++) {
+			const cx = cx0 + lx;
+			const cy = cy0 + ly;
+			if (allow && !allow(cx, cy)) continue;
+			const dx = cx + 0.5 - centerX;
+			const dy = cy + 0.5 - centerY;
+			if (dx * dx + dy * dy <= r2) mask[lx + ly * cw] = 1;
+		}
+	}
+	const at = (x, y) => (x >= 0 && y >= 0 && x < cw && y < ch) ? mask[x + y * cw] : 0;
+	let guard = cw * ch + 1;
+	while (guard-- > 0) {
+		let changed = false;
+		for (let y = 0; y < ch - 1; y++) {
+			for (let x = 0; x < cw - 1; x++) {
+				const a = at(x, y), b = at(x + 1, y), c = at(x, y + 1), d = at(x + 1, y + 1);
+				let holes = null;
+				if (a && d && !b && !c) holes = [[x + 1, y], [x, y + 1]];
+				else if (b && c && !a && !d) holes = [[x, y], [x + 1, y + 1]];
+				if (!holes) continue;
+				let best = null, bestD = Infinity;
+				for (let h = 0; h < holes.length; h++) {
+					const hx = holes[h][0], hy = holes[h][1];
+					const cx = cx0 + hx, cy = cy0 + hy;
+					if (allow && !allow(cx, cy)) continue;
+					const ddx = cx + 0.5 - centerX;
+					const ddy = cy + 0.5 - centerY;
+					const dist = ddx * ddx + ddy * ddy;
+					if (dist < bestD) { bestD = dist; best = holes[h]; }
+				}
+				if (!best) continue;
+				mask[best[0] + best[1] * cw] = 1;
+				changed = true;
+			}
+		}
+		if (!changed) break;
+	}
+	return mask;
+}
+
 
 // Multi-domain AMR (Lagrava §3.5): a flat rectangular fine grid at 2× parent resolution.
 // cx0, cy0, cx1, cy1 are corners in the PARENT grid's cell coordinates (exclusive on cx1/cy1).
+// The rectangle is the reusable allocation. setDisk() turns on a per-cell mask so the
+// refined region is a circle on that lattice; null mask keeps the whole rectangle.
 // parent may be a Boltzmann instance (level-1 domain) or another RefinementDomain (level N+1).
 // Each domain runs 2 fine sub-steps per 1 parent sub-step with its own omega_f (Eq. 24).
 // Coarse↔fine coupling: Eq. 29 (parent→fine, non-eq rescaling) and Eq. 30
 // (fine→parent). Eq. 33 filters f_neq only, on a centered fine-grid stencil;
 // ρ and u are taken from the coincident fine node and are not filtered.
+// With a mask, that coupling runs on the staircase boundary (edge ghosts use the
+// 1D cubic, corner ghosts the separable 2D cubic) instead of only the rectangle ring.
 // Temporal interpolation (Section 3.5): sub-step 1 uses the t-state ghost boundary
 // (saved before the parent step); sub-step 2 rebuilds f from ρ, u and f_neq
 // interpolated between t and t+1.
+//
+// Overlap rule (two boats): the refined region is the union of the masks. Where
+// disks overlap, the finest level writes the parent node and is the sampler /
+// forcer. Same level: the later domain in `domains` wins, so there is one writer.
 class RefinementDomain {
 
 	constructor(parent, cx0, cy0, cx1, cy1) {
@@ -456,24 +530,19 @@ class RefinementDomain {
 			}
 		}
 
-		// Flat list of ghost border cells for temporal interpolation.
-		// These are the cells at fi=0, fi=width-1, fj=0, fj=height-1.
-		this.ghostCells = [];
-		for (let fi = 0; fi < this.width; fi++) {
-			this.ghostCells.push(this.cells[fi + 0                    * this.width]);
-			this.ghostCells.push(this.cells[fi + (this.height-1)      * this.width]);
-		}
-		for (let fj = 1; fj < this.height - 1; fj++) {
-			this.ghostCells.push(this.cells[0               + fj * this.width]);
-			this.ghostCells.push(this.cells[(this.width-1)  + fj * this.width]);
-		}
-
-		// Snapshot buffer per ghost: 9 populations + rho, ux, uy.
-		// Sub-step 1 restores t; sub-step 2 interpolates ρ, u and f_neq (§3.5).
-		this.ghostSnapshot = new Float64Array(this.ghostCells.length * 12);
+		// mask === null: every cell of the rectangle is refined (steps 1–5).
+		// setDisk() installs the per-cell disk inside this same allocation.
+		this.mask = null;
+		this.disk = null;
+		this._role = null;
+		this.fluidCells = this._allInteriorCells;
+		this._ghostLoc = [];
 
 		// Energy injections from apply_energy(), re-applied before each fine sub-step.
 		this.pendingInjections = [];
+
+		// Ghost ring + fluid set. With no mask the ghosts are the rectangular border.
+		this._classifyNodes();
 	}
 
 	// Section 3.5 (Lagrava): coarse→fine injection, 2 fine sub-steps, fine→coarse averaging.
@@ -483,14 +552,15 @@ class RefinementDomain {
 	step(parent) {
 		// Sub-step 1: restore t-state ghost boundary, inject energy, run.
 		// Inject before the step so the perturbation is present when collide runs.
-		// _allInteriorCells includes nodes covered by a child. Those nodes are
-		// collided (and streamed) so neighbours pull post-collision populations;
-		// the child then overwrites them in averageToCoarse.
+		// fluidCells is every node inside the mask (the whole rectangle when no
+		// disk is set), including nodes a child will overwrite. Colliding them
+		// lets a neighbour pull post-collision populations; averageToCoarse
+		// then replaces the masked parent nodes.
 		for (const inj of this.pendingInjections) {
 			this._applyForceFineCell(inj.fi, inj.fj, inj.fx, inj.fy);
 		}
 		this._restoreGhostFromSnapshot();
-		collideAndStream(this._allInteriorCells, this.omega_f);
+		collideAndStream(this.fluidCells, this.omega_f);
 
 		// Run child domains for this sub-interval (this domain is now at t+½)
 		for (const child of this.domains) {
@@ -507,7 +577,7 @@ class RefinementDomain {
 		for (const inj of this.pendingInjections) {
 			this._applyForceFineCell(inj.fi, inj.fj, inj.fx, inj.fy);
 		}
-		collideAndStream(this._allInteriorCells, this.omega_f);
+		collideAndStream(this.fluidCells, this.omega_f);
 
 		// Run child domains for this sub-interval (this domain is now at t+1)
 		for (const child of this.domains) {
@@ -598,13 +668,9 @@ class RefinementDomain {
 	// cx = cx0 + (fi-1)*0.5, cy = cy0 + (fj-1)*0.5. Cells at half-integer positions use
 	// Eq. 38 (centered 4-point) or Eq. 39 (one-sided 3-point) along each axis.
 	injectFromCoarse(parent) {
-		for (let fi = 0; fi < this.width; fi++) {
-			this._injectGhostCell(parent, fi, 0);
-			this._injectGhostCell(parent, fi, this.height - 1);
-		}
-		for (let fj = 1; fj < this.height - 1; fj++) {
-			this._injectGhostCell(parent, 0, fj);
-			this._injectGhostCell(parent, this.width - 1, fj);
+		const locs = this._ghostLoc;
+		for (let k = 0; k < locs.length; k++) {
+			this._injectGhostCell(parent, locs[k].fi, locs[k].fj);
 		}
 	}
 
@@ -706,6 +772,9 @@ class RefinementDomain {
 	averageToCoarse(parent) {
 		for (let cy = this.cy0; cy < this.cy1; cy++) {
 			for (let cx = this.cx0; cx < this.cx1; cx++) {
+				if (!this._maskAt(cx, cy)) continue;
+				// Union of masks; finest level (else the later sibling) writes.
+				if (!this._ownsWrite(cx, cy)) continue;
 				this._restrictCell(parent, cx, cy);
 			}
 		}
@@ -823,9 +892,11 @@ class RefinementDomain {
 		const dj = this._indexDelta(rootDy);
 		for (let cy = this.cy0; cy < this.cy1; cy++) {
 			for (let cx = this.cx0; cx < this.cx1; cx++) {
+				if (!this._maskAt(cx, cy)) continue;
 				const fi = 1 + (cx - this.cx0) * 2;
 				const fj = 1 + (cy - this.cy0) * 2;
 				if (this._indexKept(fi, di, this.width) && this._indexKept(fj, dj, this.height)) continue;
+				if (!this._ownsWrite(cx, cy)) continue;
 				this._restrictCell(parent, cx, cy);
 			}
 		}
@@ -916,6 +987,49 @@ class RefinementDomain {
 			}
 		}
 		this.pendingInjections = kept;
+		// Mask bits follow the parcels. Barrier flags are re-read from the parent
+		// so a slid window does not keep the flag of the cell it used to cover.
+		this._slideMask(di, dj, moveOrigin);
+		this._refreshBarriers(parent);
+		this._classifyNodes();
+		this._retargetInjections();
+	}
+
+	// Storage slides by (di, dj) fine nodes, which is (di/2, dj/2) parent cells.
+	// next[local] = old[local + delta] keeps each mask bit on the same world cell.
+	// The disk center is a parent coordinate: it is unchanged when this window's
+	// own origin moves, and it follows the parent index change when a parent slide
+	// carries this grid (moveOrigin false).
+	_slideMask(di, dj, moveOrigin) {
+		if (!this.mask) return;
+		const dpx = Math.round(di / 2);
+		const dpy = Math.round(dj / 2);
+		if (!dpx && !dpy) return;
+		const cw = this.cx1 - this.cx0;
+		const ch = this.cy1 - this.cy0;
+		const next = new Uint8Array(cw * ch);
+		for (let ly = 0; ly < ch; ly++) {
+			const oy = ly + dpy;
+			if (oy < 0 || oy >= ch) continue;
+			for (let lx = 0; lx < cw; lx++) {
+				const ox = lx + dpx;
+				if (ox < 0 || ox >= cw) continue;
+				next[lx + ly * cw] = this.mask[ox + oy * cw];
+			}
+		}
+		this.mask = next;
+		if (this.disk && !moveOrigin) {
+			this.disk.cx -= dpx;
+			this.disk.cy -= dpy;
+		}
+	}
+
+	_refreshBarriers(parent) {
+		for (let fj = 0; fj < this.height; fj++) {
+			for (let fi = 0; fi < this.width; fi++) {
+				this._setBarrierFromParent(parent, fi, fj);
+			}
+		}
 	}
 
 	// Translate a child onto (cx0, cy0) one parent cell at a time. The rectangle size
@@ -949,9 +1063,11 @@ class RefinementDomain {
 
 	// Paint fine cells onto the shared texture, then recursively paint child domains on top.
 	// Uses cx0_root + (fi-1)*dx for position and dx for size — works at any refinement depth.
+	// Nodes outside the disk are left to the parent paint, so the staircase shows.
 	paintTexture(boltzmann, plot_type, contrast) {
 		for (let fj = 1; fj < this.height - 1; fj++) {
 			for (let fi = 1; fi < this.width - 1; fi++) {
+				if (this._role && this._role[fi + fj * this.width] !== ROLE_FLUID) continue;
 				const cell = this.cells[fi + fj * this.width];
 				const color = cell.calculate_color(plot_type, contrast);
 				const cx = this.cx0_root + (fi - 1) * this.dx;
@@ -964,42 +1080,308 @@ class RefinementDomain {
 		}
 	}
 
-	// Returns the domain boundary as four world-space line segments {x1,y1,x2,y2}.
-	// Uses cx0_root/cy0_root and dx — works at any refinement depth.
+	// Parent-cell coordinate → root coarse coordinate. Integer parent cells land
+	// on the node the rectangle already uses for its corners.
+	_rootOfParentCoord(c) {
+		return this.cx0_root + (c - this.cx0) * (this.dx * 2);
+	}
+
+	// Smooth circle of the disk, plus the dim staircase of mask edges.
+	// No disk: the four rectangle segments, as before.
 	worldBorderLines(boltzmann) {
-		const cx1_root = this.cx0_root + (this.width  - 2) * this.dx;
-		const cy1_root = this.cy0_root + (this.height - 2) * this.dx;
 		const toWorld = (cx, cy) => ({
 			x: (cx - boltzmann.width  / 2) / boltzmann.resolution,
 			y: (cy - boltzmann.height / 2) / boltzmann.resolution,
 		});
-		const tl = toWorld(this.cx0_root, this.cy0_root);
-		const tr = toWorld(cx1_root,      this.cy0_root);
-		const br = toWorld(cx1_root,      cy1_root);
-		const bl = toWorld(this.cx0_root, cy1_root);
-		return [
-			{ x1: tl.x, y1: tl.y, x2: tr.x, y2: tr.y },
-			{ x1: tr.x, y1: tr.y, x2: br.x, y2: br.y },
-			{ x1: br.x, y1: br.y, x2: bl.x, y2: bl.y },
-			{ x1: bl.x, y1: bl.y, x2: tl.x, y2: tl.y },
-		];
+		if (!this.disk) {
+			const cx1_root = this.cx0_root + (this.width  - 2) * this.dx;
+			const cy1_root = this.cy0_root + (this.height - 2) * this.dx;
+			const tl = toWorld(this.cx0_root, this.cy0_root);
+			const tr = toWorld(cx1_root,      this.cy0_root);
+			const br = toWorld(cx1_root,      cy1_root);
+			const bl = toWorld(this.cx0_root, cy1_root);
+			return [
+				{ x1: tl.x, y1: tl.y, x2: tr.x, y2: tr.y },
+				{ x1: tr.x, y1: tr.y, x2: br.x, y2: br.y },
+				{ x1: br.x, y1: br.y, x2: bl.x, y2: bl.y },
+				{ x1: bl.x, y1: bl.y, x2: tl.x, y2: tl.y },
+			];
+		}
+		const segs = [];
+		const n = 64;
+		const ccx = this._rootOfParentCoord(this.disk.cx);
+		const ccy = this._rootOfParentCoord(this.disk.cy);
+		const rr = this.disk.radius * this.dx * 2;
+		for (let i = 0; i < n; i++) {
+			const a0 = (i / n) * Math.PI * 2;
+			const a1 = ((i + 1) / n) * Math.PI * 2;
+			const p0 = toWorld(ccx + Math.cos(a0) * rr, ccy + Math.sin(a0) * rr);
+			const p1 = toWorld(ccx + Math.cos(a1) * rr, ccy + Math.sin(a1) * rr);
+			segs.push({ x1: p0.x, y1: p0.y, x2: p1.x, y2: p1.y, dim: false });
+		}
+		if (this.mask) {
+			const cw = this.cx1 - this.cx0;
+			for (let ly = 0; ly < this.cy1 - this.cy0; ly++) {
+				for (let lx = 0; lx < cw; lx++) {
+					if (this.mask[lx + ly * cw] !== 1) continue;
+					const cx = this.cx0 + lx;
+					const cy = this.cy0 + ly;
+					const x0 = this._rootOfParentCoord(cx);
+					const y0 = this._rootOfParentCoord(cy);
+					const x1 = this._rootOfParentCoord(cx + 1);
+					const y1 = this._rootOfParentCoord(cy + 1);
+					const edge = (xa, ya, xb, yb) => {
+						const p = toWorld(xa, ya);
+						const q = toWorld(xb, yb);
+						segs.push({ x1: p.x, y1: p.y, x2: q.x, y2: q.y, dim: true });
+					};
+					if (!this._maskAt(cx, cy + 1)) edge(x0, y1, x1, y1);
+					if (!this._maskAt(cx, cy - 1)) edge(x0, y0, x1, y0);
+					if (!this._maskAt(cx + 1, cy)) edge(x1, y0, x1, y1);
+					if (!this._maskAt(cx - 1, cy)) edge(x0, y0, x0, y1);
+				}
+			}
+		}
+		return segs;
 	}
 
-	// Returns true when a continuous coarse coordinate falls inside this domain.
+	// True when the parent cell under (cx, cy) is refined. A null mask is the
+	// whole rectangle. Continuous coordinates use the cell that owns them:
+	// the half-open square [cx, cx+1) × [cy, cy+1).
+	_maskAt(cx, cy) {
+		if (cx < this.cx0 || cy < this.cy0 || cx >= this.cx1 || cy >= this.cy1) return false;
+		if (!this.mask) return true;
+		const cw = this.cx1 - this.cx0;
+		return this.mask[(cx - this.cx0) + (cy - this.cy0) * cw] === 1;
+	}
+
+	// A level-2 cell is a fine index of its parent. It may be refined only
+	// where that parent node sits inside the parent disk.
+	_parentAllows(cx, cy) {
+		const parent = this.parent;
+		if (!(parent instanceof RefinementDomain) || !parent.mask) return true;
+		const px = parent.cx0 + (cx - 1) * 0.5;
+		const py = parent.cy0 + (cy - 1) * 0.5;
+		if (!Number.isFinite(px) || !Number.isFinite(py)) return false;
+		return parent._maskAt(Math.floor(px), Math.floor(py));
+	}
+
+	// Install a disk centered at (centerX, centerY) with `radius` in parent cells.
+	// The rectangle allocation does not change. Cells that leave the mask are
+	// restricted once; cells that enter are filled from the parent (Eq. 29).
+	setDisk(centerX, centerY, radius) {
+		if (!Number.isFinite(centerX) || !Number.isFinite(centerY) || !(radius > 0)) return;
+		const next = buildClosedDiskMask(
+			this.cx0, this.cy0, this.cx1, this.cy1,
+			centerX, centerY, radius,
+			(cx, cy) => this._parentAllows(cx, cy),
+		);
+		this.disk = { cx: centerX, cy: centerY, radius };
+		if (this.mask && masksEqual(this.mask, next)) return;
+
+		const cw = this.cx1 - this.cx0;
+		const parent = this.parent;
+		const entered = [];
+		for (let cy = this.cy0; cy < this.cy1; cy++) {
+			for (let cx = this.cx0; cx < this.cx1; cx++) {
+				const on = next[(cx - this.cx0) + (cy - this.cy0) * cw] === 1;
+				const wasOn = this._maskAt(cx, cy);
+				if (wasOn && !on && this._ownsWrite(cx, cy)) this._restrictCell(parent, cx, cy);
+				else if (!wasOn && on) entered.push({ cx, cy });
+			}
+		}
+		this.mask = next;
+		for (let i = 0; i < entered.length; i++) {
+			this._injectCoarseCell(parent, entered[i].cx, entered[i].cy);
+		}
+		this._classifyNodes();
+		this._retargetInjections();
+	}
+
+	_injectCoarseCell(parent, cx, cy) {
+		const fi0 = 1 + (cx - this.cx0) * 2;
+		const fj0 = 1 + (cy - this.cy0) * 2;
+		for (let dj = 0; dj <= 1; dj++) {
+			for (let di = 0; di <= 1; di++) {
+				const fi = fi0 + di;
+				const fj = fj0 + dj;
+				if (fi >= 0 && fj >= 0 && fi < this.width && fj < this.height) {
+					this._injectGhostCell(parent, fi, fj);
+				}
+			}
+		}
+	}
+
+	// Fluid nodes lie in a masked cell's square [cx, cx+1) × [cy, cy+1).
+	// Every other node that streams into one of those is a ghost: edge (1D cubic
+	// or a coincident copy) or corner (both axes half-integer, separable 2D cubic).
+	// A null mask reproduces the old interior set and the rectangular ghost ring.
+	_classifyNodes() {
+		const w = this.width;
+		const h = this.height;
+		const role = new Uint8Array(w * h);
+		const fluidAt = (fi, fj) => {
+			const px = this.cx0 + (fi - 1) * 0.5;
+			const py = this.cy0 + (fj - 1) * 0.5;
+			return this._maskAt(Math.floor(px), Math.floor(py));
+		};
+		for (let fj = 0; fj < h; fj++) {
+			for (let fi = 0; fi < w; fi++) {
+				if (fluidAt(fi, fj)) role[fi + fj * w] = ROLE_FLUID;
+			}
+		}
+		const fluid = [];
+		const ghosts = [];
+		const locs = [];
+		for (let fj = 0; fj < h; fj++) {
+			for (let fi = 0; fi < w; fi++) {
+				const k = fi + fj * w;
+				if (role[k] === ROLE_FLUID) {
+					fluid.push(this.cells[k]);
+					continue;
+				}
+				let touch = false;
+				for (let dj = -1; dj <= 1 && !touch; dj++) {
+					for (let di = -1; di <= 1; di++) {
+						if (!di && !dj) continue;
+						const ni = fi + di;
+						const nj = fj + dj;
+						if (ni < 0 || nj < 0 || ni >= w || nj >= h) continue;
+						if (role[ni + nj * w] === ROLE_FLUID) { touch = true; break; }
+					}
+				}
+				if (!touch) continue;
+				const halfX = (fi % 2 === 0);
+				const halfY = (fj % 2 === 0);
+				role[k] = (halfX && halfY) ? ROLE_CORNER : ROLE_EDGE;
+				ghosts.push(this.cells[k]);
+				locs.push({ fi, fj });
+			}
+		}
+		this._role = role;
+		this.fluidCells = fluid;
+		this.ghostCells = ghosts;
+		this._ghostLoc = locs;
+		// Snapshot buffer per ghost: 9 populations + rho, ux, uy.
+		// Sub-step 1 restores t; sub-step 2 interpolates ρ, u and f_neq (§3.5).
+		this.ghostSnapshot = new Float64Array(ghosts.length * 12);
+	}
+
+	_isFluid(fi, fj) {
+		if (fi < 0 || fj < 0 || fi >= this.width || fj >= this.height || !this._role) return false;
+		return this._role[fi + fj * this.width] === ROLE_FLUID;
+	}
+
+	_nearestFluidCoincident(fi, fj) {
+		let best = null;
+		let bestD = Infinity;
+		const w = this.width;
+		for (let j = 1; j < this.height - 1; j += 2) {
+			for (let i = 1; i < w - 1; i += 2) {
+				if (this._role[i + j * w] !== ROLE_FLUID) continue;
+				const d = (i - fi) * (i - fi) + (j - fj) * (j - fj);
+				if (d < bestD) { bestD = d; best = { fi: i, fj: j }; }
+			}
+		}
+		return best;
+	}
+
+	_retargetInjections() {
+		if (!this.pendingInjections.length) return;
+		const kept = [];
+		for (const inj of this.pendingInjections) {
+			let fi = inj.fi;
+			let fj = inj.fj;
+			if (!this._isFluid(fi, fj)) {
+				const alt = this._nearestFluidCoincident(fi, fj);
+				if (!alt) continue;
+				fi = alt.fi;
+				fj = alt.fj;
+			}
+			kept.push({ fi, fj, fx: inj.fx, fy: inj.fy });
+		}
+		this.pendingInjections = kept;
+	}
+
+	// 0 outside the mask, 1 on this disk only, higher when a nested disk covers it.
+	levelAt(cx, cy) {
+		if (!this.containsCoarse(cx, cy)) return 0;
+		const fi = 1 + (cx - this.cx0) * 2;
+		const fj = 1 + (cy - this.cy0) * 2;
+		let level = 1;
+		for (const child of this.domains) {
+			const cl = child.levelAt(fi, fj);
+			if (cl > 0 && cl + 1 > level) level = cl + 1;
+		}
+		return level;
+	}
+
+	// Finest overlapping disk writes. Same level: the later sibling writes.
+	_ownsWrite(cx, cy) {
+		const siblings = this.parent && this.parent.domains;
+		if (!siblings) return true;
+		const mine = this.levelAt(cx, cy);
+		if (mine <= 0) return false;
+		const idx = siblings.indexOf(this);
+		for (let i = 0; i < siblings.length; i++) {
+			if (i === idx) continue;
+			const other = siblings[i].levelAt(cx, cy);
+			if (other > mine || (other === mine && i > idx)) return false;
+		}
+		return true;
+	}
+
+	// True when some 2×2 in the mask touches only on a diagonal.
+	hasDiagonalOnlyContact() {
+		if (!this.mask) return false;
+		const cw = this.cx1 - this.cx0;
+		const ch = this.cy1 - this.cy0;
+		for (let y = 0; y < ch - 1; y++) {
+			for (let x = 0; x < cw - 1; x++) {
+				const a = this.mask[x + y * cw];
+				const b = this.mask[x + 1 + y * cw];
+				const c = this.mask[x + (y + 1) * cw];
+				const d = this.mask[x + 1 + (y + 1) * cw];
+				if ((a && d && !b && !c) || (b && c && !a && !d)) return true;
+			}
+		}
+		return false;
+	}
+
+	overlapCounts() {
+		let fluid = 0, edge = 0, corner = 0;
+		const role = this._role;
+		if (!role) return { fluid, edge, corner };
+		for (let i = 0; i < role.length; i++) {
+			if (role[i] === ROLE_FLUID) fluid++;
+			else if (role[i] === ROLE_EDGE) edge++;
+			else if (role[i] === ROLE_CORNER) corner++;
+		}
+		return { fluid, edge, corner };
+	}
+
+	maskCount() {
+		if (!this.mask) return (this.cx1 - this.cx0) * (this.cy1 - this.cy0);
+		let n = 0;
+		for (let i = 0; i < this.mask.length; i++) if (this.mask[i]) n++;
+		return n;
+	}
+
+	// Returns true when a continuous parent coordinate falls inside the mask.
 	containsCoarse(cx_cont, cy_cont) {
-		return cx_cont >= this.cx0 && cx_cont < this.cx1 &&
-		       cy_cont >= this.cy0 && cy_cont < this.cy1;
+		if (!Number.isFinite(cx_cont) || !Number.isFinite(cy_cont)) return false;
+		if (cx_cont < this.cx0 || cy_cont < this.cy0 || cx_cont >= this.cx1 || cy_cont >= this.cy1) return false;
+		return this._maskAt(Math.floor(cx_cont), Math.floor(cy_cont));
 	}
 
 	// Bilinear interpolation of fine-grid velocity at a coordinate in the PARENT's cell space.
-	// cx_cont/cy_cont are in parent cell coords; converted to continuous fine index internally.
-	// Delegates to child domains if the point falls inside one (recursive).
+	// Delegates to the finest child disk that contains the point.
 	getVelocityAt(cx_cont, cy_cont) {
+		if (!Number.isFinite(cx_cont) || !Number.isFinite(cy_cont)) return { x: 0, y: 0 };
 		const fi_f = 1 + (cx_cont - this.cx0) * 2;
 		const fj_f = 1 + (cy_cont - this.cy0) * 2;
-		for (const child of this.domains) {
-			if (child.containsCoarse(fi_f, fj_f)) return child.getVelocityAt(fi_f, fj_f);
-		}
+		const child = this._finestChild(fi_f, fj_f);
+		if (child) return child.getVelocityAt(fi_f, fj_f);
 		const fi0 = Math.max(1, Math.min(this.width  - 2, Math.floor(fi_f)));
 		const fj0 = Math.max(1, Math.min(this.height - 2, Math.floor(fj_f)));
 		const fi1 = Math.min(this.width  - 2, fi0 + 1);
@@ -1010,29 +1392,44 @@ class RefinementDomain {
 		const c10 = this.cells[fi1 + fj0 * this.width];
 		const c01 = this.cells[fi0 + fj1 * this.width];
 		const c11 = this.cells[fi1 + fj1 * this.width];
+		if (!c00 || !c10 || !c01 || !c11) return { x: 0, y: 0 };
 		const vx = c00.ux*(1-hf)*(1-vf) + c10.ux*hf*(1-vf) + c01.ux*(1-hf)*vf + c11.ux*hf*vf;
 		const vy = c00.uy*(1-hf)*(1-vf) + c10.uy*hf*(1-vf) + c01.uy*(1-hf)*vf + c11.uy*hf*vf;
+		if (!Number.isFinite(vx) || !Number.isFinite(vy)) return { x: 0, y: 0 };
 		return { x: vx / 4, y: vy / 4 };
 	}
 
+	_finestChild(cx, cy) {
+		let best = null;
+		let bestLevel = 0;
+		for (const child of this.domains) {
+			const level = child.levelAt(cx, cy);
+			if (level > 0 && level >= bestLevel) { best = child; bestLevel = level; }
+		}
+		return best;
+	}
+
 	// Apply an energy impulse at a coordinate in the PARENT's cell space.
-	// Delegates to the deepest child domain that contains the point (recursive),
-	// so energy always goes to the finest available grid level.
+	// Delegates to the finest child disk that contains the point.
 	// The impulse is stored and added once per fine substep (exact difference),
 	// on the coincident node restriction will copy. It is not applied here:
 	// an immediate setEquil stacked on top of the per-substep kicks (5× on a
 	// nested grid) and wiped f_neq.
 	applyEnergyAt(cx_cont, cy_cont, fx, fy) {
+		if (!Number.isFinite(cx_cont) || !Number.isFinite(cy_cont)) return;
+		if (!Number.isFinite(fx) || !Number.isFinite(fy)) return;
 		const fi_f = 1 + (cx_cont - this.cx0) * 2;
 		const fj_f = 1 + (cy_cont - this.cy0) * 2;
-		for (const child of this.domains) {
-			if (child.containsCoarse(fi_f, fj_f)) {
-				child.applyEnergyAt(fi_f, fj_f, fx, fy);
-				return;
-			}
+		const child = this._finestChild(fi_f, fj_f);
+		if (child) { child.applyEnergyAt(fi_f, fj_f, fx, fy); return; }
+		let fi = snapToNode(Math.max(1, Math.min(this.width  - 2, Math.round(fi_f))), this.width);
+		let fj = snapToNode(Math.max(1, Math.min(this.height - 2, Math.round(fj_f))), this.height);
+		if (!this._isFluid(fi, fj)) {
+			const alt = this._nearestFluidCoincident(fi, fj);
+			if (!alt) return;
+			fi = alt.fi;
+			fj = alt.fj;
 		}
-		const fi = snapToNode(Math.max(1, Math.min(this.width  - 2, Math.round(fi_f))), this.width);
-		const fj = snapToNode(Math.max(1, Math.min(this.height - 2, Math.round(fj_f))), this.height);
 		this.pendingInjections.push({ fi, fj, fx, fy });
 	}
 
@@ -1277,17 +1674,26 @@ export class Boltzmann {
 		}
 	}
 
+	// Finest disk that covers this parent coordinate. Same level: the later
+	// domain wins, matching _ownsWrite. See the overlap rule on RefinementDomain.
+	_finestDomain(cx, cy) {
+		let best = null;
+		let bestLevel = 0;
+		for (let d = 0; d < this.domains.length; d++) {
+			const level = this.domains[d].levelAt(cx, cy);
+			if (level > 0 && level >= bestLevel) { best = this.domains[d]; bestLevel = level; }
+		}
+		return best;
+	}
+
 	// Apply a force vector (fx, fy) to the fluid at world position (wx, wy).
-	// Routes to the finest domain that contains the point.
+	// Routes to the finest mask that contains the point, not the rectangle alone.
 	apply_energy(wx, wy, fx, fy) {
+		if (!Number.isFinite(wx) || !Number.isFinite(wy) || !Number.isFinite(fx) || !Number.isFinite(fy)) return;
 		const cx_cont = this.width/2  + wx * this.resolution;
 		const cy_cont = this.height/2 + wy * this.resolution;
-		for (let d = 0; d < this.domains.length; d++) {
-			if (this.domains[d].containsCoarse(cx_cont, cy_cont)) {
-				this.domains[d].applyEnergyAt(cx_cont, cy_cont, fx, fy);
-				return;
-			}
-		}
+		const best = this._finestDomain(cx_cont, cy_cont);
+		if (best) { best.applyEnergyAt(cx_cont, cy_cont, fx, fy); return; }
 		const x = Math.max(1, Math.min(this.width  - 2, Math.round(cx_cont)));
 		const y = Math.max(1, Math.min(this.height - 2, Math.round(cy_cont)));
 		this.apply_force_to_cell(x, y, fx, fy);
@@ -1296,6 +1702,8 @@ export class Boltzmann {
 	// Distribute a total force (fx, fy) evenly along a world-space line segment.
 	// Steps at the finest grid cell size so every cell along the sail span is hit once.
 	apply_energy_segment(x0, y0, x1, y1, fx, fy) {
+		if (!Number.isFinite(x0) || !Number.isFinite(y0) || !Number.isFinite(x1) || !Number.isFinite(y1)) return;
+		if (!Number.isFinite(fx) || !Number.isFinite(fy)) return;
 		const dx = x1 - x0;
 		const dy = y1 - y0;
 		const length = Math.sqrt(dx*dx + dy*dy);
@@ -1325,18 +1733,27 @@ export class Boltzmann {
 	}
 
 	get_field_velocity(worldX, worldY) {
+		// A non-finite probe used to skip every clamp and read cells[NaN].
+		if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) return { x: 0, y: 0 };
 		const cx_cont = this.width/2  + worldX * this.resolution;
 		const cy_cont = this.height/2 + worldY * this.resolution;
-		for (let d = 0; d < this.domains.length; d++) {
-			if (this.domains[d].containsCoarse(cx_cont, cy_cont)) {
-				return this.domains[d].getVelocityAt(cx_cont, cy_cont);
-			}
-		}
+		const best = this._finestDomain(cx_cont, cy_cont);
+		if (best) return best.getVelocityAt(cx_cont, cy_cont);
+
 		let x = this.width/2  + Math.floor(worldX * this.resolution);
 		let y = this.height/2 + Math.floor(worldY * this.resolution);
 
-		const x0 = Math.floor(x);
-		const y0 = Math.floor(y);
+		// The ±2 world-unit wind stencil can land past the outer cells. Pinning
+		// to the edge cell leaves in-range samples unchanged.
+		let x0 = Math.floor(x);
+		let y0 = Math.floor(y);
+		let hf = x - x0;
+		let vf = y - y0;
+		if (x0 < 0) { x0 = 0; hf = 0; }
+		if (y0 < 0) { y0 = 0; vf = 0; }
+		if (x0 > this.width - 2)  { x0 = Math.max(0, this.width  - 2); hf = 1; }
+		if (y0 > this.height - 2) { y0 = Math.max(0, this.height - 2); vf = 1; }
+
 		const x1 = x0 + 1;
 		const y1 = y0;
 		const x2 = x0;
@@ -1344,21 +1761,21 @@ export class Boltzmann {
 		const x3 = x0 + 1;
 		const y3 = y0 + 1;
 
-		const hf = x - x0;
-		const vf = y - y0;
-
 		const s0 = (1-hf) * (1-vf);
 		const s1 =   hf   * (1-vf);
 		const s2 = (1-hf) *   vf;
 		const s3 =   hf   *   vf;
 
+		if (x0 < 0 || y0 < 0 || x3 >= this.width || y3 >= this.height) return { x: 0, y: 0 };
 		const cell_0 = this.cells[x0 + y0 * this.width];
 		const cell_1 = this.cells[x1 + y1 * this.width];
 		const cell_2 = this.cells[x2 + y2 * this.width];
 		const cell_3 = this.cells[x3 + y3 * this.width];
+		if (!cell_0 || !cell_1 || !cell_2 || !cell_3) return { x: 0, y: 0 };
 
 		const vx = cell_0.ux*s0 + cell_1.ux*s1 + cell_2.ux*s2 + cell_3.ux*s3;
 		const vy = cell_0.uy*s0 + cell_1.uy*s1 + cell_2.uy*s2 + cell_3.uy*s3;
+		if (!Number.isFinite(vx) || !Number.isFinite(vy)) return { x: 0, y: 0 };
 
 		return {x: vx/4, y: vy/4};
 	}
