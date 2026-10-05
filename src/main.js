@@ -59,7 +59,7 @@ const runner = new Runner(map.world, { speed: 1, fps: 30 });
 runner.start(() => {
   guides = [];
 
-  // Smooth circle per boat. The dim staircase is the union of every mask at
+  // Smooth circle per boat. The light staircase is the union of every mask at
   // that level, so overlapping boats share one border and separate boats keep
   // one island each. A rectangle with no disk still uses its four sides.
   function pushRefinementGuides(domains) {
@@ -77,9 +77,11 @@ runner.start(() => {
       if (domain.disk) masked.push(domain);
     }
     for (const seg of unionMaskBorderLines(masked, bm)) {
+      // Full-opacity light line: the 0.35 gray sat on the dark speed field
+      // and the merged border could not be told from the black per-boat circles.
       guides.push({
-        color: 0x8899aa,
-        opacity: 0.35,
+        color: 0x9ad0ff,
+        opacity: 1,
         type: 'guide',
         x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2,
       });
