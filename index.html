@@ -26,16 +26,39 @@
         font-family: 'Courier New', Courier, monospace;
         background-color: rgba(50,50,50,0.5);
       }
+      #devmode_banner {
+        display: none;
+        position: absolute;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 100;
+        color: #9ef;
+        font-family: 'Courier New', Courier, monospace;
+        background: rgba(10, 30, 40, 0.8);
+        border: 1px solid #49c;
+        padding: 6px 12px;
+        pointer-events: none;
+        text-align: center;
+        white-space: nowrap;
+      }
+      #dev_wind_arrow {
+        display: inline-block;
+        margin-left: 8px;
+      }
 
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-DxNsQvVY.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-D-rXChtG.js"></script>
   </head>
   <body style="padding:0px; margin:0px">  
 
     <div id="info"></div>
+    <div id="devmode_banner" title="The angle is where the wind comes from. The arrow points downwind, the way it blows.">DEV MODE · fluid off · wind <span id="dev_wind_label"></span><span id="dev_wind_arrow">➤</span></div>
     <div id="fps" style="position:absolute; bottom:10px; left:10px; color:white; font-family:'Courier New',monospace; z-index:100;"></div>
     <div id="settings">
+      <input id="devmode" type="checkbox" title="Constant wind, no fluid simulation. Also enabled by ?devmode=1">Dev mode
+      <br>
       <input id="amr" type="checkbox" checked>Mesh refinement
       <br>
       <input id="barrier" type="checkbox">Barrier
@@ -57,6 +80,9 @@
       <br>
       Wind angle<br>
       <input id="windAngle" type="number" min="0" max="360" step="5" value="90">
+      <br>
+      Wind speed<br>
+      <input id="windSpeed" type="number" min="0" max="40" step="1" value="15">
       <br>
       Select Scenario<br>
       <input id="scenario_selector" type="number" min="0" max="10" value="0" style="width: 50px;">
