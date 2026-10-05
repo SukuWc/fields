@@ -419,7 +419,7 @@ function masksEqual(a, b) {
 // (Eq. 38/39) would have nothing to run along. Promoting the empty cell
 // closer to the disk center removes that contact. Cells `allow` rejects
 // stay empty, so a nested disk cannot grow outside its parent mask.
-function buildClosedDiskMask(cx0, cy0, cx1, cy1, centerX, centerY, radius, allow) {
+export function buildClosedDiskMask(cx0, cy0, cx1, cy1, centerX, centerY, radius, allow) {
 	const cw = cx1 - cx0;
 	const ch = cy1 - cy0;
 	const mask = new Uint8Array(cw * ch);
@@ -434,6 +434,14 @@ function buildClosedDiskMask(cx0, cy0, cx1, cy1, centerX, centerY, radius, allow
 			if (dx * dx + dy * dy <= r2) mask[lx + ly * cw] = 1;
 		}
 	}
+	closeDiagonalContacts(mask, cx0, cy0, cw, ch, centerX, centerY, allow);
+	return mask;
+}
+
+// Promote one cell of each diagonal-only 2×2 so the 1D cubic has an edge.
+// The filled cell is the hole closer to (centerX, centerY) — the boat, for a
+// wake blob that is not a circle. `allow` can reject a hole.
+export function closeDiagonalContacts(mask, cx0, cy0, cw, ch, centerX, centerY, allow) {
 	const at = (x, y) => (x >= 0 && y >= 0 && x < cw && y < ch) ? mask[x + y * cw] : 0;
 	let guard = cw * ch + 1;
 	while (guard-- > 0) {
@@ -465,11 +473,27 @@ function buildClosedDiskMask(cx0, cy0, cx1, cy1, centerX, centerY, radius, allow
 	return mask;
 }
 
+// next[local] = src[local + delta] keeps each bit on the same world cell.
+function slideLattice(src, cw, ch, dpx, dpy) {
+	const next = new Uint8Array(cw * ch);
+	for (let ly = 0; ly < ch; ly++) {
+		const oy = ly + dpy;
+		if (oy < 0 || oy >= ch) continue;
+		for (let lx = 0; lx < cw; lx++) {
+			const ox = lx + dpx;
+			if (ox < 0 || ox >= cw) continue;
+			next[lx + ly * cw] = src[ox + oy * cw];
+		}
+	}
+	return next;
+}
+
 
 // Multi-domain AMR (Lagrava §3.5): a flat rectangular fine grid at 2× parent resolution.
 // cx0, cy0, cx1, cy1 are corners in the PARENT grid's cell coordinates (exclusive on cx1/cy1).
-// The rectangle is the reusable allocation. setDisk() turns on a per-cell mask so the
-// refined region is a circle on that lattice; null mask keeps the whole rectangle.
+// The rectangle is the reusable allocation. setDisk() / setMask() turn on a per-cell
+// mask inside it; null mask keeps the whole rectangle. A curl wake is a mask, not a
+// new window: shiftBy refuses a size change.
 // parent may be a Boltzmann instance (level-1 domain) or another RefinementDomain (level N+1).
 // Each domain runs 2 fine sub-steps per 1 parent sub-step with its own omega_f (Eq. 24).
 // Coarse↔fine coupling: Eq. 29 (parent→fine, non-eq rescaling) and Eq. 30
@@ -584,6 +608,9 @@ class RefinementDomain {
 		// setDisk() installs the per-cell disk inside this same allocation.
 		this.mask = null;
 		this.disk = null;
+		// Curl-sensor holds, parent-cell indexing, slid with the mask. Level 2 leaves these null.
+		this._curlAbove = null;
+		this._curlBelow = null;
 		this._role = null;
 		this.fluidCells = this._allInteriorCells;
 		this._ghostLoc = [];
@@ -1100,17 +1127,11 @@ class RefinementDomain {
 		if (!dpx && !dpy) return;
 		const cw = this.cx1 - this.cx0;
 		const ch = this.cy1 - this.cy0;
-		const next = new Uint8Array(cw * ch);
-		for (let ly = 0; ly < ch; ly++) {
-			const oy = ly + dpy;
-			if (oy < 0 || oy >= ch) continue;
-			for (let lx = 0; lx < cw; lx++) {
-				const ox = lx + dpx;
-				if (ox < 0 || ox >= cw) continue;
-				next[lx + ly * cw] = this.mask[ox + oy * cw];
-			}
-		}
-		this.mask = next;
+		this.mask = slideLattice(this.mask, cw, ch, dpx, dpy);
+		// Holds use the same parent-cell index as the mask, so they stay on the world cell.
+		const n = cw * ch;
+		if (this._curlAbove && this._curlAbove.length === n) this._curlAbove = slideLattice(this._curlAbove, cw, ch, dpx, dpy);
+		if (this._curlBelow && this._curlBelow.length === n) this._curlBelow = slideLattice(this._curlBelow, cw, ch, dpx, dpy);
 		if (this.disk && !moveOrigin) {
 			this.disk.cx -= dpx;
 			this.disk.cy -= dpy;
@@ -1258,7 +1279,7 @@ class RefinementDomain {
 	}
 
 	// A level-2 cell is a fine index of its parent. It may be refined only
-	// where that parent node sits inside the parent disk.
+	// where that parent node sits inside the parent mask.
 	_parentAllows(cx, cy) {
 		const parent = this.parent;
 		if (!(parent instanceof RefinementDomain) || !parent.mask) return true;
@@ -1278,10 +1299,23 @@ class RefinementDomain {
 			centerX, centerY, radius,
 			(cx, cy) => this._parentAllows(cx, cy),
 		);
-		this.disk = { cx: centerX, cy: centerY, radius };
+		this.setMask(next, { cx: centerX, cy: centerY, radius });
+	}
+
+	// Same enter / restrict path as setDisk, for a mask that is not a pure disk
+	// (the level-1 disk floor plus its curl wake). `disk` still draws the smooth
+	// circle; the staircase follows `next`. An identical mask only updates the
+	// circle center. Leavers this domain owns are restricted; enterers are
+	// filled from the parent (Eq. 29).
+	setMask(next, disk) {
+		const cw = this.cx1 - this.cx0;
+		const ch = this.cy1 - this.cy0;
+		if (!next || next.length !== cw * ch) return;
+		if (disk && Number.isFinite(disk.cx) && Number.isFinite(disk.cy) && disk.radius > 0) {
+			this.disk = { cx: disk.cx, cy: disk.cy, radius: disk.radius };
+		}
 		if (this.mask && masksEqual(this.mask, next)) return;
 
-		const cw = this.cx1 - this.cx0;
 		const parent = this.parent;
 		const entered = [];
 		for (let cy = this.cy0; cy < this.cy1; cy++) {
@@ -1292,7 +1326,7 @@ class RefinementDomain {
 				else if (!wasOn && on) entered.push({ cx, cy });
 			}
 		}
-		this.mask = next;
+		this.mask = new Uint8Array(next);
 		for (let i = 0; i < entered.length; i++) {
 			this._injectCoarseCell(parent, entered[i].cx, entered[i].cy);
 		}

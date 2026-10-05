@@ -137,9 +137,9 @@ runner.start(() => {
     }
   }
 
-  // Dynamic domain placement: one reusable window per boat, a disk mask inside it,
-  // and a smaller level-2 disk carried with the level-1 window. The window slides
-  // one parent cell per frame. A level-1 slide carries level 2.
+  // Dynamic domain placement: one reusable window per boat. Level 1 is the
+  // disk floor plus a coarse-curl wake (one layer in or out per frame). Level 2
+  // stays the small disk and is carried when the level-1 window slides one cell.
   // Dev mode leaves the lattice frozen. A NaN body must not be rounded into a domain corner.
   if (!map.devMode && document.getElementById('amr').checked) trackBoats(bm, getPlayers());
 
