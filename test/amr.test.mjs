@@ -272,7 +272,7 @@ function shearStats(bm, domain) {
 		`ρ = ${landed.rho}, uy = ${landed.uy}`);
 }
 
-// --- 7. Diagnostic: coarse get_field_velocity is still unclamped. Not fixed here. ---
+// --- 7. Edge wind samples are clamped to the lattice. A probe past the wall used to throw. ---
 {
 	const bm = make(75, 75, 0);
 	const throwsAt = (x, y) => {
@@ -280,7 +280,7 @@ function shearStats(bm, domain) {
 		catch { return true; }
 	};
 	// A 5×5 wind sample of radius 2 around a boat on the south wall (y = -35.5)
-	// includes world y = -37.5. That index is off the grid and throws.
+	// includes world y = -37.5. That index is off the grid; the sample is clamped.
 	const southEdge = throwsAt(0, -37.5);
 	const northEdge = throwsAt(0, 37.5);
 	// Domain placed the way main.js places it for that boat: clamped to cell 1,

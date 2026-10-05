@@ -1,4 +1,5 @@
 import planck, { random } from 'planck-js/dist/planck-with-testbed';
+import { aeroCoefficients } from './utils.js';
 
 
 let pl = planck, Vec2 = pl.Vec2;
@@ -125,6 +126,36 @@ export class Boat{
 
     this.forces = []
 
+    const body = this.physics_model;
+    const px = body.m_xf.p.x;
+    const py = body.m_xf.p.y;
+    const bvx = body.m_linearVelocity.x;
+    const bvy = body.m_linearVelocity.y;
+    const bang = body.m_angularVelocity;
+    if (!Number.isFinite(px) || !Number.isFinite(py)) {
+      body.setTransform({ x: this._safeX || 0, y: this._safeY || 0 }, 0);
+      body.setLinearVelocity({ x: 0, y: 0 });
+      body.setAngularVelocity(0);
+      this.wind_vx_smooth = 0;
+      this.wind_vy_smooth = 0;
+      this.x = body.m_xf.p.x;
+      this.y = body.m_xf.p.y;
+      return;
+    }
+    if (!Number.isFinite(bvx) || !Number.isFinite(bvy) || !Number.isFinite(bang)) {
+      body.setLinearVelocity({ x: 0, y: 0 });
+      body.setAngularVelocity(0);
+    } else {
+      this._safeX = px;
+      this._safeY = py;
+    }
+    const applyFinite = (force, point) => {
+      if (!force || !point) return;
+      if (!Number.isFinite(force.x) || !Number.isFinite(force.y)) return;
+      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+      body.applyForce(force, point, true);
+    };
+
     document.getElementById("info").innerHTML = "Autopilot" + this.autopilot_enabled + "<br>"
     document.getElementById("info").innerHTML += "Heading Target" + this.autopilot_heading_target + "<br>"
     // calculate boat dynamics
@@ -137,8 +168,12 @@ export class Boat{
     
     const wind_raw = this.map.get_wind(this.x, this.y);
     const alpha = 0.2;
-    this.wind_vx_smooth = alpha * wind_raw.vx + (1 - alpha) * this.wind_vx_smooth;
-    this.wind_vy_smooth = alpha * wind_raw.vy + (1 - alpha) * this.wind_vy_smooth;
+    // A single non-finite sample used to latch the smoother (NaN + finite = NaN)
+    // and every later force stayed NaN. Keep the last finite wind instead.
+    if (wind_raw && Number.isFinite(wind_raw.vx) && Number.isFinite(wind_raw.vy)) {
+      this.wind_vx_smooth = alpha * wind_raw.vx + (1 - alpha) * this.wind_vx_smooth;
+      this.wind_vy_smooth = alpha * wind_raw.vy + (1 - alpha) * this.wind_vy_smooth;
+    }
     this.wind_speed     = Math.sqrt(this.wind_vx_smooth**2 + this.wind_vy_smooth**2) * 100 * 4;
     this.wind_direction = Math.atan2(this.wind_vy_smooth, this.wind_vx_smooth) / Math.PI * 180 + 180;
 
@@ -186,7 +221,7 @@ export class Boat{
     var centerboard_p = this.physics_model.getWorldPoint(Vec2(0.0, this.centerboard_position));
 
     // centerboard
-    this.physics_model.applyForce(centerboard_f, centerboard_p, true);   
+    applyFinite(centerboard_f, centerboard_p);   
 
     this.forces.push({name: "centerboard", type: "arrow", vector: centerboard_f, point: centerboard_p})
 
@@ -350,7 +385,7 @@ export class Boat{
     rudder_f.x = Math.cos(angle +this.rudder_angle/180*Math.PI)* rudder_force;
     rudder_f.y = Math.sin(angle +this.rudder_angle/180*Math.PI)* rudder_force;
 
-    this.physics_model.applyForce(rudder_f, rudder_p, true); 
+    applyFinite(rudder_f, rudder_p); 
     this.forces.push({name: "rudder", type: "arrow", vector: rudder_f, point: rudder_p})
 
     document.getElementById("info").innerHTML += "TWA: "+Math.floor(twa) + "<br>";
@@ -385,13 +420,14 @@ export class Boat{
     if (this.mainsail_boom_angle<-this.mainsail_boom_angle_max) this.mainsail_boom_angle = -this.mainsail_boom_angle_max;
 
 
-    // calculate lookup index
-    const lookup_index = Math.floor(Math.abs(this.mainsail_boom_angle-this.awa)/this.aero_lookup_resolution)
-    const interpolator = Math.abs(this.mainsail_boom_angle-this.awa)/this.aero_lookup_resolution - lookup_index
-
-
-    let c_drag = this.aero_drag_lookup[lookup_index]* (1-interpolator) + this.aero_drag_lookup[lookup_index+1] * (interpolator)
-    let c_lift = this.aero_lift_lookup[lookup_index]* (1-interpolator) + this.aero_lift_lookup[lookup_index+1] * (interpolator)
+    const aero = aeroCoefficients(
+      Math.abs(this.mainsail_boom_angle - this.awa),
+      this.aero_lift_lookup,
+      this.aero_drag_lookup,
+      this.aero_lookup_resolution
+    );
+    let c_drag = aero.drag;
+    let c_lift = aero.lift;
 
     let sail_f_drag = {};
     let sail_f_lift = {};
@@ -416,8 +452,8 @@ export class Boat{
     var mainsail_p = this.physics_model.getWorldPoint(Vec2(0.0, this.center_of_lift));
     
     
-    this.physics_model.applyForce(sail_f_lift, mainsail_p, true); 
-    this.physics_model.applyForce(sail_f_drag, mainsail_p, true); 
+    applyFinite(sail_f_lift, mainsail_p);
+    applyFinite(sail_f_drag, mainsail_p); 
 
     this.forces.push({name: "mainsail", type: "arrow", vector: sail_f_lift, point: mainsail_p})
     this.forces.push({name: "mainsail", type: "arrow", vector: sail_f_drag, point: mainsail_p})
@@ -438,7 +474,7 @@ export class Boat{
 
 
     var drag_p = this.physics_model.getWorldPoint(Vec2(0.0, 0));
-    this.physics_model.applyForce(drag_f, drag_p, true);   
+    applyFinite(drag_f, drag_p);   
     this.forces.push({name: "drag", type: "arrow", vector: drag_f, point: drag_p})
 
     // clear inputs
@@ -484,7 +520,10 @@ export class Boat{
     // wind indicator
 
     
-    let wind_angle = (this.wind_direction)/180*Math.PI
+    // wind_direction is where the wind comes from (atan2(vy, vx) + 180).
+    // The tick points downwind, along the flow (vx, vy), which is also the
+    // direction sail drag pushes the boat.
+    let wind_angle = Math.atan2(this.wind_vy_smooth, this.wind_vx_smooth)
 
     graphics.push({ color: 0x554477, type: "guide",
       x1: this.x + Math.cos(wind_angle)*3,
@@ -676,7 +715,13 @@ export class Boat{
             let x = Math.floor(this.x*res)/res + i/res;
             let y = Math.floor(this.y*res)/res + j/res;
     
-            let velo = this.map.bm.get_field_velocity(x, y)
+            let velo;
+            if (this.map.devMode) {
+              const w = this.map.get_wind(x, y);
+              velo = { x: w.vx, y: w.vy };
+            } else {
+              velo = this.map.bm.get_field_velocity(x, y);
+            }
     
             graphics.push({ color: 0x8866ff, type: "sail",
               x1: x,
