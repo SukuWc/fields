@@ -121,10 +121,18 @@ const midY = (port.y + starboard.y) / 2;
 assert(Math.abs(label.x - midX) < 1e-9 && Math.abs(label.y - midY) < 1e-9, "label sits on the midpoint");
 assert(Math.abs(green.x1 - midX) < 1e-9 && Math.abs(red.x1 - midX) < 1e-9, "halves meet at the midpoint");
 
-// Same tack, still in range: Rules 11 and 12 are stubs, so no line.
+// Same tack, still in range. Body angle and hull_angle stay together, as they
+// do after Boat.physics_model_step. This pair is clear ahead/astern, so the
+// overlay is Rule 12 (see rule11-12-check.mjs) and must not stay on Rule 10.
+starboard.physics_model.setTransform(Vec2(-4, -6), 3 * Math.PI / 4);
+starboard.x = -4;
+starboard.y = -6;
 starboard.hull_angle = 3 * Math.PI / 4;
-assert(evaluateSectionA(port, starboard, getWind) === null, "same tack does not draw");
-assert(sectionAOverlay(port, starboard, getWind).length === 0, "same tack overlay is empty");
+const sameTack = evaluateSectionA(port, starboard, getWind);
+assert(sameTack && sameTack.rule === "Rule 12", "same tack clear-astern pair is Rule 12");
+assert(sameTack.rightOfWay === starboard, "the boat ahead keeps right of way");
+assert(sameTack.giveWay === port, "the boat clear astern keeps clear");
+assert(sectionAOverlay(port, starboard, getWind)[2].text === "Rule 12", "same-tack label is Rule 12");
 
 // Opposite tacks but just outside the gate.
 starboard.physics_model.setTransform(Vec2(20, -6), 5 * Math.PI / 4);

@@ -1,34 +1,64 @@
-// Racing Rules of Sailing, Section A — first slice.
+// Racing Rules of Sailing, Section A.
 //
-// Fully implemented: Rule 10 (opposite tacks) and the 12 m interest gate.
-// Rule 13 (tacking), Rule 11 (same tack, overlapped) and Rule 12 (same tack,
-// clear astern) are stubs that return null, so they never draw an overlay.
+// Implemented: the 12 m interest gate, Rule 10 (opposite tacks), Rule 11
+// (same tack, overlapped) and Rule 12 (same tack, clear astern).
+// Rule 13 (while tacking) stays a stub. Boat has no tacking flag, and a
+// heading rate is not a substitute, so Rule 13 never draws an overlay.
 //
 // Distance. 1 world unit = 1 m. The hull in boat.js runs from local y = -2.25
-// (bow) to y = 1.75 (stern), so boat length is 4 m. Rule 10 is considered only
-// when the closest distance between the two hull polygons is <= 3 × 4 m = 12 m.
-// Vertices are the fixture's body-local points transformed by the physics body
-// (getWorldPoint), which is the same hull the Planck fixture collides with.
-// The debug line is drawn between body origins (boat.x / boat.y), near the
-// geometric center of that hull. If a boat has no hull polygon, the gate falls
-// back to center-to-center distance.
+// (bow) to y = 1.75 (stern), so boat length is 4 m. Section A is considered
+// only when the closest distance between the two hull polygons is
+// <= 3 × 4 m = 12 m. Vertices are the fixture's body-local points transformed
+// by the physics body (getWorldPoint), which is the same hull the Planck
+// fixture collides with. The debug line is drawn between body origins
+// (boat.x / boat.y), near the geometric center of that hull. If a boat has
+// no hull polygon, the gate falls back to center-to-center distance, and
+// Rules 11 and 12 do not apply (overlap is defined on the hull polygons).
 //
 // Wind and tack. getWind(x, y) is Map.get_wind, so dev mode (ConstantWind) and
 // the lattice (FluidWind) share one path. `direction` is degrees, where the
 // wind comes from: atan2(vy, vx) * 180/π + 180. 0 = from +X, 90 = from +Y.
-// Heading is the Planck body angle in radians. Local bow is −Y, so forward is
-// (sin θ, −cos θ). True-wind angle matches Boat.physics_model_step:
+// Heading is boat.hull_angle, which the sim copies from the Planck body angle
+// each step. Local bow is −Y, so forward (her course) is (sin θ, −cos θ).
+// True-wind angle matches Boat.physics_model_step:
 //   twa = wrap180(windFromDeg − headingDeg + 90)
 //   twa = 0 is head to wind. Positive twa is wind on the port side.
 //   twa > 0 and < 180 → port tack. twa < 0 and > −180 → starboard tack.
 //   Head to wind (0) and dead downwind (±180) are not a tack.
 //
+// Clear astern and overlap (RRS definitions, pairwise). A boat is clear
+// astern of another when every hull vertex is strictly behind a line through
+// the other's aftermost hull vertex, perpendicular to the other's course.
+// The other boat is clear ahead. They are overlapped when neither is clear
+// astern. The hull is convex, so vertices are enough: if they are all behind
+// the line, the polygon is too. The three-boat "a boat between them overlaps
+// both" extension is not applied. If each boat is clear astern of the other
+// (courses pointing apart), there is no single clear-ahead boat, so Rule 12
+// does not draw.
+//
 // Rule 10: on opposite tacks, the port-tack boat keeps clear of the
 // starboard-tack boat. Starboard is right-of-way (green half), port is
 // give-way (red half).
+//
+// Rule 11: same tack and overlapped. The windward boat keeps clear of the
+// leeward boat. Windward is the boat farther toward the wind source, measured
+// by projecting body origins onto the unit vector (cos φ, sin φ), where φ is
+// the wind-from angle (the circular mean of the two samples). Leeward is
+// right-of-way (green); windward is give-way (red). A tie draws nothing.
+//
+// Rule 12: same tack and not overlapped. The clear-astern boat keeps clear
+// of the clear-ahead boat. Clear ahead is right-of-way (green); clear astern
+// is give-way (red).
 
 export const BOAT_LENGTH_M = 4;
+// Shared Section A gate. The name is historical; Rules 10, 11, and 12 all use it.
 export const RULE10_INTEREST_RANGE_M = 3 * BOAT_LENGTH_M;
+
+// A vertex this close to the abeam line, or on the ahead side of it, is not
+// "behind" that line. 1e-6 m is float dust, not a real overlap.
+const CLEAR_ASTERN_EPS_M = 1e-6;
+// Neither boat is windward when their upwind projections match this closely.
+const WINDWARD_TIE_M = 1e-4;
 
 const RIGHT_OF_WAY_COLOR = 0x00ff00;
 const GIVE_WAY_COLOR = 0xff0000;
@@ -191,6 +221,86 @@ function centerDistance(boatA, boatB) {
   return Math.hypot(boatA.x - boatB.x, boatA.y - boatB.y);
 }
 
+// Unit course vector. Local bow is −Y, so forward is (sin θ, −cos θ).
+export function headingForward(headingRad) {
+  if (!Number.isFinite(headingRad)) return null;
+  return { x: Math.sin(headingRad), y: -Math.cos(headingRad) };
+}
+
+// True when every vertex of asternPoly is strictly behind the line through
+// aheadPoly's aftermost vertex, perpendicular to aheadForward (her course).
+export function isClearAstern(asternPoly, aheadPoly, aheadForward) {
+  if (!aheadForward || !Number.isFinite(aheadForward.x) || !Number.isFinite(aheadForward.y)) return false;
+  if (!asternPoly || !aheadPoly || asternPoly.length < 1 || aheadPoly.length < 1) return false;
+  const fx = aheadForward.x;
+  const fy = aheadForward.y;
+
+  let aftermost = Infinity;
+  for (let i = 0; i < aheadPoly.length; i++) {
+    const p = aheadPoly[i];
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return false;
+    const d = p.x * fx + p.y * fy;
+    if (d < aftermost) aftermost = d;
+  }
+  if (!Number.isFinite(aftermost)) return false;
+
+  for (let i = 0; i < asternPoly.length; i++) {
+    const p = asternPoly[i];
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return false;
+    const d = p.x * fx + p.y * fy;
+    if (!(d < aftermost - CLEAR_ASTERN_EPS_M)) return false;
+  }
+  return true;
+}
+
+// Pairwise clear-astern / overlap. Null if either hull or heading is missing.
+// mutualClearAstern: each is clear astern of the other, so Rule 12 has no
+// single clear-ahead boat.
+export function sameTackGeometry(boatA, boatB) {
+  if (!boatA || !boatB) return null;
+  const polyA = hullVerticesWorld(boatA);
+  const polyB = hullVerticesWorld(boatB);
+  const forwardA = headingForward(boatA.hull_angle);
+  const forwardB = headingForward(boatB.hull_angle);
+  if (polyA.length < 3 || polyB.length < 3 || !forwardA || !forwardB) return null;
+
+  const aAsternOfB = isClearAstern(polyA, polyB, forwardB);
+  const bAsternOfA = isClearAstern(polyB, polyA, forwardA);
+  if (aAsternOfB && bAsternOfA) {
+    return { overlapped: false, clearAhead: null, clearAstern: null, mutualClearAstern: true };
+  }
+  if (aAsternOfB) {
+    return { overlapped: false, clearAhead: boatB, clearAstern: boatA, mutualClearAstern: false };
+  }
+  if (bAsternOfA) {
+    return { overlapped: false, clearAhead: boatA, clearAstern: boatB, mutualClearAstern: false };
+  }
+  return { overlapped: true, clearAhead: null, clearAstern: null, mutualClearAstern: false };
+}
+
+// Unit vector toward the wind source. φ is the circular mean of the two
+// wind-from angles, so a sample pair near 0°/360° still points at +X.
+function windSourceUnit(fromA, fromB) {
+  const ar = fromA * Math.PI / 180;
+  const br = fromB * Math.PI / 180;
+  let x = Math.cos(ar) + Math.cos(br);
+  let y = Math.sin(ar) + Math.sin(br);
+  const m = Math.hypot(x, y);
+  if (m < 1e-9) return { x: Math.cos(ar), y: Math.sin(ar) };
+  return { x: x / m, y: y / m };
+}
+
+// The boat whose body origin is farther along the wind-from direction.
+// Null on a tie (neither is windward).
+function windwardBoat(boatA, boatB, fromA, fromB) {
+  const u = windSourceUnit(fromA, fromB);
+  const scoreA = boatA.x * u.x + boatA.y * u.y;
+  const scoreB = boatB.x * u.x + boatB.y * u.y;
+  const delta = scoreA - scoreB;
+  if (!Number.isFinite(delta) || Math.abs(delta) <= WINDWARD_TIE_M) return null;
+  return delta > 0 ? boatA : boatB;
+}
+
 export function boatClearance(boatA, boatB) {
   const polyA = hullVerticesWorld(boatA);
   const polyB = hullVerticesWorld(boatB);
@@ -205,14 +315,27 @@ function rule13(_boatA, _boatB) {
   return null;
 }
 
-// Same-tack overlap is not implemented.
-function rule11(_boatA, _boatB) {
-  return null;
+// Rule 11: windward keeps clear of leeward.
+function rule11(boatA, boatB, fromA, fromB, clearance) {
+  const windward = windwardBoat(boatA, boatB, fromA, fromB);
+  if (!windward) return null;
+  const leeward = windward === boatA ? boatB : boatA;
+  return {
+    rule: 'Rule 11',
+    rightOfWay: leeward,
+    giveWay: windward,
+    clearance,
+  };
 }
 
-// Same tack, not overlapped, is not implemented.
-function rule12(_boatA, _boatB) {
-  return null;
+// Rule 12: clear astern keeps clear of clear ahead.
+function rule12(clearAhead, clearAstern, clearance) {
+  return {
+    rule: 'Rule 12',
+    rightOfWay: clearAhead,
+    giveWay: clearAstern,
+    clearance,
+  };
 }
 
 function rule10(boatA, boatB, tackA, clearance) {
@@ -248,8 +371,13 @@ export function evaluateSectionA(boatA, boatB, getWind) {
 
   if (tackA !== tackB) return rule10(boatA, boatB, tackA, clearance);
 
-  // Same tack. Overlap is unknown, so neither Rule 11 nor Rule 12 is selected.
-  return rule11(boatA, boatB) ?? rule12(boatA, boatB);
+  const geometry = sameTackGeometry(boatA, boatB);
+  if (!geometry) return null;
+  if (geometry.overlapped) return rule11(boatA, boatB, fromA, fromB, clearance);
+  if (geometry.clearAhead && geometry.clearAstern) {
+    return rule12(geometry.clearAhead, geometry.clearAstern, clearance);
+  }
+  return null;
 }
 
 // Guide records for the debug overlay. Empty when Section A does not apply.
