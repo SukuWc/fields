@@ -6,6 +6,7 @@ import { Map } from './map.js';
 import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera } from './renderer.js';
 import { setupControls, getPlayers, getPhysicsFrame, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
+import { installUrlSettings } from './url-settings.js';
 import { sectionAOverlay } from './rules.js';
 
 const map_w = 75;
@@ -45,14 +46,15 @@ const constantWind = new ConstantWind(wind_angle, wind_speed);
 const map = new Map(map_w, map_h, wind_angle, wind_speed, bm, fluidWind, constantWind);
 map.physics_model_init();
 
-// Renderer and controls — must init renderer before controls (controls needs getCamera)
+// Renderer and controls — must init renderer before controls (controls needs getCamera).
+// The barrier listener has to exist before URL settings dispatch change events.
 initRenderer(map, planeMat);
+document.getElementById('barrier').addEventListener('change', e => bm.setBarriers(e.target.checked));
 setupControls(map, getCamera, bm);
+installUrlSettings();
 
 let guides = [];
 startAnimation(map, () => guides);
-
-document.getElementById('barrier').addEventListener('change', e => bm.setBarriers(e.target.checked));
 
 const infoEl = document.getElementById('info');
 const distInfoEl = document.getElementById('dist_info');

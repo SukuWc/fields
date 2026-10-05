@@ -26,6 +26,7 @@ This is an interactive web sailing simulator combining 2D fluid dynamics with 3D
 src/main.js           — Entry point: constants, texture setup, physics loop (Runner)
 src/renderer.js       — Three.js scene init and animation loop
 src/controls.js       — Keyboard/mouse input, DOM UI listeners, scenario management
+src/url-settings.js   — Sync #settings controls with the query string (non-defaults only)
 src/utils.js          — range_map and HSVtoRGB helpers
 src/wind.js           — Wind providers (fluid-sampled and constant). Boats only see Map.get_wind
 src/boltzmann.js      — Lattice Boltzmann Method (LBM) fluid simulator
@@ -88,7 +89,7 @@ Dev mode is for working on a racing-rules engine without the fluid sim's cost or
 Turn it on either way:
 
 - **Dev mode** checkbox at the top of the `#settings` panel. Fluid-only controls (mesh refinement, barrier, boat energy, plot sliders) are disabled while it is on; their checked state is kept and applies again when dev mode is turned off.
-- URL query `?devmode=1` (also `true`). The checkbox matches the query on load. Toggling the checkbox does not rewrite the URL.
+- URL query `?devmode=1` (also `true`). Every settings control in `#settings` (checkboxes, number and range inputs, and the plot dropdown) is mirrored into the query string by `installUrlSettings`: only non-default values are written, via `history.replaceState`. The dev-mode checkbox uses the existing `devmode` name — `devmode=1` when on, omitted when off. On load the query is applied by setting each control and dispatching `input`/`change`, so the same handlers run as a user edit. **Reset settings** restores the captured defaults and drops those params. Unrelated query keys are preserved.
 
 Defaults are `wind_angle = 90` (from +Y, blowing toward −Y) and `wind_speed = 15` in `src/main.js`, the same inlet wind the lattice is initialized with. The **Wind angle** and **Wind speed** inputs edit the live `ConstantWind`. Wind angle still writes `bm.direction` (UI angle + 180), as before. Wind speed writes `bm.speed` as `value / 100`, so the fluid inlet matches if you leave dev mode. The lattice is still constructed and initialized at startup so leaving dev mode resumes the field that was already there; it is just not stepped while dev mode is on.
 
