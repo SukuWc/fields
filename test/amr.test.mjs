@@ -13,7 +13,8 @@ globalThis.document = {
 globalThis.window = globalThis;
 globalThis.addEventListener = globalThis.addEventListener || (() => {});
 
-const { Boltzmann } = await import('../src/boltzmann.js');
+const { Boltzmann, unionMaskBorderLines } = await import('../src/boltzmann.js');
+const { trackBoats } = await import('../src/domainTrack.js');
 
 const results = {};
 let failed = 0;
@@ -314,16 +315,6 @@ function shearStats(bm, domain) {
 	const { Map } = await import('../src/map.js');
 	const { Boat } = await import('../src/boat.js');
 	const { FluidWind, ConstantWind } = await import('../src/wind.js');
-	const HALF = 20, THRESH = 1;
-	const toward = (px, py, d, gw, gh) => {
-		const cx = (d.cx0 + d.cx1) / 2, cy = (d.cy0 + d.cy1) / 2;
-		let dcx = 0, dcy = 0;
-		if (px - cx > THRESH) dcx = 1; else if (cx - px > THRESH) dcx = -1;
-		else if (py - cy > THRESH) dcy = 1; else if (cy - py > THRESH) dcy = -1;
-		if (d.cx0 + dcx < 1 || d.cx1 + dcx > gw - 1) dcx = 0;
-		if (d.cy0 + dcy < 1 || d.cy1 + dcy > gh - 1) dcy = 0;
-		return { dcx, dcy };
-	};
 	const bm = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
 	const map = new Map(75, 75, 90, 15, bm, new FluidWind(bm), new ConstantWind(90, 15));
 	map.physics_model_init();
@@ -341,27 +332,8 @@ function shearStats(bm, domain) {
 				bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * 0.0003, seg.fy * 0.0003);
 			}
 		}
-		const boatCx = bm.width / 2 + boat.x, boatCy = bm.height / 2 + boat.y;
-		let shifted = false;
-		if (bm.domains.length === 0) {
-			const cx = Math.round(boatCx), cy = Math.round(boatCy);
-			bm.addDomain(Math.max(1, cx - HALF), Math.max(1, cy - HALF), Math.min(bm.width - 1, cx + HALF), Math.min(bm.height - 1, cy + HALF));
-		} else {
-			const step = toward(boatCx, boatCy, bm.domains[0], bm.width, bm.height);
-			if (step.dcx || step.dcy) { bm.shiftDomain(0, step.dcx, step.dcy); shifted = true; }
-		}
+		trackBoats(bm, [boat]);
 		const level1 = bm.domains[0];
-		level1.setDisk(boatCx, boatCy, 16);
-		const fx = 1 + (boatCx - level1.cx0) * 2, fy = 1 + (boatCy - level1.cy0) * 2;
-		if (level1.domains.length === 0) {
-			const fi = Math.round(fx), fj = Math.round(fy);
-			level1.addDomain(Math.max(1, fi - HALF), Math.max(1, fj - HALF), Math.min(level1.width - 1, fi + HALF), Math.min(level1.height - 1, fj + HALF));
-		} else if (!shifted) {
-			const d2 = level1.domains[0];
-			const step2 = toward(fx, fy, d2, level1.width, level1.height);
-			if (step2.dcx || step2.dcy) { d2.shiftBy(level1, step2.dcx, step2.dcy); level1._rebuildInteriorCells(); }
-		}
-		if (level1.domains[0]) level1.domains[0].setDisk(fx, fy, 16);
 		const c1 = outlineCenter(level1, bm);
 		const c2 = level1.domains[0] ? outlineCenter(level1.domains[0], bm) : null;
 		const off1 = c1 ? Math.hypot(c1.x - boat.x, c1.y - boat.y) : Infinity;
@@ -737,6 +709,247 @@ function shearStats(bm, domain) {
 	// here) and still far under the old one-cell move, which reached 2.5e-3.
 	check('shear walking disk stays quiet', walkOut < 1e-3 && Math.abs(walkMass) < 0.03,
 		`max |ρ−1| outside = ${walkOut.toExponential(3)}, Σ(ρ−1) = ${walkMass.toExponential(3)} (bare ${bare30.outRho.toExponential(3)})`);
+}
+
+function segKey(s) {
+	const r = (v) => Math.round(v * 1e6) / 1e6;
+	const a = r(s.x1) + ',' + r(s.y1);
+	const b = r(s.x2) + ',' + r(s.y2);
+	return a < b ? a + '|' + b : b + '|' + a;
+}
+
+function stairKeys(domain, bm) {
+	return domain.worldBorderLines(bm).filter(s => s.dim).map(segKey);
+}
+
+function unionKeys(domains, bm) {
+	return unionMaskBorderLines(domains, bm).map(segKey);
+}
+
+// True when every union edge is an edge of some member, and the counts match
+// exactly (no shared border) or the union is a strict subset (shared border dropped).
+function borderRelation(domains, bm) {
+	const own = [];
+	for (const d of domains) own.push(...stairKeys(d, bm));
+	const uni = unionKeys(domains, bm);
+	const have = new Map();
+	for (const k of own) have.set(k, (have.get(k) || 0) + 1);
+	let subset = true;
+	for (const k of uni) {
+		const n = have.get(k) || 0;
+		if (n <= 0) subset = false;
+		else have.set(k, n - 1);
+	}
+	return { own: own.length, uni: uni.length, subset, merged: uni.length < own.length };
+}
+
+function maskShare(a, b) {
+	if (!a || !b || !a.mask || !b.mask || Math.abs(a.dx - b.dx) > 1e-9) return false;
+	const ka = new Set();
+	const fill = (domain, into) => {
+		const cw = domain.cx1 - domain.cx0;
+		const s = domain.dx * 2;
+		for (let ly = 0; ly < domain.cy1 - domain.cy0; ly++) {
+			for (let lx = 0; lx < cw; lx++) {
+				if (domain.mask[lx + ly * cw] !== 1) continue;
+				const rx = Math.round(domain._rootX(domain.cx0 + lx) / s);
+				const ry = Math.round(domain._rootY(domain.cy0 + ly) / s);
+				into.add(rx + ',' + ry);
+			}
+		}
+	};
+	fill(a, ka);
+	const cw = b.cx1 - b.cx0;
+	const s = b.dx * 2;
+	for (let ly = 0; ly < b.cy1 - b.cy0; ly++) {
+		for (let lx = 0; lx < cw; lx++) {
+			if (b.mask[lx + ly * cw] !== 1) continue;
+			const rx = Math.round(b._rootX(b.cx0 + lx) / s);
+			const ry = Math.round(b._rootY(b.cy0 + ly) / s);
+			if (ka.has(rx + ',' + ry)) return true;
+		}
+	}
+	return false;
+}
+
+// --- 11. Union staircase: one border where disks overlap, islands where they do not ---
+{
+	const bm = make(75, 75, 0);
+	function place(cx, cy, r) {
+		const x0 = Math.max(1, Math.round(cx) - 20);
+		const y0 = Math.max(1, Math.round(cy) - 20);
+		bm.addDomain(x0, y0, Math.min(bm.width - 1, Math.round(cx) + 20), Math.min(bm.height - 1, Math.round(cy) + 20));
+		const d = bm.domains[bm.domains.length - 1];
+		d.setDisk(cx, cy, r);
+		return d;
+	}
+	const farA = place(20, 38, 8);
+	const farB = place(55, 38, 8);
+	const one = borderRelation([farA], bm);
+	const apart = borderRelation([farA, farB], bm);
+	check('one disk union stair matches that disk', one.subset && one.own === one.uni && one.own > 8,
+		`own=${one.own} uni=${one.uni}`);
+	check('apart disks keep two staircase islands', apart.subset && !apart.merged && apart.uni === apart.own && !maskShare(farA, farB),
+		`own=${apart.own} uni=${apart.uni}`);
+
+	bm.domains.length = 0;
+	bm._rebuildInteriorCells();
+	const nearA = place(30, 38, 10);
+	const nearB = place(36, 38, 10);
+	const close = borderRelation([nearA, nearB], bm);
+	check('overlapping disks merge to one staircase', close.subset && close.merged && maskShare(nearA, nearB),
+		`own=${close.own} uni=${close.uni}`);
+
+	// Level 2, same two separations, in root space.
+	function nest(parent, cx, cy, r) {
+		const fx = 1 + (cx - parent.cx0) * 2;
+		const fy = 1 + (cy - parent.cy0) * 2;
+		const fi = Math.round(fx), fj = Math.round(fy);
+		parent.addDomain(Math.max(1, fi - 20), Math.max(1, fj - 20), Math.min(parent.width - 1, fi + 20), Math.min(parent.height - 1, fj + 20));
+		const child = parent.domains[parent.domains.length - 1];
+		child.setDisk(fx, fy, r);
+		return child;
+	}
+	bm.domains.length = 0;
+	bm._rebuildInteriorCells();
+	const p1 = place(20, 38, 16);
+	const p2 = place(55, 38, 16);
+	const c1 = nest(p1, 20, 38, 16);
+	const c2 = nest(p2, 55, 38, 16);
+	const l2apart = borderRelation([c1, c2], bm);
+	check('apart level-2 disks keep two islands', l2apart.subset && !l2apart.merged && !maskShare(c1, c2),
+		`own=${l2apart.own} uni=${l2apart.uni}`);
+
+	bm.domains.length = 0;
+	bm._rebuildInteriorCells();
+	const q1 = place(30, 38, 16);
+	const q2 = place(36, 38, 16);
+	const d1 = nest(q1, 30, 38, 16);
+	const d2 = nest(q2, 36, 38, 16);
+	const l2close = borderRelation([d1, d2], bm);
+	check('overlapping level-2 disks merge', l2close.subset && l2close.merged && maskShare(d1, d2),
+		`own=${l2close.own} uni=${l2close.uni}`);
+}
+
+// A skipped boat must not donate its slot to the next boat.
+{
+	const bm = make(75, 75, 0);
+	const refused = bm.replaceDomain(-1, 8, 8, 28, 28);
+	check('negative domain index is refused', refused === null && bm.domains.length === 0 && bm.domains[-1] === undefined);
+	const boats = [{ x: NaN, y: 0 }, { x: 5, y: -4 }];
+	trackBoats(bm, boats);
+	const kept = bm.domains[0];
+	const keptCx = kept && kept.disk ? kept.disk.cx : NaN;
+	check('skipped boat does not take a domain slot', bm.domains.length === 1 && Number.isFinite(keptCx));
+	boats[0].x = -8;
+	boats[0].y = 6;
+	trackBoats(bm, boats);
+	const second = bm.domains[1];
+	check('recovered boat does not steal the other window', bm.domains.length === 2 && second === kept && second.disk.cx === keptCx,
+		`len=${bm.domains.length} same=${second === kept}`);
+	const child = bm.domains[0].replaceDomain(-1, 4, 4, 16, 16);
+	check('negative child index is refused', child === null && bm.domains[0].domains.length === 1);
+}
+
+// --- 12. Scenarios 1–3: two boats, disks on each hull, union border follows the masks ---
+{
+	const { Map } = await import('../src/map.js');
+	const { Boat } = await import('../src/boat.js');
+	const { FluidWind, ConstantWind } = await import('../src/wind.js');
+
+	function fleet(starts, frames) {
+		const bm = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
+		const map = new Map(75, 75, 90, 15, bm, new FluidWind(bm), new ConstantWind(90, 15));
+		map.physics_model_init();
+		const boats = starts.map(([x, y, h]) => new Boat(map, x, y, h));
+		let maxOff = 0;
+		for (let frame = 0; frame < frames; frame++) {
+			if (frame === 1) for (const b of boats) b.input_autopilot_enabled_toggle();
+			map.world.step(1 / 30);
+			for (const b of boats) {
+				b.physics_model_step();
+				if (b.mainsail_force) {
+					for (const seg of b.getSailSegments()) {
+						bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * 0.0003, seg.fy * 0.0003);
+					}
+				}
+			}
+			trackBoats(bm, boats);
+			for (let i = 0; i < boats.length; i++) {
+				const level1 = bm.domains[i];
+				const c1 = level1 ? outlineCenter(level1, bm) : null;
+				const c2 = level1 && level1.domains[0] ? outlineCenter(level1.domains[0], bm) : null;
+				const o1 = c1 ? Math.hypot(c1.x - boats[i].x, c1.y - boats[i].y) : Infinity;
+				const o2 = c2 ? Math.hypot(c2.x - boats[i].x, c2.y - boats[i].y) : Infinity;
+				maxOff = Math.max(maxOff, o1, o2);
+			}
+			bm.physics_model_step();
+		}
+		return { bm, boats, maxOff };
+	}
+
+	function borderFollowsMasks(bm, label) {
+		const a = bm.domains[0], b = bm.domains[1];
+		const l1 = borderRelation([a, b], bm);
+		const l2 = borderRelation([a.domains[0], b.domains[0]], bm);
+		const share1 = maskShare(a, b);
+		const share2 = maskShare(a.domains[0], b.domains[0]);
+		check(label + ' level-1 border is the mask union', l1.subset && l1.merged === share1,
+			`share=${share1} own=${l1.own} uni=${l1.uni}`);
+		check(label + ' level-2 border is the mask union', l2.subset && l2.merged === share2,
+			`share=${share2} own=${l2.own} uni=${l2.uni}`);
+		let saw = 0, finestOk = true;
+		const cw = a.cx1 - a.cx0;
+		for (let ly = 0; ly < a.cy1 - a.cy0; ly++) {
+			for (let lx = 0; lx < cw; lx++) {
+				if (!a.mask || a.mask[lx + ly * cw] !== 1) continue;
+				const cx = a.cx0 + lx, cy = a.cy0 + ly;
+				if (!b._maskAt(cx, cy)) continue;
+				saw++;
+				const la = a.levelAt(cx, cy), lb = b.levelAt(cx, cy);
+				const expect = lb > la ? b : a; // tie: later sibling (b) wins; a only when strictly finer
+				if (lb === la) {
+					if (bm._finestDomain(cx + 0.2, cy + 0.2) !== b || !b._ownsWrite(cx, cy)) finestOk = false;
+				} else if (bm._finestDomain(cx + 0.2, cy + 0.2) !== expect || !expect._ownsWrite(cx, cy)) {
+					finestOk = false;
+				}
+			}
+		}
+		return { saw, finestOk, share1, share2 };
+	}
+
+	const s1 = fleet([[12, -6, 5 * Math.PI / 4], [15, -11.5, 5 * Math.PI / 4]], 40);
+	const st1 = fieldStats(s1.bm);
+	const ov1 = borderFollowsMasks(s1.bm, 'scenario 1');
+	results.scenario1 = { off: s1.maxOff, saw: ov1.saw, share1: ov1.share1, share2: ov1.share2, maxU: st1.maxU, bad: st1.bad };
+	check('scenario 1 has two boats and two level-2 grids', s1.bm.domains.length === 2
+		&& s1.bm.domains[0].domains.length === 1 && s1.bm.domains[1].domains.length === 1);
+	check('scenario 1 disk centers stay on each boat', s1.maxOff < 1, `max offset ${s1.maxOff.toExponential(2)}`);
+	check('scenario 1 disks overlap and the finest writes', ov1.share1 && ov1.share2 && ov1.saw > 0 && ov1.finestOk,
+		`shared=${ov1.saw} finest=${ov1.finestOk}`);
+	check('scenario 1 fleet stays finite', st1.bad === 0 && st1.maxU < 1, `max|u|=${st1.maxU.toExponential(2)} bad=${st1.bad}`);
+
+	const s2 = fleet([[-10, -6, 3 * Math.PI / 4], [15, -11.5, 5 * Math.PI / 4]], 50);
+	const st2 = fieldStats(s2.bm);
+	const ov2 = borderFollowsMasks(s2.bm, 'scenario 2');
+	const dist2 = Math.hypot(s2.boats[0].x - s2.boats[1].x, s2.boats[0].y - s2.boats[1].y);
+	results.scenario2 = { off: s2.maxOff, dist: dist2, share1: ov2.share1, share2: ov2.share2, maxU: st2.maxU, bad: st2.bad };
+	check('scenario 2 has a domain on each boat', s2.bm.domains.length === 2
+		&& s2.bm.domains[0].domains.length === 1 && s2.bm.domains[1].domains.length === 1);
+	check('scenario 2 disk centers stay on each boat', s2.maxOff < 1, `max offset ${s2.maxOff.toExponential(2)}`);
+	check('scenario 2 level-2 islands are separate', !ov2.share2, `dist=${dist2.toFixed(2)}`);
+	check('scenario 2 fleet stays finite', st2.bad === 0 && st2.maxU < 1, `max|u|=${st2.maxU.toExponential(2)} bad=${st2.bad}`);
+
+	const s3 = fleet([[-3, -3, 3 * Math.PI / 4], [18, -11.5, 5 * Math.PI / 4]], 40);
+	const st3 = fieldStats(s3.bm);
+	const ov3 = borderFollowsMasks(s3.bm, 'scenario 3');
+	const dist3 = Math.hypot(s3.boats[0].x - s3.boats[1].x, s3.boats[0].y - s3.boats[1].y);
+	results.scenario3 = { off: s3.maxOff, dist: dist3, share1: ov3.share1, share2: ov3.share2, maxU: st3.maxU, bad: st3.bad };
+	check('scenario 3 has a domain on each boat', s3.bm.domains.length === 2
+		&& s3.bm.domains[0].domains.length === 1 && s3.bm.domains[1].domains.length === 1);
+	check('scenario 3 disk centers stay on each boat', s3.maxOff < 1, `max offset ${s3.maxOff.toExponential(2)}`);
+	check('scenario 3 level-2 islands are separate', !ov3.share2, `dist=${dist3.toFixed(2)}`);
+	check('scenario 3 fleet stays finite', st3.bad === 0 && st3.maxU < 1, `max|u|=${st3.maxU.toExponential(2)} bad=${st3.bad}`);
 }
 
 function fieldStats(bm) {

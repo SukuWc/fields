@@ -923,9 +923,10 @@ class RefinementDomain {
 
 	// Swap the child at `index` for a new window. Used when a boat is outside the
 	// allocation: crawling one cell per frame would leave the old staircase behind.
+	// A negative index used to write `domains[-1]` (`-1 < length`) and leave a hole.
 	replaceDomain(index, cx0, cy0, cx1, cy1) {
 		const box = normalizeDomainBox(cx0, cy0, cx1, cy1);
-		if (!box) return null;
+		if (!box || !Number.isInteger(index) || index < 0) return null;
 		const domain = new RefinementDomain(this, box.cx0, box.cy0, box.cx1, box.cy1);
 		if (index < this.domains.length) this.domains[index] = domain;
 		else this.domains.push(domain);
@@ -1555,6 +1556,72 @@ class RefinementDomain {
 }
 
 
+// Outer staircase of the union of masks at one refinement depth.
+// Overlapping boats share cells, so the edge between them is dropped and one
+// outline remains. Boats that do not touch keep a separate island each.
+// Cells are keyed in root-grid units of this level's parent span (dx*2:
+// 1 on level 1, 1/2 on level 2) so two windows agree on the same coarse cell.
+export function unionMaskBorderLines(domains, boltzmann) {
+	const toWorld = (cx, cy) => ({
+		x: (cx - boltzmann.width  / 2) / boltzmann.resolution,
+		y: (cy - boltzmann.height / 2) / boltzmann.resolution,
+	});
+	const groups = new Map();
+	for (const domain of domains) {
+		if (!domain) continue;
+		const span = domain.dx * 2;
+		if (!(span > 0)) continue;
+		const bucket = span.toFixed(6);
+		if (!groups.has(bucket)) groups.set(bucket, []);
+		groups.get(bucket).push(domain);
+	}
+	const segs = [];
+	for (const group of groups.values()) {
+		const occupied = new Map();
+		for (const domain of group) {
+			const span = domain.dx * 2;
+			const visit = (cx, cy) => {
+				const rx = Math.round(domain._rootX(cx) / span);
+				const ry = Math.round(domain._rootY(cy) / span);
+				const key = rx + ',' + ry;
+				if (occupied.has(key)) return;
+				occupied.set(key, {
+					rx, ry,
+					x0: domain._rootX(cx),
+					y0: domain._rootY(cy),
+					x1: domain._rootX(cx + 1),
+					y1: domain._rootY(cy + 1),
+				});
+			};
+			if (!domain.mask) {
+				for (let cy = domain.cy0; cy < domain.cy1; cy++) {
+					for (let cx = domain.cx0; cx < domain.cx1; cx++) visit(cx, cy);
+				}
+			} else {
+				const cw = domain.cx1 - domain.cx0;
+				for (let ly = 0; ly < domain.cy1 - domain.cy0; ly++) {
+					for (let lx = 0; lx < cw; lx++) {
+						if (domain.mask[lx + ly * cw] !== 1) continue;
+						visit(domain.cx0 + lx, domain.cy0 + ly);
+					}
+				}
+			}
+		}
+		const edge = (xa, ya, xb, yb) => {
+			const p = toWorld(xa, ya);
+			const q = toWorld(xb, yb);
+			segs.push({ x1: p.x, y1: p.y, x2: q.x, y2: q.y, dim: true });
+		};
+		for (const cell of occupied.values()) {
+			if (!occupied.has((cell.rx) + ',' + (cell.ry + 1))) edge(cell.x0, cell.y1, cell.x1, cell.y1);
+			if (!occupied.has((cell.rx) + ',' + (cell.ry - 1))) edge(cell.x0, cell.y0, cell.x1, cell.y0);
+			if (!occupied.has((cell.rx + 1) + ',' + cell.ry)) edge(cell.x1, cell.y0, cell.x1, cell.y1);
+			if (!occupied.has((cell.rx - 1) + ',' + cell.ry)) edge(cell.x0, cell.y0, cell.x0, cell.y1);
+		}
+	}
+	return segs;
+}
+
 export class Boltzmann {
 
 	constructor(width, height, resolution, direction, speed, texture, oversampling) {
@@ -1646,10 +1713,10 @@ export class Boltzmann {
 
 	// Replace domain `index`, or append if it does not exist yet. A boat that has
 	// left the window uses this once; sliding the old disk across the map leaves
-	// its outline behind.
+	// its outline behind. Index -1 is refused so it cannot land on `domains[-1]`.
 	replaceDomain(index, cx0, cy0, cx1, cy1) {
 		const box = normalizeDomainBox(cx0, cy0, cx1, cy1);
-		if (!box) return null;
+		if (!box || !Number.isInteger(index) || index < 0) return null;
 		const domain = new RefinementDomain(this, box.cx0, box.cy0, box.cx1, box.cy1);
 		if (index < this.domains.length) this.domains[index] = domain;
 		else this.domains.push(domain);
