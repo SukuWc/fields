@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { Runner } from 'planck-renderer';
 
-import { Boltzmann } from './boltzmann.js';
+import { Boltzmann, unionMaskBorderLines } from './boltzmann.js';
+import { trackBoats } from './domainTrack.js';
 import { Map } from './map.js';
 import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera } from './renderer.js';
@@ -19,13 +20,9 @@ const wind_speed = 15;
 const bm_resolution = 1;
 const texture_oversampling = 4;
 
-// Fine domain tracking: half-width in coarse cells, and margin before triggering a move.
+// Fine domain tracking: half-width in coarse cells. The window steps one cell at a time
+// once the boat is more than SHIFT_THRESHOLD cells from the window center.
 const SAIL_EFFICIENCY = 0.0003 * bm_resolution; // scales sail aerodynamic force → fluid momentum transfer
-
-const DOMAIN_HALF    = 20;
-const DOMAIN_MARGIN  = 10;
-const DOMAIN2_HALF   = 20; // half-width of level-2 domain in level-1 fine cell coords
-const DOMAIN2_MARGIN = 10;
 
 // Data texture for fluid field visualisation
 const _side1 = texture_oversampling * map_w * bm_resolution;
@@ -62,36 +59,43 @@ const distInfoEl = document.getElementById('dist_info');
 // Physics loop
 const runner = new Runner(map.world, { speed: 1, fps: 30 });
 
-// Level-2 box in the parent's fine-cell coordinates. The parent is clamped to
-// the lattice, so a boat past the wall maps outside it and fi±HALF can invert
-// (fi2_1 < fi2_0). That used to call addDomain with a negative size and throw.
-function level2Box(parent, fi, fj) {
-  if (!parent || !(parent.width >= 4) || !(parent.height >= 4)) return null;
-  if (!Number.isFinite(fi) || !Number.isFinite(fj)) return null;
-  const x0 = Math.max(1, Math.min(parent.width - 3, Math.round(fi - DOMAIN2_HALF)));
-  const y0 = Math.max(1, Math.min(parent.height - 3, Math.round(fj - DOMAIN2_HALF)));
-  const x1 = Math.max(x0 + 2, Math.min(parent.width - 1, Math.round(fi + DOMAIN2_HALF)));
-  const y1 = Math.max(y0 + 2, Math.min(parent.height - 1, Math.round(fj + DOMAIN2_HALF)));
-  if (!(x1 > x0 && y1 > y0 && x1 < parent.width && y1 < parent.height)) return null;
-  return { x0, y0, x1, y1 };
-}
-
 runner.start(() => {
   guides = [];
 
-  function pushDomainLines(domains) {
+  // Smooth circle per boat. The light staircase is the union of every mask at
+  // that level, so overlapping boats share one border and separate boats keep
+  // one island each. A rectangle with no disk still uses its four sides.
+  function pushRefinementGuides(domains) {
+    const masked = [];
     for (const domain of domains) {
       for (const seg of domain.worldBorderLines(bm)) {
-        guides.push({ color: 0x000000, type: 'guide', x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2 });
+        if (domain.disk && seg.dim) continue;
+        guides.push({
+          color: seg.dim ? 0x8899aa : 0x000000,
+          opacity: seg.dim ? 0.35 : 1,
+          type: 'guide',
+          x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2,
+        });
       }
-      pushDomainLines(domain.domains);
+      if (domain.disk) masked.push(domain);
     }
+    for (const seg of unionMaskBorderLines(masked, bm)) {
+      // Full-opacity light line: the 0.35 gray sat on the dark speed field
+      // and the merged border could not be told from the black per-boat circles.
+      guides.push({
+        color: 0x9ad0ff,
+        opacity: 1,
+        type: 'guide',
+        x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2,
+      });
+    }
+    const children = [];
+    for (const domain of domains) children.push(...domain.domains);
+    if (children.length) pushRefinementGuides(children);
   }
-  // Dev mode leaves the lattice frozen: no domain guides, no energy injection,
-  // no AMR tracking, no Boltzmann step. Boats read map.get_wind instead.
-  if (!map.devMode) {
-    pushDomainLines(bm.domains);
-  }
+  // Dev mode leaves the lattice frozen: no energy injection, no AMR tracking,
+  // no Boltzmann step. Boats read map.get_wind instead. Disk guides are drawn
+  // after the windows move, so they match this frame's boat.
 
   executeScenarioFrame();
   processKeys();
@@ -133,52 +137,19 @@ runner.start(() => {
     }
   }
 
-  // Dynamic domain placement: keep one fine domain per boat, with a level-2 domain inside.
-  if (!map.devMode && document.getElementById('amr').checked) getPlayers().forEach((player, index) => {
-    // A NaN body (bad sail force or a collapsed lattice sample) must not be
-    // rounded into a domain corner. NaN comparisons are all false, so the
-    // move check would keep a stale box, and addDomain(NaN) throws.
-    if (!Number.isFinite(player.x) || !Number.isFinite(player.y)) return;
+  // Dynamic domain placement: one reusable window per boat, a disk mask inside it,
+  // and a smaller level-2 disk carried with the level-1 window. The window slides
+  // one parent cell per frame. A level-1 slide carries level 2.
+  // Dev mode leaves the lattice frozen. A NaN body must not be rounded into a domain corner.
+  if (!map.devMode && document.getElementById('amr').checked) trackBoats(bm, getPlayers());
 
-    const cx = Math.round(bm.width/2  + player.x * bm.resolution);
-    const cy = Math.round(bm.height/2 + player.y * bm.resolution);
-    const cx0 = Math.max(1, cx - DOMAIN_HALF);
-    const cy0 = Math.max(1, cy - DOMAIN_HALF);
-    const cx1 = Math.min(bm.width  - 1, cx + DOMAIN_HALF);
-    const cy1 = Math.min(bm.height - 1, cy + DOMAIN_HALF);
-    if (!(cx1 > cx0 && cy1 > cy0)) return;
-
-    let level1Moved = false;
-    if (index >= bm.domains.length) {
-      bm.addDomain(cx0, cy0, cx1, cy1);
-      level1Moved = true;
-    } else {
-      const d = bm.domains[index];
-      if (cx < d.cx0 + DOMAIN_MARGIN || cx > d.cx1 - DOMAIN_MARGIN ||
-          cy < d.cy0 + DOMAIN_MARGIN || cy > d.cy1 - DOMAIN_MARGIN) {
-        bm.moveDomain(index, cx0, cy0, cx1, cy1);
-        level1Moved = true;
-      }
-    }
-
-    // Level-2 domain: boat position in level-1 fine cell coords.
-    const level1 = bm.domains[index];
-    if (!level1) return;
-    const fi_f = 1 + (cx - level1.cx0) * 2;
-    const fj_f = 1 + (cy - level1.cy0) * 2;
-    const box = level2Box(level1, fi_f, fj_f);
-    if (!box) return;
-
-    if (level1.domains.length === 0) {
-      level1.addDomain(box.x0, box.y0, box.x1, box.y1);
-    } else {
-      const d2 = level1.domains[0];
-      if (level1Moved || fi_f < d2.cx0 + DOMAIN2_MARGIN || fi_f > d2.cx1 - DOMAIN2_MARGIN ||
-          fj_f < d2.cy0 + DOMAIN2_MARGIN || fj_f > d2.cy1 - DOMAIN2_MARGIN) {
-        level1.moveDomain(0, box.x0, box.y0, box.x1, box.y1);
-      }
-    }
-  }); // end AMR block
+  // AMR off: a restart that removed a boat would keep drawing a ring.
+  // AMR on: trackBoats already installed exactly the live boats, in player order.
+  if (!map.devMode && !document.getElementById('amr').checked && bm.domains.length > getPlayers().length) {
+    bm.domains.length = getPlayers().length;
+    bm._rebuildInteriorCells();
+  }
+  if (!map.devMode) pushRefinementGuides(bm.domains);
 
   if (map.devMode) {
     const wind = map.get_wind(0, 0);
