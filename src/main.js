@@ -5,7 +5,7 @@ import { Boltzmann } from './boltzmann.js';
 import { Map } from './map.js';
 import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera } from './renderer.js';
-import { setupControls, getPlayers, getPhysicsFrame, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
+import { setupControls, getPlayers, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
 import { sectionAOverlay, trueWindAngleDeg } from './rules.js';
 

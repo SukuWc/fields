@@ -166,16 +166,24 @@ scenarios[4][2000] = () => { scenario_clear(); };
 scenarios[5] = [];
 
 // Rule 13 demo. Wind-from defaults to +Y. Both boats start starboard
-// close-hauled, a few metres apart, inside the 12 m gate. Boat 0 tacks on
-// a timer (and Enter tacks her again; Shift tacks boat 1). While her |TWA|
-// is still under 40° the pair is Rule 13: green to the stand-on boat, red
-// to the tacker. After she is close-hauled on the new tack the pair falls
-// back to Rule 10, 11, or 12. Dev mode keeps the wind steady:
+// close-hauled and overlapped, inside the 12 m gate, so the pair is Rule 11
+// until boat 0 tacks. Frame 90 is an animation frame (the scenario clock
+// follows the display refresh). Enter tacks boat 0 again; Shift tacks boat 1.
+// While her |TWA| is still under 40° the pair is Rule 13: green to the
+// stand-on boat, red to the tacker. Once she is close-hauled on the new tack
+// the pair is Rule 10. Dev mode keeps the wind steady:
 // ?devmode=1&scenario_selector=6
 scenarios[6] = [];
 scenarios[6][0] = () => {
-  players.push(new Boat(_map, 0, 0, 5 * Math.PI / 4));
-  players.push(new Boat(_map, 5, -2, 5 * Math.PI / 4));
+  // 8 m to starboard of boat 0. Hull clearance is about 6.5 m, so the pair
+  // starts inside the 12 m gate and overlapped (Rule 11) without the hulls
+  // touching. A closer start was bouncing them through head to wind.
+  const heading = 5 * Math.PI / 4;
+  const fx = Math.sin(heading);
+  const fy = -Math.cos(heading);
+  const abeam = 8;
+  players.push(new Boat(_map, 0, 0, heading));
+  players.push(new Boat(_map, fy * abeam, -fx * abeam, heading));
 };
 scenarios[6][1] = () => {
   players[0].input_autopilot_enabled_toggle();
@@ -191,8 +199,6 @@ scenarios[6][2] = () => {
   _map.camera_zoom = 18;
 };
 scenarios[6][90] = () => { players[0].input_autopilot_tack_toggle(); };
-scenarios[6][240] = () => { players[0].input_autopilot_tack_toggle(); };
-scenarios[6][390] = () => { players[0].input_autopilot_tack_toggle(); };
 
 export function setupControls(map, getCamera, bm) {
   _map = map;
