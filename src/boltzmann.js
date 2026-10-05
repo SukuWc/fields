@@ -11,6 +11,48 @@ const four9ths = 4.0 / 9.0;  // w_0
 const one9th   = 1.0 / 9.0;  // w_j  (j = E, W, N, S)
 const one36th  = 1.0 / 36.0; // w_k  (k = NE, NW, SE, SW)
 
+// Rest equilibrium, used when a parent cell is missing during ghost injection
+// so the interpolant never reads properties off undefined.
+const ZERO_CELL = {
+	ux: 0, uy: 0, rho: 1,
+	f0: four9ths,
+	fE: one9th, fW: one9th, fN: one9th, fS: one9th,
+	fNE: one36th, fNW: one36th, fSE: one36th, fSW: one36th,
+};
+
+// Round a refinement box onto the parent grid and reject empty, inverted, or
+// non-finite corners. A boat past the wall used to pass cx1 < cx0, and
+// `new Array(negative)` threw while building the level-2 domain.
+function normalizeDomainBox(cx0, cy0, cx1, cy1) {
+	cx0 = Math.round(cx0);
+	cy0 = Math.round(cy0);
+	cx1 = Math.round(cx1);
+	cy1 = Math.round(cy1);
+	if (!Number.isInteger(cx0) || !Number.isInteger(cy0) || !Number.isInteger(cx1) || !Number.isInteger(cy1)) return null;
+	if (!(cx1 > cx0 && cy1 > cy0)) return null;
+	const width = (cx1 - cx0) * 2 + 2;
+	const height = (cy1 - cy0) * 2 + 2;
+	if (width < 4 || height < 4 || width * height > 2e6) return null;
+	return { cx0, cy0, cx1, cy1 };
+}
+
+function latticeCell(cells, width, height, i, j) {
+	if (!Number.isInteger(i) || !Number.isInteger(j)) return undefined;
+	if (!Number.isInteger(width) || !Number.isInteger(height)) return undefined;
+	if (i < 0 || j < 0 || i >= width || j >= height) return undefined;
+	return cells[i + j * width];
+}
+
+// Sail momentum. Refuses a missing cell, a non-finite impulse, or a collapsed
+// density — those were the writes that published NaN macros. The previous body
+// rebuilt equilibrium with setEquil and also refused |u| > 0.35. setEquil wipes
+// f_neq and, once per fine substep, stacked until the wake ran away; the cap
+// then deleted the bounded exact-difference kick. addMomentum keeps f_neq and
+// the kick streams, so the speed cap is not applied on this path.
+function pushCellVelocity(cell, fx, fy) {
+	addMomentum(cell, fx, fy);
+}
+
 // Eq. 3: f_i^eq = w_i * rho * (1 + 3(xi.u) + 4.5(xi.u)^2 - 1.5|u|^2)
 function computeEquil(ux, uy, rho) {
 	const ux3   = 3 * ux;
@@ -115,6 +157,9 @@ class SimulationCell {
 		if (typeof newrho == 'undefined') {
 			newrho = this.rho;
 		}
+		if (!Number.isFinite(newux) || !Number.isFinite(newuy) || !Number.isFinite(newrho)) {
+			return;
+		}
 		const eq = computeEquil(newux, newuy, newrho);
 		this.f0  = eq.f0;
 		this.fN  = eq.fN;  this.fS  = eq.fS;
@@ -128,6 +173,7 @@ class SimulationCell {
 
 	calculate_curl() {
 		// curl = ∂uy/∂x - ∂ux/∂y, finite difference over cached geographic neighbours
+		if (!this.nbE || !this.nbW || !this.nbN || !this.nbS) return;
 		this.curl = this.nbE.uy - this.nbW.uy - this.nbN.ux + this.nbS.ux;
 	}
 
@@ -148,11 +194,23 @@ class SimulationCell {
 
 		// Eq. 4: rho = sum_i f_i
 		const rho = this.f0 + this.fN + this.fS + this.fE + this.fW + this.fNW + this.fNE + this.fSW + this.fSE;
+
+		// Eq. 5 divides by rho. rho <= 0 (or a NaN population) makes ux/uy NaN,
+		// and the next stream copies that into the neighbours. Reset the cell
+		// to rest equilibrium instead of publishing a non-finite velocity.
+		if (!(rho > 1e-6) || !Number.isFinite(rho)) {
+			this.setEquil(0, 0, 1);
+			return;
+		}
 		this.rho = rho;
 
 		// Eq. 5: rho*u = sum_i xi_i * f_i
 		const ux = (this.fE + this.fNE + this.fSE - this.fW - this.fNW - this.fSW) / rho;
 		const uy = (this.fN + this.fNE + this.fNW - this.fS - this.fSE - this.fSW) / rho;
+		if (!Number.isFinite(ux) || !Number.isFinite(uy)) {
+			this.setEquil(0, 0, 1);
+			return;
+		}
 		this.ux = ux;
 		this.uy = uy;
 
@@ -683,7 +741,16 @@ class RefinementDomain {
 
 		const W = parent.width;
 		const H = parent.height;
-		const get = (x, y) => parent.cells[Math.max(0, Math.min(x, W-1)) + Math.max(0, Math.min(y, H-1)) * W];
+		// A NaN index makes every comparison false, so an unclamped read is
+		// cells[NaN] and the interpolant throws on .ux. Missing cells (and
+		// non-finite indexes) fall back to rest equilibrium.
+		const get = (x, y) => {
+			if (!Number.isFinite(x) || !Number.isFinite(y) || !(W > 0) || !(H > 0)) return ZERO_CELL;
+			const ix = Math.max(0, Math.min(W - 1, x));
+			const iy = Math.max(0, Math.min(H - 1, y));
+			if (!Number.isFinite(ix) || !Number.isFinite(iy)) return ZERO_CELL;
+			return parent.cells[ix + iy * W] || ZERO_CELL;
+		};
 
 		// halfX/halfY: true when this fine cell sits at a half-integer coarse coordinate
 		// (fi even → cx is half-integer; fj even → cy is half-integer).
@@ -701,16 +768,17 @@ class RefinementDomain {
 				return (9/16)*(fn(get(ix,iy)) + fn(get(ix+1,iy))) - (1/16)*(fn(get(ix-1,iy)) + fn(get(ix+2,iy)));
 			if (ix - 1 < 0)                      // Eq. 39: right-biased
 				return (3/8)*fn(get(ix,iy)) + (3/4)*fn(get(ix+1,iy)) - (1/8)*fn(get(ix+2,iy));
-			return                               // Eq. 39: left-biased
-				(3/8)*fn(get(ix+1,iy)) + (3/4)*fn(get(ix,iy)) - (1/8)*fn(get(ix-1,iy));
+			// Eq. 39: left-biased. The expression must stay on the return line;
+			// a newline after return is a semicolon and yields undefined.
+			return (3/8)*fn(get(ix+1,iy)) + (3/4)*fn(get(ix,iy)) - (1/8)*fn(get(ix-1,iy));
 		};
 		const interpY = (fn, ix, iy) => {
 			if (iy - 1 >= 0 && iy + 2 <= H - 1) // Eq. 38: centered
 				return (9/16)*(fn(get(ix,iy)) + fn(get(ix,iy+1))) - (1/16)*(fn(get(ix,iy-1)) + fn(get(ix,iy+2)));
 			if (iy - 1 < 0)                      // Eq. 39: right-biased
 				return (3/8)*fn(get(ix,iy)) + (3/4)*fn(get(ix,iy+1)) - (1/8)*fn(get(ix,iy+2));
-			return                               // Eq. 39: left-biased
-				(3/8)*fn(get(ix,iy+1)) + (3/4)*fn(get(ix,iy)) - (1/8)*fn(get(ix,iy-1));
+			// Eq. 39: left-biased. Keep this on the return line (see interpX).
+			return (3/8)*fn(get(ix,iy+1)) + (3/4)*fn(get(ix,iy)) - (1/8)*fn(get(ix,iy-1));
 		};
 		// Separable 2D: cubic in x for each needed y-row, then cubic in y over those results.
 		const interpXY = (fn) => {
@@ -719,8 +787,8 @@ class RefinementDomain {
 				return (9/16)*(gX(icy) + gX(icy+1)) - (1/16)*(gX(icy-1) + gX(icy+2));
 			if (icy - 1 < 0)                        // Eq. 39: right-biased in y
 				return (3/8)*gX(icy) + (3/4)*gX(icy+1) - (1/8)*gX(icy+2);
-			return                                  // Eq. 39: left-biased in y
-				(3/8)*gX(icy+1) + (3/4)*gX(icy) - (1/8)*gX(icy-1);
+			// Eq. 39: left-biased in y. Keep this on the return line (see interpX).
+			return (3/8)*gX(icy+1) + (3/4)*gX(icy) - (1/8)*gX(icy-1);
 		};
 
 		// Select scheme: Eq. 34 (direct copy) when coincident, 1D or 2D cubic otherwise.
@@ -743,6 +811,17 @@ class RefinementDomain {
 		const fSE_c = interp(c => c.fSE);
 		const fSW_c = interp(c => c.fSW);
 
+		const ghost = this.cells[fi + fj * this.width];
+		if (!ghost) return;
+		if (!Number.isFinite(ux) || !Number.isFinite(uy) || !Number.isFinite(rho)
+			|| !Number.isFinite(f0_c) || !Number.isFinite(fN_c) || !Number.isFinite(fS_c)
+			|| !Number.isFinite(fE_c) || !Number.isFinite(fW_c)
+			|| !Number.isFinite(fNE_c) || !Number.isFinite(fNW_c)
+			|| !Number.isFinite(fSE_c) || !Number.isFinite(fSW_c)) {
+			ghost.setEquil(0, 0, 1);
+			return;
+		}
+
 		// Eq. 3: equilibrium at interpolated macroscopic fields
 		const { f0: feq0, fN: feqN, fS: feqS, fE: feqE, fW: feqW,
 		        fNE: feqNE, fNW: feqNW, fSE: feqSE, fSW: feqSW } = computeEquil(ux, uy, rho);
@@ -750,7 +829,6 @@ class RefinementDomain {
 		// Eq. 29: f_{i,f} = f_i^eq + (ω_c / 2ω_f) * f_i^neq_c
 		//         f_i^neq_c = f_{i,c} - f_i^eq(ρ_c, u_c)
 		const scale = this.omega_c / (2 * this.omega_f);
-		const ghost = this.cells[fi + fj * this.width];
 		ghost.f0  = feq0  + scale * (f0_c  - feq0);
 		ghost.fN  = feqN  + scale * (fN_c  - feqN);
 		ghost.fS  = feqS  + scale * (fS_c  - feqS);
@@ -783,11 +861,13 @@ class RefinementDomain {
 	_restrictCell(parent, cx, cy) {
 		const fi0 = 1 + (cx - this.cx0) * 2;
 		const fj0 = 1 + (cy - this.cy0) * 2;
-		if (fi0 < 0 || fj0 < 0 || fi0 >= this.width || fj0 >= this.height) return;
-		const center = this.cells[fi0 + fj0 * this.width];
+		const center = latticeCell(this.cells, this.width, this.height, fi0, fj0);
+		if (!center) return;
 		const rho = center.rho;
 		const ux  = center.ux;
 		const uy  = center.uy;
+		// A collapsed or non-finite coincident node must not be copied onto the parent.
+		if (!(rho > 1e-6) || !Number.isFinite(rho) || !Number.isFinite(ux) || !Number.isFinite(uy)) return;
 
 		// Eq. 33: average f_neq over the fine-grid D2Q9 neighbourhood (width = one coarse cell).
 		const acc = NEQ_ACC;
@@ -819,7 +899,8 @@ class RefinementDomain {
 		const r1 = one9th * rho;
 		const r36 = one36th * rho;
 		const scale = (2 * this.omega_f) / this.omega_c;
-		const coarse = parent.cells[cx + cy * parent.width];
+		const coarse = latticeCell(parent.cells, parent.width, parent.height, cx, cy);
+		if (!coarse) return;
 		coarse.f0  = four9ths * rho * (1 - u215)                       + scale * acc[0];
 		coarse.fE  = r1 * (1 + ux3 + 4.5 * ux2 - u215)                 + scale * acc[1];
 		coarse.fW  = r1 * (1 - ux3 + 4.5 * ux2 - u215)                 + scale * acc[2];
@@ -838,7 +919,9 @@ class RefinementDomain {
 
 	// Add a child refinement domain in this domain's cell coordinates.
 	addDomain(cx0, cy0, cx1, cy1) {
-		this.domains.push(new RefinementDomain(this, cx0, cy0, cx1, cy1));
+		const box = normalizeDomainBox(cx0, cy0, cx1, cy1);
+		if (!box) return;
+		this.domains.push(new RefinementDomain(this, box.cx0, box.cy0, box.cx1, box.cy1));
 		this._rebuildInteriorCells();
 	}
 
@@ -941,7 +1024,8 @@ class RefinementDomain {
 		let isBarrier = false;
 		for (let by = by0; by <= by1 && !isBarrier; by++) {
 			for (let bx = bx0; bx <= bx1; bx++) {
-				if (parent.cells[bx + by * parent.width].barrier) isBarrier = true;
+				const pcell = latticeCell(parent.cells, parent.width, parent.height, bx, by);
+				if (pcell && pcell.barrier) isBarrier = true;
 			}
 		}
 		this.cells[fi + fj * this.width].barrier = isBarrier;
@@ -1377,9 +1461,13 @@ class RefinementDomain {
 	// Bilinear interpolation of fine-grid velocity at a coordinate in the PARENT's cell space.
 	// Delegates to the finest child disk that contains the point.
 	getVelocityAt(cx_cont, cy_cont) {
-		if (!Number.isFinite(cx_cont) || !Number.isFinite(cy_cont)) return { x: 0, y: 0 };
+		if (!Number.isFinite(cx_cont) || !Number.isFinite(cy_cont) ||
+		    !Number.isFinite(this.cx0) || !Number.isFinite(this.cy0)) {
+			return { x: 0, y: 0 };
+		}
 		const fi_f = 1 + (cx_cont - this.cx0) * 2;
 		const fj_f = 1 + (cy_cont - this.cy0) * 2;
+		if (!Number.isFinite(fi_f) || !Number.isFinite(fj_f)) return { x: 0, y: 0 };
 		const child = this._finestChild(fi_f, fj_f);
 		if (child) return child.getVelocityAt(fi_f, fj_f);
 		const fi0 = Math.max(1, Math.min(this.width  - 2, Math.floor(fi_f)));
@@ -1388,10 +1476,10 @@ class RefinementDomain {
 		const fj1 = Math.min(this.height - 2, fj0 + 1);
 		const hf = fi_f - fi0;
 		const vf = fj_f - fj0;
-		const c00 = this.cells[fi0 + fj0 * this.width];
-		const c10 = this.cells[fi1 + fj0 * this.width];
-		const c01 = this.cells[fi0 + fj1 * this.width];
-		const c11 = this.cells[fi1 + fj1 * this.width];
+		const c00 = latticeCell(this.cells, this.width, this.height, fi0, fj0);
+		const c10 = latticeCell(this.cells, this.width, this.height, fi1, fj0);
+		const c01 = latticeCell(this.cells, this.width, this.height, fi0, fj1);
+		const c11 = latticeCell(this.cells, this.width, this.height, fi1, fj1);
 		if (!c00 || !c10 || !c01 || !c11) return { x: 0, y: 0 };
 		const vx = c00.ux*(1-hf)*(1-vf) + c10.ux*hf*(1-vf) + c01.ux*(1-hf)*vf + c11.ux*hf*vf;
 		const vy = c00.uy*(1-hf)*(1-vf) + c10.uy*hf*(1-vf) + c01.uy*(1-hf)*vf + c11.uy*hf*vf;
@@ -1442,7 +1530,8 @@ class RefinementDomain {
 	// not pile up on one cell the way setEquil did.
 	_applyForceFineCell(fi, fj, fx, fy) {
 		const s = 1 / (this.dx * this.dx);
-		addMomentum(this.cells[fi + fj * this.width], fx * s, fy * s);
+		const cell = latticeCell(this.cells, this.width, this.height, fi, fj);
+		pushCellVelocity(cell, fx * s, fy * s);
 	}
 
 }
@@ -1531,7 +1620,9 @@ export class Boltzmann {
 	// Covered coarse nodes stay in _allInteriorCells so the pull stream reads
 	// post-collision populations; averageToCoarse overwrites them afterward.
 	addDomain(cx0, cy0, cx1, cy1) {
-		this.domains.push(new RefinementDomain(this, cx0, cy0, cx1, cy1));
+		const box = normalizeDomainBox(cx0, cy0, cx1, cy1);
+		if (!box) return;
+		this.domains.push(new RefinementDomain(this, box.cx0, box.cy0, box.cx1, box.cy1));
 		this._rebuildInteriorCells();
 	}
 
@@ -1546,8 +1637,10 @@ export class Boltzmann {
 	// Translate a domain onto (cx0, cy0) one coarse cell at a time, keeping its size.
 	// A different width or height is ignored so a nested grid is never dropped.
 	moveDomain(index, cx0, cy0, cx1, cy1) {
+		const box = normalizeDomainBox(cx0, cy0, cx1, cy1);
 		const d = this.domains[index];
-		if (!d) return;
+		if (!box || !d) return;
+		cx0 = box.cx0; cy0 = box.cy0; cx1 = box.cx1; cy1 = box.cy1;
 		if ((cx1 - cx0) !== (d.cx1 - d.cx0) || (cy1 - cy0) !== (d.cy1 - d.cy0)) return;
 		let guard = Math.abs(cx0 - d.cx0) + Math.abs(cy0 - d.cy0) + 2;
 		while ((d.cx0 !== cx0 || d.cy0 !== cy0) && guard-- > 0) {
@@ -1707,7 +1800,7 @@ export class Boltzmann {
 		const dx = x1 - x0;
 		const dy = y1 - y0;
 		const length = Math.sqrt(dx*dx + dy*dy);
-		if (length < 1e-9) return;
+		if (!(length > 1e-9)) return;
 
 		// Step size = world size of the finest available cell
 		let minDx = 1;
@@ -1729,12 +1822,16 @@ export class Boltzmann {
 	}
 
 	apply_force_to_cell(x, y, fx, fy) {
-		addMomentum(this.cells[x + y * this.width], fx, fy);
+		const cell = latticeCell(this.cells, this.width, this.height, x, y);
+		pushCellVelocity(cell, fx, fy);
 	}
 
 	get_field_velocity(worldX, worldY) {
-		// A non-finite probe used to skip every clamp and read cells[NaN].
-		if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) return { x: 0, y: 0 };
+		// NaN comparisons are all false, so a non-finite probe would skip the
+		// clamp below and read cells[NaN].ux. Return a zero sample instead.
+		if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) {
+			return { x: 0, y: 0 };
+		}
 		const cx_cont = this.width/2  + worldX * this.resolution;
 		const cy_cont = this.height/2 + worldY * this.resolution;
 		const best = this._finestDomain(cx_cont, cy_cont);
@@ -1743,8 +1840,11 @@ export class Boltzmann {
 		let x = this.width/2  + Math.floor(worldX * this.resolution);
 		let y = this.height/2 + Math.floor(worldY * this.resolution);
 
-		// The ±2 world-unit wind stencil can land past the outer cells. Pinning
-		// to the edge cell leaves in-range samples unchanged.
+		// The ±2 world-unit wind stencil (and the mouse probe) can land past the
+		// outer cells. An unclamped index is undefined there — negative y underflows
+		// the array, and y past the last row walks off the end (positive x wraps
+		// into the next row). Pinning to the edge cell leaves in-range samples
+		// unchanged: those already have floor(x) in [0, width-2].
 		let x0 = Math.floor(x);
 		let y0 = Math.floor(y);
 		let hf = x - x0;
@@ -1766,11 +1866,10 @@ export class Boltzmann {
 		const s2 = (1-hf) *   vf;
 		const s3 =   hf   *   vf;
 
-		if (x0 < 0 || y0 < 0 || x3 >= this.width || y3 >= this.height) return { x: 0, y: 0 };
-		const cell_0 = this.cells[x0 + y0 * this.width];
-		const cell_1 = this.cells[x1 + y1 * this.width];
-		const cell_2 = this.cells[x2 + y2 * this.width];
-		const cell_3 = this.cells[x3 + y3 * this.width];
+		const cell_0 = latticeCell(this.cells, this.width, this.height, x0, y0);
+		const cell_1 = latticeCell(this.cells, this.width, this.height, x1, y1);
+		const cell_2 = latticeCell(this.cells, this.width, this.height, x2, y2);
+		const cell_3 = latticeCell(this.cells, this.width, this.height, x3, y3);
 		if (!cell_0 || !cell_1 || !cell_2 || !cell_3) return { x: 0, y: 0 };
 
 		const vx = cell_0.ux*s0 + cell_1.ux*s1 + cell_2.ux*s2 + cell_3.ux*s3;

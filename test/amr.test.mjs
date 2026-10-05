@@ -306,6 +306,7 @@ function shearStats(bm, domain) {
 {
 	const { Map } = await import('../src/map.js');
 	const { Boat } = await import('../src/boat.js');
+	const { FluidWind, ConstantWind } = await import('../src/wind.js');
 	const HALF = 20, THRESH = 1;
 	const toward = (px, py, d, gw, gh) => {
 		const cx = (d.cx0 + d.cx1) / 2, cy = (d.cy0 + d.cy1) / 2;
@@ -317,7 +318,7 @@ function shearStats(bm, domain) {
 		return { dcx, dcy };
 	};
 	const bm = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
-	const map = new Map(75, 75, 90, 15, bm);
+	const map = new Map(75, 75, 90, 15, bm, new FluidWind(bm), new ConstantWind(90, 15));
 	map.physics_model_init();
 	const boat = new Boat(map, 10, -9, 5 * Math.PI / 4);
 	let bmMs = 0;
@@ -431,8 +432,9 @@ function shearStats(bm, domain) {
 {
 	const { Map } = await import('../src/map.js');
 	const { Boat } = await import('../src/boat.js');
+	const { FluidWind, ConstantWind } = await import('../src/wind.js');
 	const bm = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
-	const map = new Map(75, 75, 90, 15, bm);
+	const map = new Map(75, 75, 90, 15, bm, new FluidWind(bm), new ConstantWind(90, 15));
 	map.physics_model_init();
 	const boat = new Boat(map, 10, -9, 5 * Math.PI / 4);
 	// Same initial window main.js would place on the boat at (10, −9): the sail
