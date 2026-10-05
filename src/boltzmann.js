@@ -301,6 +301,41 @@ function addNeq(cell, acc) {
 	acc[8] += cell.fSW - r36 * (1 - ux3 - uy3 + 4.5 * (u2 + uxuy2) - u215);
 }
 
+// Exact difference method (Kupershtokh): Δf_i = f_i^eq(ρ, u+Δu) − f_i^eq(ρ, u).
+// Adds momentum (fx, fy) = ρ Δu and leaves f_neq untouched. setEquil would replace
+// the populations and stack a new equilibrium on top of the old velocity.
+function addMomentum(cell, fx, fy) {
+	const rho = cell.rho;
+	if (!(rho > 1e-30) || (fx === 0 && fy === 0)) return;
+	const ux = cell.ux, uy = cell.uy;
+	const dux = fx / rho, duy = fy / rho;
+	const a = computeEquil(ux, uy, rho);
+	const b = computeEquil(ux + dux, uy + duy, rho);
+	cell.f0  += b.f0  - a.f0;
+	cell.fN  += b.fN  - a.fN;
+	cell.fS  += b.fS  - a.fS;
+	cell.fE  += b.fE  - a.fE;
+	cell.fW  += b.fW  - a.fW;
+	cell.fNE += b.fNE - a.fNE;
+	cell.fNW += b.fNW - a.fNW;
+	cell.fSE += b.fSE - a.fSE;
+	cell.fSW += b.fSW - a.fSW;
+	cell.ux = ux + dux;
+	cell.uy = uy + duy;
+}
+
+// Parent nodes sit on odd fine indices (1, 3, 5, …). Snapping the sail sample onto
+// that node is what makes the impulse survive restriction: ρ and u are copied from
+// the coincident node only, so a kick on a halfway fine node is stripped.
+function snapToNode(i, n) {
+	// Last interior coincident node is n-3 (n-1 is the ghost, n-2 is the halfway node).
+	let s = (i & 1) ? i : i - 1;
+	if (s < 1) s = 1;
+	const maxNode = n - 3;
+	if (s > maxNode) s = maxNode;
+	return s;
+}
+
 // Remove Σ f_neq and Σ ξ f_neq. w_i and w_i * 3 ξ_i are the D2Q9 mass/momentum modes.
 function stripNeqAcc(acc) {
 	let dm = 0, jx = 0, jy = 0;
@@ -983,6 +1018,10 @@ class RefinementDomain {
 	// Apply an energy impulse at a coordinate in the PARENT's cell space.
 	// Delegates to the deepest child domain that contains the point (recursive),
 	// so energy always goes to the finest available grid level.
+	// The impulse is stored and added once per fine substep (exact difference),
+	// on the coincident node restriction will copy. It is not applied here:
+	// an immediate setEquil stacked on top of the per-substep kicks (5× on a
+	// nested grid) and wiped f_neq.
 	applyEnergyAt(cx_cont, cy_cont, fx, fy) {
 		const fi_f = 1 + (cx_cont - this.cx0) * 2;
 		const fj_f = 1 + (cy_cont - this.cy0) * 2;
@@ -992,15 +1031,21 @@ class RefinementDomain {
 				return;
 			}
 		}
-		const fi = Math.max(1, Math.min(this.width  - 2, Math.round(fi_f)));
-		const fj = Math.max(1, Math.min(this.height - 2, Math.round(fj_f)));
+		const fi = snapToNode(Math.max(1, Math.min(this.width  - 2, Math.round(fi_f))), this.width);
+		const fj = snapToNode(Math.max(1, Math.min(this.height - 2, Math.round(fj_f))), this.height);
 		this.pendingInjections.push({ fi, fj, fx, fy });
-		this._applyForceFineCell(fi, fj, fx, fy);
 	}
 
+	// Once per fine substep. (fx, fy) is the momentum of this sample. Dividing by
+	// the cell area dx² is the velocity kick the speed and curl plots show, on the
+	// coincident node restriction copies. A level-2 root step has four substeps,
+	// so the parent receives about four times the sample (fy = 0.05 → coarse
+	// Σ ρΔuy ≈ 0.22) instead of the ~0.017 left when the kick sat on a halfway
+	// node and the moment strip threw it away. The kick is streamed, so it does
+	// not pile up on one cell the way setEquil did.
 	_applyForceFineCell(fi, fj, fx, fy) {
-		const cell = this.cells[fi + fj * this.width];
-		cell.setEquil(cell.ux + fx / cell.rho, cell.uy + fy / cell.rho);
+		const s = 1 / (this.dx * this.dx);
+		addMomentum(this.cells[fi + fj * this.width], fx * s, fy * s);
 	}
 
 }
@@ -1276,8 +1321,7 @@ export class Boltzmann {
 	}
 
 	apply_force_to_cell(x, y, fx, fy) {
-		const cell = this.cells[x + y * this.width];
-		cell.setEquil(cell.ux + fx / cell.rho, cell.uy + fy / cell.rho);
+		addMomentum(this.cells[x + y * this.width], fx, fy);
 	}
 
 	get_field_velocity(worldX, worldY) {
@@ -1364,11 +1408,19 @@ export class Boltzmann {
 
 	// Compute the curl of the macroscopic velocity field for plotting:
 	computeCurl() {
-		for (var y = 1; y < this.height - 1; y++) {
-			for (var x = 1; x < this.width - 1; x++) {
-				this.cells[x + y * this.width].calculate_curl();
+		const curlGrid = (cells, w, h) => {
+			for (let y = 1; y < h - 1; y++) {
+				for (let x = 1; x < w - 1; x++) cells[x + y * w].calculate_curl();
 			}
-		}
+		};
+		curlGrid(this.cells, this.width, this.height);
+		const walk = (ds) => {
+			for (const d of ds) {
+				curlGrid(d.cells, d.width, d.height);
+				walk(d.domains);
+			}
+		};
+		walk(this.domains);
 	}
 }
 

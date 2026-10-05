@@ -367,6 +367,89 @@ function shearStats(bm, domain) {
 	check('scenario 0 keeps a single level-2 grid', bm.domains[0].domains.length === 1);
 }
 
+// --- 9. Sail momentum reaches the refined field and stays bounded ---
+// setEquil used to stack the kick on a cell that never streamed (the wake ran
+// away). The moment strip then dropped a kick that missed the coincident node,
+// so the plotted field stayed at the freestream. Exact difference on that node,
+// once per fine substep, must leave a wake.
+{
+	const uy0 = -0.15;
+	const bm = new Boltzmann(48, 48, 1, 90, 15, undefined, 1);
+	bm.addDomain(12, 12, 36, 36);
+	bm.domains[0].addDomain(16, 16, 48, 48);
+	let j0 = 0;
+	for (const c of bm.cells) j0 += c.rho * (c.uy - uy0);
+	bm.apply_energy(0, 0, 0, 0.05);
+	bm.physics_model_step();
+	let j1 = 0, maxU = 0, maxCurl = 0, bad = 0;
+	const acc = (c) => {
+		if (!Number.isFinite(c.ux) || !Number.isFinite(c.uy) || !Number.isFinite(c.rho)) { bad++; return; }
+		maxU = Math.max(maxU, Math.hypot(c.ux, c.uy));
+		if (Number.isFinite(c.curl)) maxCurl = Math.max(maxCurl, Math.abs(c.curl));
+	};
+	for (const c of bm.cells) { j1 += c.rho * (c.uy - uy0); acc(c); }
+	const walk = (ds) => { for (const d of ds) { for (const c of d.cells) acc(c); walk(d.domains); } };
+	walk(bm.domains);
+	const rootJy = j1 - j0;
+	results.impulse = { rootJy, maxU, maxCurl, bad };
+	check('impulse survives restriction', rootJy > 0.05 && rootJy < 0.5, `coarse ΣρΔuy = ${rootJy.toExponential(3)}`);
+	check('impulse wake is bounded', bad === 0 && maxU < 1 && maxCurl > 0.05, `max|u| = ${maxU.toExponential(3)}, max|curl| = ${maxCurl.toExponential(3)}`);
+}
+{
+	const { Map } = await import('../src/map.js');
+	const { Boat } = await import('../src/boat.js');
+	const bm = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
+	const map = new Map(75, 75, 90, 15, bm);
+	map.physics_model_init();
+	const boat = new Boat(map, 10, -9, 5 * Math.PI / 4);
+	// Same initial window main.js would place on the boat at (10, −9): the sail
+	// sits in the middle of level 2, not on the coarse grid outside it.
+	bm.addDomain(28, 9, 68, 49);
+	bm.domains[0].addDomain(20, 20, 60, 60);
+	const N = 80;
+	for (let frame = 0; frame < N; frame++) {
+		if (frame === 1) boat.input_autopilot_enabled_toggle();
+		map.world.step(1 / 30);
+		boat.physics_model_step();
+		if (boat.mainsail_force) {
+			for (const seg of boat.getSailSegments()) {
+				bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * 0.0003, seg.fy * 0.0003);
+			}
+		}
+		bm.physics_model_step();
+	}
+	let minS = Infinity, maxS = 0, maxCurl = 0, maxU = 0, bad = 0;
+	const consider = (c, wx, wy) => {
+		if (!Number.isFinite(c.ux) || !Number.isFinite(c.uy) || !Number.isFinite(c.rho)) { bad++; return; }
+		const speed = Math.hypot(c.ux, c.uy);
+		maxU = Math.max(maxU, speed);
+		if (Math.hypot(wx - boat.x, wy - boat.y) > 8) return;
+		minS = Math.min(minS, speed);
+		maxS = Math.max(maxS, speed);
+		if (Number.isFinite(c.curl)) maxCurl = Math.max(maxCurl, Math.abs(c.curl));
+	};
+	for (let j = 0; j < bm.height; j++) {
+		for (let i = 0; i < bm.width; i++) consider(bm.cells[i + j * bm.width], i - bm.width / 2, j - bm.height / 2);
+	}
+	const walk = (ds) => {
+		for (const d of ds) {
+			for (let fj = 0; fj < d.height; fj++) {
+				for (let fi = 0; fi < d.width; fi++) {
+					consider(d.cells[fi + fj * d.width],
+						d.cx0_root + (fi - 1) * d.dx - bm.width / 2,
+						d.cy0_root + (fj - 1) * d.dx - bm.height / 2);
+				}
+			}
+			walk(d.domains);
+		}
+	};
+	walk(bm.domains);
+	results.boatWake = { minS, maxS, maxCurl, maxU, bad };
+	check('boat energy leaves a wake', maxCurl > 0.02 && (maxS - minS) > 0.015,
+		`near-boat |curl| = ${maxCurl.toExponential(3)}, speed ${minS.toFixed(3)}–${maxS.toFixed(3)}`);
+	check('boat wake stays bounded', bad === 0 && maxU < 1, `max|u| = ${maxU.toExponential(3)}, bad = ${bad}`);
+}
+
 function fieldStats(bm) {
 	let maxU = 0, bad = 0;
 	const acc = (c) => {
