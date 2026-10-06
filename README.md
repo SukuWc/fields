@@ -1,5 +1,7 @@
 <p align="center"><img src="assets/sailzone-logo.svg" alt="SailZone - Race the rules." width="360"></p>
 
+<p align="center"><a href="brand-kit/">brand-kit/</a></p>
+
 # fields
 
 ## Roadmap
