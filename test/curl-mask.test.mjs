@@ -12,7 +12,7 @@ globalThis.document = {
 globalThis.window = globalThis;
 globalThis.addEventListener = globalThis.addEventListener || (() => {});
 
-const { Boltzmann, buildClosedDiskMask } = await import('../src/boltzmann.js');
+const { Boltzmann, buildClosedDiskMask, fineIndex } = await import('../src/boltzmann.js');
 const {
 	trackBoats, stepCurlMask, normalizedCurl,
 	DISK_RADIUS, DISK2_RADIUS, DISK3_RADIUS, DOMAIN_HALF, DOMAIN2_HALF, DOMAIN3_HALF,
@@ -340,8 +340,8 @@ function share(a, b) {
 // strictly inside the parent mask (every 4-neighbor on).
 function sensorNode(parent, fi, fj) {
 	if (!parent._isFluid(fi, fj)) return false;
-	const pcx = Math.floor(parent.cx0 + (fi - 1) * 0.5);
-	const pcy = Math.floor(parent.cy0 + (fj - 1) * 0.5);
+	const pcx = Math.floor(parent.coarseX(fi));
+	const pcy = Math.floor(parent.coarseY(fj));
 	return parent._maskAt(pcx, pcy)
 		&& parent._maskAt(pcx - 1, pcy) && parent._maskAt(pcx + 1, pcy)
 		&& parent._maskAt(pcx, pcy - 1) && parent._maskAt(pcx, pcy + 1);
@@ -399,8 +399,8 @@ function paintNonSensor(parent, value) {
 	root(target.cx, target.cy).setEquil(0, 0, 1.03);
 	root(target.cx, target.cy).curl = 1;
 	trackBoats(bm, [boat]);
-	const fi = 1 + (target.cx - d.cx0) * 2;
-	const fj = 1 + (target.cy - d.cy0) * 2;
+	const fi = fineIndex(d.cx0, target.cx);
+	const fj = fineIndex(d.cy0, target.cy);
 	const fine = d.cells[fi + fj * d.width];
 	check('root curl expands one layer through injection',
 		beyondDetached && waited && d._maskAt(target.cx, target.cy) && !d._maskAt(beyond.cx, beyond.cy)
@@ -629,8 +629,8 @@ function paintNonSensor(parent, value) {
 	bm.setBarriers(true);
 	const cx = Math.round(bm.width / 2);
 	const cy = Math.round(bm.height / 2);
-	const fi = 1 + (cx - d.cx0) * 2;
-	const fj = 1 + (cy - d.cy0) * 2;
+	const fi = fineIndex(d.cx0, cx);
+	const fj = fineIndex(d.cy0, cy);
 	const fine = d.cells[fi + fj * d.width];
 	const l2 = d.domains[0];
 	let nested = false;

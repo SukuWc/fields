@@ -5,14 +5,13 @@
 // Each level's mask is a disk floor plus curl, and it also erodes. Curl that
 // stays high away from the boat can seed its own island (SEED_MIN cells that
 // have held), then that island grows and shrinks one layer per frame like the
-// wake. A cluster outside every boat window opens a field window of its own,
-// a circle of FIELD_DISK_RADIUS centered on that cluster, so a barrier wave
-// refines without touching a boat disk. A curl contour trimmed to a small cap,
-// or a circle centered on the hottest cell of the shear ring, left the
-// staircase in the barrier shear and the lattice diverged. Two windows on the
-// same cells diverge the same way: both step, and the later one overwrites
-// the restriction. A cluster next to the centre obstacle is centered on that
-// obstacle, and a new window that would overlap one already open is refused.
+// wake. A cluster outside every boat window opens a field window of its own.
+// The mask inside that window is the curl contour (empty floor, same
+// seed/grow/erode/hysteresis as a wake), so a barrier wave refines where it
+// is, not as a circle glued to the obstacle. The window does not slide: moving
+// the staircase through the shear was a separate failure, and Palabos does not
+// move patches. Two windows on the same cells are refused — both would step,
+// and the later one overwrites the restriction.
 // The rectangle stays
 // fixed: shiftBy refuses a size change. Level 1 reads root curl (Δx = 1).
 // Level 2 reads level-1 fluid curl (Δx = 0.5), level 3 reads level-2 fluid
@@ -26,12 +25,12 @@
 //   MASK_CELL_CAP  400 root cells    → ≤ 400×4×2 =  3200 node-steps
 //   MASK2_CELL_CAP 320 level-1 cells → ≤ 320×4×4 =  5120
 //   MASK3_CELL_CAP 280 level-2 cells → ≤ 280×4×8 =  8960
-// together ≤ ~17k node-steps plus the root lattice. A field island is a disk
-// with no nested levels: at most FIELD_DOMAIN_MAX windows, each ≤ FIELD_CELL_CAP
-// cells (≤ 256×4×2 = 2048 node-steps). Scenario 0's mean Boltzmann step
-// stays under 12 ms at these caps.
+// together ≤ ~17k node-steps plus the root lattice. A field island has no
+// nested levels and no disk floor: at most FIELD_DOMAIN_MAX windows, each
+// ≤ FIELD_CELL_CAP cells (≤ 160×4×2 = 1280 node-steps). Scenario 0's mean
+// Boltzmann step stays under 12 ms at these caps.
 
-import { buildClosedDiskMask, closeDiagonalContacts } from './boltzmann.js';
+import { buildClosedDiskMask, closeDiagonalContacts, fineIndex } from './boltzmann.js';
 
 export const DOMAIN_HALF = 20;
 export const DOMAIN2_HALF = 20;
@@ -73,20 +72,14 @@ export const MASK3_CELL_CAP = 280;
 export const SEED_MIN = 4;
 // Disturbances outside the boat windows. The Barrier checkbox (off by
 // default) puts a radius-6 obstacle at the lattice centre. Check Barrier and
-// set wind speed to about 25: the waves refine as their own disk, concentric
-// with that obstacle. Wind 30 and above can still destabilize the root
-// lattice with no refinement at all.
+// set wind speed to about 25: the waves refine as their own curl islands.
+// Wind 30 and above can still destabilize the root lattice with no refinement
+// at all. The window is FIELD_HALF on a side and does not follow the peak.
 export const FIELD_HALF = 12;
-export const FIELD_DISK_RADIUS = 8;
-// A closed disk of that radius, plus the diagonal fills. The old cap of 160
-// was a curl contour through the barrier shear (normalized curl ~0.9 on the
-// staircase) and the lattice diverged. The disk has to be centered on the
-// obstacle: the same radius centered on one side of the shear ring diverges.
-export const FIELD_CELL_CAP = 256;
-// One field window. A second disk on the shed street (the outlet pile-up)
-// stays finite for a few hundred frames and then diverges. The obstacle
-// keeps the slot; boat wakes are already refined by the boat windows.
-export const FIELD_DOMAIN_MAX = 1;
+export const FIELD_CELL_CAP = 160;
+// Two islands. A window that would cover cells another field window already
+// owns is refused. A cluster on the Dirichlet frame is refused too.
+export const FIELD_DOMAIN_MAX = 2;
 
 const domainByBoat = new WeakMap();
 
@@ -422,8 +415,8 @@ function sampleParentFluidCurl(parent, domain, speed) {
 		for (let lx = 0; lx < cw; lx++) {
 			const cx = domain.cx0 + lx;
 			if (!parent._isFluid(cx, cy)) continue;
-			const pcx = Math.floor(parent.cx0 + (cx - 1) * 0.5);
-			const pcy = Math.floor(parent.cy0 + (cy - 1) * 0.5);
+			const pcx = Math.floor(parent.coarseX(cx));
+			const pcy = Math.floor(parent.coarseY(cy));
 			if (!parent._maskAt(pcx, pcy)) continue;
 			if (!parent._maskAt(pcx - 1, pcy) || !parent._maskAt(pcx + 1, pcy)) continue;
 			if (!parent._maskAt(pcx, pcy - 1) || !parent._maskAt(pcx, pcy + 1)) continue;
@@ -513,15 +506,15 @@ function trackOne(bm, player) {
 
 	installSensorMask(level1, boatCx, boatCy, DISK_RADIUS, MASK_CELL_CAP, sampleRootCurl(bm, level1));
 
-	const fx = 1 + (boatCx - level1.cx0) * 2;
-	const fy = 1 + (boatCy - level1.cy0) * 2;
+	const fx = fineIndex(level1.cx0, boatCx);
+	const fy = fineIndex(level1.cy0, boatCy);
 	const placed2 = placeChild(level1, level1Shifted, fx, fy, DOMAIN2_HALF);
 	const level2 = placed2.domain;
 	if (!level2) return { domain: level1, shifted: level1Shifted };
 	installSensorMask(level2, fx, fy, DISK2_RADIUS, MASK2_CELL_CAP, sampleParentFluidCurl(level1, level2, bm.speed));
 
-	const f2x = 1 + (fx - level2.cx0) * 2;
-	const f2y = 1 + (fy - level2.cy0) * 2;
+	const f2x = fineIndex(level2.cx0, fx);
+	const f2y = fineIndex(level2.cy0, fy);
 	const placed3 = placeChild(level2, level1Shifted || placed2.shifted, f2x, f2y, DOMAIN3_HALF);
 	const level3 = placed3.domain;
 	if (level3) {
@@ -644,31 +637,6 @@ function clusterInterior(bm, cluster) {
 	return c.x >= m && c.y >= m && c.x < bm.width - m && c.y < bm.height - m;
 }
 
-// Curl around the centre obstacle first appears on one side of the ring, so
-// the cluster centroid sits off the body. A disk centered there cuts the
-// shear and diverges; the same disk centered on the obstacle does not.
-function nearbyBarrierCenter(bm, x, y) {
-	const reach2 = (FIELD_HALF + FIELD_DISK_RADIUS) * (FIELD_HALF + FIELD_DISK_RADIUS);
-	let n = 0, sx = 0, sy = 0;
-	for (let cy = 0; cy < bm.height; cy++) {
-		for (let cx = 0; cx < bm.width; cx++) {
-			const cell = bm.cells[cx + cy * bm.width];
-			if (!cell || !cell.barrier) continue;
-			const dx = cx + 0.5 - x;
-			const dy = cy + 0.5 - y;
-			if (dx * dx + dy * dy > reach2) continue;
-			sx += cx;
-			sy += cy;
-			n++;
-		}
-	}
-	if (n < 4) return null;
-	// Cell indices, not centers. The obstacle is rasterized on the index
-	// (width/2, height/2); averaging the centers shifts the disk half a cell
-	// onto the shear and the lattice diverges.
-	return { x: sx / n, y: sy / n };
-}
-
 function fieldBox(bm, x, y) {
 	const cx = Math.round(x);
 	const cy = Math.round(y);
@@ -708,50 +676,58 @@ function openFieldWindow(bm, center) {
 	return domain;
 }
 
-// Strongest curl inside this window. Used only to decide when the island has
-// gone quiet. The disk is not recentered on it: that walks the staircase
-// through the shear.
-function fieldPeak(bm, domain) {
+// Curl centroid of the island, used only as the growth anchor inside the
+// window. The window itself stays where it was opened.
+function fieldCentroid(bm, domain) {
+	const cw = domain.cx1 - domain.cx0;
+	const ch = domain.cy1 - domain.cy0;
+	let sx = 0, sy = 0, n = 0;
 	const U = bm.speed;
-	let best = 0;
-	for (let cy = domain.cy0; cy < domain.cy1; cy++) {
-		for (let cx = domain.cx0; cx < domain.cx1; cx++) {
+	for (let ly = 0; ly < ch; ly++) {
+		const cy = domain.cy0 + ly;
+		for (let lx = 0; lx < cw; lx++) {
+			const cx = domain.cx0 + lx;
 			const cell = bm.cells[cx + cy * bm.width];
 			const norm = normalizedCurl(cell ? cell.curl : 0, U);
-			if (norm > best) best = norm;
+			const on = domain.mask && domain.mask[lx + ly * cw] === 1;
+			if (norm <= CURL_TAU_ON && !on) continue;
+			sx += cx + 0.5;
+			sy += cy + 0.5;
+			n++;
 		}
 	}
-	return best;
+	if (!n) return { x: (domain.cx0 + domain.cx1) / 2, y: (domain.cy0 + domain.cy1) / 2 };
+	return { x: sx / n, y: sy / n };
 }
 
 function installFieldMask(bm, domain, boats) {
 	const cw = domain.cx1 - domain.cx0;
 	const ch = domain.cy1 - domain.cy0;
 	if (!(cw * ch > 0)) return false;
+	const floor = new Uint8Array(cw * ch);
 	const allow = (cx, cy) => {
 		for (let i = 0; i < boats.length; i++) if (boats[i]._maskAt(cx, cy)) return false;
 		return true;
 	};
-	const peak = fieldPeak(bm, domain);
-	// Quiet water removes the island. While it is up, the circle stays on the
-	// center chosen at birth (the obstacle, when there is one). The window
-	// midpoint is half a cell off that obstacle and the staircase cuts the shear.
-	if (!(peak > CURL_TAU_OFF)) domain._quiet = (domain._quiet || 0) + 1;
-	else domain._quiet = 0;
-	if (domain._quiet >= CURL_HOLD) {
-		domain.setMask(new Uint8Array(cw * ch), null);
-		return false;
-	}
-	const center = domain._fieldCenter || {
-		x: (domain.cx0 + domain.cx1) / 2,
-		y: (domain.cy0 + domain.cy1) / 2,
-	};
-	const mask = buildClosedDiskMask(
-		domain.cx0, domain.cy0, domain.cx1, domain.cy1,
-		center.x, center.y, FIELD_DISK_RADIUS, allow,
-	);
-	domain.setMask(mask, null);
-	return countOnes(mask) > 0;
+	const center = fieldCentroid(bm, domain);
+	const stepped = stepCurlMask({
+		floor,
+		prev: domain.mask,
+		curlNorm: sampleRootCurl(bm, domain),
+		above: domain._curlAbove,
+		below: domain._curlBelow,
+		cw, ch,
+		cx0: domain.cx0,
+		cy0: domain.cy0,
+		centerX: center.x,
+		centerY: center.y,
+		allow,
+		cap: FIELD_CELL_CAP,
+	});
+	domain._curlAbove = stepped.above;
+	domain._curlBelow = stepped.below;
+	domain.setMask(stepped.mask, null);
+	return countOnes(stepped.mask) > 0;
 }
 
 // Windows for curl that never touches a boat. At most one new window a frame,
@@ -771,11 +747,10 @@ function trackFieldDomains(bm, boats) {
 	}
 	if (fieldDomains.length < FIELD_DOMAIN_MAX) {
 		const cluster = largestHeldCluster(bm, boats);
-		// A disk planted on the Dirichlet frame puts the interface on the
+		// A patch planted on the Dirichlet frame puts the interface on the
 		// boundary condition. The outlet pile-up is that case.
 		if (cluster && clusterInterior(bm, cluster)) {
-			const centroid = clusterCentroid(bm, cluster);
-			const center = nearbyBarrierCenter(bm, centroid.x, centroid.y) || centroid;
+			const center = clusterCentroid(bm, cluster);
 			const box = fieldBox(bm, center.x, center.y);
 			let overlap = !box;
 			for (let i = 0; box && i < fieldDomains.length; i++) {
@@ -784,7 +759,6 @@ function trackFieldDomains(bm, boats) {
 			if (!overlap) {
 				const domain = openFieldWindow(bm, center);
 				if (domain) {
-					domain._fieldCenter = center;
 					if (installFieldMask(bm, domain, boats)) fieldDomains.push(domain);
 					else {
 						const idx = bm.domains.indexOf(domain);

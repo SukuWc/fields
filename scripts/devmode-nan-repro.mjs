@@ -21,7 +21,7 @@ globalThis.document = {
 };
 globalThis.window = {};
 
-const { Boltzmann } = await import("../src/boltzmann.js");
+const { Boltzmann, fineIndex } = await import("../src/boltzmann.js");
 const { aeroCoefficients } = await import("../src/utils.js");
 
 const lift = [0, 0.025, 0.15, 0.9, 1.3, 1.46, 1.52, 1.51, 1.45, 1.41, 1.33, 1.16, 0.95, 0.82, 0.73, 0.6, 0.43, 0.34, 0.28, 0.28, 0.28];
@@ -118,8 +118,8 @@ function place(index, cx, cy) {
   if (index >= bm.domains.length) bm.addDomain(cx0, cy0, cx1, cy1);
   else bm.moveDomain(index, cx0, cy0, cx1, cy1);
   const parent = bm.domains[index];
-  const fi = 1 + (cx - parent.cx0) * 2;
-  const fj = 1 + (cy - parent.cy0) * 2;
+  const fi = fineIndex(parent.cx0, cx);
+  const fj = fineIndex(parent.cy0, cy);
   const x0 = Math.max(1, Math.min(parent.width - 3, Math.round(fi - 20)));
   const y0 = Math.max(1, Math.min(parent.height - 3, Math.round(fj - 20)));
   const x1 = Math.max(x0 + 2, Math.min(parent.width - 1, Math.round(fi + 20)));

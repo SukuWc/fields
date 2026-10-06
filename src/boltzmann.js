@@ -30,10 +30,17 @@ function normalizeDomainBox(cx0, cy0, cx1, cy1) {
 	cy1 = Math.round(cy1);
 	if (!Number.isInteger(cx0) || !Number.isInteger(cy0) || !Number.isInteger(cx1) || !Number.isInteger(cy1)) return null;
 	if (!(cx1 > cx0 && cy1 > cy0)) return null;
-	const width = (cx1 - cx0) * 2 + 2;
-	const height = (cy1 - cy0) * 2 + 2;
-	if (width < 4 || height < 4 || width * height > 2e6) return null;
+	// One coarse cell of overlap on every side: nodes from cx0-1 to cx1 inclusive.
+	const width = (cx1 - cx0) * 2 + 3;
+	const height = (cy1 - cy0) * 2 + 3;
+	if (width < 5 || height < 5 || width * height > 2e6) return null;
 	return { cx0, cy0, cx1, cy1 };
+}
+
+// Fine index of a parent coordinate. fi = 0 is the outer coincident line one
+// parent cell west of `origin`. Integer parent nodes land on even indices.
+export function fineIndex(origin, c) {
+	return (c - (origin - 1)) * 2;
 }
 
 function latticeCell(cells, width, height, i, j) {
@@ -377,13 +384,13 @@ function addMomentum(cell, fx, fy) {
 	cell.uy = nuy;
 }
 
-// Parent nodes sit on odd fine indices (1, 3, 5, …). Snapping the sail sample onto
+// Parent nodes sit on even fine indices (2, 4, …). Snapping the sail sample onto
 // that node is what makes the impulse survive restriction: ρ and u are copied from
 // the coincident node only, so a kick on a halfway fine node is stripped.
 function snapToNode(i, n) {
-	// Last interior coincident node is n-3 (n-1 is the ghost, n-2 is the halfway node).
-	let s = (i & 1) ? i : i - 1;
-	if (s < 1) s = 1;
+	// First refined site is 2. Last is n-3 (n-1 is the outer ghost, n-2 the halfway node).
+	let s = (i & 1) ? i - 1 : i;
+	if (s < 2) s = 2;
 	const maxNode = n - 3;
 	if (s > maxNode) s = maxNode;
 	return s;
@@ -499,8 +506,10 @@ function slideLattice(src, cw, ch, dpx, dpy) {
 // Coarse↔fine coupling: Eq. 29 (parent→fine, non-eq rescaling) and Eq. 30
 // (fine→parent). Eq. 33 filters f_neq only, on a centered fine-grid stencil;
 // ρ and u are taken from the coincident fine node and are not filtered.
-// With a mask, that coupling runs on the staircase boundary (edge ghosts use the
-// 1D cubic, corner ghosts the separable 2D cubic) instead of only the rectangle ring.
+// With a mask, each straight run of the staircase is its own edge. The imposed
+// line is one coarse cell outside that run (cubic along the run, Eq. 38/39).
+// Halfway-normal nodes stream. Coincident corners are an Eq. 34 copy. There is
+// no 2D cubic: Palabos only accepts a straight row or column (Fig. 9).
 // Temporal interpolation (Section 3.5): sub-step 1 uses the t-state ghost boundary
 // (saved before the parent step); sub-step 2 rebuilds f from ρ, u and f_neq
 // interpolated between t and t+1.
@@ -508,7 +517,7 @@ function slideLattice(src, cw, ch, dpx, dpy) {
 // Overlap rule (two boats): the refined region is the union of the masks. Where
 // disks overlap, the finest level writes the parent node and is the sampler /
 // forcer. Same level: the later domain in `domains` wins, so there is one writer.
-class RefinementDomain {
+export class RefinementDomain {
 
 	constructor(parent, cx0, cy0, cx1, cy1) {
 		this.parent = parent;
@@ -517,11 +526,13 @@ class RefinementDomain {
 		this.cx1 = cx1;
 		this.cy1 = cy1;
 
-		// Fine grid: 2 fine cells per parent cell + 1-cell ghost border on each side.
-		// Ghost border cells (fi=0, fi=width-1, fj=0, fj=height-1) receive values from
-		// the parent grid via parent→fine coupling (Eq. 29).
-		this.width  = (cx1 - cx0) * 2 + 2;
-		this.height = (cy1 - cy0) * 2 + 2;
+		// Fine grid: 2 fine cells per parent cell, plus one coarse cell of overlap
+		// on every side (Lagrava §3.1, Palabos overlapWidth = 1). Nodes run from
+		// parent coordinate cx0-1 to cx1 inclusive. fi = 0 is the outer coincident
+		// line; even indices sit on parent nodes. The outer line is imposed.
+		// The halfway node just inside it streams.
+		this.width  = (cx1 - cx0) * 2 + 3;
+		this.height = (cy1 - cy0) * 2 + 3;
 
 		// Eq. 24: omega_c for this domain = parent's effective omega.
 		// Recursive application: level-1 uses root omega_c; level-2 uses level-1 omega_f; etc.
@@ -534,8 +545,10 @@ class RefinementDomain {
 		// Level-N (parent = RefinementDomain): dx = parent.dx * 0.5, origin mapped from parent.
 		if (parent instanceof RefinementDomain) {
 			this.dx       = parent.dx * 0.5;
-			this.cx0_root = parent.cx0_root + (cx0 - 1) * parent.dx;
-			this.cy0_root = parent.cy0_root + (cy0 - 1) * parent.dx;
+			// cx0 is a fine index of the parent. The first refined site (fi = 2
+			// on this grid) sits on that parent node.
+			this.cx0_root = parent.cx0_root + (cx0 - 2) * parent.dx;
+			this.cy0_root = parent.cy0_root + (cy0 - 2) * parent.dx;
 		} else {
 			this.dx       = 0.5;
 			this.cx0_root = cx0;
@@ -575,8 +588,8 @@ class RefinementDomain {
 		// A fine cell is a barrier if any parent cell it overlaps is a barrier.
 		for (let fj = 1; fj < this.height - 1; fj++) {
 			for (let fi = 1; fi < this.width - 1; fi++) {
-				const cx = cx0 + (fi - 1) * 0.5;
-				const cy = cy0 + (fj - 1) * 0.5;
+				const cx = (cx0 - 1) + fi * 0.5;
+				const cy = (cy0 - 1) + fj * 0.5;
 				const bx0 = Math.max(0, Math.floor(cx));
 				const by0 = Math.max(0, Math.floor(cy));
 				const bx1 = Math.min(parent.width  - 1, Math.ceil(cx));
@@ -619,8 +632,16 @@ class RefinementDomain {
 		this.pendingInjections = [];
 
 		// Ghost ring + fluid set. With no mask the ghosts are the rectangular border.
+		// The fill above reconstructs every node between coarse sites. Ghosts are
+		// then imposed again along the interface (Eq. 38/39), not across it.
 		this._classifyNodes();
+		this.injectFromCoarse(parent);
 	}
+
+	coarseX(fi) { return (this.cx0 - 1) + fi * 0.5; }
+	coarseY(fj) { return (this.cy0 - 1) + fj * 0.5; }
+	fineToRootX(fi) { return this.cx0_root + (fi - 2) * this.dx; }
+	fineToRootY(fj) { return this.cy0_root + (fj - 2) * this.dx; }
 
 	// Section 3.5 (Lagrava): coarse→fine injection, 2 fine sub-steps, fine→coarse averaging.
 	// Eq. 29 rescaling applied on injection; Eq. 30/33 applied on averaging.
@@ -629,15 +650,16 @@ class RefinementDomain {
 	step(parent) {
 		// Sub-step 1: restore t-state ghost boundary, inject energy, run.
 		// Inject before the step so the perturbation is present when collide runs.
-		// fluidCells is every node inside the mask (the whole rectangle when no
-		// disk is set), including nodes a child will overwrite. Colliding them
-		// lets a neighbour pull post-collision populations; averageToCoarse
-		// then replaces the masked parent nodes.
+		// streamCells is every evolved node (mask interior, halfway-normal overlap,
+		// and the overlap ring of a child). Nodes a child covers deeply are
+		// omitted: the child writes them, and streaming them would leak the
+		// pre-correction state. The child's overlap ring stays, so a neighbour
+		// pulls post-collision populations.
 		for (const inj of this.pendingInjections) {
 			this._applyForceFineCell(inj.fi, inj.fj, inj.fx, inj.fy);
 		}
 		this._restoreGhostFromSnapshot();
-		collideAndStream(this.fluidCells, this.omega_f);
+		collideAndStream(this.streamCells, this.omega_f);
 
 		// Run child domains for this sub-interval (this domain is now at t+½)
 		for (const child of this.domains) {
@@ -654,7 +676,7 @@ class RefinementDomain {
 		for (const inj of this.pendingInjections) {
 			this._applyForceFineCell(inj.fi, inj.fj, inj.fx, inj.fy);
 		}
-		collideAndStream(this.fluidCells, this.omega_f);
+		collideAndStream(this.streamCells, this.omega_f);
 
 		// Run child domains for this sub-interval (this domain is now at t+1)
 		for (const child of this.domains) {
@@ -740,126 +762,145 @@ class RefinementDomain {
 		}
 	}
 
-	// Coarse→fine: fill ghost border cells using cubic spatial interpolation (Eq. 38/39)
-	// of coarse populations and macroscopic fields. Ghost cell (fi, fj) maps to coarse coord
-	// cx = cx0 + (fi-1)*0.5, cy = cy0 + (fj-1)*0.5. Cells at half-integer positions use
-	// Eq. 38 (centered 4-point) or Eq. 39 (one-sided 3-point) along each axis.
+	// Coarse→fine. Ghost (fi, fj) maps to parent coordinate
+	// (cx0-1 + fi/2, cy0-1 + fj/2). Decompose f_neq at each coarse node first,
+	// interpolate ρ, u and the nine f_neq components, then write
+	// f = f_eq + (ω_c / 2ω_f) f_neq (Eq. 29). Doing the subtraction after the
+	// cubic is not the same: f_eq is quadratic in u.
+	//
+	// Along an interface the cubic runs tangent to the edge (Eq. 38 in the
+	// interior of a straight run, Eq. 39 at its ends or at the lattice border).
+	// A coincident node is an Eq. 34 copy, including the corner where two runs
+	// meet. Palabos has no diagonal node; a both-half site is an evolved cell
+	// center, and the fill below only bilinearly initializes one.
 	injectFromCoarse(parent) {
 		const locs = this._ghostLoc;
 		for (let k = 0; k < locs.length; k++) {
-			this._injectGhostCell(parent, locs[k].fi, locs[k].fj);
+			this._injectGhostCell(parent, locs[k].fi, locs[k].fj, true);
 		}
 	}
 
-	_injectGhostCell(parent, fi, fj) {
-		const cx = this.cx0 + (fi - 1) * 0.5;
-		const cy = this.cy0 + (fj - 1) * 0.5;
-
-		const icx = Math.floor(cx);
-		const icy = Math.floor(cy);
-
+	// Pack ρ, u and f_neq (POP_KEYS order) from one parent node. Eq. 3.
+	_decomposed(parent, x, y) {
 		const W = parent.width;
 		const H = parent.height;
-		// A NaN index makes every comparison false, so an unclamped read is
-		// cells[NaN] and the interpolant throws on .ux. Missing cells (and
-		// non-finite indexes) fall back to rest equilibrium.
-		const get = (x, y) => {
-			if (!Number.isFinite(x) || !Number.isFinite(y) || !(W > 0) || !(H > 0)) return ZERO_CELL;
-			const ix = Math.max(0, Math.min(W - 1, x));
-			const iy = Math.max(0, Math.min(H - 1, y));
-			if (!Number.isFinite(ix) || !Number.isFinite(iy)) return ZERO_CELL;
-			return parent.cells[ix + iy * W] || ZERO_CELL;
+		const out = new Float64Array(12);
+		out[0] = 1;
+		if (!Number.isFinite(x) || !Number.isFinite(y) || !(W > 0) || !(H > 0)) return out;
+		const ix = Math.max(0, Math.min(W - 1, Math.round(x)));
+		const iy = Math.max(0, Math.min(H - 1, Math.round(y)));
+		const cell = parent.cells[ix + iy * W];
+		if (!cell || !Number.isFinite(cell.rho) || !Number.isFinite(cell.ux) || !Number.isFinite(cell.uy)) return out;
+		const eq = computeEquil(cell.ux, cell.uy, cell.rho);
+		out[0] = cell.rho;
+		out[1] = cell.ux;
+		out[2] = cell.uy;
+		for (let p = 0; p < 9; p++) out[3 + p] = cell[POP_KEYS[p]] - eq[POP_KEYS[p]];
+		return out;
+	}
+
+	// Eq. 38 / Eq. 39 / linear fallback, applied to a 12-vector. `i` is the
+	// coarse index on the low side of the halfway node. `on(k)` is true when
+	// sample k lies on this straight interface (and on the parent lattice).
+	_cubic1d(sample, i, on) {
+		const a = on(i - 1), b = on(i), c = on(i + 1), d = on(i + 2);
+		const sm = a ? sample(i - 1) : null;
+		const s0 = b ? sample(i) : null;
+		const s1 = c ? sample(i + 1) : null;
+		const sp = d ? sample(i + 2) : null;
+		const out = new Float64Array(12);
+		const mix = (w0, v0, w1, v1, w2, v2, w3, v3) => {
+			for (let p = 0; p < 12; p++) {
+				out[p] = (v0 ? w0 * v0[p] : 0) + (v1 ? w1 * v1[p] : 0)
+					+ (v2 ? w2 * v2[p] : 0) + (v3 ? w3 * v3[p] : 0);
+			}
 		};
+		if (a && b && c && d) mix(9 / 16, s0, 9 / 16, s1, -1 / 16, sm, -1 / 16, sp); // Eq. 38
+		else if (b && c && d) mix(3 / 8, s0, 3 / 4, s1, -1 / 8, sp, 0, null); // Eq. 39, missing the low end
+		else if (a && b && c) mix(3 / 4, s0, 3 / 8, s1, -1 / 8, sm, 0, null); // Eq. 39, missing the high end
+		else if (b && c) mix(0.5, s0, 0.5, s1, 0, null, 0, null); // run shorter than Eq. 39
+		else if (b) mix(1, s0, 0, null, 0, null, 0, null);
+		else if (c) mix(1, s1, 0, null, 0, null, 0, null);
+		return out;
+	}
 
-		// halfX/halfY: true when this fine cell sits at a half-integer coarse coordinate
-		// (fi even → cx is half-integer; fj even → cy is half-integer).
-		const halfX = (fi % 2 === 0);
-		const halfY = (fj % 2 === 0);
+	_writeDecomposed(cell, state) {
+		if (!cell) return;
+		const rho = state[0], ux = state[1], uy = state[2];
+		if (!Number.isFinite(rho) || !Number.isFinite(ux) || !Number.isFinite(uy)) {
+			cell.setEquil(0, 0, 1);
+			return;
+		}
+		const eq = computeEquil(ux, uy, rho);
+		// Eq. 29: f_f = f_eq(ρ, u) + (ω_c / 2ω_f) f_neq
+		const scale = this.omega_c / (2 * this.omega_f);
+		for (let p = 0; p < 9; p++) {
+			const neq = state[3 + p];
+			if (!Number.isFinite(neq)) { cell.setEquil(0, 0, 1); return; }
+			cell[POP_KEYS[p]] = eq[POP_KEYS[p]] + scale * neq;
+		}
+		// Macros come from the interpolated ρ and u. A moment leaked by the
+		// cubic must not move them (f_neq is not filtered here).
+		cell.rho = rho;
+		cell.ux = ux;
+		cell.uy = uy;
+	}
 
-		// Eq. 38: centered 4-point cubic at x = ix+0.5 along a coarse row/column.
-		//   g(x) = (9/16)(g(x−h)+g(x+h)) − (1/16)(g(x−3h)+g(x+3h)),  h = half coarse spacing
-		//   → neighbours: ix−1, ix, ix+1, ix+2
-		// Eq. 39: one-sided 3-point cubic when the outer neighbour is unavailable.
-		//   right-biased (left boundary): g = (3/8)g(ix) + (3/4)g(ix+1) − (1/8)g(ix+2)
-		//   left-biased  (right boundary): g = (3/8)g(ix+1) + (3/4)g(ix) − (1/8)g(ix−1)
-		const interpX = (fn, ix, iy) => {
-			if (ix - 1 >= 0 && ix + 2 <= W - 1) // Eq. 38: centered
-				return (9/16)*(fn(get(ix,iy)) + fn(get(ix+1,iy))) - (1/16)*(fn(get(ix-1,iy)) + fn(get(ix+2,iy)));
-			if (ix - 1 < 0)                      // Eq. 39: right-biased
-				return (3/8)*fn(get(ix,iy)) + (3/4)*fn(get(ix+1,iy)) - (1/8)*fn(get(ix+2,iy));
-			// Eq. 39: left-biased. The expression must stay on the return line;
-			// a newline after return is a semicolon and yields undefined.
-			return (3/8)*fn(get(ix+1,iy)) + (3/4)*fn(get(ix,iy)) - (1/8)*fn(get(ix-1,iy));
-		};
-		const interpY = (fn, ix, iy) => {
-			if (iy - 1 >= 0 && iy + 2 <= H - 1) // Eq. 38: centered
-				return (9/16)*(fn(get(ix,iy)) + fn(get(ix,iy+1))) - (1/16)*(fn(get(ix,iy-1)) + fn(get(ix,iy+2)));
-			if (iy - 1 < 0)                      // Eq. 39: right-biased
-				return (3/8)*fn(get(ix,iy)) + (3/4)*fn(get(ix,iy+1)) - (1/8)*fn(get(ix,iy+2));
-			// Eq. 39: left-biased. Keep this on the return line (see interpX).
-			return (3/8)*fn(get(ix,iy+1)) + (3/4)*fn(get(ix,iy)) - (1/8)*fn(get(ix,iy-1));
-		};
-		// Separable 2D: cubic in x for each needed y-row, then cubic in y over those results.
-		const interpXY = (fn) => {
-			const gX = (iy) => interpX(fn, icx, iy);
-			if (icy - 1 >= 0 && icy + 2 <= H - 1) // Eq. 38: centered in y
-				return (9/16)*(gX(icy) + gX(icy+1)) - (1/16)*(gX(icy-1) + gX(icy+2));
-			if (icy - 1 < 0)                        // Eq. 39: right-biased in y
-				return (3/8)*gX(icy) + (3/4)*gX(icy+1) - (1/8)*gX(icy+2);
-			// Eq. 39: left-biased in y. Keep this on the return line (see interpX).
-			return (3/8)*gX(icy+1) + (3/4)*gX(icy) - (1/8)*gX(icy-1);
-		};
-
-		// Select scheme: Eq. 34 (direct copy) when coincident, 1D or 2D cubic otherwise.
-		const interp = (!halfX && !halfY) ? (fn) => fn(get(icx, icy))    // Eq. 34
-		             : (!halfY)           ? (fn) => interpX(fn, icx, icy) // 1D cubic in x
-		             : (!halfX)           ? (fn) => interpY(fn, icx, icy) // 1D cubic in y
-		             :                      interpXY;                      // 2D separable cubic
-
-		// Interpolate macroscopic fields and all 9 populations from the coarse grid.
-		const ux  = interp(c => c.ux);
-		const uy  = interp(c => c.uy);
-		const rho = interp(c => c.rho);
-		const f0_c  = interp(c => c.f0);
-		const fN_c  = interp(c => c.fN);
-		const fS_c  = interp(c => c.fS);
-		const fE_c  = interp(c => c.fE);
-		const fW_c  = interp(c => c.fW);
-		const fNE_c = interp(c => c.fNE);
-		const fNW_c = interp(c => c.fNW);
-		const fSE_c = interp(c => c.fSE);
-		const fSW_c = interp(c => c.fSW);
-
+	_injectGhostCell(parent, fi, fj, alongInterface) {
+		const cx = this.coarseX(fi);
+		const cy = this.coarseY(fj);
 		const ghost = this.cells[fi + fj * this.width];
 		if (!ghost) return;
-		if (!Number.isFinite(ux) || !Number.isFinite(uy) || !Number.isFinite(rho)
-			|| !Number.isFinite(f0_c) || !Number.isFinite(fN_c) || !Number.isFinite(fS_c)
-			|| !Number.isFinite(fE_c) || !Number.isFinite(fW_c)
-			|| !Number.isFinite(fNE_c) || !Number.isFinite(fNW_c)
-			|| !Number.isFinite(fSE_c) || !Number.isFinite(fSW_c)) {
-			ghost.setEquil(0, 0, 1);
+		// Odd fine index → half-integer parent coordinate.
+		const halfX = (fi % 2) === 1;
+		const halfY = (fj % 2) === 1;
+		const ix = Math.floor(cx);
+		const iy = Math.floor(cy);
+		const W = parent.width;
+		const H = parent.height;
+		const inParent = (x, y) => x >= 0 && y >= 0 && x < W && y < H;
+
+		if (!halfX && !halfY) {
+			// Eq. 34: coincident node, including a corner where two runs meet.
+			this._writeDecomposed(ghost, this._decomposed(parent, ix, iy));
 			return;
 		}
 
-		// Eq. 3: equilibrium at interpolated macroscopic fields
-		const { f0: feq0, fN: feqN, fS: feqS, fE: feqE, fW: feqW,
-		        fNE: feqNE, fNW: feqNW, fSE: feqSE, fSW: feqSW } = computeEquil(ux, uy, rho);
+		if (halfX && halfY) {
+			// Cell center. Not an interface site (Fig. 9). Bilinear init of the
+			// decomposed state from the four surrounding parent nodes.
+			const s00 = this._decomposed(parent, ix, iy);
+			const s10 = this._decomposed(parent, ix + 1, iy);
+			const s01 = this._decomposed(parent, ix, iy + 1);
+			const s11 = this._decomposed(parent, ix + 1, iy + 1);
+			const hx = cx - ix, hy = cy - iy;
+			const out = new Float64Array(12);
+			for (let p = 0; p < 12; p++) {
+				out[p] = s00[p] * (1 - hx) * (1 - hy) + s10[p] * hx * (1 - hy)
+					+ s01[p] * (1 - hx) * hy + s11[p] * hx * hy;
+			}
+			this._writeDecomposed(ghost, out);
+			return;
+		}
 
-		// Eq. 29: f_{i,f} = f_i^eq + (ω_c / 2ω_f) * f_i^neq_c
-		//         f_i^neq_c = f_{i,c} - f_i^eq(ρ_c, u_c)
-		const scale = this.omega_c / (2 * this.omega_f);
-		ghost.f0  = feq0  + scale * (f0_c  - feq0);
-		ghost.fN  = feqN  + scale * (fN_c  - feqN);
-		ghost.fS  = feqS  + scale * (fS_c  - feqS);
-		ghost.fE  = feqE  + scale * (fE_c  - feqE);
-		ghost.fW  = feqW  + scale * (fW_c  - feqW);
-		ghost.fNE = feqNE + scale * (fNE_c - feqNE);
-		ghost.fNW = feqNW + scale * (fNW_c - feqNW);
-		ghost.fSE = feqSE + scale * (fSE_c - feqSE);
-		ghost.fSW = feqSW + scale * (fSW_c - feqSW);
-		// Moments of the written populations. For a coincident node with consistent
-		// parent macros these equal the parent moments (f_neq has zero moments).
-		ghost.recomputeMacros();
+		// One axis is halfway: the cubic runs along that axis. On an interface
+		// that is the tangent. Off the interface (the initial fill of a halfway
+		// node between two parent nodes) every in-range sample counts.
+		if (halfX) {
+			const on = (x) => {
+				if (!inParent(x, iy)) return false;
+				if (!alongInterface) return true;
+				return this._onHBoundary(x, iy);
+			};
+			this._writeDecomposed(ghost, this._cubic1d((x) => this._decomposed(parent, x, iy), ix, on));
+			return;
+		}
+		const onY = (y) => {
+			if (!inParent(ix, y)) return false;
+			if (!alongInterface) return true;
+			return this._onVBoundary(ix, y);
+		};
+		this._writeDecomposed(ghost, this._cubic1d((y) => this._decomposed(parent, ix, y), iy, onY));
 	}
 
 	// Fine→coarse. ρ and u come from the coincident fine node (cell-vertex, unfiltered).
@@ -878,8 +919,8 @@ class RefinementDomain {
 	}
 
 	_restrictCell(parent, cx, cy) {
-		const fi0 = 1 + (cx - this.cx0) * 2;
-		const fj0 = 1 + (cy - this.cy0) * 2;
+		const fi0 = fineIndex(this.cx0, cx);
+		const fj0 = fineIndex(this.cy0, cy);
 		// Eq. 5. A missing coincident node, or one whose density has collapsed,
 		// must not be written onto the parent: dividing by that rho is what
 		// turns one bad fine cell into a NaN coarse cell.
@@ -893,25 +934,27 @@ class RefinementDomain {
 		const coarse = latticeCell(parent.cells, parent.width, parent.height, cx, cy);
 		if (!coarse) return;
 
-		// Eq. 33: average f_neq over the fine-grid D2Q9 neighbourhood (width = one coarse cell).
+		// Eq. 33: average f_neq over the q = 9 fine neighbours. Palabos divides
+		// by q, and only where every neighbour is an evolved fine node. A ghost
+		// in the stencil is skipped entirely — dividing by however many cells
+		// were found pulls the imposed boundary back onto the coarse grid.
 		const acc = NEQ_ACC;
 		acc.fill(0);
-		let n = 0;
 		const w = this.width, h = this.height;
+		const role = this._role;
 		for (let dj = -1; dj <= 1; dj++) {
 			const fj = fj0 + dj;
-			if (fj < 0 || fj >= h) continue;
 			for (let di = -1; di <= 1; di++) {
 				const fi = fi0 + di;
-				const cell = latticeCell(this.cells, w, h, fi, fj);
-				if (!cell || !(cell.rho > 1e-6) || !Number.isFinite(cell.rho)) continue;
-				if (!Number.isFinite(cell.ux) || !Number.isFinite(cell.uy)) continue;
+				if (fi < 0 || fj < 0 || fi >= w || fj >= h) return;
+				if (!role || role[fi + fj * w] !== ROLE_FLUID) return;
+				const cell = this.cells[fi + fj * w];
+				if (!cell || !(cell.rho > 1e-6) || !Number.isFinite(cell.rho)) return;
+				if (!Number.isFinite(cell.ux) || !Number.isFinite(cell.uy)) return;
 				addNeq(cell, acc);
-				n++;
 			}
 		}
-		if (n === 0) return;
-		const inv = 1 / n;
+		const inv = 1 / 9;
 		for (let i = 0; i < 9; i++) acc[i] *= inv;
 		stripNeqAcc(acc);
 
@@ -1012,8 +1055,8 @@ class RefinementDomain {
 		for (let cy = this.cy0; cy < this.cy1; cy++) {
 			for (let cx = this.cx0; cx < this.cx1; cx++) {
 				if (!this._maskAt(cx, cy)) continue;
-				const fi = 1 + (cx - this.cx0) * 2;
-				const fj = 1 + (cy - this.cy0) * 2;
+				const fi = fineIndex(this.cx0, cx);
+				const fj = fineIndex(this.cy0, cy);
 				if (this._indexKept(fi, di, this.width) && this._indexKept(fj, dj, this.height)) continue;
 				if (!this._ownsWrite(cx, cy)) continue;
 				this._restrictCell(parent, cx, cy);
@@ -1023,8 +1066,8 @@ class RefinementDomain {
 
 	_syncRootOrigin(parent) {
 		if (parent instanceof RefinementDomain) {
-			this.cx0_root = parent.cx0_root + (this.cx0 - 1) * parent.dx;
-			this.cy0_root = parent.cy0_root + (this.cy0 - 1) * parent.dx;
+			this.cx0_root = parent.cx0_root + (this.cx0 - 2) * parent.dx;
+			this.cy0_root = parent.cy0_root + (this.cy0 - 2) * parent.dx;
 		} else {
 			this.cx0_root = this.cx0;
 			this.cy0_root = this.cy0;
@@ -1051,8 +1094,8 @@ class RefinementDomain {
 
 	// Same overlap rule as the constructor: a fine cell is a barrier if any parent cell it overlaps is.
 	_setBarrierFromParent(parent, fi, fj) {
-		const cx = this.cx0 + (fi - 1) * 0.5;
-		const cy = this.cy0 + (fj - 1) * 0.5;
+		const cx = this.coarseX(fi);
+		const cy = this.coarseY(fj);
 		const bx0 = Math.max(0, Math.floor(cx));
 		const by0 = Math.max(0, Math.floor(cy));
 		const bx1 = Math.min(parent.width  - 1, Math.ceil(cx));
@@ -1166,16 +1209,11 @@ class RefinementDomain {
 		this._rebuildInteriorCells();
 	}
 
+	// Drop fine nodes a child covers deeply. The child's overlap ring stays in
+	// the stream so the pull on this grid sees post-collision populations.
 	_rebuildInteriorCells() {
-		const dominated = new Set();
-		for (const d of this.domains) {
-			for (let y = d.cy0; y < d.cy1; y++) {
-				for (let x = d.cx0; x < d.cx1; x++) {
-					dominated.add(this.cells[x + y * this.width]);
-				}
-			}
-		}
-		this.interiorCells = this._allInteriorCells.filter(cell => !dominated.has(cell));
+		this._syncStreamCells();
+		this.interiorCells = this.streamCells;
 	}
 
 	// Paint fine cells onto the shared texture, then recursively paint child domains on top.
@@ -1187,8 +1225,8 @@ class RefinementDomain {
 				if (this._role && this._role[fi + fj * this.width] !== ROLE_FLUID) continue;
 				const cell = this.cells[fi + fj * this.width];
 				const color = cell.calculate_color(plot_type, contrast);
-				const cx = this.cx0_root + (fi - 1) * this.dx;
-				const cy = this.cy0_root + (fj - 1) * this.dx;
+				const cx = this.fineToRootX(fi);
+				const cy = this.fineToRootY(fj);
 				boltzmann.colorSquare(cx, cy, this.dx, color.red, color.green, color.blue);
 			}
 		}
@@ -1217,8 +1255,8 @@ class RefinementDomain {
 			y: (cy - boltzmann.height / 2) / boltzmann.resolution,
 		});
 		if (!this.disk) {
-			const cx1_root = this.cx0_root + (this.width  - 2) * this.dx;
-			const cy1_root = this.cy0_root + (this.height - 2) * this.dx;
+			const cx1_root = this.cx0_root + (this.cx1 - this.cx0) * this.dx * 2;
+			const cy1_root = this.cy0_root + (this.cy1 - this.cy0) * this.dx * 2;
 			const tl = toWorld(this.cx0_root, this.cy0_root);
 			const tr = toWorld(cx1_root,      this.cy0_root);
 			const br = toWorld(cx1_root,      cy1_root);
@@ -1283,8 +1321,8 @@ class RefinementDomain {
 	_parentAllows(cx, cy) {
 		const parent = this.parent;
 		if (!(parent instanceof RefinementDomain) || !parent.mask) return true;
-		const px = parent.cx0 + (cx - 1) * 0.5;
-		const py = parent.cy0 + (cy - 1) * 0.5;
+		const px = parent.coarseX(cx);
+		const py = parent.coarseY(cy);
 		if (!Number.isFinite(px) || !Number.isFinite(py)) return false;
 		return parent._maskAt(Math.floor(px), Math.floor(py));
 	}
@@ -1332,12 +1370,16 @@ class RefinementDomain {
 		}
 		this._refreshBarriers(parent);
 		this._classifyNodes();
+		this.injectFromCoarse(parent);
 		this._retargetInjections();
+		// The parent stream set depends on this mask. A disk that replaces the
+		// full rectangle has to put those nodes back into the parent's collide.
+		if (parent && parent._rebuildInteriorCells) parent._rebuildInteriorCells();
 	}
 
 	_injectCoarseCell(parent, cx, cy) {
-		const fi0 = 1 + (cx - this.cx0) * 2;
-		const fj0 = 1 + (cy - this.cy0) * 2;
+		const fi0 = fineIndex(this.cx0, cx);
+		const fj0 = fineIndex(this.cy0, cy);
 		for (let dj = 0; dj <= 1; dj++) {
 			for (let di = 0; di <= 1; di++) {
 				const fi = fi0 + di;
@@ -1349,50 +1391,118 @@ class RefinementDomain {
 		}
 	}
 
-	// Fluid nodes lie in a masked cell's square [cx, cx+1) × [cy, cy+1).
-	// Every other node that streams into one of those is a ghost: edge (1D cubic
-	// or a coincident copy) or corner (both axes half-integer, separable 2D cubic).
-	// A null mask reproduces the old interior set and the rectangular ghost ring.
+	// Integer parent nodes within one coarse cell (Chebyshev) of a masked site.
+	// That is Palabos coarseDomain.enlarge(1), on a staircase instead of a box.
+	// The array covers [cx0-1, cx1] × [cy0-1, cy1], which is exactly the fine grid.
+	_buildSolid() {
+		const x0 = this.cx0 - 1;
+		const y0 = this.cy0 - 1;
+		const gw = this.cx1 - x0 + 1;
+		const gh = this.cy1 - y0 + 1;
+		const solid = new Uint8Array(gw * gh);
+		for (let y = y0; y <= this.cy1; y++) {
+			for (let x = x0; x <= this.cx1; x++) {
+				let on = false;
+				for (let dy = -1; dy <= 1 && !on; dy++) {
+					for (let dx = -1; dx <= 1; dx++) {
+						if (this._maskAt(x + dx, y + dy)) { on = true; break; }
+					}
+				}
+				if (on) solid[(x - x0) + (y - y0) * gw] = 1;
+			}
+		}
+		this._solid = { x0, y0, gw, solid };
+	}
+
+	_solidAt(x, y) {
+		const s = this._solid;
+		if (!s || !Number.isInteger(x) || !Number.isInteger(y)) return false;
+		const lx = x - s.x0;
+		const ly = y - s.y0;
+		if (lx < 0 || ly < 0 || lx >= s.gw) return false;
+		const gh = s.solid.length / s.gw;
+		if (ly >= gh) return false;
+		return s.solid[lx + ly * s.gw] === 1;
+	}
+
+	// Closed square [sx, sx+1] × [sy, sy+1] is inside the enlarged patch.
+	_squareInside(sx, sy) {
+		return this._solidAt(sx, sy) && this._solidAt(sx + 1, sy)
+			&& this._solidAt(sx, sy + 1) && this._solidAt(sx + 1, sy + 1);
+	}
+
+	// Horizontal boundary through integer node (x, y): an incident horizontal
+	// edge has the patch on exactly one side. Corners qualify, so a straight
+	// run includes its Eq. 34 endpoints and stops before the node past them.
+	_onHBoundary(x, y) {
+		if (!this._solidAt(x, y)) return false;
+		const right = this._squareInside(x, y) !== this._squareInside(x, y - 1);
+		const left = this._squareInside(x - 1, y) !== this._squareInside(x - 1, y - 1);
+		return right || left;
+	}
+
+	_onVBoundary(x, y) {
+		if (!this._solidAt(x, y)) return false;
+		const up = this._squareInside(x, y) !== this._squareInside(x - 1, y);
+		const down = this._squareInside(x, y - 1) !== this._squareInside(x - 1, y - 1);
+		return up || down;
+	}
+
+	// Evolved nodes are strictly inside the one-cell dilation of the mask.
+	// Ghosts are the boundary of that dilation: a straight run (ROLE_EDGE,
+	// tangential Eq. 38/39 or an Eq. 34 copy) or the coincident corner where
+	// two runs meet (ROLE_CORNER, Eq. 34). Both-half nodes are cell centers
+	// and are never ghosts — Fig. 9 forbids a node off a straight interface.
 	_classifyNodes() {
+		this._buildSolid();
 		const w = this.width;
 		const h = this.height;
 		const role = new Uint8Array(w * h);
-		const fluidAt = (fi, fj) => {
-			const px = this.cx0 + (fi - 1) * 0.5;
-			const py = this.cy0 + (fj - 1) * 0.5;
-			return this._maskAt(Math.floor(px), Math.floor(py));
-		};
-		for (let fj = 0; fj < h; fj++) {
-			for (let fi = 0; fi < w; fi++) {
-				if (fluidAt(fi, fj)) role[fi + fj * w] = ROLE_FLUID;
-			}
-		}
 		const fluid = [];
 		const ghosts = [];
 		const locs = [];
 		for (let fj = 0; fj < h; fj++) {
+			const py = this.coarseY(fj);
+			const halfY = (fj % 2) === 1;
+			const iy = Math.floor(py);
 			for (let fi = 0; fi < w; fi++) {
+				const px = this.coarseX(fi);
+				const halfX = (fi % 2) === 1;
+				const ix = Math.floor(px);
 				const k = fi + fj * w;
-				if (role[k] === ROLE_FLUID) {
-					fluid.push(this.cells[k]);
-					continue;
-				}
-				let touch = false;
-				for (let dj = -1; dj <= 1 && !touch; dj++) {
-					for (let di = -1; di <= 1; di++) {
-						if (!di && !dj) continue;
-						const ni = fi + di;
-						const nj = fj + dj;
-						if (ni < 0 || nj < 0 || ni >= w || nj >= h) continue;
-						if (role[ni + nj * w] === ROLE_FLUID) { touch = true; break; }
+				let kind = 0;
+				if (!halfX && !halfY) {
+					const ne = this._squareInside(ix, iy);
+					const nw = this._squareInside(ix - 1, iy);
+					const se = this._squareInside(ix, iy - 1);
+					const sw = this._squareInside(ix - 1, iy - 1);
+					const n = (ne ? 1 : 0) + (nw ? 1 : 0) + (se ? 1 : 0) + (sw ? 1 : 0);
+					if (n === 4) kind = ROLE_FLUID;
+					else if (n > 0) {
+						const hEdge = this._onHBoundary(ix, iy);
+						const vEdge = this._onVBoundary(ix, iy);
+						kind = (hEdge && vEdge) ? ROLE_CORNER : ROLE_EDGE;
 					}
+				} else if (halfX && !halfY) {
+					const above = this._squareInside(ix, iy);
+					const below = this._squareInside(ix, iy - 1);
+					if (above && below) kind = ROLE_FLUID;
+					else if (above || below) kind = ROLE_EDGE;
+				} else if (!halfX && halfY) {
+					const right = this._squareInside(ix, iy);
+					const left = this._squareInside(ix - 1, iy);
+					if (right && left) kind = ROLE_FLUID;
+					else if (right || left) kind = ROLE_EDGE;
+				} else if (this._squareInside(ix, iy)) {
+					kind = ROLE_FLUID;
 				}
-				if (!touch) continue;
-				const halfX = (fi % 2 === 0);
-				const halfY = (fj % 2 === 0);
-				role[k] = (halfX && halfY) ? ROLE_CORNER : ROLE_EDGE;
-				ghosts.push(this.cells[k]);
-				locs.push({ fi, fj });
+				if (!kind) continue;
+				role[k] = kind;
+				if (kind === ROLE_FLUID) fluid.push(this.cells[k]);
+				else {
+					ghosts.push(this.cells[k]);
+					locs.push({ fi, fj });
+				}
 			}
 		}
 		this._role = role;
@@ -1402,6 +1512,32 @@ class RefinementDomain {
 		// Snapshot buffer per ghost: 9 populations + rho, ux, uy.
 		// Sub-step 1 restores t; sub-step 2 interpolates ρ, u and f_neq (§3.5).
 		this.ghostSnapshot = new Float64Array(ghosts.length * 12);
+		this._syncStreamCells();
+	}
+
+	// A child coordinate is a fine index of this grid. A site the child masks
+	// together with its four neighbours is the child's deep interior: this
+	// grid must not stream it. The child's overlap ring stays.
+	_syncStreamCells() {
+		const fluid = this.fluidCells || [];
+		if (!this.domains || this.domains.length === 0) {
+			this.streamCells = fluid;
+			return;
+		}
+		const deep = new Set();
+		for (let c = 0; c < this.domains.length; c++) {
+			const child = this.domains[c];
+			for (let y = child.cy0; y < child.cy1; y++) {
+				for (let x = child.cx0; x < child.cx1; x++) {
+					if (!child._maskAt(x, y)) continue;
+					if (!child._maskAt(x - 1, y) || !child._maskAt(x + 1, y)) continue;
+					if (!child._maskAt(x, y - 1) || !child._maskAt(x, y + 1)) continue;
+					if (x < 0 || y < 0 || x >= this.width || y >= this.height) continue;
+					deep.add(this.cells[x + y * this.width]);
+				}
+			}
+		}
+		this.streamCells = deep.size ? fluid.filter(cell => !deep.has(cell)) : fluid;
 	}
 
 	_isFluid(fi, fj) {
@@ -1413,8 +1549,8 @@ class RefinementDomain {
 		let best = null;
 		let bestD = Infinity;
 		const w = this.width;
-		for (let j = 1; j < this.height - 1; j += 2) {
-			for (let i = 1; i < w - 1; i += 2) {
+		for (let j = 2; j <= this.height - 3; j += 2) {
+			for (let i = 2; i <= w - 3; i += 2) {
 				if (this._role[i + j * w] !== ROLE_FLUID) continue;
 				const d = (i - fi) * (i - fi) + (j - fj) * (j - fj);
 				if (d < bestD) { bestD = d; best = { fi: i, fj: j }; }
@@ -1443,8 +1579,8 @@ class RefinementDomain {
 	// 0 outside the mask, 1 on this disk only, higher when a nested disk covers it.
 	levelAt(cx, cy) {
 		if (!this.containsCoarse(cx, cy)) return 0;
-		const fi = 1 + (cx - this.cx0) * 2;
-		const fj = 1 + (cy - this.cy0) * 2;
+		const fi = fineIndex(this.cx0, cx);
+		const fj = fineIndex(this.cy0, cy);
 		let level = 1;
 		for (const child of this.domains) {
 			const cl = child.levelAt(fi, fj);
@@ -1518,8 +1654,8 @@ class RefinementDomain {
 		    !Number.isFinite(this.cx0) || !Number.isFinite(this.cy0)) {
 			return { x: 0, y: 0 };
 		}
-		const fi_f = 1 + (cx_cont - this.cx0) * 2;
-		const fj_f = 1 + (cy_cont - this.cy0) * 2;
+		const fi_f = fineIndex(this.cx0, cx_cont);
+		const fj_f = fineIndex(this.cy0, cy_cont);
 		if (!Number.isFinite(fi_f) || !Number.isFinite(fj_f)) return { x: 0, y: 0 };
 		const child = this._finestChild(fi_f, fj_f);
 		if (child) return child.getVelocityAt(fi_f, fj_f);
@@ -1559,8 +1695,8 @@ class RefinementDomain {
 	applyEnergyAt(cx_cont, cy_cont, fx, fy) {
 		if (!Number.isFinite(cx_cont) || !Number.isFinite(cy_cont)) return;
 		if (!Number.isFinite(fx) || !Number.isFinite(fy)) return;
-		const fi_f = 1 + (cx_cont - this.cx0) * 2;
-		const fj_f = 1 + (cy_cont - this.cy0) * 2;
+		const fi_f = fineIndex(this.cx0, cx_cont);
+		const fj_f = fineIndex(this.cy0, cy_cont);
 		const child = this._finestChild(fi_f, fj_f);
 		if (child) { child.applyEnergyAt(fi_f, fj_f, fx, fy); return; }
 		let fi = snapToNode(Math.max(1, Math.min(this.width  - 2, Math.round(fi_f))), this.width);
@@ -1574,17 +1710,17 @@ class RefinementDomain {
 		this.pendingInjections.push({ fi, fj, fx, fy });
 	}
 
-	// Once per fine substep. (fx, fy) is the momentum of this sample. Dividing by
-	// the cell area dx² is the velocity kick the speed and curl plots show, on the
-	// coincident node restriction copies. A level-2 root step has four substeps,
-	// so the parent receives about four times the sample (fy = 0.05 → coarse
-	// Σ ρΔuy ≈ 0.22) instead of the ~0.017 left when the kick sat on a halfway
-	// node and the moment strip threw it away. The kick is streamed, so it does
-	// not pile up on one cell the way setEquil did.
+	// Once per fine substep. (fx, fy) is this sample's share of the sail momentum.
+	// Convective scaling: lattice Δu per local step scales as δt²/δx. With
+	// δt = δx in root units that factor is this.dx (1/2 on level 1, 1/4 on
+	// level 2). Two level-1 substeps, or four level-2 substeps, then deposit
+	// the same total momentum as one coarse kick. The old 1/dx² factor put
+	// about 8× on level 1 and 64× on level 2. The kick is snapped onto the
+	// coincident node so Eq. 33 keeps it.
 	_applyForceFineCell(fi, fj, fx, fy) {
 		const cell = latticeCell(this.cells, this.width, this.height, fi, fj);
 		if (!cell) return;
-		const s = 1 / (this.dx * this.dx);
+		const s = this.dx;
 		addMomentum(cell, fx * s, fy * s);
 	}
 
@@ -1699,8 +1835,10 @@ export class Boltzmann {
 			}
 		}
 		// Full interior set before any domain exclusions — used to rebuild interiorCells
-		// when domains are added or moved.
+		// when domains are added or moved. streamCells drops the deep interior of a
+		// mask; until a domain exists it is the whole interior.
 		this._allInteriorCells = [...this.interiorCells];
+		this.streamCells = this.interiorCells;
 
 		// Cache geographic neighbour references on each interior cell.
 		// Coordinate convention: x increases rightward, y increases upward (math coords).
@@ -1737,8 +1875,7 @@ export class Boltzmann {
 
 	// Add a rectangular fine refinement domain in coarse grid coordinates.
 	// cx0, cy0: top-left corner; cx1, cy1: bottom-right corner (exclusive).
-	// Covered coarse nodes stay in _allInteriorCells so the pull stream reads
-	// post-collision populations; averageToCoarse overwrites them afterward.
+		// The overlap ring stays in streamCells. The deep interior does not.
 	addDomain(cx0, cy0, cx1, cy1) {
 		const box = normalizeDomainBox(cx0, cy0, cx1, cy1);
 		if (!box) return;
@@ -1786,18 +1923,31 @@ export class Boltzmann {
 		this._rebuildInteriorCells();
 	}
 
-	// Recompute interiorCells from the full pre-exclusion set, removing cells covered
-	// by any current domain. Called after addDomain/moveDomain.
+	// Deep interior of a mask is not collided: Palabos removes coarseDomain.enlarge(-1).
+	// The overlap ring (a masked site with a non-masked 4-neighbour) stays, so the
+	// node just outside pulls the post-collision fine-corrected state. Restriction
+	// at the end of the step replaces that ring, and also writes a sampling copy
+	// under the patch that does not participate in the next stream.
 	_rebuildInteriorCells() {
-		const dominated = new Set();
-		for (const d of this.domains) {
-			for (let y = d.cy0; y < d.cy1; y++) {
-				for (let x = d.cx0; x < d.cx1; x++) {
-					dominated.add(this.cells[x + y * this.width]);
-				}
+		const covered = (x, y) => {
+			for (let i = 0; i < this.domains.length; i++) {
+				if (this.domains[i]._maskAt(x, y)) return true;
+			}
+			return false;
+		};
+		const stream = [];
+		const interior = [];
+		for (let y = 1; y < this.height - 1; y++) {
+			for (let x = 1; x < this.width - 1; x++) {
+				const on = covered(x, y);
+				const deep = on && covered(x - 1, y) && covered(x + 1, y) && covered(x, y - 1) && covered(x, y + 1);
+				const cell = this.cells[x + y * this.width];
+				if (!deep) stream.push(cell);
+				if (!on) interior.push(cell);
 			}
 		}
-		this.interiorCells = this._allInteriorCells.filter(cell => !dominated.has(cell));
+		this.streamCells = stream;
+		this.interiorCells = interior;
 	}
 
 	// Enable or disable a circular barrier obstacle at the grid centre.
@@ -1865,9 +2015,10 @@ export class Boltzmann {
 		}
 
 		// 1 coarse step (Eq. 15→16→bounce-back→consolidate→boundary).
-		// Covered nodes are included: the pull stream reads their post-collision f.
-		// Each domain's averageToCoarse replaces those nodes after the fine sub-steps.
-		this.collideAndStream(this._allInteriorCells, omega_c);
+		// Deep covered nodes are absent. The overlap ring collides from the
+		// previous restriction and streams outward; averageToCoarse then
+		// replaces that ring from the fine grid.
+		this.collideAndStream(this.streamCells, omega_c);
 		this.setBoundaries();
 
 		for (let d = 0; d < this.domains.length; d++) {

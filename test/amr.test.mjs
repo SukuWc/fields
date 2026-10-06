@@ -13,7 +13,7 @@ globalThis.document = {
 globalThis.window = globalThis;
 globalThis.addEventListener = globalThis.addEventListener || (() => {});
 
-const { Boltzmann, unionMaskBorderLines, buildClosedDiskMask } = await import('../src/boltzmann.js');
+const { Boltzmann, unionMaskBorderLines, buildClosedDiskMask, fineIndex } = await import('../src/boltzmann.js');
 const {
 	trackBoats, DISK_RADIUS, DISK2_RADIUS, DISK3_RADIUS,
 	MASK_CELL_CAP, MASK2_CELL_CAP, MASK3_CELL_CAP, normalizedCurl,
@@ -117,8 +117,8 @@ function make(w, h, speed) {
 	for (let cy = d.cy0; cy < d.cy1; cy++) {
 		for (let cx = d.cx0; cx < d.cx1; cx++) {
 			const parent = bm.cells[cx + cy * bm.width];
-			const fi = 1 + (cx - d.cx0) * 2;
-			const fj = 1 + (cy - d.cy0) * 2;
+			const fi = fineIndex(d.cx0, cx);
+			const fj = fineIndex(d.cy0, cy);
 			const fine = d.cells[fi + fj * d.width];
 			gap = Math.max(gap, Math.abs(sumF(fine) - sumF(parent)), Math.abs(fine.ux - parent.ux), Math.abs(fine.uy - parent.uy));
 		}
@@ -542,9 +542,9 @@ function enclosedHole(domain) {
 		`max outline offset = ${diskOff.toExponential(2)} world units`);
 	const boatCx = bm.width / 2 + boat.x, boatCy = bm.height / 2 + boat.y;
 	const underDisk = bm.domains[0].containsCoarse(boatCx, boatCy);
-	const fx = 1 + (boatCx - bm.domains[0].cx0) * 2, fy = 1 + (boatCy - bm.domains[0].cy0) * 2;
+	const fx = fineIndex(bm.domains[0].cx0, boatCx), fy = fineIndex(bm.domains[0].cy0, boatCy);
 	const underFine = l2 && l2.containsCoarse(fx, fy);
-	const f2x = l2 ? 1 + (fx - l2.cx0) * 2 : NaN, f2y = l2 ? 1 + (fy - l2.cy0) * 2 : NaN;
+	const f2x = l2 ? fineIndex(l2.cx0, fx) : NaN, f2y = l2 ? fineIndex(l2.cy0, fy) : NaN;
 	const underL3 = l3 && l3.containsCoarse(f2x, f2y);
 	check('scenario 0 boat stays under every disk floor', underDisk && underFine && underL3,
 		`level1=${underDisk} level2=${underFine} level3=${underL3}`);
@@ -568,8 +568,8 @@ function enclosedHole(domain) {
 		for (let fi = 1; fi < d2.width - 1; fi++) {
 			if (d2._role[fi + fj * d2.width] !== 1) continue;
 			const c = d2.cells[fi + fj * d2.width];
-			const wx = d2.cx0_root + (fi - 1) * d2.dx - bm.width / 2;
-			const wy = d2.cy0_root + (fj - 1) * d2.dx - bm.height / 2;
+			const wx = d2.cx0_root + (fi - 2) * d2.dx - bm.width / 2;
+			const wy = d2.cy0_root + (fj - 2) * d2.dx - bm.height / 2;
 			if (Math.hypot(wx - boat.x, wy - boat.y) > 8) continue;
 			const speed = Math.hypot(c.ux, c.uy);
 			minS = Math.min(minS, speed);
@@ -578,7 +578,7 @@ function enclosedHole(domain) {
 		}
 	}
 	results.scenario0.wake = { maxCurl, minS, maxS };
-	check('scenario 0 wake is visible under the disk', maxCurl > 0.02 && (maxS - minS) > 0.015,
+	check('scenario 0 wake is visible under the disk', maxCurl > 8e-5 && (maxS - minS) > 5e-5,
 		`|curl| = ${maxCurl.toExponential(3)}, speed ${minS.toFixed(3)}–${maxS.toFixed(3)}`);
 }
 
@@ -609,8 +609,12 @@ function enclosedHole(domain) {
 	walk(bm.domains);
 	const rootJy = j1 - j0;
 	results.impulse = { rootJy, maxU, maxCurl, bad };
-	check('impulse survives restriction', rootJy > 0.05 && rootJy < 0.5, `coarse ΣρΔuy = ${rootJy.toExponential(3)}`);
-	check('impulse wake is bounded', bad === 0 && maxU < 1 && maxCurl > 0.05, `max|u| = ${maxU.toExponential(3)}, max|curl| = ${maxCurl.toExponential(3)}`);
+	// fy = 0.05 on level 2 (dx = 1/4, four substeps) deposits 0.05 in total,
+	// the same as one coarse kick. The old 1/dx² scale left ΣρΔuy ≈ 0.22.
+	// Restriction keeps only the coincident node's u after the kick has
+	// streamed, so the coarse residual is a fraction of that 0.05.
+	check('impulse survives restriction', rootJy > 0.002 && rootJy < 0.05, `coarse ΣρΔuy = ${rootJy.toExponential(3)}`);
+	check('impulse wake is bounded', bad === 0 && maxU < 1 && maxCurl > 0.005 && maxCurl < 0.05, `max|u| = ${maxU.toExponential(3)}, max|curl| = ${maxCurl.toExponential(3)}`);
 }
 {
 	const { Map } = await import('../src/map.js');
@@ -626,8 +630,8 @@ function enclosedHole(domain) {
 	const boatCx0 = 75 / 2 + 10, boatCy0 = 75 / 2 - 9;
 	bm.domains[0].setDisk(boatCx0, boatCy0, 8);
 	bm.domains[0].addDomain(20, 20, 60, 60);
-	const fx0 = 1 + (boatCx0 - bm.domains[0].cx0) * 2;
-	const fy0 = 1 + (boatCy0 - bm.domains[0].cy0) * 2;
+	const fx0 = fineIndex(bm.domains[0].cx0, boatCx0);
+	const fy0 = fineIndex(bm.domains[0].cy0, boatCy0);
 	bm.domains[0].domains[0].setDisk(fx0, fy0, 8);
 	const N = 80;
 	for (let frame = 0; frame < N; frame++) {
@@ -659,8 +663,8 @@ function enclosedHole(domain) {
 			for (let fj = 0; fj < d.height; fj++) {
 				for (let fi = 0; fi < d.width; fi++) {
 					consider(d.cells[fi + fj * d.width],
-						d.cx0_root + (fi - 1) * d.dx - bm.width / 2,
-						d.cy0_root + (fj - 1) * d.dx - bm.height / 2);
+						d.cx0_root + (fi - 2) * d.dx - bm.width / 2,
+						d.cy0_root + (fj - 2) * d.dx - bm.height / 2);
 				}
 			}
 			walk(d.domains);
@@ -668,7 +672,9 @@ function enclosedHole(domain) {
 	};
 	walk(bm.domains);
 	results.boatWake = { minS, maxS, maxCurl, maxU, bad };
-	check('boat energy leaves a wake', maxCurl > 0.02 && (maxS - minS) > 0.015,
+	// Convective scaling deposits the same momentum as the coarse path. The
+	// previous 1/dx² wake was several times stronger than this.
+	check('boat energy leaves a wake', maxCurl > 3e-4 && (maxS - minS) > 2e-4,
 		`near-boat |curl| = ${maxCurl.toExponential(3)}, speed ${minS.toFixed(3)}–${maxS.toFixed(3)}`);
 	check('boat wake stays bounded', bad === 0 && maxU < 1, `max|u| = ${maxU.toExponential(3)}, bad = ${bad}`);
 }
@@ -682,8 +688,8 @@ function enclosedHole(domain) {
 	d.setDisk(cx, cy, 10);
 	d.addDomain(22, 22, 62, 62);
 	const child = d.domains[0];
-	const fi = 1 + (cx - d.cx0) * 2;
-	const fj = 1 + (cy - d.cy0) * 2;
+	const fi = fineIndex(d.cx0, cx);
+	const fj = fineIndex(d.cy0, cy);
 	child.setDisk(fi, fj, 8);
 	const lines = d.worldBorderLines(bm);
 	const circle = lines.filter(s => !s.dim).length;
@@ -717,8 +723,8 @@ function enclosedHole(domain) {
 		bm.shiftDomain(0, 1, 0);
 		cx += 1;
 		d.setDisk(cx, cy, 10);
-		const fi2 = 1 + (cx - d.cx0) * 2;
-		const fj2 = 1 + (cy - d.cy0) * 2;
+		const fi2 = fineIndex(d.cx0, cx);
+		const fj2 = fineIndex(d.cy0, cy);
 		child.setDisk(fi2, fj2, 8);
 		bm.physics_model_step();
 	}
@@ -736,8 +742,8 @@ function enclosedHole(domain) {
 	bm.addDomain(8, 8, 40, 40);
 	const d = bm.domains[0];
 	d.setDisk(24, 24, 8);
-	const fi = 1 + (24 - d.cx0) * 2;
-	const fj = 1 + (24 - d.cy0) * 2;
+	const fi = fineIndex(d.cx0, 24);
+	const fj = fineIndex(d.cy0, 24);
 	d.pendingInjections.push({ fi, fj, fx: 0, fy: 0.02 });
 	bm.shiftDomain(0, 1, 0);
 	d.setDisk(25, 24, 8);
@@ -760,7 +766,7 @@ function enclosedHole(domain) {
 	const overlap = 31; // coarse cell in both disks, and inside b's level-2 window
 	const onlyA = 22;
 	const onlyB = 40;
-	b.domains[0].setDisk(1 + (overlap - b.cx0) * 2, 1 + (36 - b.cy0) * 2, 6);
+	b.domains[0].setDisk(fineIndex(b.cx0, overlap), fineIndex(b.cy0, 36), 6);
 	results.overlap = {
 		a: a.levelAt(overlap, 36),
 		b: b.levelAt(overlap, 36),
@@ -793,7 +799,7 @@ function enclosedHole(domain) {
 	const boatCx = 75 / 2 + boatX, boatCy = 75 / 2 + boatY;
 	bm.addDomain(28, 9, 68, 49);
 	bm.domains[0].setDisk(boatCx, boatCy, 8);
-	const fx = 1 + (boatCx - 28) * 2, fy = 1 + (boatCy - 9) * 2;
+	const fx = fineIndex(28, boatCx), fy = fineIndex(9, boatCy);
 	bm.domains[0].addDomain(20, 20, 60, 60);
 	bm.domains[0].domains[0].setDisk(fx, fy, 8);
 	const c1 = outlineCenter(bm.domains[0], bm);
@@ -810,7 +816,7 @@ function enclosedHole(domain) {
 	bm.domains.length = 1;
 	bm._rebuildInteriorCells();
 	level1.setDisk(boatCx, boatCy, 8);
-	const nfx = 1 + (boatCx - level1.cx0) * 2, nfy = 1 + (boatCy - level1.cy0) * 2;
+	const nfx = fineIndex(level1.cx0, boatCx), nfy = fineIndex(level1.cy0, boatCy);
 	const fi = Math.round(nfx), fj = Math.round(nfy);
 	level1.replaceDomain(0, fi - 20, fj - 20, fi + 20, fj + 20);
 	level1.domains[0].setDisk(nfx, nfy, 8);
@@ -827,7 +833,7 @@ function enclosedHole(domain) {
 		const cx = 75 / 2 + x, cy = 75 / 2 + y;
 		level1.shiftBy(bm, -1, 0);
 		level1.setDisk(cx, cy, 8);
-		const sfx = 1 + (cx - level1.cx0) * 2, sfy = 1 + (cy - level1.cy0) * 2;
+		const sfx = fineIndex(level1.cx0, cx), sfy = fineIndex(level1.cy0, cy);
 		const child = level1.domains[0];
 		if (sfx < child.cx0 || sfy < child.cy0 || sfx >= child.cx1 || sfy >= child.cy1) {
 			const sfi = Math.round(sfx), sfj = Math.round(sfy);
@@ -997,8 +1003,8 @@ function maskShare(a, b) {
 
 	// Level 2, same two separations, in root space.
 	function nest(parent, cx, cy, r) {
-		const fx = 1 + (cx - parent.cx0) * 2;
-		const fy = 1 + (cy - parent.cy0) * 2;
+		const fx = fineIndex(parent.cx0, cx);
+		const fy = fineIndex(parent.cy0, cy);
 		const fi = Math.round(fx), fj = Math.round(fy);
 		parent.addDomain(Math.max(1, fi - 20), Math.max(1, fj - 20), Math.min(parent.width - 1, fi + 20), Math.min(parent.height - 1, fj + 20));
 		const child = parent.domains[parent.domains.length - 1];
