@@ -239,6 +239,48 @@ scenarios[7][6] = () => {
 };
 scenarios[7][36] = () => { players[0].input_autopilot_tack_toggle(); };
 
+// Rule 15 demo. Wind-from defaults to +Y. Both boats start starboard
+// close-hauled. Boat 0 is clear ahead; boat 1 is clear astern and to
+// leeward, hulls already inside 8 m, so the pair opens on Rule 12. Boat 1's
+// motor drives her up alongside. She stays the leeward boat, so the overlap
+// gives her right of way under Rule 11 by her own move. That is Rule 15,
+// blocking Rule 11, for one simulation second (the amber bar under the label
+// shrinks as it runs out), then Rule 11 on its own. Dev mode:
+// ?devmode=1&scenario_selector=8
+scenarios[8] = [];
+scenarios[8][0] = () => {
+  const heading = 5 * Math.PI / 4;
+  const fx = Math.sin(heading);
+  const fy = -Math.cos(heading);
+  // Astern along -forward, and to leeward (lower Y) so she draws alongside
+  // instead of into the transom. 4.4 m along-track leaves her bow behind
+  // the stern line; 2.5 m abeam keeps about a metre of water when she overlaps.
+  const along = 4.4;
+  const abeam = 2.5;
+  const lx = -fy;
+  const ly = fx;
+  players.push(new Boat(_map, 0, 0, heading));
+  players.push(new Boat(_map, -fx * along + lx * abeam, -fy * along + ly * abeam, heading));
+};
+scenarios[8][1] = () => {
+  players[0].input_autopilot_enabled_toggle();
+  players[1].input_autopilot_enabled_toggle();
+};
+scenarios[8][2] = () => {
+  autokeybind(players);
+  const follow = document.getElementById('camera_follow');
+  if (follow && !follow.checked) {
+    follow.checked = true;
+    follow.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  _map.camera_zoom = 14;
+};
+// physics_model_step clears motor_input, so each scenario frame sets it
+// again. Direct write keeps the autopilot on (input_motor_forward turns it off).
+for (let frame = 8; frame <= 200; frame++) {
+  scenarios[8][frame] = () => { players[1].motor_input = 1; };
+}
+
 export function setupControls(map, getCamera, bm) {
   _map = map;
   _getCamera = getCamera;
