@@ -230,7 +230,7 @@ function paintLabelTexture(lines) {
     const inhibited = line.role === 'inhibited';
     ctx.font = inhibited ? dimFont : font;
     if (line.role === 'badge') ctx.fillStyle = '#ffffff';
-    else if (inhibited) ctx.fillStyle = 'rgba(210, 214, 220, 0.55)';
+    else if (inhibited) ctx.fillStyle = 'rgba(210, 214, 220, 0.72)';
     else if (line.id === '15') ctx.fillStyle = '#ffe7a3';
     else if (line.role === 'final' && String(line.text).indexOf('both') !== -1) ctx.fillStyle = '#ffd0d0';
     else if (line.role === 'final') ctx.fillStyle = '#e9ffe8';
@@ -239,8 +239,8 @@ function paintLabelTexture(lines) {
     ctx.fillText(line.text, padX, y);
     if (inhibited) {
       const textW = ctx.measureText(line.text).width;
-      ctx.strokeStyle = 'rgba(210, 214, 220, 0.85)';
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#f2f4f8';
+      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(padX, y);
       ctx.lineTo(padX + textW, y);

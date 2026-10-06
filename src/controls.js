@@ -293,11 +293,11 @@ scenarios[9][0] = () => {
   const heading = 5 * Math.PI / 4;
   const fx = Math.sin(heading);
   const fy = -Math.cos(heading);
-  // Far enough astern to open on Rule 12. 0.7 m abeam puts the overlap
-  // and the hull contact a few tenths of a metre apart, inside the 1 s
-  // Rule 15 window, while she is still the leeward boat.
-  const along = 4.8;
-  const abeam = 0.7;
+  // Opens on Rule 12. At 0.35 m abeam the bow meets the leader on the
+  // same station where the overlap begins, so the contact is inside the
+  // Rule 15 window and she is still the leeward boat.
+  const along = 4.4;
+  const abeam = 0.35;
   const lx = -fy;
   const ly = fx;
   players.push(new Boat(_map, 0, 0, heading));
