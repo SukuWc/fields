@@ -1,8 +1,29 @@
-// Racing Rules of Sailing, Section A.
+// Racing Rules of Sailing.
 //
 // Implemented: the 12 m interest gate, Rule 10 (opposite tacks), Rule 11
 // (same tack, overlapped), Rule 12 (same tack, clear astern), Rule 13
 // (while tacking), and Rule 15 (acquiring right of way).
+//
+// Registry. Each rule is an evaluator in `ruleRegistry`: an id, a layer
+// (`sectionA` or `timedInhibitor`), what it inhibits, and an evaluate
+// function. An evaluator only checks its own conditions. It may keep state
+// on the boat (Rule 13's tacking flag) or on the pair (Rule 15's timer);
+// the resolver only reads the current outputs. Adding a later rule (16, 17,
+// mark room, Rule 14) is a new entry plus its evaluate function.
+//
+// Resolver. For one pair it reports every rule whose conditions hold, which
+// of those are inhibited and by which id, the single final rule, the
+// right-of-way and keep-clear boats, and who would be at fault on contact.
+// Section A is mutually exclusive: Rule 13 inhibits 10, 11, and 12, and
+// exactly one Section A rule is left. Rule 15 is a timed inhibitor. While
+// its window is open the rule it blocks does not decide right of way or
+// fault, and contact is charged to the new right-of-way boat. The debug
+// overlay still draws only that final rule, so the picture matches the
+// old single-label dispatcher.
+//
+// Pairs. Every physics step evaluates each unordered pair inside the 12 m
+// gate, n(n−1)/2, under a stable key. Pair state lives in one map. A pair
+// that leaves the gate, or a boat that is gone, drops its state.
 //
 // Distance. 1 world unit = 1 m. The hull in boat.js runs from local y = -2.25
 // (bow) to y = 1.75 (stern), so boat length is 4 m. Section A is considered
@@ -473,93 +494,88 @@ export function isTacking(boat) {
   return !!(boat && boat.tacking);
 }
 
+// Wind and tack for one evaluation. Cached on the context so the Section A
+// evaluators share the samples without depending on each other's answers.
+function windSample(ctx, boat) {
+  if (!ctx._wind) ctx._wind = new Map();
+  let sample = ctx._wind.get(boat);
+  if (sample) return sample;
+  const from = windFromDeg(ctx.getWind(boat.x, boat.y));
+  sample = {
+    from,
+    tack: from === null ? null : classifyTack(boat.hull_angle, from),
+  };
+  ctx._wind.set(boat, sample);
+  return sample;
+}
+
+function pairGeometry(ctx) {
+  if (Object.prototype.hasOwnProperty.call(ctx, '_geometry')) return ctx._geometry;
+  ctx._geometry = sameTackGeometry(ctx.boatA, ctx.boatB);
+  return ctx._geometry;
+}
+
+// Rule 10: opposite tacks. Does not look at tacking or overlap.
+function evaluateRule10(ctx) {
+  const tackA = windSample(ctx, ctx.boatA).tack;
+  const tackB = windSample(ctx, ctx.boatB).tack;
+  if (!tackA || !tackB || tackA === tackB) return null;
+  const rightOfWay = tackA === 'starboard' ? ctx.boatA : ctx.boatB;
+  const giveWay = tackA === 'port' ? ctx.boatA : ctx.boatB;
+  return { id: '10', rule: 'Rule 10', applies: true, rightOfWay, giveWay };
+}
+
+// Rule 11: same tack and overlapped. A windward tie does not apply.
+function evaluateRule11(ctx) {
+  const sampleA = windSample(ctx, ctx.boatA);
+  const sampleB = windSample(ctx, ctx.boatB);
+  if (!sampleA.tack || !sampleB.tack || sampleA.tack !== sampleB.tack) return null;
+  if (sampleA.from === null || sampleB.from === null) return null;
+  const geometry = pairGeometry(ctx);
+  if (!geometry || !geometry.overlapped) return null;
+  const windward = windwardBoat(ctx.boatA, ctx.boatB, sampleA.from, sampleB.from);
+  if (!windward) return null;
+  const leeward = windward === ctx.boatA ? ctx.boatB : ctx.boatA;
+  return { id: '11', rule: 'Rule 11', applies: true, rightOfWay: leeward, giveWay: windward };
+}
+
+// Rule 12: same tack, one boat clear ahead. Mutual clear astern does not apply.
+function evaluateRule12(ctx) {
+  const sampleA = windSample(ctx, ctx.boatA);
+  const sampleB = windSample(ctx, ctx.boatB);
+  if (!sampleA.tack || !sampleB.tack || sampleA.tack !== sampleB.tack) return null;
+  const geometry = pairGeometry(ctx);
+  if (!geometry || !geometry.clearAhead || !geometry.clearAstern) return null;
+  return {
+    id: '12',
+    rule: 'Rule 12',
+    applies: true,
+    rightOfWay: geometry.clearAhead,
+    giveWay: geometry.clearAstern,
+  };
+}
+
 // Rule 13: a tacking boat keeps clear. She is not given Rules 10–12 rights.
 // Both tacking: each keeps clear of the other (no right-of-way boat).
-function rule13(boatA, boatB, clearance) {
-  const aTacking = isTacking(boatA);
-  const bTacking = isTacking(boatB);
+// The tacking flag itself lives on the boat (`updateTackingState`).
+function evaluateRule13(ctx) {
+  const aTacking = isTacking(ctx.boatA);
+  const bTacking = isTacking(ctx.boatB);
   if (!aTacking && !bTacking) return null;
   if (aTacking && bTacking) {
     return {
+      id: '13',
       rule: 'Rule 13 both',
+      applies: true,
       bothGiveWay: true,
-      boats: [boatA, boatB],
-      clearance,
+      boats: [ctx.boatA, ctx.boatB],
+      rightOfWay: null,
+      giveWay: null,
     };
   }
-  const giveWay = aTacking ? boatA : boatB;
-  const rightOfWay = aTacking ? boatB : boatA;
-  return {
-    rule: 'Rule 13',
-    rightOfWay,
-    giveWay,
-    clearance,
-  };
-}
-
-// Rule 11: windward keeps clear of leeward.
-function rule11(boatA, boatB, fromA, fromB, clearance) {
-  const windward = windwardBoat(boatA, boatB, fromA, fromB);
-  if (!windward) return null;
-  const leeward = windward === boatA ? boatB : boatA;
-  return {
-    rule: 'Rule 11',
-    rightOfWay: leeward,
-    giveWay: windward,
-    clearance,
-  };
-}
-
-// Rule 12: clear astern keeps clear of clear ahead.
-function rule12(clearAhead, clearAstern, clearance) {
-  return {
-    rule: 'Rule 12',
-    rightOfWay: clearAhead,
-    giveWay: clearAstern,
-    clearance,
-  };
-}
-
-function rule10(boatA, boatB, tackA, clearance) {
-  const rightOfWay = tackA === 'starboard' ? boatA : boatB;
-  const giveWay = tackA === 'port' ? boatA : boatB;
-  return {
-    rule: 'Rule 10',
-    rightOfWay,
-    giveWay,
-    clearance,
-  };
-}
-
-// Section A between two racing boats. Null means no overlay.
-export function evaluateSectionA(boatA, boatB, getWind) {
-  if (!boatA || !boatB || typeof getWind !== 'function') return null;
-  if (!Number.isFinite(boatA.x) || !Number.isFinite(boatA.y)) return null;
-  if (!Number.isFinite(boatB.x) || !Number.isFinite(boatB.y)) return null;
-
-  const clearance = boatClearance(boatA, boatB);
-  if (!(clearance <= RULE10_INTEREST_RANGE_M)) return null;
-
-  const whileTacking = rule13(boatA, boatB, clearance);
-  if (whileTacking) return whileTacking;
-
-  const fromA = windFromDeg(getWind(boatA.x, boatA.y));
-  const fromB = windFromDeg(getWind(boatB.x, boatB.y));
-  if (fromA === null || fromB === null) return null;
-
-  const tackA = classifyTack(boatA.hull_angle, fromA);
-  const tackB = classifyTack(boatB.hull_angle, fromB);
-  if (!tackA || !tackB) return null;
-
-  if (tackA !== tackB) return rule10(boatA, boatB, tackA, clearance);
-
-  const geometry = sameTackGeometry(boatA, boatB);
-  if (!geometry) return null;
-  if (geometry.overlapped) return rule11(boatA, boatB, fromA, fromB, clearance);
-  if (geometry.clearAhead && geometry.clearAstern) {
-    return rule12(geometry.clearAhead, geometry.clearAstern, clearance);
-  }
-  return null;
+  const giveWay = aTacking ? ctx.boatA : ctx.boatB;
+  const rightOfWay = aTacking ? ctx.boatB : ctx.boatA;
+  return { id: '13', rule: 'Rule 13', applies: true, rightOfWay, giveWay };
 }
 
 // Short segment through the aftermost hull station, perpendicular to course.
@@ -778,18 +794,28 @@ function rule15Overlay(obligation, blockedRule, progress) {
   ];
 }
 
-function sectionAWithRule15(boatA, boatB, getWind, simTime) {
-  const obligation = evaluateSectionA(boatA, boatB, getWind);
-  const clearance = obligation ? obligation.clearance : boatClearance(boatA, boatB);
-  const inRange = Number.isFinite(clearance) && clearance <= RULE10_INTEREST_RANGE_M;
-  const key = pairKey(boatA, boatB);
-  let mem = pairMemory.get(key);
-  if (!mem) {
-    mem = {};
-    pairMemory.set(key, mem);
-  }
+// Rule 15 keeps its own per-pair state: the previous step's right-of-way
+// boat, snapshots for the what-if, and the open timer. `state` is that
+// object; the resolver never writes it.
+function evaluateRule15(ctx, state) {
+  const simTime = ctx.simTime;
+  if (typeof simTime !== 'number' || !Number.isFinite(simTime)) return null;
 
-  let active = mem.active || null;
+  const boatA = ctx.boatA;
+  const boatB = ctx.boatB;
+  const getWind = ctx.getWind;
+  const clearance = ctx.clearance;
+  const sectionFinal = ctx.sectionA && ctx.sectionA.final;
+  const obligation = sectionFinal ? {
+    rule: sectionFinal.rule,
+    id: sectionFinal.id,
+    bothGiveWay: sectionFinal.bothGiveWay,
+    rightOfWay: sectionFinal.rightOfWay,
+    giveWay: sectionFinal.giveWay,
+  } : null;
+  const inRange = Number.isFinite(clearance) && clearance <= RULE10_INTEREST_RANGE_M;
+
+  let active = state.active || null;
   if (active) {
     const elapsed = simTime - active.startedAt;
     const timedOut = elapsed + 1e-6 >= RULE15_ROOM_S;
@@ -798,18 +824,19 @@ function sectionAWithRule15(boatA, boatB, getWind, simTime) {
     if (timedOut || separated || !owesNow) active = null;
   }
 
-  const prevTime = mem.simTime;
+  const prevTime = state.simTime;
   const consecutive = typeof prevTime === 'number'
     && Math.abs((simTime - prevTime) - SIM_STEP_S) <= 1e-6;
   const nextRowId = rowId(obligation);
-  if (consecutive && mem.inRange && nextRowId && nextRowId !== mem.rowId && clearance < RULE15_RANGE_M) {
-    const prevA = snapFor(mem.snaps, boatA);
-    const prevB = snapFor(mem.snaps, boatB);
-    const cause = acquisitionCause(boatA, boatB, prevA, prevB, mem.rowId, nextRowId, getWind);
+  if (consecutive && state.inRange && nextRowId && nextRowId !== state.rowId && clearance < RULE15_RANGE_M) {
+    const prevA = snapFor(state.snaps, boatA);
+    const prevB = snapFor(state.snaps, boatB);
+    const cause = acquisitionCause(boatA, boatB, prevA, prevB, state.rowId, nextRowId, getWind);
     if (cause && boatId(cause) === nextRowId && obligation) {
       active = {
         owesId: nextRowId,
         blockedRule: obligation.rule,
+        blockedId: obligation.id,
         startedAt: simTime,
       };
     }
@@ -818,33 +845,355 @@ function sectionAWithRule15(boatA, boatB, getWind, simTime) {
   // A second callback at the same simulation time is a redraw between physics
   // steps. Keep last step's snapshots so the next real step can still what-if.
   if (prevTime !== simTime) {
-    mem.simTime = simTime;
-    mem.inRange = inRange;
-    mem.rowId = nextRowId;
-    mem.snaps = [captureBoat(boatA, getWind), captureBoat(boatB, getWind)];
+    state.simTime = simTime;
+    state.inRange = inRange;
+    state.rowId = nextRowId;
+    state.snaps = [captureBoat(boatA, getWind), captureBoat(boatB, getWind)];
   }
-  mem.active = active;
+  state.active = active;
 
-  if (active && obligation && rowId(obligation) === active.owesId && clearance < RULE15_RANGE_M) {
-    const elapsed = simTime - active.startedAt;
-    const progress = Math.max(0, Math.min(1, (RULE15_ROOM_S - elapsed) / RULE15_ROOM_S));
-    return rule15Overlay(obligation, active.blockedRule, progress);
+  if (!(active && obligation && rowId(obligation) === active.owesId && clearance < RULE15_RANGE_M)) return null;
+  const elapsed = simTime - active.startedAt;
+  const progress = Math.max(0, Math.min(1, (RULE15_ROOM_S - elapsed) / RULE15_ROOM_S));
+  return {
+    id: '15',
+    rule: 'Rule 15',
+    applies: true,
+    rightOfWay: obligation.rightOfWay,
+    giveWay: obligation.giveWay,
+    blockedId: active.blockedId,
+    blockedRule: active.blockedRule,
+    progress,
+    label: 'Rule 15 (blocks ' + active.blockedRule + ')',
+  };
+}
+
+// `rank` is the hierarchy: a higher rank can be the final rule while a lower
+// one stays applicable but inhibited. Section A shares rank 0. Registry order
+// is the tie-break inside a rank (earlier wins) and the order of `applicable`.
+export const ruleRegistry = [
+  {
+    id: '10',
+    layer: 'sectionA',
+    rank: 0,
+    inhibits: [],
+    evaluate: evaluateRule10,
+  },
+  {
+    id: '11',
+    layer: 'sectionA',
+    rank: 0,
+    inhibits: [],
+    evaluate: evaluateRule11,
+  },
+  {
+    id: '12',
+    layer: 'sectionA',
+    rank: 0,
+    inhibits: [],
+    evaluate: evaluateRule12,
+  },
+  {
+    id: '13',
+    layer: 'sectionA',
+    rank: 0,
+    inhibits: ['10', '11', '12'],
+    evaluate: evaluateRule13,
+  },
+  {
+    id: '15',
+    layer: 'timedInhibitor',
+    rank: 1,
+    // The rule she acquired right of way under. Chosen when the window opens.
+    inhibits(result) {
+      return result.blockedId ? [result.blockedId] : [];
+    },
+    evaluate: evaluateRule15,
+  },
+];
+
+function registryIndex(id) {
+  for (let i = 0; i < ruleRegistry.length; i++) {
+    if (ruleRegistry[i].id === id) return i;
   }
-  return obligationOverlay(obligation);
+  return -1;
+}
+
+function inhibitsOf(entry, result) {
+  if (typeof entry.inhibits === 'function') return entry.inhibits(result) || [];
+  return entry.inhibits || [];
+}
+
+// Turn raw evaluator outputs into one decision for the pair.
+// `applicable` keeps every rule whose conditions hold, in registry order.
+// `inhibited` is the subset that must not decide right of way or fault.
+// `final` is the one rule that does. Fault is the keep-clear boat, or the
+// new right-of-way boat while Rule 15 is the rule doing the inhibiting.
+export function resolveRuleOutputs(results) {
+  const byId = new Map();
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
+    if (!result || result.applies === false || !result.id) continue;
+    byId.set(result.id, result);
+  }
+
+  const inhibitedBy = new Map();
+  for (let i = 0; i < ruleRegistry.length; i++) {
+    const entry = ruleRegistry[i];
+    const result = byId.get(entry.id);
+    if (!result) continue;
+    const targets = inhibitsOf(entry, result);
+    for (let t = 0; t < targets.length; t++) {
+      const targetId = targets[t];
+      if (!byId.has(targetId) || inhibitedBy.has(targetId)) continue;
+      inhibitedBy.set(targetId, entry.id);
+    }
+  }
+
+  // Section A is mutually exclusive. Declared inhibition (Rule 13) usually
+  // leaves one. If two still apply, the earlier registry entry wins and the
+  // other is recorded as inhibited by it.
+  let sectionWinner = null;
+  let sectionWinnerIndex = Infinity;
+  for (let i = 0; i < ruleRegistry.length; i++) {
+    const entry = ruleRegistry[i];
+    if (entry.layer !== 'sectionA') continue;
+    if (!byId.has(entry.id) || inhibitedBy.has(entry.id)) continue;
+    if (i < sectionWinnerIndex) {
+      sectionWinner = entry;
+      sectionWinnerIndex = i;
+    }
+  }
+  if (sectionWinner) {
+    for (let i = 0; i < ruleRegistry.length; i++) {
+      const entry = ruleRegistry[i];
+      if (entry.layer !== 'sectionA' || entry.id === sectionWinner.id) continue;
+      if (byId.has(entry.id) && !inhibitedBy.has(entry.id)) inhibitedBy.set(entry.id, sectionWinner.id);
+    }
+  }
+
+  const applicable = [];
+  for (let i = 0; i < ruleRegistry.length; i++) {
+    const entry = ruleRegistry[i];
+    const result = byId.get(entry.id);
+    if (!result) continue;
+    applicable.push({
+      id: result.id,
+      rule: result.rule,
+      layer: entry.layer,
+      rank: entry.rank || 0,
+      rightOfWay: result.rightOfWay || null,
+      giveWay: result.giveWay || null,
+      bothGiveWay: !!result.bothGiveWay,
+      boats: result.boats || null,
+      blockedId: result.blockedId || null,
+      blockedRule: result.blockedRule || null,
+      progress: result.progress,
+      label: result.label || result.rule,
+      inhibited: inhibitedBy.has(result.id),
+      inhibitedBy: inhibitedBy.get(result.id) || null,
+    });
+  }
+
+  let final = null;
+  let bestRank = -1;
+  let bestIndex = Infinity;
+  for (let i = 0; i < applicable.length; i++) {
+    const item = applicable[i];
+    if (item.inhibited) continue;
+    const index = registryIndex(item.id);
+    if (item.rank > bestRank || (item.rank === bestRank && index < bestIndex)) {
+      final = item;
+      bestRank = item.rank;
+      bestIndex = index;
+    }
+  }
+
+  const inhibited = [];
+  for (let i = 0; i < applicable.length; i++) {
+    if (applicable[i].inhibited) inhibited.push(applicable[i]);
+  }
+
+  let rightOfWay = null;
+  let keepClear = null;
+  let faultBoat = null;
+  if (final && !final.bothGiveWay) {
+    rightOfWay = final.rightOfWay;
+    keepClear = final.giveWay;
+    // Rule 15 owes room: the new right-of-way boat is at fault on contact.
+    if (final.id === '15') faultBoat = final.rightOfWay || null;
+    else faultBoat = final.giveWay || null;
+  }
+
+  return { applicable, inhibited, final, rightOfWay, keepClear, faultBoat };
+}
+
+function sectionAOutputs(ctx) {
+  const outputs = [];
+  for (let i = 0; i < ruleRegistry.length; i++) {
+    const entry = ruleRegistry[i];
+    if (entry.layer !== 'sectionA') continue;
+    const result = entry.evaluate(ctx);
+    if (result) outputs.push(result);
+  }
+  return outputs;
+}
+
+// Section A between two racing boats. Null means no overlay. Stateless:
+// Rule 15's timer is not consulted and not updated.
+export function evaluateSectionA(boatA, boatB, getWind) {
+  if (!boatA || !boatB || typeof getWind !== 'function') return null;
+  if (!Number.isFinite(boatA.x) || !Number.isFinite(boatA.y)) return null;
+  if (!Number.isFinite(boatB.x) || !Number.isFinite(boatB.y)) return null;
+
+  const clearance = boatClearance(boatA, boatB);
+  if (!(clearance <= RULE10_INTEREST_RANGE_M)) return null;
+
+  const ctx = { boatA, boatB, getWind, clearance, simTime: undefined, sectionA: null };
+  const resolved = resolveRuleOutputs(sectionAOutputs(ctx));
+  const final = resolved.final;
+  if (!final) return null;
+  if (final.bothGiveWay) {
+    return { rule: final.rule, bothGiveWay: true, boats: final.boats, clearance };
+  }
+  return {
+    rule: final.rule,
+    rightOfWay: final.rightOfWay,
+    giveWay: final.giveWay,
+    clearance,
+  };
+}
+
+function guidesFor(resolution) {
+  const final = resolution.final;
+  if (!final) return [];
+  if (final.bothGiveWay) return bothGiveWayOverlay({ rule: final.rule, boats: final.boats });
+  if (final.id === '15') {
+    const current = resolution.sectionA && resolution.sectionA.final;
+    if (!current || !final.rightOfWay || !final.giveWay) return [];
+    // Stern marks follow the rule she is sailing under now. The label names
+    // the rule she acquired right of way under, which is the blocked one.
+    return rule15Overlay({
+      rule: current.rule,
+      rightOfWay: final.rightOfWay,
+      giveWay: final.giveWay,
+    }, final.blockedRule, final.progress);
+  }
+  return obligationOverlay({
+    rule: final.rule,
+    rightOfWay: final.rightOfWay,
+    giveWay: final.giveWay,
+  });
+}
+
+function pairSlot(key) {
+  let slot = pairMemory.get(key);
+  if (!slot) {
+    slot = { states: {} };
+    pairMemory.set(key, slot);
+  }
+  if (!slot.states) slot.states = {};
+  return slot;
+}
+
+function ruleState(slot, id) {
+  let state = slot.states[id];
+  if (!state) {
+    state = {};
+    slot.states[id] = state;
+  }
+  return state;
+}
+
+// One pair. Section A runs first so Rule 15 can read that decision. Rule 15
+// still updates its state when the pair is outside the gate: a direct
+// overlay call (the headless checks) keeps the same memory as before. The
+// all-pairs step does not call this for pairs outside the gate; it drops
+// their state instead.
+function evaluatePair(boatA, boatB, getWind, clearance, simTime, slot) {
+  const inRange = Number.isFinite(clearance) && clearance <= RULE10_INTEREST_RANGE_M;
+  const ctx = { boatA, boatB, getWind, clearance, simTime, sectionA: null };
+  const outputs = inRange ? sectionAOutputs(ctx) : [];
+  ctx.sectionA = resolveRuleOutputs(outputs);
+  const rule15 = evaluateRule15(ctx, ruleState(slot, '15'));
+  if (rule15) outputs.push(rule15);
+  const resolution = resolveRuleOutputs(outputs);
+  resolution.clearance = clearance;
+  resolution.boatA = boatA;
+  resolution.boatB = boatB;
+  resolution.sectionA = ctx.sectionA;
+  resolution.guides = inRange ? guidesFor(resolution) : [];
+  return resolution;
+}
+
+function rule15Clock(slot) {
+  const state = slot && slot.states && slot.states['15'];
+  return state && typeof state.simTime === 'number' ? state.simTime : null;
 }
 
 // Drop pairs that missed the previous physics step (scenario restart, a boat
 // leaving). Called once per rules update, before the pair loop.
 export function beginRule15Step(simTime) {
   if (typeof simTime !== 'number' || !Number.isFinite(simTime)) return;
-  for (const [key, mem] of pairMemory) {
-    if (typeof mem.simTime !== 'number') continue;
-    if (simTime - mem.simTime > SIM_STEP_S + 1e-4) pairMemory.delete(key);
+  for (const [key, slot] of pairMemory) {
+    const seenAt = rule15Clock(slot);
+    if (seenAt === null) continue;
+    if (simTime - seenAt > SIM_STEP_S + 1e-4) pairMemory.delete(key);
   }
 }
 
 export function resetRule15Memory() {
   pairMemory.clear();
+}
+
+// How many pairs still hold state. Headless checks use this for leaks.
+export function pairStateCount() {
+  return pairMemory.size;
+}
+
+// The evaluator state object for one pair, or null when that pair has none.
+// Reading it does not create a slot.
+export function pairRuleState(boatA, boatB, ruleId) {
+  if (!boatA || !boatB) return null;
+  const slot = pairMemory.get(pairKey(boatA, boatB));
+  if (!slot || !slot.states) return null;
+  return slot.states[ruleId] || null;
+}
+
+// Every unordered pair inside the 12 m gate. Pair state for a pair that is
+// outside the gate, or that names a boat not in `boats`, is deleted.
+export function evaluateAllPairs(boats, getWind, simTime) {
+  const list = boats || [];
+  const live = new Set();
+  for (let i = 0; i < list.length; i++) {
+    if (list[i]) live.add(boatId(list[i]));
+  }
+
+  const seen = new Set();
+  const resolutions = [];
+  for (let i = 0; i < list.length; i++) {
+    const boatA = list[i];
+    if (!boatA || !Number.isFinite(boatA.x) || !Number.isFinite(boatA.y)) continue;
+    for (let j = i + 1; j < list.length; j++) {
+      const boatB = list[j];
+      if (!boatB || !Number.isFinite(boatB.x) || !Number.isFinite(boatB.y)) continue;
+      const clearance = boatClearance(boatA, boatB);
+      if (!(Number.isFinite(clearance) && clearance <= RULE10_INTEREST_RANGE_M)) continue;
+      const key = pairKey(boatA, boatB);
+      seen.add(key);
+      const resolution = evaluatePair(boatA, boatB, getWind, clearance, simTime, pairSlot(key));
+      resolution.pairKey = key;
+      resolutions.push(resolution);
+    }
+  }
+
+  for (const [key] of pairMemory) {
+    const parts = key.split(':');
+    const ia = Number(parts[0]);
+    const ib = Number(parts[1]);
+    if (!live.has(ia) || !live.has(ib) || !seen.has(key)) pairMemory.delete(key);
+  }
+  return resolutions;
 }
 
 // Guide records for the debug overlay. Pass simTime (seconds, advanced only
@@ -854,5 +1203,10 @@ export function sectionAOverlay(boatA, boatB, getWind, simTime) {
   if (typeof simTime !== 'number' || !Number.isFinite(simTime)) {
     return obligationOverlay(evaluateSectionA(boatA, boatB, getWind));
   }
-  return sectionAWithRule15(boatA, boatB, getWind, simTime);
+  if (!boatA || !boatB || typeof getWind !== 'function') return [];
+  if (!Number.isFinite(boatA.x) || !Number.isFinite(boatA.y)) return [];
+  if (!Number.isFinite(boatB.x) || !Number.isFinite(boatB.y)) return [];
+  const clearance = boatClearance(boatA, boatB);
+  const resolution = evaluatePair(boatA, boatB, getWind, clearance, simTime, pairSlot(pairKey(boatA, boatB)));
+  return resolution.guides;
 }
