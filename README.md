@@ -11,6 +11,7 @@ Last updated: 2026-10-06
 - [x] AMR coupling corrections and one-cell domain shifts: [#3](https://github.com/SukuWc/fields/pull/3)
 - [x] Circular disk refinement around the boat: [#4](https://github.com/SukuWc/fields/pull/4)
 - [x] Constant-wind dev mode with the fluid sim off (`?devmode=1`): [#2](https://github.com/SukuWc/fields/pull/2)
+- [x] WebGL canvas resizes with the window so the page no longer scrolls: [#17](https://github.com/SukuWc/fields/pull/17)
 
 ### 2. Wind and boat feel
 - [ ] Fluid sim on (in progress, [#9](https://github.com/SukuWc/fields/pull/9))
@@ -57,6 +58,7 @@ Last updated: 2026-10-06
 ### Other
 - [x] SailZone logo: [#14](https://github.com/SukuWc/fields/pull/14)
 - [ ] SailZone icon-only logo (in progress, [#15](https://github.com/SukuWc/fields/pull/15))
+- [ ] SailZone brand kit (in progress, [#18](https://github.com/SukuWc/fields/pull/18))
 - [x] URL-synced settings controls: [#7](https://github.com/SukuWc/fields/pull/7)
 - [x] Scenario description panel: [#12](https://github.com/SukuWc/fields/pull/12)
 - [x] Overlay lines drawn above the wind-field heatmap: [#13](https://github.com/SukuWc/fields/pull/13)
