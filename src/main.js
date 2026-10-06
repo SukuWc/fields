@@ -9,6 +9,7 @@ import { initRenderer, startAnimation, getCamera } from './renderer.js';
 import { setupControls, getPlayers, getPhysicsFrame, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
 import { sectionAOverlay } from './rules.js';
+import { SAIL_LATTICE_COUPLING } from './boat.js';
 
 const map_w = 75;
 const map_h = 75;
@@ -22,7 +23,9 @@ const texture_oversampling = 4;
 
 // Fine domain tracking: half-width in coarse cells. The window steps one cell at a time
 // once the boat is more than SHIFT_THRESHOLD cells from the window center.
-const SAIL_EFFICIENCY = 0.0003 * bm_resolution; // scales sail aerodynamic force → fluid momentum transfer
+// Sail reaction → lattice momentum. See SAIL_LATTICE_COUPLING. bm_resolution
+// stays in the product so a finer root grid (not the AMR level) still scales.
+const SAIL_EFFICIENCY = SAIL_LATTICE_COUPLING * bm_resolution;
 
 // Data texture for fluid field visualisation
 const _side1 = texture_oversampling * map_w * bm_resolution;

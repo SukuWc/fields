@@ -14,6 +14,7 @@ globalThis.window = globalThis;
 globalThis.addEventListener = globalThis.addEventListener || (() => {});
 
 const { Boltzmann, unionMaskBorderLines, buildClosedDiskMask, fineIndex } = await import('../src/boltzmann.js');
+const { SAIL_LATTICE_COUPLING } = await import('../src/boat.js');
 const {
 	trackBoats, DISK_RADIUS, DISK2_RADIUS, DISK3_RADIUS,
 	MASK_CELL_CAP, MASK2_CELL_CAP, MASK3_CELL_CAP, normalizedCurl,
@@ -412,7 +413,7 @@ function enclosedHole(domain) {
 		boat.physics_model_step();
 		if (boat.mainsail_force) {
 			for (const seg of boat.getSailSegments()) {
-				bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * 0.0003, seg.fy * 0.0003);
+				bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * SAIL_LATTICE_COUPLING, seg.fy * SAIL_LATTICE_COUPLING);
 			}
 		}
 		trackBoats(bm, [boat]);
@@ -578,43 +579,52 @@ function enclosedHole(domain) {
 		}
 	}
 	results.scenario0.wake = { maxCurl, minS, maxS };
-	check('scenario 0 wake is visible under the disk', maxCurl > 8e-5 && (maxS - minS) > 5e-5,
+	// Gain 1 leaves a speed swing near 0.004, which the plot draws as flat.
+	// The coupled wake at wind 15 swings by about 0.07 inside the disk.
+	check('scenario 0 wake is visible under the disk', (maxS - minS) > 0.02 && maxS < 0.35,
 		`|curl| = ${maxCurl.toExponential(3)}, speed ${minS.toFixed(3)}–${maxS.toFixed(3)}`);
 }
 
-// --- 9. Sail momentum reaches the refined field and stays bounded ---
-// setEquil used to stack the kick on a cell that never streamed (the wake ran
-// away). The moment strip then dropped a kick that missed the coincident node,
-// so the plotted field stayed at the freestream. Exact difference on that node,
-// once per fine substep, must leave a wake.
+// --- 9. Sail momentum is the same on the root grid and under a disk ---
+// The kick is applied to the root cell. A boat disk streams that cell and
+// copies its velocity onto the fine nodes after restriction, so refinement
+// does not add or drop momentum. fy = 0.05 deposits ΣρΔuy ≈ 0.05 on every
+// level. The old 1/dx² path left about 0.22 on level 2 and a few thousandths
+// after the convective rescaling ate the kick.
 {
 	const uy0 = -0.15;
-	const bm = new Boltzmann(48, 48, 1, 90, 15, undefined, 1);
-	bm.addDomain(12, 12, 36, 36);
-	bm.domains[0].setDisk(24, 24, 8);
-	bm.domains[0].addDomain(16, 16, 48, 48);
-	bm.domains[0].domains[0].setDisk(25, 25, 6);
-	let j0 = 0;
-	for (const c of bm.cells) j0 += c.rho * (c.uy - uy0);
-	bm.apply_energy(0, 0, 0, 0.05);
-	bm.physics_model_step();
-	let j1 = 0, maxU = 0, maxCurl = 0, bad = 0;
-	const acc = (c) => {
-		if (!Number.isFinite(c.ux) || !Number.isFinite(c.uy) || !Number.isFinite(c.rho)) { bad++; return; }
-		maxU = Math.max(maxU, Math.hypot(c.ux, c.uy));
-		if (Number.isFinite(c.curl)) maxCurl = Math.max(maxCurl, Math.abs(c.curl));
-	};
-	for (const c of bm.cells) { j1 += c.rho * (c.uy - uy0); acc(c); }
-	const walk = (ds) => { for (const d of ds) { for (const c of d.cells) acc(c); walk(d.domains); } };
-	walk(bm.domains);
-	const rootJy = j1 - j0;
-	results.impulse = { rootJy, maxU, maxCurl, bad };
-	// fy = 0.05 on level 2 (dx = 1/4, four substeps) deposits 0.05 in total,
-	// the same as one coarse kick. The old 1/dx² scale left ΣρΔuy ≈ 0.22.
-	// Restriction keeps only the coincident node's u after the kick has
-	// streamed, so the coarse residual is a fraction of that 0.05.
-	check('impulse survives restriction', rootJy > 0.002 && rootJy < 0.05, `coarse ΣρΔuy = ${rootJy.toExponential(3)}`);
-	check('impulse wake is bounded', bad === 0 && maxU < 1 && maxCurl > 0.005 && maxCurl < 0.05, `max|u| = ${maxU.toExponential(3)}, max|curl| = ${maxCurl.toExponential(3)}`);
+	function impulse(levels) {
+		const bm = new Boltzmann(48, 48, 1, 90, 15, undefined, 1);
+		if (levels >= 1) {
+			bm.addDomain(12, 12, 36, 36);
+			bm.domains[0].setDisk(24, 24, 8);
+		}
+		if (levels >= 2) {
+			bm.domains[0].addDomain(16, 16, 48, 48);
+			bm.domains[0].domains[0].setDisk(25, 25, 6);
+		}
+		let j0 = 0;
+		for (const c of bm.cells) j0 += c.rho * (c.uy - uy0);
+		bm.apply_energy(0, 0, 0, 0.05);
+		bm.physics_model_step();
+		let j1 = 0, maxU = 0, bad = 0;
+		const acc = (c) => {
+			if (!Number.isFinite(c.ux) || !Number.isFinite(c.uy) || !Number.isFinite(c.rho)) { bad++; return; }
+			maxU = Math.max(maxU, Math.hypot(c.ux, c.uy));
+		};
+		for (const c of bm.cells) { j1 += c.rho * (c.uy - uy0); acc(c); }
+		const walk = (ds) => { for (const d of ds) { for (const c of d.cells) acc(c); walk(d.domains); } };
+		walk(bm.domains);
+		return { rootJy: j1 - j0, maxU, bad };
+	}
+	const bare = impulse(0);
+	const nest = impulse(2);
+	results.impulse = { bare, nest };
+	check('impulse on the root grid deposits 0.05', bare.rootJy > 0.04 && bare.rootJy < 0.06 && bare.bad === 0,
+		`ΣρΔuy = ${bare.rootJy.toExponential(3)}`);
+	check('impulse under level 2 deposits the same momentum',
+		Math.abs(nest.rootJy - bare.rootJy) < 0.01 && nest.bad === 0 && nest.maxU < 0.4,
+		`nested ΣρΔuy = ${nest.rootJy.toExponential(3)}, bare ${bare.rootJy.toExponential(3)}, max|u| = ${nest.maxU.toExponential(3)}`);
 }
 {
 	const { Map } = await import('../src/map.js');
@@ -640,7 +650,7 @@ function enclosedHole(domain) {
 		boat.physics_model_step();
 		if (boat.mainsail_force) {
 			for (const seg of boat.getSailSegments()) {
-				bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * 0.0003, seg.fy * 0.0003);
+				bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * SAIL_LATTICE_COUPLING, seg.fy * SAIL_LATTICE_COUPLING);
 			}
 		}
 		bm.physics_model_step();
@@ -672,11 +682,78 @@ function enclosedHole(domain) {
 	};
 	walk(bm.domains);
 	results.boatWake = { minS, maxS, maxCurl, maxU, bad };
-	// Convective scaling deposits the same momentum as the coarse path. The
-	// previous 1/dx² wake was several times stronger than this.
-	check('boat energy leaves a wake', maxCurl > 3e-4 && (maxS - minS) > 2e-4,
+	// Gain 1 swings the near-sail speed by about 0.004. The coupled wake is
+	// several colormap steps on the speed plot.
+	check('boat energy leaves a wake', (maxS - minS) > 0.01 && maxS < 0.35,
 		`near-boat |curl| = ${maxCurl.toExponential(3)}, speed ${minS.toFixed(3)}–${maxS.toFixed(3)}`);
-	check('boat wake stays bounded', bad === 0 && maxU < 1, `max|u| = ${maxU.toExponential(3)}, bad = ${bad}`);
+	check('boat wake stays bounded', bad === 0 && maxU < 0.35, `max|u| = ${maxU.toExponential(3)}, bad = ${bad}`);
+}
+
+// Same sail, same footprint, refinement on or off. The speed plot reads the
+// finest node; that node is a copy of the root cell the sail loaded, so the
+// near-boat swing and the downstream deficit do not depend on the level.
+{
+	const { Map } = await import('../src/map.js');
+	const { Boat } = await import('../src/boat.js');
+	const { FluidWind, ConstantWind } = await import('../src/wind.js');
+	const U = 0.15;
+	function wakeOf(bm, boat) {
+		let minS = Infinity, maxS = 0, peak = 0, sum = 0, n = 0;
+		for (let dy = -12; dy <= 4; dy++) {
+			for (let dx = -5; dx <= 5; dx++) {
+				const v = bm.get_field_velocity(boat.x + dx, boat.y + dy);
+				const speed = Math.hypot(v.x, v.y) * 4;
+				if (!Number.isFinite(speed)) continue;
+				if (dx * dx + dy * dy <= 36) {
+					minS = Math.min(minS, speed);
+					maxS = Math.max(maxS, speed);
+				}
+				if (dy <= -2 && dy >= -12 && Math.abs(dx) <= 3) {
+					const def = U - speed;
+					if (def > peak) peak = def;
+					sum += def;
+					n++;
+				}
+			}
+		}
+		return { range: maxS - minS, minS, maxS, peak, sum, n };
+	}
+	function sailRun(refine) {
+		const bm = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
+		const map = new Map(75, 75, 90, 15, bm, new FluidWind(bm), new ConstantWind(90, 15));
+		map.physics_model_init();
+		const boat = new Boat(map, 10, -9, 5 * Math.PI / 4);
+		const N = 160;
+		for (let frame = 0; frame < N; frame++) {
+			if (frame === 1) boat.input_autopilot_enabled_toggle();
+			map.world.step(1 / 30);
+			boat.physics_model_step();
+			if (boat.mainsail_force) {
+				for (const seg of boat.getSailSegments()) {
+					bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * SAIL_LATTICE_COUPLING, seg.fy * SAIL_LATTICE_COUPLING);
+				}
+			}
+			if (refine) trackBoats(bm, [boat]);
+			bm.physics_model_step();
+		}
+		const wake = wakeOf(bm, boat);
+		const st = fieldStats(bm);
+		return { ...wake, twa: boat.twa, maxU: st.maxU, bad: st.bad };
+	}
+	const off = sailRun(false);
+	const on = sailRun(true);
+	results.wakeMatch = { off, on };
+	const vis = 0.03;
+	check('wake is visible with refinement off', off.range > vis && off.bad === 0 && off.maxU < 0.35,
+		`range ${off.range.toFixed(3)} speed ${off.minS.toFixed(3)}–${off.maxS.toFixed(3)} max|u| ${off.maxU.toFixed(3)}`);
+	check('wake is visible with refinement on', on.range > vis && on.bad === 0 && on.maxU < 0.35,
+		`range ${on.range.toFixed(3)} speed ${on.minS.toFixed(3)}–${on.maxS.toFixed(3)} max|u| ${on.maxU.toFixed(3)}`);
+	const rangeRatio = on.range / off.range;
+	check('wake strength does not depend on the mesh', rangeRatio > 0.7 && rangeRatio < 1.3,
+		`on/off range ${rangeRatio.toFixed(2)} (${on.range.toFixed(3)} / ${off.range.toFixed(3)})`);
+	const peakRatio = on.peak / off.peak;
+	check('downstream deficit matches with refinement on', off.peak > 0.004 && on.peak > 0.004 && peakRatio > 0.5 && peakRatio < 2,
+		`peak off ${off.peak.toFixed(4)} on ${on.peak.toFixed(4)}, sum off ${off.sum.toFixed(3)} on ${on.sum.toFixed(3)}`);
 }
 
 // --- 10. Disk mask: closure, overlap, uniform walk, shear ---
@@ -1071,7 +1148,7 @@ function maskShare(a, b) {
 				b.physics_model_step();
 				if (b.mainsail_force) {
 					for (const seg of b.getSailSegments()) {
-						bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * 0.0003, seg.fy * 0.0003);
+						bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * SAIL_LATTICE_COUPLING, seg.fy * SAIL_LATTICE_COUPLING);
 					}
 				}
 			}
@@ -1131,6 +1208,18 @@ function maskShare(a, b) {
 	check('scenario 1 disks overlap and the finest writes', ov1.share1 && ov1.share2 && ov1.saw > 0 && ov1.finestOk,
 		`shared=${ov1.saw} finest=${ov1.finestOk}`);
 	check('scenario 1 fleet stays finite', st1.bad === 0 && st1.maxU < 1, `max|u|=${st1.maxU.toExponential(2)} bad=${st1.bad}`);
+	const shadow = fleet([[12, -6, 5 * Math.PI / 4], [15, -11.5, 5 * Math.PI / 4]], 200);
+	const byDownwind = [...shadow.boats].sort((a, b) => a.y - b.y);
+	const lee = byDownwind[0], windward = byDownwind[1];
+	results.scenario1shadow = {
+		lee: lee.wind_speed, windward: windward.wind_speed,
+		leeTwa: lee.twa, windwardTwa: windward.twa,
+	};
+	check('scenario 1 downwind boat feels the wake',
+		lee.wind_speed < windward.wind_speed - 0.3
+		&& Math.abs(lee.twa) >= 40 && Math.abs(lee.twa) <= 55
+		&& Math.abs(windward.twa) >= 40 && Math.abs(windward.twa) <= 55,
+		`windward TWS ${windward.wind_speed.toFixed(2)} twa ${windward.twa.toFixed(1)}, lee TWS ${lee.wind_speed.toFixed(2)} twa ${lee.twa.toFixed(1)}`);
 
 	const s2 = fleet([[-10, -6, 3 * Math.PI / 4], [15, -11.5, 5 * Math.PI / 4]], 50);
 	const st2 = fieldStats(s2.bm);

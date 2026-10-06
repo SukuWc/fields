@@ -1,6 +1,29 @@
 import planck, { random } from 'planck-js/dist/planck-with-testbed';
 import { aeroCoefficients } from './utils.js';
 
+// Lattice momentum per frame = sail reaction × SAIL_LATTICE_COUPLING.
+//
+// Planck applyForce integrates the sail force over dt = 1/30. Lattice velocity
+// is the UI wind speed / 100, so the equal-and-opposite impulse is F×dt/100.
+// 0.0003 is that exchange (1/30/100 is 0.000333). It moves the boat's own
+// momentum, about one percent of the wind through the sail, and the speed
+// plot does not show it.
+//
+// Before convective rescaling, level 2 applied 1/dx² on each of four substeps
+// (64× this impulse) and level 1 applied 8×. That level-dependent kick was
+// the wake on the plot, and it is not coming back. SAIL_WAKE_GAIN is one
+// multiple of the same impulse on every grid. The root cell keeps the whole
+// momentum; a refined disk copies that cell's velocity onto the nodes that
+// paint it, so the wake does not change with the mesh.
+//
+// 16 is the largest multiple that stays comfortable at wind 25: the near-sail
+// speed peaks near 0.34, under the lattice's ~0.5 stability edge, and
+// scenario 0 holds about −50°. 32 is a deeper wake, but wind 25 reaches
+// |u| ≈ 0.49 and the heading drifts past −55°. At wind 15 the speed plot
+// swings by about 0.07 (roughly 50 colormap steps off the freestream).
+export const SAIL_WAKE_GAIN = 16;
+export const SAIL_LATTICE_COUPLING = 0.0003 * SAIL_WAKE_GAIN;
+
 
 let pl = planck, Vec2 = pl.Vec2;
 

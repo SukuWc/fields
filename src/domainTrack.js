@@ -348,7 +348,49 @@ export function stepCurlMask(opts) {
 	closeDiagonalContacts(mask, opts.cx0, opts.cy0, cw, ch, opts.centerX, opts.centerY, opts.allow);
 	trimOneLayer(mask, floor, cap, cw, ch, opts.cx0, opts.cy0, opts.centerX, opts.centerY, opts.curlNorm, tauOn);
 	closeDiagonalContacts(mask, opts.cx0, opts.cy0, cw, ch, opts.centerX, opts.centerY, opts.allow);
+	// A boat disk plus a curl island can pinch a calm cell shut. Fill that
+	// pocket, then shed the same number of boundary cells so the cap holds.
+	// A field island has an empty floor: its contour is the wake itself, and
+	// filling the lee rearranges the cap until the wind-25 street diverges.
+	let hasFloor = false;
+	for (let i = 0; i < n; i++) if (floor[i] === 1) { hasFloor = true; break; }
+	if (hasFloor) {
+		fillEnclosed(mask, cw, ch, opts.allow, opts.cx0, opts.cy0);
+		trimOneLayer(mask, floor, cap, cw, ch, opts.cx0, opts.cy0, opts.centerX, opts.centerY, opts.curlNorm, tauOn);
+	}
 	return { mask, above, below };
+}
+
+// Off cells that cannot reach the window edge are a hole. Turn them on.
+// A cell the parent mask does not cover stays off.
+function fillEnclosed(mask, cw, ch, allow, cx0, cy0) {
+	const n = cw * ch;
+	const seen = new Uint8Array(n);
+	const stack = [];
+	const push = (i) => {
+		if (i < 0 || i >= n || seen[i] || mask[i] === 1) return;
+		seen[i] = 1;
+		stack.push(i);
+	};
+	for (let x = 0; x < cw; x++) { push(x); push(x + (ch - 1) * cw); }
+	for (let y = 0; y < ch; y++) { push(y * cw); push(cw - 1 + y * cw); }
+	while (stack.length) {
+		const i = stack.pop();
+		const lx = i % cw;
+		const ly = (i / cw) | 0;
+		if (lx > 0) push(i - 1);
+		if (lx + 1 < cw) push(i + 1);
+		if (ly > 0) push(i - cw);
+		if (ly + 1 < ch) push(i + cw);
+	}
+	for (let ly = 0; ly < ch; ly++) {
+		for (let lx = 0; lx < cw; lx++) {
+			const i = lx + ly * cw;
+			if (mask[i] === 1 || seen[i]) continue;
+			if (allow && !allow(cx0 + lx, cy0 + ly)) continue;
+			mask[i] = 1;
+		}
+	}
 }
 
 // One axis, one cell. Refused when the step would enter the Dirichlet frame.
