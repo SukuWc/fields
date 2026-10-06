@@ -8,7 +8,7 @@ import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera } from './renderer.js';
 import { setupControls, getPlayers, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
-import { beginRule15Step, sectionAOverlay, trueWindAngleDeg } from './rules.js';
+import { beginRule15Step, evaluateAllPairs, trueWindAngleDeg } from './rules.js';
 
 const map_w = 75;
 const map_h = 75;
@@ -135,8 +135,9 @@ runner.start((simDt) => {
     infoEl.innerHTML += "Phys Time: " + bm.t_delta + "<br>";
   });
 
-  // Section A overlay. map.get_wind follows the active provider, so the same
-  // call is constant wind in dev mode and the lattice otherwise.
+  // Rules overlay. map.get_wind follows the active provider, so the same
+  // call is constant wind in dev mode and the lattice otherwise. Every
+  // unordered pair inside 12 m is evaluated; nothing here assumes two boats.
   const racing = getPlayers();
   for (let i = 0; i < racing.length; i++) {
     const sample = map.get_wind(racing[i].x, racing[i].y);
@@ -145,9 +146,12 @@ runner.start((simDt) => {
     const onto = racing[i].tacking && racing[i].tackingOnto ? ' onto ' + racing[i].tackingOnto : '';
     const twaText = twa === null ? '?' : String(Math.round(twa));
     infoEl.innerHTML += 'Boat ' + i + ' TWA ' + twaText + (racing[i].tacking ? ' tacking' + onto : '') + '<br>';
-    for (let j = i + 1; j < racing.length; j++) {
-      guides.push(...sectionAOverlay(racing[i], racing[j], (x, y) => map.get_wind(x, y), rulesTime));
-    }
+  }
+  const getWind = (x, y) => map.get_wind(x, y);
+  const resolutions = evaluateAllPairs(racing, getWind, rulesTime);
+  for (let i = 0; i < resolutions.length; i++) {
+    const pairGuides = resolutions[i].guides;
+    if (pairGuides && pairGuides.length) guides.push(...pairGuides);
   }
 
   // Dynamic domain placement: one reusable window per boat, a disk mask inside it,
