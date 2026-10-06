@@ -426,6 +426,14 @@ function renderContacts(marks) {
   }
 }
 
+function resizeRenderer() {
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  camera.aspect = width / Math.max(height, 1);
+  camera.updateProjectionMatrix();
+  renderer.setSize(width, height);
+}
+
 export function initRenderer(map, planeMat) {
   camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 85);
   camera.position.z = 60;
@@ -437,8 +445,14 @@ export function initRenderer(map, planeMat) {
   scene.add(fluidPlane);
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  const canvas = renderer.domElement;
+  // Inline canvases sit on the text baseline and leave a gap that opens scrollbars.
+  canvas.style.display = 'block';
+  canvas.style.position = 'fixed';
+  canvas.style.inset = '0';
+  resizeRenderer();
   document.body.appendChild(renderer.domElement);
+  window.addEventListener('resize', resizeRenderer);
 }
 
 export function getCamera() {
