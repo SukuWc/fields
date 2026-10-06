@@ -16,9 +16,14 @@ const guidePool = [];
 // Rule-overlay strokes are wider than a 1px WebGL line so the red/green split reads at the default zoom.
 const RULE_STROKE_M = 0.7;
 const ruleRibbonPool = [];
-const ruleLabelPool = [];
 const abeamPool = [];
-const _labelPoint = new THREE.Vector3();
+// Rule labels are canvas textures on planes. The texture is rebuilt only when
+// the words change; the Rule 15 bar is a scaled quad, so its shrink does not
+// repaint text. Contact flashes reuse one ring texture.
+const labelGroupPool = [];
+const labelTextureCache = new Map();
+const contactPool = [];
+let contactTexture = null;
 
 function createFixtureLine(fixture, body) {
   const type = fixture.getType();
@@ -152,60 +157,272 @@ function updateAbeamLine(line, r) {
   line.visible = true;
 }
 
-function renderRuleLabels(labels) {
-  const layer = document.getElementById('rule_labels');
-  if (!layer) return;
+function roundedRect(ctx, x, y, w, h, r) {
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+}
 
-  camera.updateMatrixWorld();
-  const width = renderer.domElement.clientWidth;
-  const height = renderer.domElement.clientHeight;
+function labelSignature(lines) {
+  let sig = '';
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (i) sig += '|';
+    sig += (line.role || '') + ':' + (line.id || '') + ':' + line.text;
+  }
+  return sig;
+}
 
-  for (let i = 0; i < labels.length; i++) {
-    let el = ruleLabelPool[i];
-    if (!el) {
-      el = document.createElement('div');
-      el.className = 'rule-label';
-      layer.appendChild(el);
-      ruleLabelPool.push(el);
+function paintLabelTexture(lines) {
+  const badge = lines.length === 1 && lines[0].role === 'badge';
+  const rule15 = lines.some((line) => line.id === '15' && line.role === 'final');
+  const fontPx = badge ? 12 : 14;
+  const font = '700 ' + fontPx + 'px "Courier New", Courier, monospace';
+  const dimFont = '500 ' + fontPx + 'px "Courier New", Courier, monospace';
+  const lineH = badge ? 16 : 18;
+  const padX = badge ? 6 : 7;
+  const padY = 4;
+
+  const measure = document.createElement('canvas').getContext('2d');
+  measure.font = font;
+  let maxW = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const w = measure.measureText(lines[i].text).width;
+    if (w > maxW) maxW = w;
+  }
+  const width = Math.max(8, Math.ceil(maxW + padX * 2));
+  const height = Math.max(8, Math.ceil(lines.length * lineH + padY * 2));
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(width * dpr);
+  canvas.height = Math.ceil(height * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, width, height);
+
+  roundedRect(ctx, 0.5, 0.5, width - 1, height - 1, 3);
+  if (badge) {
+    ctx.fillStyle = 'rgba(160, 22, 22, 0.94)';
+    ctx.fill();
+    ctx.strokeStyle = '#ff8a80';
+  } else if (rule15) {
+    ctx.fillStyle = 'rgba(40, 28, 0, 0.92)';
+    ctx.fill();
+    ctx.strokeStyle = '#ffc240';
+  } else {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.78)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+  }
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const inhibited = line.role === 'inhibited';
+    ctx.font = inhibited ? dimFont : font;
+    if (line.role === 'badge') ctx.fillStyle = '#ffffff';
+    else if (inhibited) ctx.fillStyle = 'rgba(210, 214, 220, 0.72)';
+    else if (line.id === '15') ctx.fillStyle = '#ffe7a3';
+    else if (line.role === 'final' && String(line.text).indexOf('both') !== -1) ctx.fillStyle = '#ffd0d0';
+    else if (line.role === 'final') ctx.fillStyle = '#e9ffe8';
+    else ctx.fillStyle = '#ffffff';
+    const y = padY + lineH * i + lineH / 2;
+    ctx.fillText(line.text, padX, y);
+    if (inhibited) {
+      const textW = ctx.measureText(line.text).width;
+      ctx.strokeStyle = '#f2f4f8';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(padX, y);
+      ctx.lineTo(padX + textW, y);
+      ctx.stroke();
     }
-    const label = labels[i];
-    _labelPoint.set(label.x, label.y, 0.2);
-    _labelPoint.project(camera);
-    const onScreen = _labelPoint.z >= -1 && _labelPoint.z <= 1;
-    if (!onScreen) {
-      el.style.display = 'none';
-      continue;
-    }
-    if (label.rule15) {
-      const progress = Math.max(0, Math.min(1, Number(label.progress) || 0));
-      el.className = 'rule-label rule-label-15';
-      let text = el.querySelector('.rule-label-text');
-      let fill = el.querySelector('.rule15-fill');
-      if (!text || !fill) {
-        el.textContent = '';
-        text = document.createElement('div');
-        text.className = 'rule-label-text';
-        const track = document.createElement('div');
-        track.className = 'rule15-track';
-        fill = document.createElement('div');
-        fill.className = 'rule15-fill';
-        track.appendChild(fill);
-        el.appendChild(text);
-        el.appendChild(track);
-      }
-      text.textContent = label.text;
-      fill.style.transform = 'scaleX(' + progress + ')';
-    } else {
-      el.className = 'rule-label';
-      el.textContent = label.text;
-    }
-    el.style.display = 'block';
-    el.style.left = ((_labelPoint.x * 0.5 + 0.5) * width) + 'px';
-    el.style.top = ((-_labelPoint.y * 0.5 + 0.5) * height) + 'px';
   }
 
-  for (let i = labels.length; i < ruleLabelPool.length; i++) {
-    ruleLabelPool[i].style.display = 'none';
+  const texture = new THREE.CanvasTexture(canvas);
+  if (THREE.SRGBColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.generateMipmaps = false;
+  texture.needsUpdate = true;
+  return { texture, width, height };
+}
+
+function labelTexture(lines) {
+  const key = (Math.min(2, window.devicePixelRatio || 1)) + '@' + labelSignature(lines);
+  let cached = labelTextureCache.get(key);
+  if (!cached) {
+    cached = paintLabelTexture(lines);
+    labelTextureCache.set(key, cached);
+  }
+  return cached;
+}
+
+function labelGroup(index) {
+  while (labelGroupPool.length <= index) {
+    const group = new THREE.Group();
+    group.frustumCulled = false;
+    const text = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({
+        transparent: true,
+        depthTest: false,
+        side: THREE.DoubleSide,
+        premultipliedAlpha: false,
+      })
+    );
+    text.frustumCulled = false;
+    text.renderOrder = 5;
+    const track = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({
+        color: 0x3a2a00,
+        transparent: true,
+        opacity: 0.95,
+        depthTest: false,
+        side: THREE.DoubleSide,
+      })
+    );
+    track.frustumCulled = false;
+    track.renderOrder = 5;
+    const fill = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({
+        color: 0xffc240,
+        transparent: true,
+        depthTest: false,
+        side: THREE.DoubleSide,
+      })
+    );
+    fill.frustumCulled = false;
+    fill.renderOrder = 6;
+    group.add(text);
+    group.add(track);
+    group.add(fill);
+    scene.add(group);
+    labelGroupPool.push({ group, text, track, fill, signature: '' });
+  }
+  return labelGroupPool[index];
+}
+
+function worldPerPixel(x, y) {
+  const height = renderer.domElement.clientHeight || 1;
+  const vFov = camera.fov * Math.PI / 180;
+  const distance = Math.max(0.5, Math.hypot(camera.position.x - x, camera.position.y - y, camera.position.z));
+  return 2 * Math.tan(vFov / 2) * distance / height;
+}
+
+function renderRuleLabels(labels) {
+  for (let i = 0; i < labels.length; i++) {
+    const label = labels[i];
+    const lines = label.lines && label.lines.length
+      ? label.lines
+      : [{ text: label.text || '', role: 'final', id: '' }];
+    const entry = labelGroup(i);
+    const sig = labelSignature(lines);
+    if (entry.signature !== sig) {
+      const painted = labelTexture(lines);
+      entry.text.material.map = painted.texture;
+      entry.text.material.needsUpdate = true;
+      entry.texW = painted.width;
+      entry.texH = painted.height;
+      entry.signature = sig;
+    }
+    const texW = entry.texW;
+    const texH = entry.texH;
+    const s = worldPerPixel(label.x, label.y);
+    entry.group.position.set(label.x, label.y, label.badge ? 0.45 : 0.4);
+    entry.group.scale.set(s, s, 1);
+    entry.group.visible = true;
+
+    const showBar = !!label.rule15;
+    const barH = showBar ? 7 : 0;
+    const gap = label.badge ? 4 : 8;
+    entry.text.scale.set(texW, texH, 1);
+    entry.text.position.set(0, gap + barH + texH / 2, 0);
+
+    if (showBar) {
+      const progress = Math.max(0, Math.min(1, Number(label.progress) || 0));
+      entry.track.visible = true;
+      entry.fill.visible = true;
+      entry.track.scale.set(texW, barH, 1);
+      entry.track.position.set(0, gap + barH / 2, 0);
+      const fillW = Math.max(0.01, texW * progress);
+      entry.fill.scale.set(fillW, barH, 1);
+      entry.fill.position.set(-texW / 2 + fillW / 2, gap + barH / 2, 0.2);
+    } else {
+      entry.track.visible = false;
+      entry.fill.visible = false;
+    }
+  }
+  for (let i = labels.length; i < labelGroupPool.length; i++) {
+    labelGroupPool[i].group.visible = false;
+  }
+}
+
+function contactMarkTexture() {
+  if (contactTexture) return contactTexture;
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 64, 64);
+  ctx.beginPath();
+  ctx.arc(32, 32, 26, 0, Math.PI * 2);
+  ctx.strokeStyle = '#ffe08a';
+  ctx.lineWidth = 5;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(32, 32, 7, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff6d0';
+  ctx.fill();
+  contactTexture = new THREE.CanvasTexture(canvas);
+  if (THREE.SRGBColorSpace) contactTexture.colorSpace = THREE.SRGBColorSpace;
+  contactTexture.needsUpdate = true;
+  return contactTexture;
+}
+
+function contactMark(index) {
+  while (contactPool.length <= index) {
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({
+        map: contactMarkTexture(),
+        transparent: true,
+        depthTest: false,
+        side: THREE.DoubleSide,
+        premultipliedAlpha: false,
+      })
+    );
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 4;
+    scene.add(mesh);
+    contactPool.push(mesh);
+  }
+  return contactPool[index];
+}
+
+function renderContacts(marks) {
+  for (let i = 0; i < marks.length; i++) {
+    const mark = marks[i];
+    const mesh = contactMark(i);
+    const d = Math.max(0.2, mark.radius * 2);
+    mesh.position.set(mark.x, mark.y, 0.32);
+    mesh.scale.set(d, d, 1);
+    mesh.material.opacity = mark.opacity !== undefined ? mark.opacity : 1;
+    mesh.visible = true;
+  }
+  for (let i = marks.length; i < contactPool.length; i++) {
+    contactPool[i].visible = false;
   }
 }
 
@@ -279,10 +496,15 @@ function animation() {
   let ruleIdx = 0;
   let abeamIdx = 0;
   const ruleLabels = [];
+  const contactMarks = [];
 
   for (const r of guides) {
     if (r.type === 'label') {
       ruleLabels.push(r);
+      continue;
+    }
+    if (r.type === 'contact') {
+      contactMarks.push(r);
       continue;
     }
     if (r.type === 'abeam') {
@@ -321,6 +543,7 @@ function animation() {
   for (let i = abeamIdx; i < abeamPool.length; i++) {
     abeamPool[i].visible = false;
   }
+  renderContacts(contactMarks);
   renderRuleLabels(ruleLabels);
 
   renderer.render(scene, camera);
