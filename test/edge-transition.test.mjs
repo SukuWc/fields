@@ -127,10 +127,9 @@ function maxPopErr(cell, ref) {
 }
 
 {
-	const nu = 0.02;
-	const omegaC = 1 / (3 * nu + 0.5);
-	const omegaF = 2 * omegaC / (4 - omegaC);
 	const bm = make(32, 32);
+	const omegaC = 1 / (3 * bm.nu + 0.5);
+	const omegaF = 2 * omegaC / (4 - omegaC);
 	bm.addDomain(10, 10, 22, 22);
 	const d = bm.domains[0];
 	check('fine ω matches Eq. 24', Math.abs(d.omega_f - omegaF) < 1e-12 && Math.abs(d.omega_c - omegaC) < 1e-12,

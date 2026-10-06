@@ -1811,8 +1811,24 @@ export class Boltzmann {
 
 		this.speed = speed / 100; // default speed 0.12
 
-		// Kinematic viscosity coefficient in natural units
-		this.nu = 0.020;
+		// Kinematic viscosity in lattice units. ω_c = 1/(3ν + 1/2) and, on each
+		// refined level, ω_f = 2ω_c/(4 − ω_c) (Eq. 24). The Eq. 29/30 factors are
+		// ω_c/(2ω_f) and its reciprocal, so they follow this constant.
+		//
+		// 0.020 (τ = 0.56) is enough for open water at the default UI wind of 15
+		// (lattice U = wind/100 = 0.15). The centre barrier at UI wind 25
+		// (U = 0.25, Ma ≈ 0.43, local |u| ≈ 0.47 beside the cylinder) diverges
+		// near frame 700: the street reaches the Dirichlet frame and the field
+		// fills with a cell-scale alternation of freestream and near-zero speed.
+		// 0.021 still diverges, around frame 1200. 0.025 (τ = 0.575) stays
+		// bounded past 3000 frames, the upstream neighbour-difference of speed
+		// stays under 5e-4, and a probe in the near wake still oscillates, so
+		// the street is not smeared out. A lattice-speed cap would also drop
+		// the Mach number, but it would rescale every wind the boats feel
+		// unless the sail coupling moved with it. TRT would damp ghost modes;
+		// the checkerboard correlation is already ~0 until the blowup, and the
+		// coarse-fine rescaling above is the BGK one.
+		this.nu = 0.025;
 
 		// Fine refinement domains (multi-domain AMR, Lagrava §3.5).
 		// Add domains via addDomain(cx0, cy0, cx1, cy1).

@@ -690,9 +690,9 @@ function paintNonSensor(parent, value) {
 		`bad=${bad} max|u|=${maxU.toExponential(2)} islands=${field.length} cells=${cells} floor=${floorOk}`);
 }
 
-// The curl-contour island used to diverge here around frame 400 (max|u| ~1e3,
-// density off by 1e30) while the same barrier with no refinement stayed near
-// max|u| 0.43. Several hundred frames, both ways.
+// Smoke check that a curl island appears on the barrier street and stays
+// finite. The 1500-frame wind sweep and the freestream noise bound live in
+// wind-stability.test.mjs.
 function latticeHealth(bm) {
 	let bad = 0, maxU = 0, maxDr = 0;
 	for (let y = 1; y < bm.height - 1; y++) {
@@ -726,9 +726,8 @@ function runBarrier(track, frames) {
 }
 
 {
-	// The curl-contour island diverged around frame 400. The root lattice at
-	// this wind stays bounded well past that and later hits its own Mach limit
-	// near frame 700, so the comparison window stops short of that limit.
+	// Short window. wind-stability.test.mjs holds the same setup for 1500 frames
+	// and checks the freestream noise, not only the peak speed.
 	const frames = 600;
 	const off = runBarrier(false, frames);
 	const on = runBarrier(true, frames);
