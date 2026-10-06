@@ -612,9 +612,11 @@ function paintNonSensor(parent, value) {
 			}
 		}
 	}
+	const hotCovered = field.length === 1 && field[0]._maskAt(51, 37);
 	check('curl outside the boat window opens one detached field island',
-		field.length === 1 && disjoint && countMask(field[0]) >= SEED_MIN
+		field.length === 1 && disjoint && hotCovered && countMask(field[0]) >= SEED_MIN
 		&& countMask(field[0]) <= FIELD_CELL_CAP && field.length <= FIELD_DOMAIN_MAX
+		&& !field[0].hasDiagonalOnlyContact()
 		&& maskEqualsFloor(boatDom, DISK_RADIUS) && !field[0].domains.length,
 		`islands=${field.length} cells=${field[0] ? countMask(field[0]) : 0}`);
 }
@@ -686,6 +688,55 @@ function paintNonSensor(parent, value) {
 		bad === 0 && maxU < 1 && disjoint && cells >= SEED_MIN && cells <= FIELD_CELL_CAP * FIELD_DOMAIN_MAX
 		&& floorOk,
 		`bad=${bad} max|u|=${maxU.toExponential(2)} islands=${field.length} cells=${cells} floor=${floorOk}`);
+}
+
+// The curl-contour island used to diverge here around frame 400 (max|u| ~1e3,
+// density off by 1e30) while the same barrier with no refinement stayed near
+// max|u| 0.43. Several hundred frames, both ways.
+function latticeHealth(bm) {
+	let bad = 0, maxU = 0, maxDr = 0;
+	for (let y = 1; y < bm.height - 1; y++) {
+		for (let x = 1; x < bm.width - 1; x++) {
+			const c = bm.cells[x + y * bm.width];
+			if (!Number.isFinite(c.ux) || !Number.isFinite(c.uy) || !Number.isFinite(c.rho)) { bad++; continue; }
+			const s = Math.hypot(c.ux, c.uy);
+			if (s > maxU) maxU = s;
+			const dr = Math.abs(c.rho - 1);
+			if (dr > maxDr) maxDr = dr;
+		}
+	}
+	return { bad, maxU, maxDr };
+}
+
+function runBarrier(track, frames) {
+	const bm = make(75, 75, 25);
+	bm.setBarriers(true);
+	const worst = { bad: 0, maxU: 0, maxDr: 0, domains: 0 };
+	for (let frame = 0; frame < frames; frame++) {
+		if (track) trackBoats(bm, []);
+		bm.physics_model_step();
+		if (frame % 25 !== 24 && frame !== frames - 1) continue;
+		const st = latticeHealth(bm);
+		worst.bad += st.bad;
+		worst.domains = bm.domains.length;
+		if (st.maxU > worst.maxU) worst.maxU = st.maxU;
+		if (st.maxDr > worst.maxDr) worst.maxDr = st.maxDr;
+	}
+	return worst;
+}
+
+{
+	// The curl-contour island diverged around frame 400. The root lattice at
+	// this wind stays bounded well past that and later hits its own Mach limit
+	// near frame 700, so the comparison window stops short of that limit.
+	const frames = 600;
+	const off = runBarrier(false, frames);
+	const on = runBarrier(true, frames);
+	const bounded = (st) => st.bad === 0 && st.maxU < 0.8 && st.maxDr < 0.5;
+	check('barrier at wind 25 stays bounded with refinement off', bounded(off) && off.domains === 0,
+		`bad=${off.bad} max|u|=${off.maxU.toExponential(2)} max|ρ−1|=${off.maxDr.toExponential(2)} domains=${off.domains}`);
+	check('barrier at wind 25 stays bounded with refinement on', bounded(on) && on.domains >= 1,
+		`bad=${on.bad} max|u|=${on.maxU.toExponential(2)} max|ρ−1|=${on.maxDr.toExponential(2)} domains=${on.domains}`);
 }
 
 if (failed) {
