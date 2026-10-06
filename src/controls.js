@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Boat } from './boat.js';
-import { resetContacts } from './rules.js';
+import { chargePendingPenalty, resetContacts } from './rules.js';
 import { range_map } from './utils.js';
 
 let key_bind_list = [];
@@ -124,7 +124,7 @@ function renderScenarioCard(scenario) {
     bodyEl.textContent = scenario.description || "";
   } else {
     titleEl.textContent = "No scenario";
-    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 9 each have a description.";
+    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 10 each have a description.";
   }
   card.classList.toggle("collapsed", scenarioCardCollapsed);
   if (toggle) {
@@ -149,6 +149,10 @@ function autokeybind(players) {
     key_bind_list.push({type: "PRESSED", activation_key: 38, prohibition_key: 40, object: players[0], input_handler: players[0].input_autopilot_heading_decrease.name});
     key_bind_list.push({type: "KEYDOWN", activation_key: 32, prohibition_key: -1, object: players[0], input_handler: players[0].input_autopilot_enabled_toggle.name});
     key_bind_list.push({type: "KEYDOWN", activation_key: 13, prohibition_key: -1, object: players[0], input_handler: players[0].input_autopilot_tack_toggle.name});
+    // Q counter-clockwise, E clockwise. Separate keys: holding one does not
+    // flip the other, and a repeat of the same key does not restart the turn.
+    key_bind_list.push({type: "KEYDOWN", activation_key: 81, prohibition_key: 69, object: players[0], input_handler: players[0].input_penalty_turn_ccw.name});
+    key_bind_list.push({type: "KEYDOWN", activation_key: 69, prohibition_key: 81, object: players[0], input_handler: players[0].input_penalty_turn_cw.name});
   }
 
   if (players[1] !== undefined) {
@@ -265,7 +269,7 @@ scenarios[6].frames[90] = () => { players[0].input_autopilot_tack_toggle(); };
 // ?devmode=1&scenario_selector=7
 scenarios[7] = makeScenario(
   "Rule 10 collision, port boat at fault",
-  "Both boats start on port close-hauled; the windward boat bears away onto a port beam reach and sails across, and the leeward boat tacks to gain starboard. Rule 13 applies during the tack. On reaching close-hauled, Rule 15 briefly blocks Rule 10. Then Rule 10 applies and the port-tack boat collides and gets the fault."
+  "Both boats start on port close-hauled; the windward boat bears away onto a port beam reach and sails across, and the leeward boat tacks to gain starboard. Rule 13 applies during the tack. On reaching close-hauled, Rule 15 briefly blocks Rule 10. Then Rule 10 applies and the port-tack boat collides and gets the fault. She keeps the FAULT badge until one full turn. Steer her with A and D. Q and E are boat 0's autopilot circles; scenario 10 starts boat 0 already charged so you can try them."
 );
 scenarios[7].frames[0] = () => {
   // Both port close-hauled. Boat 1 is upwind and to port (windward).
@@ -380,6 +384,32 @@ scenarios[9].frames[2] = () => {
 for (let frame = 8; frame <= 220; frame++) {
   scenarios[9].frames[frame] = () => { players[1].motor_input = 1; };
 }
+
+// One boat, already charged, so the 360 can be sailed without waiting for a
+// collision. Wind-from defaults to +Y. She starts on a starboard beam reach
+// with way on. The FAULT badge stays until one circle. Q and E are boat 0.
+// Dev mode: ?devmode=1&scenario_selector=10
+scenarios[10] = makeScenario(
+  "Penalty turn, one pending fault",
+  "Boat 0 starts with one pending penalty. The red FAULT badge stays until she turns a full circle, gybes and tacks included. Sail it with the left and right arrows, or press Q for an autopilot circle counter-clockwise and E for clockwise. One circle clears one penalty; a second fault would need a second circle. Left or right arrow, up or down arrow, Enter, or Space cancels the autopilot turn and gives you the helm. Holding Q or E does not restart it."
+);
+scenarios[10].frames[0] = () => {
+  // Starboard beam reach (TWA -90°) with way on, in open water.
+  const heading = -Math.PI / 2;
+  const boat = new Boat(_map, 0, 0, heading);
+  players.push(boat);
+  boat.physics_model.setLinearVelocity({ x: -2.2, y: 0 });
+  chargePendingPenalty(boat, { time: 0, finalRule: 'penalty', faultBoat: boat });
+};
+scenarios[10].frames[1] = () => {
+  autokeybind(players);
+  const follow = document.getElementById('camera_follow');
+  if (follow && !follow.checked) {
+    follow.checked = true;
+    follow.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  _map.camera_zoom = 16;
+};
 
 export function setupControls(map, getCamera, bm) {
   _map = map;

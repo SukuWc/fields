@@ -1249,12 +1249,10 @@ export function sectionAOverlay(boatA, boatB, getWind, simTime) {
 const CONTACT_TOUCH_M = 0.02;
 const CONTACT_REARM_M = 0.25;
 const CONTACT_FLASH_MS = 700;
-const CONTACT_BADGE_MS = 6500;
 
 const contactLatch = new Map();
 const incidents = [];
 const contactFlashes = [];
-const contactBadges = [];
 
 function segmentHit(a, b, c, d) {
   const den = (a.x - b.x) * (c.y - d.y) - (a.y - b.y) * (c.x - d.x);
@@ -1343,25 +1341,22 @@ export function resetContacts() {
   contactLatch.clear();
   incidents.length = 0;
   contactFlashes.length = 0;
-  contactBadges.length = 0;
+  pendingPenalties.clear();
+  penaltyTurns.clear();
+  penaltyCleared.length = 0;
 }
 
 function pruneContactVisuals(boats, now) {
-  const live = boats ? new Set(boats) : null;
   for (let i = contactFlashes.length - 1; i >= 0; i--) {
     if (now - contactFlashes[i].startedAtMs > CONTACT_FLASH_MS) contactFlashes.splice(i, 1);
-  }
-  for (let i = contactBadges.length - 1; i >= 0; i--) {
-    const badge = contactBadges[i];
-    if (now - badge.startedAtMs > CONTACT_BADGE_MS) contactBadges.splice(i, 1);
-    else if (live && !live.has(badge.boat)) contactBadges.splice(i, 1);
   }
 }
 
 // Charge the resolver's fault boat when a latched contact begins. No incident
 // when fault is not a single boat (both tacking). `simTime` is the simulation
-// clock stored on the incident; the flash and badge use wall time so they
-// stay brief on screen.
+// clock stored on the incident. The contact flash uses wall time. A charged
+// fault also pushes one pending penalty; the FAULT badge stays until a 360°
+// turn clears it.
 export function recordContacts(resolutions, simTime, boats) {
   const now = performance.now();
   const seen = new Set();
@@ -1379,7 +1374,7 @@ export function recordContacts(resolutions, simTime, boats) {
         const inhibited = [];
         const blocked = resolution.inhibited || [];
         for (let k = 0; k < blocked.length; k++) inhibited.push(blocked[k].rule);
-        incidents.push({
+        const incident = {
           time: simTime,
           boats: [resolution.boatA, resolution.boatB],
           pairKey: resolution.pairKey,
@@ -1389,9 +1384,10 @@ export function recordContacts(resolutions, simTime, boats) {
           faultBoat: resolution.faultBoat,
           x: point.x,
           y: point.y,
-        });
+        };
+        incidents.push(incident);
         contactFlashes.push({ x: point.x, y: point.y, startedAtMs: now });
-        contactBadges.push({ boat: resolution.faultBoat, startedAtMs: now });
+        chargePendingPenalty(resolution.faultBoat, incident);
       }
     } else if (!touching && resolution.clearance > CONTACT_REARM_M) {
       contactLatch.set(resolution.pairKey, false);
@@ -1423,21 +1419,296 @@ export function contactGuides(nowMs) {
       opacity: (1 - t) * 0.95,
     });
   }
-  for (let i = 0; i < contactBadges.length; i++) {
-    const badge = contactBadges[i];
-    const age = now - badge.startedAtMs;
-    if (age < 0 || age > CONTACT_BADGE_MS) continue;
-    const boat = badge.boat;
+  return guides;
+}
+
+// A contact fault charges one pending penalty. Penalties stack, one per
+// incident, and a completed circle clears the oldest (FIFO). The turn is the
+// hull heading (Planck angle), not the tack: gybes and tacks are allowed.
+//
+// While a penalty is pending, or while a penalty-turn autopilot is watching,
+// each sample adds the short-way heading change. Noise is not dropped — a
+// slow circle has to be able to finish. Small wiggles are handled two ways:
+//   - Under 20° the total is a signed net, so a wiggle that returns cancels.
+//   - Once 20° is committed one way, the turn is locked to that sense. Motion
+//     the other way is ignored until it reaches 30°, which abandons the
+//     attempt and starts again from zero. The reversing arc does not count.
+// A sample is taken the short way, so one step never adds more than 180°.
+// The first penalty on a boat discards any circle already in progress: only
+// heading sailed after the charge counts. A further collision while a turn
+// is underway stacks and leaves that turn running.
+export const PENALTY_TURN_NOISE_DEG = 1e-3;
+export const PENALTY_TURN_LOCK_DEG = 20;
+export const PENALTY_TURN_REVERSE_DEG = 30;
+export const PENALTY_TURN_COMPLETE_DEG = 360;
+export const PENALTY_CLEARED_MS = 1400;
+const PENALTY_RING_R = 3.15;
+
+const pendingPenalties = new Map();
+const penaltyTurns = new Map();
+const penaltyCleared = [];
+
+function penaltyTracker(boat) {
+  let tracker = penaltyTurns.get(boat);
+  if (!tracker) {
+    tracker = {
+      hasHeading: false,
+      lastHeading: 0,
+      origin: 0,
+      progress: 0,
+      lockedSign: 0,
+      reverse: 0,
+    };
+    penaltyTurns.set(boat, tracker);
+  }
+  return tracker;
+}
+
+function resetTurnProgress(tracker) {
+  tracker.progress = 0;
+  tracker.lockedSign = 0;
+  tracker.reverse = 0;
+}
+
+// Drop the circle in progress. The last heading sample stays, so the next
+// delta is only what she sails after this call.
+export function resetPenaltyTurn(boat) {
+  if (!boat) return;
+  const tracker = penaltyTracker(boat);
+  resetTurnProgress(tracker);
+  if (tracker.hasHeading) tracker.origin = tracker.lastHeading;
+}
+
+function wrapPi(delta) {
+  const twopi = Math.PI * 2;
+  let x = (delta + Math.PI) % twopi;
+  if (x < 0) x += twopi;
+  return x - Math.PI;
+}
+
+function turnView(tracker) {
+  const sign = tracker.lockedSign || (tracker.progress ? Math.sign(tracker.progress) : 0);
+  return {
+    completed: false,
+    cleared: null,
+    progressDeg: tracker.progress,
+    remainingDeg: Math.max(0, PENALTY_TURN_COMPLETE_DEG - Math.abs(tracker.progress)),
+    sign,
+    locked: tracker.lockedSign !== 0,
+    origin: tracker.origin,
+  };
+}
+
+export function penaltyTurnView(boat) {
+  const tracker = penaltyTurns.get(boat);
+  if (!tracker) {
+    return {
+      completed: false,
+      cleared: null,
+      progressDeg: 0,
+      remainingDeg: PENALTY_TURN_COMPLETE_DEG,
+      sign: 0,
+      locked: false,
+      origin: null,
+    };
+  }
+  return turnView(tracker);
+}
+
+export function pendingPenaltyCount(boat) {
+  const queue = pendingPenalties.get(boat);
+  return queue ? queue.length : 0;
+}
+
+// Oldest first. Each entry is { time, incident }.
+export function pendingPenaltiesOf(boat) {
+  const queue = pendingPenalties.get(boat);
+  return queue ? queue.slice() : [];
+}
+
+function clearOldestPending(boat, now) {
+  const queue = pendingPenalties.get(boat);
+  if (!queue || !queue.length) return null;
+  const cleared = queue.shift();
+  if (!queue.length) pendingPenalties.delete(boat);
+  penaltyCleared.push({ boat, startedAtMs: now });
+  return cleared;
+}
+
+// Push one pending penalty. `incident` is the contact record, or a stand-in
+// with at least { time } for a scenario that starts already charged.
+export function chargePendingPenalty(boat, incident) {
+  if (!boat || !incident) return;
+  let queue = pendingPenalties.get(boat);
+  const wasEmpty = !queue || queue.length === 0;
+  if (!queue) {
+    queue = [];
+    pendingPenalties.set(boat, queue);
+  }
+  queue.push({ time: incident.time, incident });
+  if (wasEmpty) resetPenaltyTurn(boat);
+}
+
+// Integrate `headingRad` (hull angle, radians). `opts.watch` is set while the
+// penalty-turn autopilot is steering, so the circle is measured even when
+// nothing is pending; finishing then just ends the autopilot. Returns the
+// turn view, with `completed` set on the sample that reaches 360°.
+export function notePenaltyHeading(boat, headingRad, opts) {
+  if (!boat || !Number.isFinite(headingRad)) return null;
+  const tracker = penaltyTracker(boat);
+  const now = opts && typeof opts.nowMs === 'number' ? opts.nowMs : performance.now();
+  if (!tracker.hasHeading) {
+    tracker.hasHeading = true;
+    tracker.lastHeading = headingRad;
+    tracker.origin = headingRad;
+    return turnView(tracker);
+  }
+
+  const deltaDeg = wrapPi(headingRad - tracker.lastHeading) * 180 / Math.PI;
+  tracker.lastHeading = headingRad;
+  const pending = pendingPenaltyCount(boat);
+  const watch = !!(opts && opts.watch);
+  if (!pending && !watch) {
+    resetTurnProgress(tracker);
+    tracker.origin = headingRad;
+    return turnView(tracker);
+  }
+  if (Math.abs(deltaDeg) < PENALTY_TURN_NOISE_DEG) return turnView(tracker);
+
+  if (tracker.lockedSign === 0) {
+    if (tracker.progress === 0) tracker.origin = tracker.lastHeading - deltaDeg * Math.PI / 180;
+    tracker.progress += deltaDeg;
+    if (Math.abs(tracker.progress) >= PENALTY_TURN_LOCK_DEG) {
+      tracker.lockedSign = Math.sign(tracker.progress);
+      tracker.reverse = 0;
+    }
+  } else if (deltaDeg * tracker.lockedSign > 0) {
+    tracker.progress += deltaDeg;
+    tracker.reverse = 0;
+  } else {
+    tracker.reverse += Math.abs(deltaDeg);
+    if (tracker.reverse >= PENALTY_TURN_REVERSE_DEG) {
+      resetTurnProgress(tracker);
+      tracker.origin = headingRad;
+    }
+  }
+
+  // A hair under 360° still counts. Summing many small samples lands on
+  // 359.999999999997 rather than 360, and that must not stick the turn open.
+  if (Math.abs(tracker.progress) >= PENALTY_TURN_COMPLETE_DEG - 1e-4) {
+    const cleared = pending ? clearOldestPending(boat, now) : null;
+    resetTurnProgress(tracker);
+    tracker.origin = headingRad;
+    const done = turnView(tracker);
+    done.completed = true;
+    done.cleared = cleared;
+    return done;
+  }
+  return turnView(tracker);
+}
+
+function pushArc(guides, cx, cy, radius, a0, sweep, color, opacity) {
+  const n = Math.max(8, Math.ceil(Math.abs(sweep) / (Math.PI / 28)));
+  const count = Math.min(n, 96);
+  for (let i = 0; i < count; i++) {
+    const t0 = a0 + sweep * (i / count);
+    const t1 = a0 + sweep * ((i + 1) / count);
+    guides.push({
+      type: 'guide',
+      color,
+      opacity,
+      z: 0.36,
+      x1: cx + Math.cos(t0) * radius,
+      y1: cy + Math.sin(t0) * radius,
+      x2: cx + Math.cos(t1) * radius,
+      y2: cy + Math.sin(t1) * radius,
+    });
+  }
+}
+
+function sternOffset(boat, dist) {
+  const fwd = headingForward(boat.hull_angle);
+  if (!fwd) return { x: 0, y: dist };
+  return { x: -fwd.x * dist, y: -fwd.y * dist };
+}
+
+function bowOffset(boat, dist) {
+  const fwd = headingForward(boat.hull_angle);
+  if (!fwd) return { x: 0, y: -dist };
+  return { x: fwd.x * dist, y: fwd.y * dist };
+}
+
+// FAULT badge while a penalty is pending (with a count when several are),
+// the turn ring and remaining degrees, and a short CLEARED flash.
+export function penaltyGuides(boats, nowMs) {
+  const now = typeof nowMs === 'number' ? nowMs : performance.now();
+  const list = boats || [];
+  const live = new Set(list);
+  const guides = [];
+
+  for (let i = 0; i < list.length; i++) {
+    const boat = list[i];
     if (!boat || !Number.isFinite(boat.x) || !Number.isFinite(boat.y)) continue;
-    const fwd = headingForward(boat.hull_angle);
-    const ox = fwd ? -fwd.x * 2.5 : 0;
-    const oy = fwd ? -fwd.y * 2.5 : 2.5;
+    const count = pendingPenaltyCount(boat);
+    if (count > 0) {
+      const at = sternOffset(boat, 2.5);
+      guides.push({
+        type: 'label',
+        badge: true,
+        x: boat.x + at.x,
+        y: boat.y + at.y,
+        lines: [{
+          text: count > 1 ? 'FAULT x' + count : 'FAULT',
+          role: 'badge',
+          id: 'fault',
+        }],
+      });
+    }
+
+    const view = penaltyTurnView(boat);
+    const steered = boat.penalty_turn;
+    const showTurn = steered || (view && view.locked);
+    if (!showTurn) continue;
+    const sign = steered ? steered.dir : view.sign;
+    if (!sign) continue;
+    const origin = view && typeof view.origin === 'number' ? view.origin : boat.hull_angle;
+    const bow = origin - Math.PI / 2;
+    pushArc(guides, boat.x, boat.y, PENALTY_RING_R, bow, Math.PI * 2, 0xffffff, 0.28);
+    const sweep = (view ? view.progressDeg : 0) * Math.PI / 180;
+    if (Math.abs(sweep) > 1e-3) {
+      pushArc(guides, boat.x, boat.y, PENALTY_RING_R, bow, sweep, 0xffc240, 1);
+    }
+    const ahead = bowOffset(boat, 4.3);
+    const left = Math.max(0, Math.ceil(view ? view.remainingDeg : PENALTY_TURN_COMPLETE_DEG));
     guides.push({
       type: 'label',
       badge: true,
-      x: boat.x + ox,
-      y: boat.y + oy,
-      lines: [{ text: 'FAULT', role: 'badge', id: 'fault' }],
+      x: boat.x + ahead.x,
+      y: boat.y + ahead.y,
+      lines: [{
+        text: (sign < 0 ? 'CW ' : 'CCW ') + left + '°',
+        role: 'turn',
+        id: 'turn',
+      }],
+    });
+  }
+
+  for (let i = penaltyCleared.length - 1; i >= 0; i--) {
+    const flash = penaltyCleared[i];
+    const age = now - flash.startedAtMs;
+    if (age < 0 || age > PENALTY_CLEARED_MS || !live.has(flash.boat)) {
+      penaltyCleared.splice(i, 1);
+      continue;
+    }
+    const boat = flash.boat;
+    if (!boat || !Number.isFinite(boat.x) || !Number.isFinite(boat.y)) continue;
+    const at = sternOffset(boat, pendingPenaltyCount(boat) > 0 ? 4.4 : 2.5);
+    guides.push({
+      type: 'label',
+      badge: true,
+      x: boat.x + at.x,
+      y: boat.y + at.y,
+      lines: [{ text: 'CLEARED', role: 'cleared', id: 'cleared' }],
     });
   }
   return guides;

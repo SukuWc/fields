@@ -201,13 +201,17 @@ function labelSignature(lines) {
 }
 
 function paintLabelTexture(lines) {
-  const badge = lines.length === 1 && lines[0].role === 'badge';
+  const role0 = lines.length === 1 ? lines[0].role : '';
+  const badge = role0 === 'badge';
+  const turn = role0 === 'turn';
+  const cleared = role0 === 'cleared';
+  const compact = badge || turn || cleared;
   const rule15 = lines.some((line) => line.id === '15' && line.role === 'final');
-  const fontPx = badge ? 12 : 14;
+  const fontPx = compact ? 12 : 14;
   const font = '700 ' + fontPx + 'px "Courier New", Courier, monospace';
   const dimFont = '500 ' + fontPx + 'px "Courier New", Courier, monospace';
-  const lineH = badge ? 16 : 18;
-  const padX = badge ? 6 : 7;
+  const lineH = compact ? 16 : 18;
+  const padX = compact ? 6 : 7;
   const padY = 4;
 
   const measure = document.createElement('canvas').getContext('2d');
@@ -233,6 +237,14 @@ function paintLabelTexture(lines) {
     ctx.fillStyle = 'rgba(160, 22, 22, 0.94)';
     ctx.fill();
     ctx.strokeStyle = '#ff8a80';
+  } else if (turn) {
+    ctx.fillStyle = 'rgba(72, 48, 0, 0.94)';
+    ctx.fill();
+    ctx.strokeStyle = '#ffc240';
+  } else if (cleared) {
+    ctx.fillStyle = 'rgba(10, 78, 42, 0.94)';
+    ctx.fill();
+    ctx.strokeStyle = '#8dffb0';
   } else if (rule15) {
     ctx.fillStyle = 'rgba(40, 28, 0, 0.92)';
     ctx.fill();
@@ -251,7 +263,8 @@ function paintLabelTexture(lines) {
     const line = lines[i];
     const inhibited = line.role === 'inhibited';
     ctx.font = inhibited ? dimFont : font;
-    if (line.role === 'badge') ctx.fillStyle = '#ffffff';
+    if (line.role === 'badge' || line.role === 'cleared') ctx.fillStyle = '#ffffff';
+    else if (line.role === 'turn') ctx.fillStyle = '#ffe7a3';
     else if (inhibited) ctx.fillStyle = 'rgba(210, 214, 220, 0.72)';
     else if (line.id === '15') ctx.fillStyle = '#ffe7a3';
     else if (line.role === 'final' && String(line.text).indexOf('both') !== -1) ctx.fillStyle = '#ffd0d0';
