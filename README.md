@@ -60,7 +60,7 @@ Last updated: 2026-10-06
 ### Other
 - [x] SailZone logo: [#14](https://github.com/SukuWc/fields/pull/14)
 - [ ] SailZone icon-only logo (in progress, [#15](https://github.com/SukuWc/fields/pull/15))
-- [ ] SailZone brand kit (in progress, [#18](https://github.com/SukuWc/fields/pull/18))
+- [x] SailZone brand kit: [#18](https://github.com/SukuWc/fields/pull/18)
 - [x] URL-synced settings controls: [#7](https://github.com/SukuWc/fields/pull/7)
 - [x] Scenario description panel: [#12](https://github.com/SukuWc/fields/pull/12)
 - [x] Overlay lines drawn above the wind-field heatmap: [#13](https://github.com/SukuWc/fields/pull/13)
