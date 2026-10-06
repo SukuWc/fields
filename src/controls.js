@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Boat } from './boat.js';
+import { resetContacts } from './rules.js';
 import { range_map } from './utils.js';
 
 let key_bind_list = [];
@@ -99,6 +100,7 @@ function scenario_clear() {
   players.forEach(player => player.physics_model_deinit());
   players = [];
   physics_frame = 0;
+  resetContacts();
 }
 
 function scenario_start(param) {
@@ -279,6 +281,43 @@ scenarios[8][2] = () => {
 // again. Direct write keeps the autopilot on (input_motor_forward turns it off).
 for (let frame = 8; frame <= 200; frame++) {
   scenarios[8][frame] = () => { players[1].motor_input = 1; };
+}
+
+// Rule 15 contact. Same start as scenario 8, but the trailer is close enough
+// abeam that her bow meets the leader's hull as the overlap begins. She gains
+// right of way by that move, so the contact falls inside the Rule 15 window
+// and the new right-of-way boat is at fault. Dev mode:
+// ?devmode=1&scenario_selector=9
+scenarios[9] = [];
+scenarios[9][0] = () => {
+  const heading = 5 * Math.PI / 4;
+  const fx = Math.sin(heading);
+  const fy = -Math.cos(heading);
+  // Far enough astern to open on Rule 12. 0.7 m abeam puts the overlap
+  // and the hull contact a few tenths of a metre apart, inside the 1 s
+  // Rule 15 window, while she is still the leeward boat.
+  const along = 4.8;
+  const abeam = 0.7;
+  const lx = -fy;
+  const ly = fx;
+  players.push(new Boat(_map, 0, 0, heading));
+  players.push(new Boat(_map, -fx * along + lx * abeam, -fy * along + ly * abeam, heading));
+};
+scenarios[9][1] = () => {
+  players[0].input_autopilot_enabled_toggle();
+  players[1].input_autopilot_enabled_toggle();
+};
+scenarios[9][2] = () => {
+  autokeybind(players);
+  const follow = document.getElementById('camera_follow');
+  if (follow && !follow.checked) {
+    follow.checked = true;
+    follow.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  _map.camera_zoom = 14;
+};
+for (let frame = 8; frame <= 220; frame++) {
+  scenarios[9][frame] = () => { players[1].motor_input = 1; };
 }
 
 export function setupControls(map, getCamera, bm) {

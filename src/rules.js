@@ -1064,26 +1064,57 @@ export function evaluateSectionA(boatA, boatB, getWind) {
   };
 }
 
+// Highest layer first, so an inhibitor sits above the rule it blocks.
+// The legacy `text` on the guide stays the single-line label the checks read.
+function labelLinesFor(resolution) {
+  const lines = [];
+  const items = resolution.applicable || [];
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i];
+    const isFinal = !!(resolution.final && item.id === resolution.final.id && !item.inhibited);
+    lines.push({
+      text: item.id === '15' ? 'Rule 15' : item.rule,
+      role: item.inhibited ? 'inhibited' : (isFinal ? 'final' : 'other'),
+      id: item.id,
+    });
+  }
+  return lines;
+}
+
+function attachLabelStack(guides, resolution) {
+  const lines = labelLinesFor(resolution);
+  for (let i = 0; i < guides.length; i++) {
+    if (guides[i].type !== 'label') continue;
+    guides[i].lines = lines;
+    break;
+  }
+  return guides;
+}
+
 function guidesFor(resolution) {
   const final = resolution.final;
   if (!final) return [];
-  if (final.bothGiveWay) return bothGiveWayOverlay({ rule: final.rule, boats: final.boats });
-  if (final.id === '15') {
+  let guides;
+  if (final.bothGiveWay) {
+    guides = bothGiveWayOverlay({ rule: final.rule, boats: final.boats });
+  } else if (final.id === '15') {
     const current = resolution.sectionA && resolution.sectionA.final;
     if (!current || !final.rightOfWay || !final.giveWay) return [];
     // Stern marks follow the rule she is sailing under now. The label names
     // the rule she acquired right of way under, which is the blocked one.
-    return rule15Overlay({
+    guides = rule15Overlay({
       rule: current.rule,
       rightOfWay: final.rightOfWay,
       giveWay: final.giveWay,
     }, final.blockedRule, final.progress);
+  } else {
+    guides = obligationOverlay({
+      rule: final.rule,
+      rightOfWay: final.rightOfWay,
+      giveWay: final.giveWay,
+    });
   }
-  return obligationOverlay({
-    rule: final.rule,
-    rightOfWay: final.rightOfWay,
-    giveWay: final.giveWay,
-  });
+  return attachLabelStack(guides, resolution);
 }
 
 function pairSlot(key) {
@@ -1209,4 +1240,205 @@ export function sectionAOverlay(boatA, boatB, getWind, simTime) {
   const clearance = boatClearance(boatA, boatB);
   const resolution = evaluatePair(boatA, boatB, getWind, clearance, simTime, pairSlot(pairKey(boatA, boatB)));
   return resolution.guides;
+}
+
+// One contact episode per closure. Hull overlap counts, and so does a Planck
+// contact that is still touching after the solver has pushed the hulls apart.
+// The latch stays shut until the hulls are clearly apart, so a bounce does
+// not open a second incident.
+const CONTACT_TOUCH_M = 0.02;
+const CONTACT_REARM_M = 0.25;
+const CONTACT_FLASH_MS = 700;
+const CONTACT_BADGE_MS = 6500;
+
+const contactLatch = new Map();
+const incidents = [];
+const contactFlashes = [];
+const contactBadges = [];
+
+function segmentHit(a, b, c, d) {
+  const den = (a.x - b.x) * (c.y - d.y) - (a.y - b.y) * (c.x - d.x);
+  if (Math.abs(den) < 1e-12) return null;
+  const t = ((a.x - c.x) * (c.y - d.y) - (a.y - c.y) * (c.x - d.x)) / den;
+  const u = ((a.x - c.x) * (a.y - b.y) - (a.y - c.y) * (a.x - b.x)) / den;
+  if (t < -1e-6 || t > 1 + 1e-6 || u < -1e-6 || u > 1 + 1e-6) return null;
+  return { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
+}
+
+export function hullContactPoint(boatA, boatB) {
+  const polyA = hullVerticesWorld(boatA);
+  const polyB = hullVerticesWorld(boatB);
+  const mid = {
+    x: (boatA.x + boatB.x) / 2,
+    y: (boatA.y + boatB.y) / 2,
+  };
+  if (polyA.length < 2 || polyB.length < 2) return mid;
+  const pts = [];
+  if (polyA.length >= 3) {
+    for (let i = 0; i < polyB.length; i++) {
+      if (pointInPolygon(polyB[i], polyA)) pts.push(polyB[i]);
+    }
+  }
+  if (polyB.length >= 3) {
+    for (let i = 0; i < polyA.length; i++) {
+      if (pointInPolygon(polyA[i], polyB)) pts.push(polyA[i]);
+    }
+  }
+  for (let i = 0; i < polyA.length; i++) {
+    const a1 = polyA[i];
+    const a2 = polyA[(i + 1) % polyA.length];
+    for (let j = 0; j < polyB.length; j++) {
+      const hit = segmentHit(a1, a2, polyB[j], polyB[(j + 1) % polyB.length]);
+      if (hit) pts.push(hit);
+    }
+  }
+  if (!pts.length) return mid;
+  let x = 0;
+  let y = 0;
+  for (let i = 0; i < pts.length; i++) {
+    x += pts[i].x;
+    y += pts[i].y;
+  }
+  return { x: x / pts.length, y: y / pts.length };
+}
+
+function planckTouching(boatA, boatB) {
+  const bodyA = boatA && boatA.physics_model;
+  const bodyB = boatB && boatB.physics_model;
+  if (!bodyA || !bodyB || typeof bodyA.getContactList !== 'function') return null;
+  for (let edge = bodyA.getContactList(); edge; edge = edge.next) {
+    if (edge.other !== bodyB || !edge.contact || !edge.contact.isTouching()) continue;
+    let point = null;
+    if (typeof edge.contact.getWorldManifold === 'function') {
+      const manifold = edge.contact.getWorldManifold();
+      const pts = manifold && manifold.points;
+      if (pts && pts.length) {
+        let x = 0;
+        let y = 0;
+        let n = 0;
+        for (let i = 0; i < pts.length; i++) {
+          if (!pts[i] || !Number.isFinite(pts[i].x) || !Number.isFinite(pts[i].y)) continue;
+          x += pts[i].x;
+          y += pts[i].y;
+          n++;
+        }
+        if (n) point = { x: x / n, y: y / n };
+      }
+    }
+    return point || hullContactPoint(boatA, boatB);
+  }
+  return null;
+}
+
+function boatsTouching(boatA, boatB, clearance) {
+  if (Number.isFinite(clearance) && clearance <= CONTACT_TOUCH_M) return hullContactPoint(boatA, boatB);
+  return planckTouching(boatA, boatB);
+}
+
+export function getIncidents() {
+  return incidents;
+}
+
+export function resetContacts() {
+  contactLatch.clear();
+  incidents.length = 0;
+  contactFlashes.length = 0;
+  contactBadges.length = 0;
+}
+
+function pruneContactVisuals(boats, now) {
+  const live = boats ? new Set(boats) : null;
+  for (let i = contactFlashes.length - 1; i >= 0; i--) {
+    if (now - contactFlashes[i].startedAtMs > CONTACT_FLASH_MS) contactFlashes.splice(i, 1);
+  }
+  for (let i = contactBadges.length - 1; i >= 0; i--) {
+    const badge = contactBadges[i];
+    if (now - badge.startedAtMs > CONTACT_BADGE_MS) contactBadges.splice(i, 1);
+    else if (live && !live.has(badge.boat)) contactBadges.splice(i, 1);
+  }
+}
+
+// Charge the resolver's fault boat when a latched contact begins. No incident
+// when fault is not a single boat (both tacking). `simTime` is the simulation
+// clock stored on the incident; the flash and badge use wall time so they
+// stay brief on screen.
+export function recordContacts(resolutions, simTime, boats) {
+  const now = performance.now();
+  const seen = new Set();
+  const list = resolutions || [];
+  for (let i = 0; i < list.length; i++) {
+    const resolution = list[i];
+    if (!resolution || !resolution.pairKey) continue;
+    seen.add(resolution.pairKey);
+    const point = boatsTouching(resolution.boatA, resolution.boatB, resolution.clearance);
+    const touching = !!point;
+    const latched = contactLatch.get(resolution.pairKey) === true;
+    if (touching && !latched) {
+      contactLatch.set(resolution.pairKey, true);
+      if (resolution.faultBoat && resolution.final) {
+        const inhibited = [];
+        const blocked = resolution.inhibited || [];
+        for (let k = 0; k < blocked.length; k++) inhibited.push(blocked[k].rule);
+        incidents.push({
+          time: simTime,
+          boats: [resolution.boatA, resolution.boatB],
+          pairKey: resolution.pairKey,
+          finalRule: resolution.final.rule,
+          finalId: resolution.final.id,
+          inhibited,
+          faultBoat: resolution.faultBoat,
+          x: point.x,
+          y: point.y,
+        });
+        contactFlashes.push({ x: point.x, y: point.y, startedAtMs: now });
+        contactBadges.push({ boat: resolution.faultBoat, startedAtMs: now });
+      }
+    } else if (!touching && resolution.clearance > CONTACT_REARM_M) {
+      contactLatch.set(resolution.pairKey, false);
+    } else if (touching) {
+      contactLatch.set(resolution.pairKey, true);
+    }
+  }
+  const stale = [];
+  for (const key of contactLatch.keys()) {
+    if (!seen.has(key)) stale.push(key);
+  }
+  for (let i = 0; i < stale.length; i++) contactLatch.delete(stale[i]);
+  pruneContactVisuals(boats, now);
+}
+
+export function contactGuides(nowMs) {
+  const now = typeof nowMs === 'number' ? nowMs : performance.now();
+  const guides = [];
+  for (let i = 0; i < contactFlashes.length; i++) {
+    const flash = contactFlashes[i];
+    const age = now - flash.startedAtMs;
+    if (age < 0 || age > CONTACT_FLASH_MS) continue;
+    const t = age / CONTACT_FLASH_MS;
+    guides.push({
+      type: 'contact',
+      x: flash.x,
+      y: flash.y,
+      radius: 0.45 + t * 2.6,
+      opacity: (1 - t) * 0.95,
+    });
+  }
+  for (let i = 0; i < contactBadges.length; i++) {
+    const badge = contactBadges[i];
+    const age = now - badge.startedAtMs;
+    if (age < 0 || age > CONTACT_BADGE_MS) continue;
+    const boat = badge.boat;
+    if (!boat || !Number.isFinite(boat.x) || !Number.isFinite(boat.y)) continue;
+    const fwd = headingForward(boat.hull_angle);
+    const ox = fwd ? -fwd.x * 2.5 : 0;
+    const oy = fwd ? -fwd.y * 2.5 : 2.5;
+    guides.push({
+      type: 'label',
+      badge: true,
+      x: boat.x + ox,
+      y: boat.y + oy,
+      lines: [{ text: 'FAULT', role: 'badge', id: 'fault' }],
+    });
+  }
+  return guides;
 }

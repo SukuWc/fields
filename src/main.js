@@ -8,7 +8,7 @@ import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera } from './renderer.js';
 import { setupControls, getPlayers, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
-import { beginRule15Step, evaluateAllPairs, trueWindAngleDeg } from './rules.js';
+import { beginRule15Step, contactGuides, evaluateAllPairs, recordContacts, trueWindAngleDeg } from './rules.js';
 
 const map_w = 75;
 const map_h = 75;
@@ -153,6 +153,8 @@ runner.start((simDt) => {
     const pairGuides = resolutions[i].guides;
     if (pairGuides && pairGuides.length) guides.push(...pairGuides);
   }
+  recordContacts(resolutions, rulesTime, racing);
+  guides.push(...contactGuides());
 
   // Dynamic domain placement: one reusable window per boat, a disk mask inside it,
   // and a smaller level-2 disk carried with the level-1 window. The window slides
