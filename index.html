@@ -68,10 +68,31 @@
         letter-spacing: 0.03em;
         white-space: nowrap;
       }
+      .rule-label-15 {
+        color: #ffe7a3;
+        background: rgba(40, 28, 0, 0.9);
+        border-color: #ffc240;
+        padding-bottom: 5px;
+      }
+      .rule15-track {
+        margin-top: 4px;
+        height: 8px;
+        width: 100%;
+        min-width: 168px;
+        background: rgba(255, 255, 255, 0.22);
+        border-radius: 4px;
+        overflow: hidden;
+      }
+      .rule15-fill {
+        height: 100%;
+        width: 100%;
+        background: #ffc240;
+        transform-origin: left center;
+      }
 
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-DfpEdrtI.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-ZNA5uGml.js"></script>
   </head>
   <body style="padding:0px; margin:0px">  
 
@@ -84,7 +105,7 @@
       <br>
       <input id="amr" type="checkbox" checked>Mesh refinement
       <br>
-      <input id="barrier" type="checkbox" title="Circular obstacle at the map centre. Off by default. Check it and set wind speed to about 25 to shed waves that refine on their own, away from the boat.">Barrier
+      <input id="barrier" type="checkbox">Barrier
       <br>
       <input id="boat_energy" type="checkbox" checked>Boat energy
       <br>
@@ -108,7 +129,7 @@
       <input id="windSpeed" type="number" min="0" max="40" step="1" value="15">
       <br>
       Select Scenario<br>
-      <input id="scenario_selector" type="number" min="0" max="10" value="0" style="width: 50px;">
+      <input id="scenario_selector" type="number" min="0" max="10" value="0" style="width: 50px;" title="Scenario 6: Rule 13 tack. Scenario 7: leeward boat tacks into a Rule 10 collision. Scenario 8: Rule 15, leeward boat gains an overlap. Use with Dev mode.">
       
       <input id="scenario_restart" type="button" min="0" max="10" style="width: 50px;" value="Restart">
     
