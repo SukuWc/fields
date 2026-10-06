@@ -100,8 +100,9 @@ function updateRuleRibbon(mesh, r) {
   const dx = r.x2 - r.x1;
   const dy = r.y2 - r.y1;
   const len = Math.hypot(dx, dy);
-  const nx = len < 1e-6 ? 0 : -dy / len * RULE_STROKE_M * 0.5;
-  const ny = len < 1e-6 ? 0 : dx / len * RULE_STROKE_M * 0.5;
+  const stroke = (typeof r.stroke === 'number' && r.stroke > 0) ? r.stroke : RULE_STROKE_M;
+  const nx = len < 1e-6 ? 0 : -dy / len * stroke * 0.5;
+  const ny = len < 1e-6 ? 0 : dx / len * stroke * 0.5;
   const z = r.z !== undefined ? r.z : 0.2;
   const corners = [
     [r.x1 + nx, r.y1 + ny],
@@ -175,7 +176,29 @@ function renderRuleLabels(labels) {
       el.style.display = 'none';
       continue;
     }
-    el.textContent = label.text;
+    if (label.rule15) {
+      const progress = Math.max(0, Math.min(1, Number(label.progress) || 0));
+      el.className = 'rule-label rule-label-15';
+      let text = el.querySelector('.rule-label-text');
+      let fill = el.querySelector('.rule15-fill');
+      if (!text || !fill) {
+        el.textContent = '';
+        text = document.createElement('div');
+        text.className = 'rule-label-text';
+        const track = document.createElement('div');
+        track.className = 'rule15-track';
+        fill = document.createElement('div');
+        fill.className = 'rule15-fill';
+        track.appendChild(fill);
+        el.appendChild(text);
+        el.appendChild(track);
+      }
+      text.textContent = label.text;
+      fill.style.transform = 'scaleX(' + progress + ')';
+    } else {
+      el.className = 'rule-label';
+      el.textContent = label.text;
+    }
     el.style.display = 'block';
     el.style.left = ((_labelPoint.x * 0.5 + 0.5) * width) + 'px';
     el.style.top = ((-_labelPoint.y * 0.5 + 0.5) * height) + 'px';

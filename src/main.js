@@ -8,7 +8,7 @@ import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera } from './renderer.js';
 import { setupControls, getPlayers, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
-import { sectionAOverlay, trueWindAngleDeg } from './rules.js';
+import { beginRule15Step, sectionAOverlay, trueWindAngleDeg } from './rules.js';
 
 const map_w = 75;
 const map_h = 75;
@@ -56,10 +56,17 @@ startAnimation(map, () => guides);
 const infoEl = document.getElementById('info');
 const distInfoEl = document.getElementById('dist_info');
 
-// Physics loop
+// Physics loop. Rule 15's room window uses this clock, not wall time.
+// Runner.step is 1/30 s and is passed in only when world.step actually ran.
+// The same callback also fires once per animation frame with no argument;
+// that redraw must not move the clock (a pause, or a slow frame, neither
+// grants room nor eats it).
 const runner = new Runner(map.world, { speed: 1, fps: 30 });
+let rulesTime = 0;
 
-runner.start(() => {
+runner.start((simDt) => {
+  if (typeof simDt === 'number' && Number.isFinite(simDt) && simDt > 0) rulesTime += simDt;
+  beginRule15Step(rulesTime);
   guides = [];
 
   // Smooth circle per boat. The light staircase is the union of every mask at
@@ -139,7 +146,7 @@ runner.start(() => {
     const twaText = twa === null ? '?' : String(Math.round(twa));
     infoEl.innerHTML += 'Boat ' + i + ' TWA ' + twaText + (racing[i].tacking ? ' tacking' + onto : '') + '<br>';
     for (let j = i + 1; j < racing.length; j++) {
-      guides.push(...sectionAOverlay(racing[i], racing[j], (x, y) => map.get_wind(x, y)));
+      guides.push(...sectionAOverlay(racing[i], racing[j], (x, y) => map.get_wind(x, y), rulesTime));
     }
   }
 

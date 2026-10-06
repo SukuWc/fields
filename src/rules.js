@@ -1,8 +1,8 @@
 // Racing Rules of Sailing, Section A.
 //
 // Implemented: the 12 m interest gate, Rule 10 (opposite tacks), Rule 11
-// (same tack, overlapped), Rule 12 (same tack, clear astern), and Rule 13
-// (while tacking).
+// (same tack, overlapped), Rule 12 (same tack, clear astern), Rule 13
+// (while tacking), and Rule 15 (acquiring right of way).
 //
 // Distance. 1 world unit = 1 m. The hull in boat.js runs from local y = -2.25
 // (bow) to y = 1.75 (stern), so boat length is 4 m. Section A is considered
@@ -67,6 +67,45 @@
 // tacking still use Rules 10–12, including other boats racing each other
 // while a third boat is tacking.
 //
+// Rule 15: when a boat acquires right of way she must at first give the
+// other boat room to keep clear, unless she acquires it because of the other
+// boat's actions. For each pair inside the 12 m gate the overlay remembers
+// the previous physics step's dispatcher result (which boat has right of
+// way, and under which rule). A new right-of-way boat — including a change
+// out of Rule 13, or from clear astern into an overlap — can start Rule 15.
+//
+// Cause, on that same step. The dispatcher is run twice more: boat A in her
+// new state with boat B still in last step's state, then the other way
+// round. States are position, heading, hull polygon, tack, and the Rule 13
+// flag, so the existing overlap and tacking predicates do the work. If only
+// the new right-of-way boat's change produces her as right of way, she
+// caused it and Rule 15 applies to her. If only the other boat's change
+// does, the exception applies and Rule 15 does not. If both changes would
+// do it, or neither would, the fallback is: a tack change first (port /
+// starboard classification, or entering or leaving the Rule 13 window), and
+// if that is not exactly one boat, whichever boat closed more of the gap
+// (her move toward where the other boat was). A tie within 1 mm, or a tie
+// on tack changes with equal closing, stays ambiguous and Rule 15 does not
+// start.
+//
+// Distance. Rule 15 only starts, and only keeps drawing, while hull
+// clearance is strictly under RULE15_RANGE_M (2 × 4 m = 8 m). Separating
+// to 8 m or more ends the window early. The 12 m gate is unchanged for
+// Rules 10–13.
+//
+// Time. The window lasts RULE15_ROOM_S (1 s) of simulation time, then the
+// blocked rule shows on its own. Simulation time is the sum of Planck
+// Runner steps (1/30 s each, the `fps: 30` passed to world.step). The
+// runner also redraws once per animation frame without stepping; those
+// calls do not advance the clock. Pausing stops the runner, so the clock
+// stops. The label's bar starts full and shrinks with the time that is left.
+//
+// While the window is open the label reads "Rule 15 (blocks Rule 10)" (or
+// 11, 12, or 13): the rule she just acquired right of way under. Green still
+// ends on that boat and red on the boat that must keep clear. An amber
+// centerline on the green half, and an amber label, mark that she owes room.
+// Stern marks still follow the blocked rule.
+//
 // Stern mark. While Rule 11 or Rule 12 is showing, a short cyan dashed
 // segment is drawn through the aftermost hull point, perpendicular to that
 // boat's course — the same abeam line the clear-astern test uses, so the
@@ -82,6 +121,13 @@ export const RULE10_INTEREST_RANGE_M = 3 * BOAT_LENGTH_M;
 // entered. 40° is close-hauled for this sim. Tune this without touching
 // the state machine.
 export const CLOSE_HAULED_TWA_DEG = 40;
+// Rule 15 only while the hulls are strictly closer than two boat lengths.
+export const RULE15_RANGE_M = 2 * BOAT_LENGTH_M;
+// How long the new right-of-way boat must give room, in simulation seconds.
+export const RULE15_ROOM_S = 1;
+// Planck Runner is constructed with fps: 30, and world.step receives 1/30.
+// Rule 15 advances only when a step actually runs, not on wall-clock time.
+export const SIM_STEP_S = 1 / 30;
 
 // A vertex this close to the abeam line, or on the ahead side of it, is not
 // "behind" that line. 1e-6 m is float dust, not a real overlap.
@@ -94,6 +140,11 @@ const STERN_MARK_COLOR = 0x66eeff;
 
 const RIGHT_OF_WAY_COLOR = 0x00ff00;
 const GIVE_WAY_COLOR = 0xff0000;
+// Right of way, but she owes room under Rule 15. Amber sits on the green half.
+const ROOM_OWED_COLOR = 0xffc240;
+const ROOM_OWED_STROKE_M = 0.22;
+// Fallback: neither boat "closed the gap" unless she beat the other by this much.
+const GAP_CLOSING_EPS_M = 1e-3;
 
 // Match Boat.physics_model_step, which folds with `> 180` / `< -180`
 // and therefore keeps both +180 and -180.
@@ -125,6 +176,8 @@ function windFromDeg(sample) {
 }
 
 export function hullVerticesWorld(boat) {
+  // Snapshots captured for the Rule 15 what-if already store world vertices.
+  if (boat && Array.isArray(boat._ruleHull)) return boat._ruleHull;
   const shape = boat && boat.hull_shape;
   const body = boat && boat.physics_model;
   const verts = shape && shape.m_vertices;
@@ -580,12 +633,11 @@ function bothGiveWayOverlay(obligation) {
   ];
 }
 
-// Guide records for the debug overlay. Empty when Section A does not apply.
+// Guide records for one dispatcher result. Empty when Section A does not apply.
 // Green runs from the midpoint to the right-of-way boat; red to the give-way boat.
 // A cyan dashed stern mark is appended for Rules 11 and 12.
 // Rule 13 with both boats tacking draws two red halves and no stern mark.
-export function sectionAOverlay(boatA, boatB, getWind) {
-  const obligation = evaluateSectionA(boatA, boatB, getWind);
+function obligationOverlay(obligation) {
   if (!obligation) return [];
   if (obligation.bothGiveWay) return bothGiveWayOverlay(obligation);
 
@@ -599,4 +651,208 @@ export function sectionAOverlay(boatA, boatB, getWind) {
     { type: 'label', text: obligation.rule, x: mx, y: my },
     ...sternMarks(obligation),
   ];
+}
+
+// Identity for pair memory. Live boats are keyed in a WeakMap. A what-if
+// snapshot carries the same number on `id` plus `_ruleHull`, and does not
+// keep the boat object alive.
+const boatIds = new WeakMap();
+let nextBoatId = 1;
+const pairMemory = new Map();
+
+function boatId(boat) {
+  if (!boat) return 0;
+  if (Number.isInteger(boat.id) && Array.isArray(boat._ruleHull)) return boat.id;
+  let id = boatIds.get(boat);
+  if (!id) {
+    id = nextBoatId++;
+    boatIds.set(boat, id);
+  }
+  return id;
+}
+
+function pairKey(boatA, boatB) {
+  const ia = boatId(boatA);
+  const ib = boatId(boatB);
+  return ia < ib ? ia + ':' + ib : ib + ':' + ia;
+}
+
+function rowId(obligation) {
+  if (!obligation || obligation.bothGiveWay || !obligation.rightOfWay) return null;
+  return boatId(obligation.rightOfWay);
+}
+
+function captureBoat(boat, getWind) {
+  const from = windFromDeg(getWind(boat.x, boat.y));
+  return {
+    id: boatId(boat),
+    x: boat.x,
+    y: boat.y,
+    hull_angle: boat.hull_angle,
+    tacking: !!boat.tacking,
+    tack: from === null ? null : classifyTack(boat.hull_angle, from),
+    _ruleHull: hullVerticesWorld(boat),
+  };
+}
+
+function snapFor(snaps, boat) {
+  if (!snaps) return null;
+  const id = boatId(boat);
+  for (let i = 0; i < snaps.length; i++) {
+    if (snaps[i].id === id) return snaps[i];
+  }
+  return null;
+}
+
+function tackState(boat, getWind) {
+  if (boat && Array.isArray(boat._ruleHull) && Object.prototype.hasOwnProperty.call(boat, 'tack')) {
+    return { tack: boat.tack, tacking: !!boat.tacking };
+  }
+  const from = windFromDeg(getWind(boat.x, boat.y));
+  return {
+    tack: from === null ? null : classifyTack(boat.hull_angle, from),
+    tacking: !!boat.tacking,
+  };
+}
+
+function tackChanged(before, after, getWind) {
+  const a = tackState(before, getWind);
+  const b = tackState(after, getWind);
+  return a.tack !== b.tack || a.tacking !== b.tacking;
+}
+
+// Positive when `after` is closer to where the other boat was than `before` was.
+function closingAmount(before, after, otherBefore) {
+  const then = Math.hypot(before.x - otherBefore.x, before.y - otherBefore.y);
+  const now = Math.hypot(after.x - otherBefore.x, after.y - otherBefore.y);
+  return then - now;
+}
+
+// Which current boat's own change produced nextRowId. Returns that boat, or
+// null when the cause stays ambiguous. See the Rule 15 header comment.
+export function acquisitionCause(boatA, boatB, prevA, prevB, prevRowId, nextRowId, getWind) {
+  if (!boatA || !boatB || !prevA || !prevB || !nextRowId || typeof getWind !== 'function') return null;
+  const onlyA = evaluateSectionA(boatA, prevB, getWind);
+  const onlyB = evaluateSectionA(prevA, boatB, getWind);
+  const rowA = rowId(onlyA);
+  const rowB = rowId(onlyB);
+  const aFlips = rowA === nextRowId && rowA !== prevRowId;
+  const bFlips = rowB === nextRowId && rowB !== prevRowId;
+  if (aFlips && !bFlips) return boatA;
+  if (bFlips && !aFlips) return boatB;
+
+  const aTack = tackChanged(prevA, boatA, getWind);
+  const bTack = tackChanged(prevB, boatB, getWind);
+  if (aTack !== bTack) return aTack ? boatA : boatB;
+  const aClose = closingAmount(prevA, boatA, prevB);
+  const bClose = closingAmount(prevB, boatB, prevA);
+  if (aClose > bClose + GAP_CLOSING_EPS_M) return boatA;
+  if (bClose > aClose + GAP_CLOSING_EPS_M) return boatB;
+  return null;
+}
+
+function rule15Overlay(obligation, blockedRule, progress) {
+  const row = obligation.rightOfWay;
+  const give = obligation.giveWay;
+  const mx = (row.x + give.x) / 2;
+  const my = (row.y + give.y) / 2;
+  return [
+    { type: 'rule', color: RIGHT_OF_WAY_COLOR, x1: mx, y1: my, x2: row.x, y2: row.y, z: 0.2 },
+    {
+      type: 'rule',
+      color: ROOM_OWED_COLOR,
+      stroke: ROOM_OWED_STROKE_M,
+      x1: mx, y1: my, x2: row.x, y2: row.y,
+      z: 0.22,
+    },
+    { type: 'rule', color: GIVE_WAY_COLOR, x1: mx, y1: my, x2: give.x, y2: give.y, z: 0.2 },
+    {
+      type: 'label',
+      text: 'Rule 15 (blocks ' + blockedRule + ')',
+      x: mx,
+      y: my,
+      rule15: true,
+      progress,
+    },
+    ...sternMarks(obligation),
+  ];
+}
+
+function sectionAWithRule15(boatA, boatB, getWind, simTime) {
+  const obligation = evaluateSectionA(boatA, boatB, getWind);
+  const clearance = obligation ? obligation.clearance : boatClearance(boatA, boatB);
+  const inRange = Number.isFinite(clearance) && clearance <= RULE10_INTEREST_RANGE_M;
+  const key = pairKey(boatA, boatB);
+  let mem = pairMemory.get(key);
+  if (!mem) {
+    mem = {};
+    pairMemory.set(key, mem);
+  }
+
+  let active = mem.active || null;
+  if (active) {
+    const elapsed = simTime - active.startedAt;
+    const timedOut = elapsed + 1e-6 >= RULE15_ROOM_S;
+    const separated = !(clearance < RULE15_RANGE_M);
+    const owesNow = rowId(obligation) === active.owesId;
+    if (timedOut || separated || !owesNow) active = null;
+  }
+
+  const prevTime = mem.simTime;
+  const consecutive = typeof prevTime === 'number'
+    && Math.abs((simTime - prevTime) - SIM_STEP_S) <= 1e-6;
+  const nextRowId = rowId(obligation);
+  if (consecutive && mem.inRange && nextRowId && nextRowId !== mem.rowId && clearance < RULE15_RANGE_M) {
+    const prevA = snapFor(mem.snaps, boatA);
+    const prevB = snapFor(mem.snaps, boatB);
+    const cause = acquisitionCause(boatA, boatB, prevA, prevB, mem.rowId, nextRowId, getWind);
+    if (cause && boatId(cause) === nextRowId && obligation) {
+      active = {
+        owesId: nextRowId,
+        blockedRule: obligation.rule,
+        startedAt: simTime,
+      };
+    }
+  }
+
+  // A second callback at the same simulation time is a redraw between physics
+  // steps. Keep last step's snapshots so the next real step can still what-if.
+  if (prevTime !== simTime) {
+    mem.simTime = simTime;
+    mem.inRange = inRange;
+    mem.rowId = nextRowId;
+    mem.snaps = [captureBoat(boatA, getWind), captureBoat(boatB, getWind)];
+  }
+  mem.active = active;
+
+  if (active && obligation && rowId(obligation) === active.owesId && clearance < RULE15_RANGE_M) {
+    const elapsed = simTime - active.startedAt;
+    const progress = Math.max(0, Math.min(1, (RULE15_ROOM_S - elapsed) / RULE15_ROOM_S));
+    return rule15Overlay(obligation, active.blockedRule, progress);
+  }
+  return obligationOverlay(obligation);
+}
+
+// Drop pairs that missed the previous physics step (scenario restart, a boat
+// leaving). Called once per rules update, before the pair loop.
+export function beginRule15Step(simTime) {
+  if (typeof simTime !== 'number' || !Number.isFinite(simTime)) return;
+  for (const [key, mem] of pairMemory) {
+    if (typeof mem.simTime !== 'number') continue;
+    if (simTime - mem.simTime > SIM_STEP_S + 1e-4) pairMemory.delete(key);
+  }
+}
+
+export function resetRule15Memory() {
+  pairMemory.clear();
+}
+
+// Guide records for the debug overlay. Pass simTime (seconds, advanced only
+// on physics steps) to apply Rule 15. Omit it for the stateless Rules 10–13
+// overlay used by the headless checks.
+export function sectionAOverlay(boatA, boatB, getWind, simTime) {
+  if (typeof simTime !== 'number' || !Number.isFinite(simTime)) {
+    return obligationOverlay(evaluateSectionA(boatA, boatB, getWind));
+  }
+  return sectionAWithRule15(boatA, boatB, getWind, simTime);
 }
