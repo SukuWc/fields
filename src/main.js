@@ -8,7 +8,7 @@ import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera } from './renderer.js';
 import { setupControls, getPlayers, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
-import { beginRule15Step, contactGuides, evaluateAllPairs, penaltyGuides, pendingPenaltyCount, penaltyTurnView, recordContacts, trueWindAngleDeg } from './rules.js';
+import { beginRule15Step, contactGuides, evaluateAllPairs, penaltyGuides, penaltyJustCleared, pendingPenaltyCount, penaltyTurnView, recordContacts, trueWindAngleDeg } from './rules.js';
 
 const map_w = 75;
 const map_h = 75;
@@ -159,6 +159,9 @@ runner.start((simDt) => {
         line += ' · ' + (sign < 0 ? 'CW ' : 'CCW ') + left + '°';
       }
       infoEl.innerHTML += line + '<br>';
+    } else if (penaltyJustCleared(racing[i])) {
+      showPenaltyKeys = true;
+      infoEl.innerHTML += 'Boat ' + i + ' CLEARED<br>';
     }
   }
   if (showPenaltyKeys) infoEl.innerHTML += 'Q CCW · E CW<br>';

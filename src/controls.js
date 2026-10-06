@@ -12,8 +12,18 @@ let physics_frame = 0;
 
 let _map, _getCamera, _bm;
 
+function typingInControl(e) {
+  const target = e && e.target;
+  if (!target || !target.tagName) return false;
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
+}
+
 function checkKeyPress(e) {
   e = e || window.event;
+  // Letter keys (Q, E) also sit on the settings panel. Ignore them, and the
+  // helm keys, while a control has focus so typing does not steer the boat.
+  if (typingInControl(e)) return;
   key_state[e.keyCode] = true;
   key_bind_list.forEach(bind => {
     if (bind.type === "KEYDOWN" && key_state[bind.activation_key] && (key_state[bind.prohibition_key] === false || key_state[bind.prohibition_key] === undefined)) {
@@ -396,7 +406,10 @@ scenarios[10] = makeScenario(
 scenarios[10].frames[0] = () => {
   // Starboard beam reach (TWA -90°) with way on, in open water.
   const heading = -Math.PI / 2;
-  const boat = new Boat(_map, 0, 0, heading);
+  // Sailing toward −X. Start east of center so camera follow (clamped at
+  // ±30) still has her in frame while you read the card and press Q or E.
+  // The autopilot circle itself stays within a few metres of where it starts.
+  const boat = new Boat(_map, 18, 0, heading);
   players.push(boat);
   boat.physics_model.setLinearVelocity({ x: -2.2, y: 0 });
   chargePendingPenalty(boat, { time: 0, finalRule: 'penalty', faultBoat: boat });

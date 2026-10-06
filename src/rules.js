@@ -1429,19 +1429,21 @@ export function contactGuides(nowMs) {
 // While a penalty is pending, or while a penalty-turn autopilot is watching,
 // each sample adds the short-way heading change. Noise is not dropped — a
 // slow circle has to be able to finish. Small wiggles are handled two ways:
-//   - Under 20° the total is a signed net, so a wiggle that returns cancels.
-//   - Once 20° is committed one way, the turn is locked to that sense. Motion
-//     the other way is ignored until it reaches 30°, which abandons the
-//     attempt and starts again from zero. The reversing arc does not count.
+//   - Under the lock threshold the total is a signed net, so a wiggle that
+//     returns cancels. The ring stays hidden until that lock, so the slow
+//     bear-away of ordinary sailing does not look like a penalty turn.
+//   - Once that many degrees are committed one way, the turn locks. Motion
+//     the other way is ignored until it reaches the reverse threshold, which
+//     abandons the attempt. The reversing arc does not count.
 // A sample is taken the short way, so one step never adds more than 180°.
 // The first penalty on a boat discards any circle already in progress: only
 // heading sailed after the charge counts. A further collision while a turn
 // is underway stacks and leaves that turn running.
 export const PENALTY_TURN_NOISE_DEG = 1e-3;
-export const PENALTY_TURN_LOCK_DEG = 20;
+export const PENALTY_TURN_LOCK_DEG = 45;
 export const PENALTY_TURN_REVERSE_DEG = 30;
 export const PENALTY_TURN_COMPLETE_DEG = 360;
-export const PENALTY_CLEARED_MS = 1400;
+export const PENALTY_CLEARED_MS = 2200;
 const PENALTY_RING_R = 3.15;
 
 const pendingPenalties = new Map();
@@ -1712,4 +1714,16 @@ export function penaltyGuides(boats, nowMs) {
     });
   }
   return guides;
+}
+
+export function penaltyJustCleared(boat, nowMs) {
+  if (!boat) return false;
+  const now = typeof nowMs === 'number' ? nowMs : performance.now();
+  for (let i = 0; i < penaltyCleared.length; i++) {
+    const flash = penaltyCleared[i];
+    if (flash.boat !== boat) continue;
+    const age = now - flash.startedAtMs;
+    if (age >= 0 && age <= PENALTY_CLEARED_MS) return true;
+  }
+  return false;
 }
