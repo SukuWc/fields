@@ -32,7 +32,7 @@ const dataTextureMaterial = new THREE.DataTexture(_data1, _side1, _side2, THREE.
 dataTextureMaterial.magFilter = THREE.NearestFilter;
 dataTextureMaterial.needsUpdate = true;
 
-const planeMat = new THREE.MeshBasicMaterial({ map: dataTextureMaterial, transparent: true });
+const planeMat = new THREE.MeshBasicMaterial({ map: dataTextureMaterial });
 planeMat.needsUpdate = true;
 
 // Core simulation instances
