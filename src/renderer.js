@@ -21,6 +21,29 @@ const abeamPool = [];
 // the words change; the Rule 15 bar is a scaled quad, so its shrink does not
 // repaint text. Contact flashes reuse one ring texture.
 const labelGroupPool = [];
+
+// The field quad sits 0.01 under the strokes. PerspectiveCamera's near/far
+// (0.01..85) puts almost all of the depth range in empty space in front of
+// the map, so across zoom 10–70 that gap is often a single depth value.
+// The field material used to be transparent, which draws it after opaque
+// hull lines; on a tie the later fragment wins and the heatmap covers them.
+// The tie flips with zoom, and only the opaque strokes lose, so a view looks
+// partly eaten and changes as you pan. Overlays skip the depth test and
+// paint in this order, after the opaque field.
+const ORDER_HULL = 1;
+const ORDER_GUIDE = 2;
+const ORDER_RIBBON = 3;
+const ORDER_ABEAM = 4;
+const ORDER_CONTACT = 5;
+const ORDER_LABEL = 6;
+const ORDER_LABEL_FILL = 7;
+
+function markOverlay(material) {
+  material.transparent = true;
+  material.depthTest = false;
+  material.depthWrite = false;
+  return material;
+}
 const labelTextureCache = new Map();
 const contactPool = [];
 let contactTexture = null;
@@ -38,8 +61,9 @@ function createFixtureLine(fixture, body) {
   const colorByType = { circle: 0x00ff00, edge: 0xff0000, polygon: 0x0000ff };
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pointCount * 3), 3));
-  const material = new THREE.LineBasicMaterial({ color: colorByType[type] });
+  const material = markOverlay(new THREE.LineBasicMaterial({ color: colorByType[type] }));
   const line = new THREE.Line(geometry, material);
+  line.renderOrder = ORDER_HULL;
 
   updateFixtureLine(line, fixture, body);
   return line;
@@ -89,12 +113,11 @@ function ruleRibbon(index) {
   while (ruleRibbonPool.length <= index) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(18), 3));
-    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    const mesh = new THREE.Mesh(geo, markOverlay(new THREE.MeshBasicMaterial({
       side: THREE.DoubleSide,
-      depthTest: false,
-    }));
+    })));
     mesh.frustumCulled = false;
-    mesh.renderOrder = 2;
+    mesh.renderOrder = ORDER_RIBBON;
     scene.add(mesh);
     ruleRibbonPool.push(mesh);
   }
@@ -132,14 +155,13 @@ function abeamLine(index) {
   while (abeamPool.length <= index) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
-    const line = new THREE.Line(geo, new THREE.LineDashedMaterial({
+    const line = new THREE.Line(geo, markOverlay(new THREE.LineDashedMaterial({
       color: 0x66eeff,
       dashSize: 0.45,
       gapSize: 0.28,
-      depthTest: false,
-    }));
+    })));
     line.frustumCulled = false;
-    line.renderOrder = 3;
+    line.renderOrder = ORDER_ABEAM;
     scene.add(line);
     abeamPool.push(line);
   }
@@ -273,38 +295,32 @@ function labelGroup(index) {
     group.frustumCulled = false;
     const text = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1),
-      new THREE.MeshBasicMaterial({
-        transparent: true,
-        depthTest: false,
+      markOverlay(new THREE.MeshBasicMaterial({
         side: THREE.DoubleSide,
         premultipliedAlpha: false,
-      })
+      }))
     );
     text.frustumCulled = false;
-    text.renderOrder = 5;
+    text.renderOrder = ORDER_LABEL;
     const track = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1),
-      new THREE.MeshBasicMaterial({
+      markOverlay(new THREE.MeshBasicMaterial({
         color: 0x3a2a00,
-        transparent: true,
         opacity: 0.95,
-        depthTest: false,
         side: THREE.DoubleSide,
-      })
+      }))
     );
     track.frustumCulled = false;
-    track.renderOrder = 5;
+    track.renderOrder = ORDER_LABEL;
     const fill = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1),
-      new THREE.MeshBasicMaterial({
+      markOverlay(new THREE.MeshBasicMaterial({
         color: 0xffc240,
-        transparent: true,
-        depthTest: false,
         side: THREE.DoubleSide,
-      })
+      }))
     );
     fill.frustumCulled = false;
-    fill.renderOrder = 6;
+    fill.renderOrder = ORDER_LABEL_FILL;
     group.add(text);
     group.add(track);
     group.add(fill);
@@ -395,16 +411,14 @@ function contactMark(index) {
   while (contactPool.length <= index) {
     const mesh = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1),
-      new THREE.MeshBasicMaterial({
+      markOverlay(new THREE.MeshBasicMaterial({
         map: contactMarkTexture(),
-        transparent: true,
-        depthTest: false,
         side: THREE.DoubleSide,
         premultipliedAlpha: false,
-      })
+      }))
     );
     mesh.frustumCulled = false;
-    mesh.renderOrder = 4;
+    mesh.renderOrder = ORDER_CONTACT;
     scene.add(mesh);
     contactPool.push(mesh);
   }
@@ -440,8 +454,14 @@ export function initRenderer(map, planeMat) {
   camera.position.y = 20;
   scene = new THREE.Scene();
 
+  // Texels are opaque. A transparent field joins the transparent pass and
+  // can paint over strokes once their depths quantize together.
+  planeMat.transparent = false;
+  planeMat.depthTest = true;
+  planeMat.depthWrite = true;
   fluidPlane = new THREE.Mesh(new THREE.PlaneGeometry(map.width, map.height), planeMat);
   fluidPlane.position.z = -0.01;
+  fluidPlane.renderOrder = 0;
   scene.add(fluidPlane);
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -531,7 +551,8 @@ function animation() {
     if (poolIdx >= guidePool.length) {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
-      const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ transparent: true }));
+      const line = new THREE.Line(geo, markOverlay(new THREE.LineBasicMaterial()));
+      line.renderOrder = ORDER_GUIDE;
       scene.add(line);
       guidePool.push(line);
     }
