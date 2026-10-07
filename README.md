@@ -6,7 +6,7 @@
 
 ## Roadmap
 
-Last updated: 2026-10-06
+Last updated: 2026-10-07
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -14,6 +14,7 @@ Last updated: 2026-10-06
 - [x] Circular disk refinement around the boat: [#4](https://github.com/SukuWc/fields/pull/4)
 - [x] Constant-wind dev mode with the fluid sim off (`?devmode=1`): [#2](https://github.com/SukuWc/fields/pull/2)
 - [x] WebGL canvas resizes with the window so the page no longer scrolls: [#17](https://github.com/SukuWc/fields/pull/17)
+- [x] Guide and hull lines no longer vanish as the camera follows the boat: [#22](https://github.com/SukuWc/fields/pull/22)
 
 ### 2. Wind and boat feel
 - [ ] Fluid sim on (in progress, [#9](https://github.com/SukuWc/fields/pull/9))
