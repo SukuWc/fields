@@ -30,6 +30,9 @@ const labelGroupPool = [];
 // The tie flips with zoom, and only the opaque strokes lose, so a view looks
 // partly eaten and changes as you pan. Overlays skip the depth test and
 // paint in this order, after the opaque field.
+// Pooled and moving lines also set frustumCulled = false: three.js computes a
+// geometry's bounding sphere once, from the first positions, so a segment that
+// moves later is culled by its stale sphere and vanishes in whole arcs.
 const ORDER_HULL = 1;
 const ORDER_GUIDE = 2;
 const ORDER_RIBBON = 3;
@@ -64,6 +67,7 @@ function createFixtureLine(fixture, body) {
   const material = markOverlay(new THREE.LineBasicMaterial({ color: colorByType[type] }));
   const line = new THREE.Line(geometry, material);
   line.renderOrder = ORDER_HULL;
+  line.frustumCulled = false;
 
   updateFixtureLine(line, fixture, body);
   return line;
@@ -566,6 +570,7 @@ function animation() {
       geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
       const line = new THREE.Line(geo, markOverlay(new THREE.LineBasicMaterial()));
       line.renderOrder = ORDER_GUIDE;
+      line.frustumCulled = false;
       scene.add(line);
       guidePool.push(line);
     }
