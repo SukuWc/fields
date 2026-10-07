@@ -6,12 +6,6 @@
     <title>New webpage</title>
   
     <style>
-      html, body {
-        margin: 0;
-        padding: 0;
-        overflow: hidden;
-        height: 100%;
-      }
 
 #info {
         position: absolute;
@@ -149,9 +143,9 @@
 
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-BpzyskBG.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-CCaE9YtE.js"></script>
   </head>
-  <body>
+  <body style="padding:0px; margin:0px">  
 
     <div id="scenario_card">
       <div id="scenario_card_head">
@@ -194,7 +188,7 @@
       <input id="windSpeed" type="number" min="0" max="40" step="1" value="15">
       <br>
       Select Scenario<br>
-      <input id="scenario_selector" type="number" min="0" max="10" value="0" style="width: 50px;" title="Scenario 6: Rule 13 tack. Scenario 7: leeward boat tacks into a Rule 10 collision. Scenario 8: Rule 15 overlap. Scenario 9: contact during Rule 15. Use with Dev mode.">
+      <input id="scenario_selector" type="number" min="0" max="10" value="0" style="width: 50px;" title="Scenario 6: Rule 13 tack. Scenario 7: leeward boat tacks into a Rule 10 collision. Scenario 8: Rule 15 overlap. Scenario 9: contact during Rule 15. Scenario 10: penalty turn, a tack and a gybe in a row (Q counter-clockwise, E clockwise autopilot circle). Use with Dev mode.">
       
       <input id="scenario_restart" type="button" min="0" max="10" style="width: 50px;" value="Restart">
     
@@ -227,6 +221,10 @@
 
     </div>
 
+    <canvas id="theCanvas" width="300" height="120" style="position: absolute; z-index: -10">This application runs only in modern
+      browsers. For best results, use Google Chrome.
+    </canvas>
+    
 
     
   </body>
