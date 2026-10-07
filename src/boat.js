@@ -1,9 +1,25 @@
 import planck, { random } from 'planck-js/dist/planck-with-testbed';
 import { aeroCoefficients } from './utils.js';
-import { notePenaltyHeading, resetPenaltyTurn, updateTackingState } from './rules.js';
+import { resetPenaltyManeuvers, updatePenaltyManeuvers, updateTackingState } from './rules.js';
 
 
 let pl = planck, Vec2 = pl.Vec2;
+
+// Q/E penalty-turn autopilot. The rudder is a PD on the degrees left to a
+// full circle (and the yaw rate), so it eases off as she comes round and
+// stops on the starting heading instead of holding hard over to 360° and
+// carrying on. Done once she is within PENALTY_TURN_DONE_DEG with the yaw
+// rate under PENALTY_TURN_DONE_RATE_DEG_S; the heading autopilot then holds
+// the starting heading. Gains are rudder degrees per degree of heading left
+// (KP) and per degree/second of yaw rate (KD), tuned headlessly in
+// scripts/penalty-turn-check.mjs for under ~1.5° of overshoot at 1–2.2 m/s.
+// The circle does not clear anything itself: its tack and gybe do, through
+// updatePenaltyManeuvers, so one circle clears exactly one penalty.
+export const PENALTY_TURN_RUDDER_MAX = 50;
+export const PENALTY_TURN_KP = 1.2;
+export const PENALTY_TURN_KD = 1.6;
+export const PENALTY_TURN_DONE_DEG = 2.5;
+export const PENALTY_TURN_DONE_RATE_DEG_S = 10;
 
 
 
@@ -299,16 +315,12 @@ export class Boat{
 
     const rudder_turn_rate = (1-Math.abs(d)>0)?1-Math.abs(d)+1:1;
 
-    // A penalty turn holds the rudder over. Positive rudder_angle yaws clockwise
-    // (hull angle decreases) while she has way on, so CCW (dir +1) uses a
-    // negative angle. Manual helm clears penalty_turn before this runs.
+    // Penalty-turn autopilot. Manual helm clears penalty_turn before this runs.
     if (this.penalty_turn && this.rudder_input !== 0) this.penalty_turn = null;
 
     if (this.penalty_turn) {
       this.autopilot_enabled = false;
-      let target = -this.penalty_turn.dir * 50;
-      if (target > this.rudder_angle_max) target = this.rudder_angle_max;
-      if (target < -this.rudder_angle_max) target = -this.rudder_angle_max;
+      const target = this._penaltyTurnRudder(angle, d);
       this.rudder_angle += (target - this.rudder_angle) * 0.45;
     } else if (this.rudder_input === -1) {
 
@@ -507,18 +519,54 @@ export class Boat{
     this.rudder_input = 0;
     this.motor_input = 0;
 
-    this.samplePenaltyHeading();
+    // Tack and gybe detection for the pending penalty. Hand-sailed and Q/E
+    // turns both clear through this, never through the circle itself.
+    updatePenaltyManeuvers(this);
 
   }
 
-  // One heading sample per physics step. Manual circles and the penalty
-  // autopilot share this. Reaching 360° clears the oldest pending penalty
-  // and, if this boat was on the autopilot, ends that turn.
-  samplePenaltyHeading() {
-    const watching = !!this.penalty_turn;
-    const result = notePenaltyHeading(this, this.hull_angle, { watch: watching });
-    if (watching && result && result.completed) this.penalty_turn = null;
-    return result;
+  // Rudder angle for the Q/E circle this step. `heading` is the hull angle
+  // (radians) and `d` the forward speed. Positive rudder_angle yaws clockwise
+  // (hull angle decreases) while she has way on, so the sign flips with d.
+  // Progress is the short-way heading change summed per step; the turn ends
+  // on the starting heading and hands the helm to the heading autopilot.
+  _penaltyTurnRudder(heading, d) {
+    const turn = this.penalty_turn;
+    let delta = (heading - turn.lastHeading) % (2 * Math.PI);
+    if (delta > Math.PI) delta -= 2 * Math.PI;
+    if (delta < -Math.PI) delta += 2 * Math.PI;
+    turn.lastHeading = heading;
+    turn.progressDeg += delta * 180 / Math.PI;
+
+    // Degrees still to turn, counter-clockwise positive. Negative once past.
+    const error = turn.dir * 360 - turn.progressDeg;
+    const rateDeg = this.physics_model.getAngularVelocity() * 180 / Math.PI;
+
+    if (Math.abs(error) <= PENALTY_TURN_DONE_DEG && Math.abs(rateDeg) <= PENALTY_TURN_DONE_RATE_DEG_S) {
+      this._finishPenaltyTurn();
+      return this.rudder_angle;
+    }
+
+    const yawCommand = PENALTY_TURN_KP * error - PENALTY_TURN_KD * rateDeg;
+    let target = -yawCommand * (d < 0 ? -1 : 1);
+    if (target > PENALTY_TURN_RUDDER_MAX) target = PENALTY_TURN_RUDDER_MAX;
+    if (target < -PENALTY_TURN_RUDDER_MAX) target = -PENALTY_TURN_RUDDER_MAX;
+    return target;
+  }
+
+  // Back on the starting heading: the heading autopilot holds it. Its target
+  // is -TWA, so the starting heading is expressed against the current wind.
+  _finishPenaltyTurn() {
+    const turn = this.penalty_turn;
+    this.penalty_turn = null;
+    let target = -(this.wind_direction - turn.startHeading * 180 / Math.PI + 90);
+    target = ((target + 180) % 360 + 360) % 360 - 180;
+    this.autopilot_heading_target = target;
+    let error = -(target + this.twa);
+    error = ((error + 180) % 360 + 360) % 360 - 180;
+    this.autopilot_compensator_last_error = error;
+    this.autopilot_compensator_sum_error = 0;
+    this.autopilot_enabled = true;
   }
 
   _cancelPenaltyTurn() {
@@ -528,8 +576,11 @@ export class Boat{
   _startPenaltyTurn(dir) {
     if (this.penalty_turn && this.penalty_turn.dir === dir) return;
     this.autopilot_enabled = false;
-    this.penalty_turn = { dir };
-    resetPenaltyTurn(this);
+    const heading = this.physics_model.getAngle();
+    this.penalty_turn = { dir, startHeading: heading, lastHeading: heading, progressDeg: 0 };
+    // The circle supplies its own tack and gybe; an earlier lone maneuver
+    // does not pair with its first crossing.
+    resetPenaltyManeuvers(this);
   }
   
   graphics_model_render(){

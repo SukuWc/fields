@@ -1342,7 +1342,7 @@ export function resetContacts() {
   incidents.length = 0;
   contactFlashes.length = 0;
   pendingPenalties.clear();
-  penaltyTurns.clear();
+  penaltyManeuvers.clear();
   penaltyCleared.length = 0;
 }
 
@@ -1355,8 +1355,8 @@ function pruneContactVisuals(boats, now) {
 // Charge the resolver's fault boat when a latched contact begins. No incident
 // when fault is not a single boat (both tacking). `simTime` is the simulation
 // clock stored on the incident. The contact flash uses wall time. A charged
-// fault also pushes one pending penalty; the FAULT badge stays until a 360°
-// turn clears it.
+// fault also pushes one pending penalty; the FAULT badge stays until a tack
+// and a gybe in a row clear it.
 export function recordContacts(resolutions, simTime, boats) {
   const now = performance.now();
   const seen = new Set();
@@ -1423,98 +1423,103 @@ export function contactGuides(nowMs) {
 }
 
 // A contact fault charges one pending penalty. Penalties stack, one per
-// incident, and a completed circle clears the oldest (FIFO). The turn is the
-// hull heading (Planck angle), not the tack: gybes and tacks are allowed.
+// incident, and each completed penalty clears the oldest (FIFO).
 //
-// While a penalty is pending, or while a penalty-turn autopilot is watching,
-// each sample adds the short-way heading change. Noise is not dropped — a
-// slow circle has to be able to finish. Small wiggles are handled two ways:
-//   - Under the lock threshold the total is a signed net, so a wiggle that
-//     returns cancels. The ring stays hidden until that lock, so the slow
-//     bear-away of ordinary sailing does not look like a penalty turn.
-//   - Once that many degrees are committed one way, the turn locks. Motion
-//     the other way is ignored until it reaches the reverse threshold, which
-//     abandons the attempt. The reversing arc does not count.
-// A sample is taken the short way, so one step never adds more than 180°.
-// The first penalty on a boat discards any circle already in progress: only
-// heading sailed after the charge counts. A further collision while a turn
-// is underway stacks and leaves that turn running.
-export const PENALTY_TURN_NOISE_DEG = 1e-3;
-export const PENALTY_TURN_LOCK_DEG = 45;
-export const PENALTY_TURN_REVERSE_DEG = 30;
-export const PENALTY_TURN_COMPLETE_DEG = 360;
+// A penalty is a tack immediately followed by a gybe, or a gybe immediately
+// followed by a tack (RRS 44.2: one turn, one tack and one gybe). Tack and
+// gybe come from the true wind angle (Map.get_wind, the same seam Rule 13
+// reads): a tack is a TWA sign change through 0° (head to wind), a gybe is a
+// sign change through ±180° (dead downwind). Heading itself is not
+// integrated, so a turn of any size that does both counts.
+//
+// Hysteresis. A side (port +, starboard −) is only settled while
+// PENALTY_MANEUVER_HYST_DEG < |TWA| < 180 − PENALTY_MANEUVER_HYST_DEG.
+// Samples inside the band around 0° or 180° leave the settled side alone, so
+// a wobble across head to wind or dead downwind is not a maneuver until she
+// settles on the other side, and wobbling back is not a second one. When the
+// settled side flips, the last settled TWA and the new one are compared the
+// way Rule 13's passedHeadToWind does: the short way across 0° is a tack,
+// otherwise a gybe.
+//
+// Consecutive. Each maneuver while a penalty is pending is checked against
+// the one before it (the candidate). A different kind, in the same rotation,
+// within PENALTY_MANEUVER_WINDOW_S of the candidate, completes the pair and
+// clears one penalty; the pair is used up. Otherwise the new maneuver
+// replaces the candidate, so tack, tack, gybe clears on the gybe: the second
+// tack and the gybe are themselves consecutive. Tack then gybe without
+// anything between is necessarily one circle in one direction (after
+// crossing 0° the next crossing is either 0° again or 180° going the same
+// way); the rotation check only guards a single-step TWA jump. A candidate
+// older than the window is dropped. The window runs on simulation time, a
+// sum of fixed steps, like the Rule 15 timer.
+//
+// Only maneuvers made while a penalty is pending count. The first penalty
+// on a boat starts with no candidate; a further collision while one is
+// waiting stacks and leaves it alone.
+export const PENALTY_MANEUVER_WINDOW_S = 10;
+export const PENALTY_MANEUVER_HYST_DEG = 10;
 export const PENALTY_CLEARED_MS = 2200;
 const PENALTY_RING_R = 3.15;
 
 const pendingPenalties = new Map();
-const penaltyTurns = new Map();
+const penaltyManeuvers = new Map();
 const penaltyCleared = [];
 
-function penaltyTracker(boat) {
-  let tracker = penaltyTurns.get(boat);
+function maneuverTracker(boat) {
+  let tracker = penaltyManeuvers.get(boat);
   if (!tracker) {
-    tracker = {
-      hasHeading: false,
-      lastHeading: 0,
-      origin: 0,
-      progress: 0,
-      lockedSign: 0,
-      reverse: 0,
-    };
-    penaltyTurns.set(boat, tracker);
+    // side: settled TWA sign (0 until the first settled sample).
+    // first: the candidate { kind: 'tack' | 'gybe', dir: +1 CCW | −1 CW, age }.
+    tracker = { side: 0, lastTwa: 0, first: null };
+    penaltyManeuvers.set(boat, tracker);
   }
   return tracker;
 }
 
-function resetTurnProgress(tracker) {
-  tracker.progress = 0;
-  tracker.lockedSign = 0;
-  tracker.reverse = 0;
-}
-
-// Drop the circle in progress. The last heading sample stays, so the next
-// delta is only what she sails after this call.
-export function resetPenaltyTurn(boat) {
+// Drop the candidate. The settled side stays, so a crossing already under
+// way still counts as one maneuver once she settles.
+export function resetPenaltyManeuvers(boat) {
   if (!boat) return;
-  const tracker = penaltyTracker(boat);
-  resetTurnProgress(tracker);
-  if (tracker.hasHeading) tracker.origin = tracker.lastHeading;
+  maneuverTracker(boat).first = null;
 }
 
-function wrapPi(delta) {
-  const twopi = Math.PI * 2;
-  let x = (delta + Math.PI) % twopi;
-  if (x < 0) x += twopi;
-  return x - Math.PI;
+function settledSide(twa) {
+  const a = Math.abs(twa);
+  if (a <= PENALTY_MANEUVER_HYST_DEG || a >= 180 - PENALTY_MANEUVER_HYST_DEG) return 0;
+  return tackSign(twa);
 }
 
-function turnView(tracker) {
-  const sign = tracker.lockedSign || (tracker.progress ? Math.sign(tracker.progress) : 0);
+// A side flip from prevTwa to twa (both settled, opposite signs). Hull
+// heading up is TWA down, so a tack off port (+) turns counter-clockwise and
+// a gybe off port turns clockwise.
+function classifyManeuver(prevTwa, twa) {
+  const prevSign = tackSign(prevTwa);
+  if (passedHeadToWind(prevTwa, twa)) return { kind: 'tack', dir: prevSign };
+  return { kind: 'gybe', dir: -prevSign };
+}
+
+function maneuverView(tracker) {
+  const first = tracker && tracker.first;
+  if (!first) return { first: null, dir: 0, remainingS: 0 };
   return {
-    completed: false,
-    cleared: null,
-    progressDeg: tracker.progress,
-    remainingDeg: Math.max(0, PENALTY_TURN_COMPLETE_DEG - Math.abs(tracker.progress)),
-    sign,
-    locked: tracker.lockedSign !== 0,
-    origin: tracker.origin,
+    first: first.kind,
+    dir: first.dir,
+    remainingS: Math.max(0, PENALTY_MANEUVER_WINDOW_S - first.age),
   };
 }
 
-export function penaltyTurnView(boat) {
-  const tracker = penaltyTurns.get(boat);
-  if (!tracker) {
-    return {
-      completed: false,
-      cleared: null,
-      progressDeg: 0,
-      remainingDeg: PENALTY_TURN_COMPLETE_DEG,
-      sign: 0,
-      locked: false,
-      origin: null,
-    };
-  }
-  return turnView(tracker);
+// { first: 'tack' | 'gybe' | null, dir, remainingS }. `first` is the
+// candidate waiting for the other maneuver.
+export function penaltyManeuverView(boat) {
+  return maneuverView(penaltyManeuvers.get(boat));
+}
+
+// "Tack ✓ · Gybe … 7.2s", or null when no candidate is waiting.
+export function penaltyManeuverText(view) {
+  if (!view || !view.first) return null;
+  const done = view.first === 'tack' ? 'Tack' : 'Gybe';
+  const next = view.first === 'tack' ? 'Gybe' : 'Tack';
+  return done + ' ✓ · ' + next + ' … ' + view.remainingS.toFixed(1) + 's';
 }
 
 export function pendingPenaltyCount(boat) {
@@ -1548,65 +1553,56 @@ export function chargePendingPenalty(boat, incident) {
     pendingPenalties.set(boat, queue);
   }
   queue.push({ time: incident.time, incident });
-  if (wasEmpty) resetPenaltyTurn(boat);
+  if (wasEmpty) resetPenaltyManeuvers(boat);
 }
 
-// Integrate `headingRad` (hull angle, radians). `opts.watch` is set while the
-// penalty-turn autopilot is steering, so the circle is measured even when
-// nothing is pending; finishing then just ends the autopilot. Returns the
-// turn view, with `completed` set on the sample that reaches 360°.
-export function notePenaltyHeading(boat, headingRad, opts) {
-  if (!boat || !Number.isFinite(headingRad)) return null;
-  const tracker = penaltyTracker(boat);
+// One TWA sample (degrees, −180..180) per physics step. `opts.dtS` is the
+// simulation time since the previous sample (default SIM_STEP_S) and
+// `opts.nowMs` stamps the CLEARED flash. Returns { maneuver, cleared, view }:
+// `maneuver` is the tack or gybe completed on this sample (pending or not),
+// `cleared` the penalty entry it removed.
+export function notePenaltyManeuver(boat, twaDeg, opts) {
+  if (!boat || !Number.isFinite(twaDeg)) return null;
+  const tracker = maneuverTracker(boat);
+  const dt = opts && Number.isFinite(opts.dtS) ? opts.dtS : SIM_STEP_S;
   const now = opts && typeof opts.nowMs === 'number' ? opts.nowMs : performance.now();
-  if (!tracker.hasHeading) {
-    tracker.hasHeading = true;
-    tracker.lastHeading = headingRad;
-    tracker.origin = headingRad;
-    return turnView(tracker);
-  }
+  const pending = pendingPenaltyCount(boat) > 0;
 
-  const deltaDeg = wrapPi(headingRad - tracker.lastHeading) * 180 / Math.PI;
-  tracker.lastHeading = headingRad;
-  const pending = pendingPenaltyCount(boat);
-  const watch = !!(opts && opts.watch);
-  if (!pending && !watch) {
-    resetTurnProgress(tracker);
-    tracker.origin = headingRad;
-    return turnView(tracker);
+  if (tracker.first) {
+    tracker.first.age += dt;
+    if (tracker.first.age > PENALTY_MANEUVER_WINDOW_S + 1e-9) tracker.first = null;
   }
-  if (Math.abs(deltaDeg) < PENALTY_TURN_NOISE_DEG) return turnView(tracker);
+  if (!pending) tracker.first = null;
 
-  if (tracker.lockedSign === 0) {
-    if (tracker.progress === 0) tracker.origin = tracker.lastHeading - deltaDeg * Math.PI / 180;
-    tracker.progress += deltaDeg;
-    if (Math.abs(tracker.progress) >= PENALTY_TURN_LOCK_DEG) {
-      tracker.lockedSign = Math.sign(tracker.progress);
-      tracker.reverse = 0;
+  let maneuver = null;
+  let cleared = null;
+  const side = settledSide(twaDeg);
+  if (side !== 0) {
+    if (tracker.side !== 0 && side !== tracker.side) {
+      maneuver = classifyManeuver(tracker.lastTwa, twaDeg);
+      if (pending) {
+        const first = tracker.first;
+        if (first && first.kind !== maneuver.kind && first.dir === maneuver.dir) {
+          cleared = clearOldestPending(boat, now);
+          tracker.first = null;
+        } else {
+          tracker.first = { kind: maneuver.kind, dir: maneuver.dir, age: 0 };
+        }
+      }
     }
-  } else if (deltaDeg * tracker.lockedSign > 0) {
-    tracker.progress += deltaDeg;
-    tracker.reverse = 0;
-  } else {
-    tracker.reverse += Math.abs(deltaDeg);
-    if (tracker.reverse >= PENALTY_TURN_REVERSE_DEG) {
-      resetTurnProgress(tracker);
-      tracker.origin = headingRad;
-    }
+    tracker.side = side;
+    tracker.lastTwa = twaDeg;
   }
+  return { maneuver, cleared, view: maneuverView(tracker) };
+}
 
-  // A hair under 360° still counts. Summing many small samples lands on
-  // 359.999999999997 rather than 360, and that must not stick the turn open.
-  if (Math.abs(tracker.progress) >= PENALTY_TURN_COMPLETE_DEG - 1e-4) {
-    const cleared = pending ? clearOldestPending(boat, now) : null;
-    resetTurnProgress(tracker);
-    tracker.origin = headingRad;
-    const done = turnView(tracker);
-    done.completed = true;
-    done.cleared = cleared;
-    return done;
-  }
-  return turnView(tracker);
+// Per-boat step: TWA from Map.get_wind at the boat, then notePenaltyManeuver.
+export function updatePenaltyManeuvers(boat, opts) {
+  if (!boat || !boat.map || typeof boat.map.get_wind !== 'function') return null;
+  if (!Number.isFinite(boat.hull_angle) || !Number.isFinite(boat.x) || !Number.isFinite(boat.y)) return null;
+  const from = windFromDeg(boat.map.get_wind(boat.x, boat.y));
+  if (from === null) return null;
+  return notePenaltyManeuver(boat, trueWindAngleDeg(boat.hull_angle, from), opts);
 }
 
 function pushArc(guides, cx, cy, radius, a0, sweep, color, opacity) {
@@ -1640,8 +1636,16 @@ function bowOffset(boat, dist) {
   return { x: fwd.x * dist, y: fwd.y * dist };
 }
 
+// Degrees left on a Q/E autopilot circle (Boat.penalty_turn), or null.
+export function penaltyAutopilotRemainingDeg(boat) {
+  const turn = boat && boat.penalty_turn;
+  if (!turn || !Number.isFinite(turn.progressDeg)) return null;
+  return Math.max(0, 360 - turn.dir * turn.progressDeg);
+}
+
 // FAULT badge while a penalty is pending (with a count when several are),
-// the turn ring and remaining degrees, and a short CLEARED flash.
+// the amber tack/gybe progress label, the ring and degrees left while the
+// Q/E autopilot circles, and a short CLEARED flash.
 export function penaltyGuides(boats, nowMs) {
   const now = typeof nowMs === 'number' ? nowMs : performance.now();
   const list = boats || [];
@@ -1667,31 +1671,34 @@ export function penaltyGuides(boats, nowMs) {
       });
     }
 
-    const view = penaltyTurnView(boat);
-    const steered = boat.penalty_turn;
-    const showTurn = steered || (view && view.locked);
-    if (!showTurn) continue;
-    const sign = steered ? steered.dir : view.sign;
-    if (!sign) continue;
-    const origin = view && typeof view.origin === 'number' ? view.origin : boat.hull_angle;
-    const bow = origin - Math.PI / 2;
-    pushArc(guides, boat.x, boat.y, PENALTY_RING_R, bow, Math.PI * 2, 0xffffff, 0.28);
-    const sweep = (view ? view.progressDeg : 0) * Math.PI / 180;
-    if (Math.abs(sweep) > 1e-3) {
-      pushArc(guides, boat.x, boat.y, PENALTY_RING_R, bow, sweep, 0xffc240, 1);
-    }
+    const turn = boat.penalty_turn;
     const ahead = bowOffset(boat, 4.3);
-    const left = Math.max(0, Math.ceil(view ? view.remainingDeg : PENALTY_TURN_COMPLETE_DEG));
+    if (turn && Number.isFinite(turn.startHeading)) {
+      const bow = turn.startHeading - Math.PI / 2;
+      pushArc(guides, boat.x, boat.y, PENALTY_RING_R, bow, Math.PI * 2, 0xffffff, 0.28);
+      const sweep = (turn.progressDeg || 0) * Math.PI / 180;
+      if (Math.abs(sweep) > 1e-3) {
+        pushArc(guides, boat.x, boat.y, PENALTY_RING_R, bow, sweep, 0xffc240, 1);
+      }
+      const left = Math.max(0, Math.ceil(penaltyAutopilotRemainingDeg(boat)));
+      guides.push({
+        type: 'label',
+        badge: true,
+        x: boat.x + ahead.x,
+        y: boat.y + ahead.y,
+        lines: [{ text: (turn.dir < 0 ? 'CW ' : 'CCW ') + left + '°', role: 'turn', id: 'turn' }],
+      });
+      continue;
+    }
+
+    const text = count > 0 ? penaltyManeuverText(penaltyManeuverView(boat)) : null;
+    if (!text) continue;
     guides.push({
       type: 'label',
       badge: true,
       x: boat.x + ahead.x,
       y: boat.y + ahead.y,
-      lines: [{
-        text: (sign < 0 ? 'CW ' : 'CCW ') + left + '°',
-        role: 'turn',
-        id: 'turn',
-      }],
+      lines: [{ text, role: 'turn', id: 'turn' }],
     });
   }
 

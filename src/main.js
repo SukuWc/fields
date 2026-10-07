@@ -8,7 +8,7 @@ import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera } from './renderer.js';
 import { setupControls, getPlayers, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
-import { beginRule15Step, contactGuides, evaluateAllPairs, penaltyGuides, penaltyJustCleared, pendingPenaltyCount, penaltyTurnView, recordContacts, trueWindAngleDeg } from './rules.js';
+import { beginRule15Step, contactGuides, evaluateAllPairs, penaltyAutopilotRemainingDeg, penaltyGuides, penaltyJustCleared, penaltyManeuverText, penaltyManeuverView, pendingPenaltyCount, recordContacts, trueWindAngleDeg } from './rules.js';
 
 const map_w = 75;
 const map_h = 75;
@@ -151,13 +151,14 @@ runner.start((simDt) => {
     const steered = racing[i].penalty_turn;
     if (pending > 0 || steered) {
       showPenaltyKeys = true;
-      const view = penaltyTurnView(racing[i]);
-      let line = 'Boat ' + i + ' penalty ' + pending;
-      if (steered || view.locked) {
-        const sign = steered ? steered.dir : view.sign;
-        const left = Math.max(0, Math.ceil(view.remainingDeg));
-        line += ' · ' + (sign < 0 ? 'CW ' : 'CCW ') + left + '°';
+      let line = 'Boat ' + i + (pending === 0 && penaltyJustCleared(racing[i]) ? ' CLEARED' : ' penalty ' + pending);
+      const maneuvers = pending > 0 ? penaltyManeuverText(penaltyManeuverView(racing[i])) : null;
+      if (steered) {
+        const left = Math.max(0, Math.ceil(penaltyAutopilotRemainingDeg(racing[i])));
+        line += ' · ' + (steered.dir < 0 ? 'CW ' : 'CCW ') + left + '°';
       }
+      if (maneuvers) line += ' · ' + maneuvers;
+      else if (pending > 0) line += ' · needs tack + gybe';
       infoEl.innerHTML += line + '<br>';
     } else if (penaltyJustCleared(racing[i])) {
       showPenaltyKeys = true;

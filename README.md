@@ -43,7 +43,7 @@ Last updated: 2026-10-06
 - [ ] Rule 18
 - [ ] Rule 31
 - [ ] Rule 28
-- [ ] Penalties and exoneration (partial: [#20](https://github.com/SukuWc/fields/pull/20) charges a pending penalty cleared by one 360° turn)
+- [ ] Penalties and exoneration (partial: [#20](https://github.com/SukuWc/fields/pull/20) charges a pending penalty cleared by a tack and a gybe in a row)
 - [ ] Incident log (partial: [#12](https://github.com/SukuWc/fields/pull/12) stores contact incidents and a FAULT badge)
 - [ ] Rule-stack labels (partial: [#12](https://github.com/SukuWc/fields/pull/12) shows the active rule and inhibited rules)
 

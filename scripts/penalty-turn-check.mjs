@@ -1,9 +1,11 @@
-// Headless checks for the 360° penalty turn.
-// A contact fault charges one pending penalty (FIFO). One circle clears one.
-// Holding a latched contact does not stack another. Q/E autopilot turns are
-// the boat methods input_penalty_turn_ccw / input_penalty_turn_cw: CCW
-// increases hull angle, CW decreases it. Both finish through notePenaltyHeading,
-// the same path a hand-sailed circle uses.
+// Headless checks for the penalty turn.
+// A contact fault charges one pending penalty (FIFO). A tack immediately
+// followed by a gybe, or a gybe immediately followed by a tack, within
+// PENALTY_MANEUVER_WINDOW_S clears one. Holding a latched contact does not
+// stack another. Q/E autopilot turns are the boat methods
+// input_penalty_turn_ccw / input_penalty_turn_cw: CCW increases hull angle,
+// CW decreases it. They stop on the starting heading and clear through the
+// same tack/gybe detector a hand-sailed turn uses.
 // Run: node --import ./test/register.mjs scripts/penalty-turn-check.mjs
 
 import { createRequire } from "module";
@@ -43,14 +45,15 @@ const {
   boatClearance,
   SIM_STEP_S,
   chargePendingPenalty,
-  notePenaltyHeading,
+  notePenaltyManeuver,
+  updatePenaltyManeuvers,
   penaltyGuides,
-  penaltyTurnView,
+  penaltyManeuverText,
+  penaltyManeuverView,
   pendingPenaltyCount,
   pendingPenaltiesOf,
-  PENALTY_TURN_LOCK_DEG,
-  PENALTY_TURN_REVERSE_DEG,
-  PENALTY_TURN_COMPLETE_DEG,
+  PENALTY_MANEUVER_WINDOW_S,
+  PENALTY_MANEUVER_HYST_DEG,
   PENALTY_CLEARED_MS,
 } = await import("../src/rules.js");
 
@@ -117,21 +120,48 @@ function faultText(boats, nowMs) {
   return fault.length ? fault[0].lines[0].text : null;
 }
 
-// Signed short-way degrees, matching notePenaltyHeading.
+function turnText(boats, nowMs) {
+  const turn = labelsOf(boats, nowMs).filter((g) => g.lines[0].id === "turn");
+  return turn.length ? turn[0].lines[0].text : null;
+}
+
+// Signed short-way degrees.
 function wrapDeg(delta) {
   let x = (delta + 180) % 360;
   if (x < 0) x += 360;
   return x - 180;
 }
 
-function spin(boat, fromRad, dir, degrees, stepDeg, nowMs) {
-  const n = Math.round(degrees / stepDeg);
-  let heading = fromRad;
+// TWA path, one physics step (SIM_STEP_S) per sample. `from` and `to` are
+// unwrapped degrees, so 60 → -120 is a tack and 60 → 240 a gybe. Returns the
+// maneuvers seen, as "tack" / "gybe" strings, and the clears.
+function sweepTwa(boat, from, to, stepDeg = 2, nowMs = 0) {
+  const n = Math.max(1, Math.ceil(Math.abs(to - from) / stepDeg));
+  const seen = [];
+  let clears = 0;
   for (let i = 1; i <= n; i++) {
-    heading = fromRad + dir * i * stepDeg * Math.PI / 180;
-    notePenaltyHeading(boat, heading, { nowMs });
+    const r = notePenaltyManeuver(boat, wrapDeg(from + (to - from) * i / n), { nowMs });
+    if (r.maneuver) seen.push(r.maneuver.kind + (r.maneuver.dir > 0 ? "+" : "-"));
+    if (r.cleared) clears++;
   }
-  return heading;
+  return { seen, clears };
+}
+
+// Sit on one TWA for `seconds` of simulation time.
+function hold(boat, twa, seconds, nowMs = 0) {
+  const n = Math.round(seconds / SIM_STEP_S);
+  for (let i = 0; i < n; i++) notePenaltyManeuver(boat, twa, { nowMs });
+}
+
+// A bare boat object for the detector, settled on port close-hauled-ish.
+function fresh(twa = 60) {
+  const boat = { x: 0, y: 0, hull_angle: 0 };
+  notePenaltyManeuver(boat, twa, { nowMs: 0 });
+  return boat;
+}
+
+function charge(boat, time) {
+  chargePendingPenalty(boat, { time, finalRule: "Rule 10", faultBoat: boat });
 }
 
 // --- Rule 10 contact charges one pending penalty ---
@@ -154,19 +184,7 @@ step([port, starboard], t);
 assert(getIncidents().length === 1, "holding the overlap does not open a second incident");
 assert(pendingPenaltyCount(port) === 1, "holding contact does not stack another penalty");
 
-// Wiggles under the lock threshold must not clear.
-let wiggle = 0;
-notePenaltyHeading(port, wiggle, { nowMs: 0 });
-for (let i = 0; i < 40; i++) {
-  wiggle = (i % 2 === 0) ? 8 * Math.PI / 180 : 0;
-  notePenaltyHeading(port, wiggle, { nowMs: 0 });
-}
-assert(pendingPenaltyCount(port) === 1, "heading wiggles do not clear a penalty");
-assert(penaltyTurnView(port).locked === false, "a return to the start never locks a direction");
-
-// A second closure stacks. The circle already started is discarded only when
-// the queue was empty, so this one leaves the (unlocked) wiggle total alone
-// and adds a second penalty.
+// A second closure stacks, and the FIFO order holds when tack + gybe clears.
 place(starboard, 8, 0, STARBOARD);
 assert(boatClearance(port, starboard) > 0.25, "pulled apart far enough to rearm");
 t += SIM_STEP_S;
@@ -179,65 +197,137 @@ assert(pendingPenaltyCount(port) === 2, "a second collision stacks a second pena
 assert(faultText([port], 0) === "FAULT x2", "the badge shows the stack count");
 const firstIncident = getIncidents()[0];
 const secondIncident = getIncidents()[1];
-
-// A slow hand-sailed circle, through every heading, clears only the oldest.
-// Tacking state is ignored: the turn is hull heading.
-const slowSteps = Math.round(PENALTY_TURN_COMPLETE_DEG / 0.5);
-port.tacking = true;
-const afterSlow = spin(port, 0, 1, PENALTY_TURN_COMPLETE_DEG, 0.5, 1000);
-assert(slowSteps === 720, "the slow circle is 0.5° samples");
-assert(pendingPenaltyCount(port) === 1, "one circle clears one penalty");
+notePenaltyManeuver(port, 60, { nowMs: 1000 });
+let r = sweepTwa(port, 60, -60, 2, 1000);
+assert(r.clears === 0 && pendingPenaltyCount(port) === 2, "the tack alone leaves both pending");
+r = sweepTwa(port, -60, -240, 2, 1000);
+assert(r.clears === 1 && pendingPenaltyCount(port) === 1, "tack + gybe clears one of two");
 assert(pendingPenaltiesOf(port)[0].incident === secondIncident, "FIFO clears the oldest incident");
 assert(pendingPenaltiesOf(port)[0].incident !== firstIncident, "the first incident is the one removed");
-port.tacking = false;
-const clearedNow = labelsOf([port], 1000);
-assert(clearedNow.some((g) => g.lines[0].id === "cleared" && g.lines[0].text === "CLEARED"), "clearing flashes CLEARED");
+assert(labelsOf([port], 1000).some((g) => g.lines[0].id === "cleared" && g.lines[0].text === "CLEARED"), "clearing flashes CLEARED");
 assert(faultText([port], 1000) === "FAULT", "the remaining penalty is a plain FAULT");
 assert(!labelsOf([port], 1000 + PENALTY_CLEARED_MS + 1).some((g) => g.lines[0].id === "cleared"), "the cleared flash expires");
 
-// A committed turn that reverses by the threshold is abandoned.
-let heading = afterSlow;
-notePenaltyHeading(port, heading, { nowMs: 2000 });
-heading = spin(port, heading, 1, PENALTY_TURN_LOCK_DEG + 15, 5, 2000);
-assert(penaltyTurnView(port).locked === true, "past the lock threshold the sense is committed");
-const committed = penaltyTurnView(port).progressDeg;
-heading = spin(port, heading, -1, PENALTY_TURN_REVERSE_DEG, 5, 2000);
-assert(penaltyTurnView(port).locked === false, "a 30° reversal resets the turn");
-assert(penaltyTurnView(port).progressDeg === 0, "the abandoned degrees do not carry over");
-assert(committed > PENALTY_TURN_LOCK_DEG, "the reset threw away a real committed arc");
-assert(pendingPenaltyCount(port) === 1, "an abandoned turn does not clear");
-// The rest of a circle from the reset is required. 350° is short.
-heading = spin(port, heading, 1, PENALTY_TURN_COMPLETE_DEG - 10, 5, 2000);
-assert(pendingPenaltyCount(port) === 1, "a short circle after a reset does not clear");
-heading = spin(port, heading, 1, 10, 5, 2000);
-assert(pendingPenaltyCount(port) === 0, "the fresh circle clears the remaining penalty");
-assert(faultText([port], 2000) === null, "no FAULT badge once the stack is empty");
+// --- Tack and gybe detector ---
 
-// A new collision while a circle is already underway stacks and keeps the arc.
-resetRule15Memory();
-resetContacts();
-place(port, 0, 0, PORT);
-place(starboard, 0.4, 0.2, STARBOARD);
-port.tacking = false;
-starboard.tacking = false;
-t = 0;
-step([port, starboard], t);
-assert(pendingPenaltyCount(port) === 1, "rearmed pair charges again");
-heading = 0;
-notePenaltyHeading(port, heading, { nowMs: 3000 });
-heading = spin(port, heading, -1, 80, 5, 3000);
-const mid = penaltyTurnView(port).progressDeg;
-assert(mid < -70, "the in-progress circle is most of 80° clockwise");
-place(starboard, 8, 0, STARBOARD);
-t += SIM_STEP_S;
-step([port, starboard], t);
-place(starboard, 0.4, 0.2, STARBOARD);
-t += SIM_STEP_S;
-step([port, starboard], t);
-assert(pendingPenaltyCount(port) === 2, "contact during a turn stacks");
-assert(Math.abs(penaltyTurnView(port).progressDeg - mid) < 1e-6, "stacking does not reset the circle in progress");
-heading = spin(port, heading, -1, PENALTY_TURN_COMPLETE_DEG - 80, 5, 3000);
-assert(pendingPenaltyCount(port) === 1, "finishing that circle clears one of the two");
+// Tack then gybe (counter-clockwise: TWA falls through 0°, then through -180°).
+let b = fresh(60);
+charge(b, 1);
+r = sweepTwa(b, 60, -60);
+assert(r.seen.join() === "tack+", "port to starboard through head to wind is one CCW tack, got " + r.seen);
+assert(pendingPenaltyCount(b) === 1, "a tack alone does not clear");
+assert(penaltyManeuverView(b).first === "tack", "the tack waits for a gybe");
+assert(/^Tack ✓ · Gybe … \d+\.\ds$/.test(turnText([b], 0)), "manual label shows the tack done, got " + turnText([b], 0));
+r = sweepTwa(b, -60, -240);
+assert(r.seen.join() === "gybe+", "starboard to port through dead downwind is one CCW gybe, got " + r.seen);
+assert(r.clears === 1 && pendingPenaltyCount(b) === 0, "tack then gybe clears one");
+assert(faultText([b], 0) === null && turnText([b], 0) === null, "no badge or progress label once clear");
+
+// Gybe then tack (clockwise: TWA rises through 180°, then through 0°).
+b = fresh(120);
+charge(b, 2);
+r = sweepTwa(b, 120, 240);
+assert(r.seen.join() === "gybe-" && pendingPenaltyCount(b) === 1, "a gybe alone does not clear");
+assert(/^Gybe ✓ · Tack … \d+\.\ds$/.test(turnText([b], 0)), "manual label shows the gybe done, got " + turnText([b], 0));
+r = sweepTwa(b, 240, 420);
+assert(r.seen.join() === "tack-" && r.clears === 1 && pendingPenaltyCount(b) === 0, "gybe then tack clears one");
+
+// Tack alone, then tack back: never clears, and only the last tack waits.
+b = fresh(60);
+charge(b, 3);
+r = sweepTwa(b, 60, -60);
+r = sweepTwa(b, -60, 60);
+assert(r.seen.join() === "tack-" && pendingPenaltyCount(b) === 1, "tack, tack back does not clear");
+assert(penaltyManeuverView(b).first === "tack" && penaltyManeuverView(b).dir === -1, "the tack back is the new candidate");
+// Tack, tack, gybe: clears on the gybe. The second tack and the gybe are
+// consecutive and the same rotation (clockwise), so that pair is valid on
+// its own; the first tack was discarded when the second replaced it.
+r = sweepTwa(b, 60, 240);
+assert(r.seen.join() === "gybe-" && r.clears === 1 && pendingPenaltyCount(b) === 0, "tack, tack, gybe clears on the gybe (last tack + gybe is a valid pair)");
+
+// Gybe, gybe back, tack: the same rule from the other side.
+b = fresh(120);
+charge(b, 4);
+sweepTwa(b, 120, 240);
+r = sweepTwa(b, 240, 120);
+assert(r.seen.join() === "gybe+" && pendingPenaltyCount(b) === 1, "gybe, gybe back does not clear");
+r = sweepTwa(b, 120, -60);
+assert(r.seen.join() === "tack+" && r.clears === 1, "gybe, gybe, tack clears on the tack (last gybe + tack is a valid pair)");
+
+// Outside the window: the first maneuver expires, the second becomes the
+// candidate, and a prompt third one pairs with it.
+b = fresh(60);
+charge(b, 5);
+sweepTwa(b, 60, -60);
+hold(b, -60, PENALTY_MANEUVER_WINDOW_S + 0.5);
+assert(penaltyManeuverView(b).first === null, "a candidate older than the window is dropped");
+r = sweepTwa(b, -60, -240);
+assert(r.seen.join() === "gybe+" && r.clears === 0 && pendingPenaltyCount(b) === 1, "a gybe after the window does not clear");
+assert(penaltyManeuverView(b).first === "gybe", "the late gybe starts a new candidate");
+r = sweepTwa(b, -240, -420);
+assert(r.clears === 1 && pendingPenaltyCount(b) === 0, "a tack soon after that gybe clears");
+// Just inside the window still counts. Sweeping 180° at 2° a step is 3 s.
+b = fresh(60);
+charge(b, 6);
+sweepTwa(b, 60, -60);
+const sweepS = 90 * SIM_STEP_S;
+hold(b, -60, PENALTY_MANEUVER_WINDOW_S - sweepS - 0.5);
+r = sweepTwa(b, -60, -240);
+assert(r.clears === 1, "a gybe just inside the window clears");
+
+// No pending penalty: maneuvers do nothing, and do not carry into a charge.
+b = fresh(60);
+r = sweepTwa(b, 60, -60);
+r = sweepTwa(b, -60, -240);
+assert(r.seen.join() === "gybe+" && r.clears === 0, "with nothing pending a tack + gybe clears nothing");
+assert(penaltyManeuverView(b).first === null && pendingPenaltyCount(b) === 0, "nothing pending keeps no candidate and invents no penalty");
+charge(b, 7);
+r = sweepTwa(b, -240, -420);
+assert(r.seen.join() === "tack+" && r.clears === 0, "a gybe sailed before the charge does not pair with a tack after it");
+r = sweepTwa(b, -420, -600);
+assert(r.clears === 1, "tack + gybe after the charge clears");
+
+// Stacking: two pending need two pairs. The maneuver that completes a pair
+// is used up, so tack, gybe, tack clears only once.
+b = fresh(60);
+charge(b, 8);
+charge(b, 9);
+assert(faultText([b], 0) === "FAULT x2", "two pending show FAULT x2");
+sweepTwa(b, 60, -60);
+sweepTwa(b, -60, -240);
+assert(pendingPenaltyCount(b) === 1, "first pair clears one of two");
+r = sweepTwa(b, -240, -420);
+assert(r.clears === 0 && pendingPenaltyCount(b) === 1, "the next tack alone does not clear the second");
+r = sweepTwa(b, -420, -600);
+assert(r.clears === 1 && pendingPenaltyCount(b) === 0, "a second full pair clears the second");
+assert(pendingPenaltiesOf(b).length === 0, "queue empty");
+
+// Hysteresis: wobbling inside the band around 0° is not a maneuver, and a
+// noisy crossing counts once. Same at 180°.
+const band = PENALTY_MANEUVER_HYST_DEG;
+b = fresh(60);
+charge(b, 10);
+r = sweepTwa(b, 60, band / 2);
+for (let i = 0; i < 20; i++) notePenaltyManeuver(b, (i % 2 ? 1 : -1) * band / 2, { nowMs: 0 });
+r = sweepTwa(b, band / 2, 60);
+assert(r.seen.length === 0 && penaltyManeuverView(b).first === null, "a luff that flickers across head to wind and falls back is not a tack");
+let seen = [];
+r = sweepTwa(b, 60, -band * 0.8); seen.push(...r.seen);
+for (let i = 0; i < 30; i++) {
+  const x = notePenaltyManeuver(b, (i % 2 ? 1 : -1) * band * 0.8, { nowMs: 0 });
+  if (x.maneuver) seen.push(x.maneuver.kind);
+}
+r = sweepTwa(b, -band * 0.8, -60); seen.push(...r.seen);
+assert(seen.length === 1 && seen[0].startsWith("tack"), "a noisy crossing of head to wind is one tack, got " + seen);
+seen = [];
+r = sweepTwa(b, -60, -180 + band * 0.8); seen.push(...r.seen);
+for (let i = 0; i < 30; i++) {
+  const x = notePenaltyManeuver(b, (i % 2 ? 1 : -1) * (180 - band * 0.8), { nowMs: 0 });
+  if (x.maneuver) seen.push(x.maneuver.kind);
+}
+r = sweepTwa(b, -180 + band * 0.8, -240); seen.push(...r.seen);
+assert(seen.length === 1 && seen[0].startsWith("gybe"), "a noisy crossing of dead downwind is one gybe, got " + seen);
+assert(pendingPenaltyCount(b) === 0, "that tack + gybe cleared the penalty");
 
 // Both tacking: hulls touch, no single fault boat, no penalty.
 resetRule15Memory();
@@ -251,65 +341,50 @@ step([port, starboard], t);
 assert(getIncidents().length === 0, "both tacking records no incident");
 assert(pendingPenaltyCount(port) === 0 && pendingPenaltyCount(starboard) === 0, "both tacking charges no penalty");
 
-// --- Autopilot CW and CCW, same clear path ---
+// --- Boat wiring: TWA comes from Map.get_wind ---
 
-function makeSailingBoat(x, y, hullAngle) {
+function makeSailingBoat(x, y, hullAngle, speed = 2.2) {
   const own = new World(Vec2(0, 0));
   const map = { world: own, get_wind: getWind };
   const boat = new Boat(map, x, y, hullAngle);
   const fwd = headingForward(hullAngle);
-  boat.physics_model.setLinearVelocity(Vec2(fwd.x * 2.2, fwd.y * 2.2));
+  boat.physics_model.setLinearVelocity(Vec2(fwd.x * speed, fwd.y * speed));
   boat._world = own;
   return boat;
 }
 
-function sailByMethod(boat, dir, degrees, stepDeg) {
-  const start = boat.hull_angle;
-  const n = Math.round(degrees / stepDeg);
+// Wind from 90° (+Y), so TWA = 180° − heading. Heading 90° → 270° tacks at
+// 180°; 270° → 450° gybes at 360°.
+function turnHeading(boat, fromDeg, toDeg, stepDeg = 2) {
+  const n = Math.ceil(Math.abs(toDeg - fromDeg) / stepDeg);
   for (let i = 1; i <= n; i++) {
-    boat.hull_angle = start + dir * i * stepDeg * Math.PI / 180;
-    boat.samplePenaltyHeading();
+    boat.hull_angle = (fromDeg + (toDeg - fromDeg) * i / n) * Math.PI / 180;
+    updatePenaltyManeuvers(boat, { nowMs: 0 });
   }
 }
 
-const cwBoat = makeSailingBoat(20, 0, 0);
-chargePendingPenalty(cwBoat, { time: 4, finalRule: "Rule 10", faultBoat: cwBoat });
-cwBoat.samplePenaltyHeading();
-cwBoat.input_penalty_turn_cw();
-assert(cwBoat.penalty_turn && cwBoat.penalty_turn.dir === -1, "CW autopilot aims to decrease heading");
-sailByMethod(cwBoat, -1, 100, 5);
-const cwPartial = penaltyTurnView(cwBoat).progressDeg;
-assert(cwPartial < -90, "CW autopilot progress follows the decreasing heading");
-cwBoat.input_penalty_turn_cw();
-assert(Math.abs(penaltyTurnView(cwBoat).progressDeg - cwPartial) < 1e-6, "the same CW key again does not restart the circle");
-sailByMethod(cwBoat, -1, PENALTY_TURN_COMPLETE_DEG - 100, 5);
-assert(pendingPenaltyCount(cwBoat) === 0, "CW autopilot clears one pending penalty");
-assert(cwBoat.penalty_turn === null, "CW autopilot ends when the circle completes");
+const wired = makeSailingBoat(40, 0, Math.PI / 2);
+charge(wired, 11);
+turnHeading(wired, 90, 90);
+turnHeading(wired, 90, 270);
+assert(penaltyManeuverView(wired).first === "tack", "heading through the wind-from bearing is a tack via Map.get_wind");
+turnHeading(wired, 270, 450);
+assert(pendingPenaltyCount(wired) === 0, "continuing round through dead downwind is the gybe that clears");
 
-const ccwBoat = makeSailingBoat(24, 0, 0);
-chargePendingPenalty(ccwBoat, { time: 5, finalRule: "Rule 10", faultBoat: ccwBoat });
-chargePendingPenalty(ccwBoat, { time: 6, finalRule: "Rule 10", faultBoat: ccwBoat });
-assert(pendingPenaltyCount(ccwBoat) === 2, "two charges stack before the autopilot");
-ccwBoat.samplePenaltyHeading();
-ccwBoat.input_penalty_turn_ccw();
-assert(ccwBoat.penalty_turn && ccwBoat.penalty_turn.dir === 1, "CCW autopilot aims to increase heading");
-sailByMethod(ccwBoat, 1, PENALTY_TURN_COMPLETE_DEG, 5);
-assert(pendingPenaltyCount(ccwBoat) === 1, "CCW autopilot clears one of two");
-assert(ccwBoat.penalty_turn === null, "CCW autopilot ends on the completing sample");
-assert(pendingPenaltiesOf(ccwBoat)[0].incident.time === 6, "CCW also clears FIFO, leaving the later charge");
+// --- Q/E autopilot: cancel keys ---
 
-// Helm cancels the autopilot. The circle already sailed stays available to
-// finish by hand.
 const hand = makeSailingBoat(28, 0, 0);
-chargePendingPenalty(hand, { time: 7, finalRule: "Rule 10", faultBoat: hand });
-hand.samplePenaltyHeading();
+charge(hand, 12);
 hand.input_penalty_turn_ccw();
-sailByMethod(hand, 1, 90, 5);
+assert(hand.penalty_turn && hand.penalty_turn.dir === 1, "CCW autopilot aims to increase heading");
+const handStart = hand.penalty_turn;
+hand.input_penalty_turn_ccw();
+assert(hand.penalty_turn === handStart, "the same key again does not restart the circle");
 hand.input_rudder_left();
 assert(hand.penalty_turn === null, "rudder left cancels the penalty autopilot");
 assert(pendingPenaltyCount(hand) === 1, "cancelling does not clear the penalty");
-assert(penaltyTurnView(hand).locked === true, "the arc sailed before the cancel still counts");
 hand.input_penalty_turn_cw();
+assert(hand.penalty_turn && hand.penalty_turn.dir === -1, "CW autopilot aims to decrease heading");
 hand.input_autopilot_heading_increase();
 assert(hand.penalty_turn === null, "heading keys cancel the penalty autopilot");
 hand.input_penalty_turn_ccw();
@@ -322,16 +397,7 @@ hand.input_penalty_turn_ccw();
 hand.input_rudder_right();
 assert(hand.penalty_turn === null, "rudder right cancels the penalty autopilot");
 
-// No penalty: the autopilot still sails the circle and then drops the flag.
-const practice = makeSailingBoat(32, 0, 0);
-practice.samplePenaltyHeading();
-practice.input_penalty_turn_cw();
-sailByMethod(practice, -1, PENALTY_TURN_COMPLETE_DEG, 5);
-assert(practice.penalty_turn === null, "a practice circle ends with nothing to clear");
-assert(pendingPenaltyCount(practice) === 0, "a practice circle does not invent a penalty");
-
-// The rudder command has to yaw the hull the way the key asked. This is the
-// sign check; the circle above is what clears the penalty.
+// The rudder command has to yaw the hull the way the key asked.
 function yawOver(boat, frames) {
   const h0 = boat.physics_model.getAngle();
   for (let i = 0; i < frames; i++) {
@@ -342,39 +408,111 @@ function yawOver(boat, frames) {
 }
 
 const yawCw = makeSailingBoat(-20, 10, -Math.PI / 2);
-chargePendingPenalty(yawCw, { time: 8, finalRule: "Rule 10", faultBoat: yawCw });
+charge(yawCw, 13);
 yawCw.input_penalty_turn_cw();
-const cwYaw = yawOver(yawCw, 120);
+const cwYaw = yawOver(yawCw, 60);
 assert(cwYaw < -15, "CW autopilot decreases hull angle, got " + cwYaw.toFixed(1) + "°");
 
 const yawCcw = makeSailingBoat(-20, -10, -Math.PI / 2);
-chargePendingPenalty(yawCcw, { time: 9, finalRule: "Rule 10", faultBoat: yawCcw });
+charge(yawCcw, 14);
 yawCcw.input_penalty_turn_ccw();
-const ccwYaw = yawOver(yawCcw, 120);
+const ccwYaw = yawOver(yawCcw, 60);
 assert(ccwYaw > 15, "CCW autopilot increases hull angle, got " + ccwYaw.toFixed(1) + "°");
 
-// Keep steering until the shared heading integrator clears the penalty.
-// 20 s of simulation is enough for a beam-reach boat with the rudder held over.
-function sailUntilClear(boat, frames) {
-  for (let i = 0; i < frames; i++) {
+// --- Q/E autopilot: full circle, no overshoot, exactly one clear ---
+
+// Sail the circle, then HOLD_S more on the heading autopilot. Heading is
+// Planck's unwrapped angle, so overshoot is how far past ±360° it went.
+const HOLD_S = 5;
+function runCircle(h0, dir, pending, speed = 2.2) {
+  const boat = makeSailingBoat(0, 0, h0, speed);
+  for (let i = 0; i < pending; i++) charge(boat, 20 + i);
+  dir > 0 ? boat.input_penalty_turn_ccw() : boat.input_penalty_turn_cw();
+  const start = boat.physics_model.getAngle();
+  let count = pendingPenaltyCount(boat);
+  let clears = 0;
+  let doneFrame = -1;
+  let errAtDone = NaN;
+  let maxOver = -Infinity;
+  const limit = 30 * 30;
+  for (let i = 0; i < limit; i++) {
     boat.physics_model_step();
     boat._world.step(1 / 30, 8, 3);
-    if (pendingPenaltyCount(boat) === 0 && !boat.penalty_turn) return i;
+    const turned = (boat.physics_model.getAngle() - start) * 180 / Math.PI;
+    maxOver = Math.max(maxOver, dir * turned - 360);
+    const now = pendingPenaltyCount(boat);
+    if (now < count) clears += count - now;
+    count = now;
+    if (doneFrame < 0 && !boat.penalty_turn) {
+      doneFrame = i;
+      errAtDone = turned - dir * 360;
+    }
+    if (doneFrame >= 0 && i - doneFrame >= HOLD_S * 30) break;
   }
-  return -1;
+  const finalErr = (boat.physics_model.getAngle() - start) * 180 / Math.PI - dir * 360;
+  return { boat, doneFrame, errAtDone, finalErr, maxOver, clears, left: pendingPenaltyCount(boat) };
 }
 
-const physCw = makeSailingBoat(0, 12, -Math.PI / 2);
-chargePendingPenalty(physCw, { time: 10, finalRule: "Rule 10", faultBoat: physCw });
-physCw.input_penalty_turn_cw();
-const cwFrame = sailUntilClear(physCw, 600);
-assert(cwFrame >= 0, "CW rudder autopilot completes a circle and clears");
+function fmt(res) {
+  return "done " + (res.doneFrame * SIM_STEP_S).toFixed(1) + " s, error at hand-off " + res.errAtDone.toFixed(2)
+    + "°, after " + HOLD_S + " s hold " + res.finalErr.toFixed(2) + "°, max past 360° " + res.maxOver.toFixed(2) + "°";
+}
 
-const physCcw = makeSailingBoat(0, -12, -Math.PI / 2);
-chargePendingPenalty(physCcw, { time: 11, finalRule: "Rule 10", faultBoat: physCcw });
-physCcw.input_penalty_turn_ccw();
-const ccwFrame = sailUntilClear(physCcw, 600);
-assert(ccwFrame >= 0, "CCW rudder autopilot completes a circle and clears");
+// Scenario 10's start: starboard beam reach, heading −90°, 2.2 m/s.
+const summary = [];
+for (const dir of [-1, 1]) {
+  const res = runCircle(-Math.PI / 2, dir, 1);
+  const name = dir < 0 ? "CW" : "CCW";
+  assert(res.doneFrame >= 0, name + " autopilot finishes the circle");
+  assert(Math.abs(res.errAtDone) <= 3, name + " hands back within ±3° of the start heading, got " + res.errAtDone.toFixed(2));
+  assert(Math.abs(res.finalErr) <= 3, name + " holds the start heading afterwards, got " + res.finalErr.toFixed(2));
+  assert(res.maxOver <= 3, name + " does not overshoot 360° by more than 3°, got " + res.maxOver.toFixed(2));
+  assert(res.clears === 1 && res.left === 0, name + " clears exactly one penalty");
+  assert(res.boat.autopilot_enabled === true, name + " leaves the heading autopilot holding");
+  summary.push(name + ": " + fmt(res));
+}
+
+// Other start headings and a slow boat: still within ±3°, one clear each.
+// Two pending, so a second clear in one circle would show.
+let worstErr = 0;
+let worstOver = -Infinity;
+for (const deg of [90, 135, 225, 17, -52, 126]) {
+  for (const dir of [-1, 1]) {
+    for (const speed of [2.2, 1.0]) {
+      const res = runCircle(deg * Math.PI / 180, dir, 2, speed);
+      const name = (dir < 0 ? "CW" : "CCW") + " from " + deg + "° at " + speed + " m/s";
+      assert(res.doneFrame >= 0, name + " finishes");
+      assert(Math.abs(res.errAtDone) <= 3 && Math.abs(res.finalErr) <= 3, name + " ends within ±3°: " + fmt(res));
+      assert(res.maxOver <= 3, name + " overshoot " + res.maxOver.toFixed(2));
+      assert(res.clears === 1 && res.left === 1, name + " clears exactly one of two");
+      worstErr = Math.max(worstErr, Math.abs(res.errAtDone), Math.abs(res.finalErr));
+      worstOver = Math.max(worstOver, res.maxOver);
+    }
+  }
+}
+
+// Stacking with the autopilot: a second circle takes the second penalty.
+{
+  const res = runCircle(-Math.PI / 2, 1, 2);
+  assert(res.left === 1, "one circle leaves one of two");
+  const boat = res.boat;
+  boat.input_penalty_turn_ccw();
+  for (let i = 0; i < 30 * 30 && boat.penalty_turn; i++) {
+    boat.physics_model_step();
+    boat._world.step(1 / 30, 8, 3);
+  }
+  assert(boat.penalty_turn === null && pendingPenaltyCount(boat) === 0, "a second circle clears the second");
+}
+
+// No penalty: the autopilot still sails the circle, ends, and clears nothing.
+{
+  const res = runCircle(-Math.PI / 2, -1, 0);
+  assert(res.doneFrame >= 0 && res.clears === 0 && res.left === 0, "a practice circle ends with nothing to clear");
+  assert(Math.abs(res.finalErr) <= 3, "a practice circle also stops on the start heading");
+}
 
 console.log("penalty turn checks passed");
-console.log("yaw CW " + cwYaw.toFixed(1) + "°  CCW " + ccwYaw.toFixed(1) + "°");
+console.log("window " + PENALTY_MANEUVER_WINDOW_S + " s, hysteresis band ±" + PENALTY_MANEUVER_HYST_DEG + "°");
+console.log("yaw after 2 s: CW " + cwYaw.toFixed(1) + "°  CCW " + ccwYaw.toFixed(1) + "°");
+for (const line of summary) console.log(line);
+console.log("other starts (24 runs): worst heading error " + worstErr.toFixed(2) + "°, worst past 360° " + worstOver.toFixed(2) + "°");
