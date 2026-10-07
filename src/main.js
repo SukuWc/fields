@@ -6,10 +6,10 @@ import { trackBoats } from './domainTrack.js';
 import { Map } from './map.js';
 import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera } from './renderer.js';
-import { setupControls, getPlayers, getPhysicsFrame, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
+import { setupControls, getPlayers, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
-import { sectionAOverlay } from './rules.js';
 import { SAIL_LATTICE_COUPLING } from './boat.js';
+import { beginRule15Step, contactGuides, evaluateAllPairs, recordContacts, trueWindAngleDeg } from './rules.js';
 
 const map_w = 75;
 const map_h = 75;
@@ -35,7 +35,7 @@ const dataTextureMaterial = new THREE.DataTexture(_data1, _side1, _side2, THREE.
 dataTextureMaterial.magFilter = THREE.NearestFilter;
 dataTextureMaterial.needsUpdate = true;
 
-const planeMat = new THREE.MeshBasicMaterial({ map: dataTextureMaterial, transparent: true });
+const planeMat = new THREE.MeshBasicMaterial({ map: dataTextureMaterial });
 planeMat.needsUpdate = true;
 
 // Core simulation instances
@@ -59,10 +59,17 @@ startAnimation(map, () => guides);
 const infoEl = document.getElementById('info');
 const distInfoEl = document.getElementById('dist_info');
 
-// Physics loop
+// Physics loop. Rule 15's room window uses this clock, not wall time.
+// Runner.step is 1/30 s and is passed in only when world.step actually ran.
+// The same callback also fires once per animation frame with no argument;
+// that redraw must not move the clock (a pause, or a slow frame, neither
+// grants room nor eats it).
 const runner = new Runner(map.world, { speed: 1, fps: 30 });
+let rulesTime = 0;
 
-runner.start(() => {
+runner.start((simDt) => {
+  if (typeof simDt === 'number' && Number.isFinite(simDt) && simDt > 0) rulesTime += simDt;
+  beginRule15Step(rulesTime);
   guides = [];
 
   // Smooth circle per boat disk. A field island has a mask and no disk, so
@@ -137,14 +144,26 @@ runner.start(() => {
     infoEl.innerHTML += "Phys Time: " + bm.t_delta + "<br>";
   });
 
-  // Section A overlay. map.get_wind follows the active provider, so the same
-  // call is constant wind in dev mode and the lattice otherwise.
+  // Rules overlay. map.get_wind follows the active provider, so the same
+  // call is constant wind in dev mode and the lattice otherwise. Every
+  // unordered pair inside 12 m is evaluated; nothing here assumes two boats.
   const racing = getPlayers();
   for (let i = 0; i < racing.length; i++) {
-    for (let j = i + 1; j < racing.length; j++) {
-      guides.push(...sectionAOverlay(racing[i], racing[j], (x, y) => map.get_wind(x, y)));
-    }
+    const sample = map.get_wind(racing[i].x, racing[i].y);
+    const from = sample && Number.isFinite(sample.direction) ? sample.direction : null;
+    const twa = from === null ? null : trueWindAngleDeg(racing[i].hull_angle, from);
+    const onto = racing[i].tacking && racing[i].tackingOnto ? ' onto ' + racing[i].tackingOnto : '';
+    const twaText = twa === null ? '?' : String(Math.round(twa));
+    infoEl.innerHTML += 'Boat ' + i + ' TWA ' + twaText + (racing[i].tacking ? ' tacking' + onto : '') + '<br>';
   }
+  const getWind = (x, y) => map.get_wind(x, y);
+  const resolutions = evaluateAllPairs(racing, getWind, rulesTime);
+  for (let i = 0; i < resolutions.length; i++) {
+    const pairGuides = resolutions[i].guides;
+    if (pairGuides && pairGuides.length) guides.push(...pairGuides);
+  }
+  recordContacts(resolutions, rulesTime, racing);
+  guides.push(...contactGuides());
 
   // Dynamic domain placement: one reusable window per boat, plus a field
   // window where curl stays high away from every boat. Each boat level is a

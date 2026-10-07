@@ -6,7 +6,7 @@
   "scripts": {
     "start": "vite",
     "test": "node --import ./test/register.mjs test/amr.test.mjs && node --import ./test/register.mjs test/curl-mask.test.mjs && node --import ./test/register.mjs test/edge-transition.test.mjs && node --import ./test/register.mjs test/wind-stability.test.mjs",
-    "build": "vite build --base=/fields"
+    "build": "vite build"
   },
   "repository": {
     "type": "git",

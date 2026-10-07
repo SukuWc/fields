@@ -1,5 +1,6 @@
 import planck, { random } from 'planck-js/dist/planck-with-testbed';
 import { aeroCoefficients } from './utils.js';
+import { updateTackingState } from './rules.js';
 
 // Lattice momentum per frame = sail reaction × SAIL_LATTICE_COUPLING.
 //
@@ -115,6 +116,9 @@ export class Boat{
     this.autopilot_compensator_sum_error = 0;
 
     this.twa = 0;
+    // Rule 13. updateTackingState maintains these from Map.get_wind each step.
+    this.tacking = false;
+    this.tackingOnto = null;
 
     this.physics_model_init()
 
@@ -281,6 +285,7 @@ export class Boat{
 
     this.awa = awa;
     this.twa = twa;
+    updateTackingState(this);
 
 
     // fake motor
