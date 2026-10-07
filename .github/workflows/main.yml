@@ -1,20 +1,45 @@
+# Production deploy. Pushes to any other branch must not publish here:
+# they used to run this workflow and overwrite the live site.
+#
+# Pages source is the gh-pages branch (Settings → Pages → Deploy from branch).
+# clean-exclude keeps pr-preview/ in place. force: false rebases onto other
+# commits on gh-pages (PR previews) instead of force-pushing them away.
 name: Build and Deploy
-on: [push]
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-production
+  cancel-in-progress: false
+
 jobs:
   build-and-deploy:
-    concurrency: ci-${{ github.ref }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout 🛎️
-        uses: actions/checkout@v2
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Install and Build 🔧
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install and Build
         run: |
           npm ci
           npm run build
 
-      - name: Deploy 🚀
-        uses: JamesIves/github-pages-deploy-action@v4.2.2
+      - name: Deploy
+        uses: JamesIves/github-pages-deploy-action@v4.7.4
         with:
-          branch: gh-pages # The branch the action should deploy to.
-          folder: dist # The folder the action should deploy.
+          branch: gh-pages
+          folder: dist
+          clean-exclude: pr-preview/
+          force: false

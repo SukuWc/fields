@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm install        # Install dependencies
 npm start          # Start dev server (Vite, hot reload, typically http://localhost:5173)
 npm test           # Headless AMR coupling checks (node test/amr.test.mjs)
-npm run build      # Production build with base path /fields (output: dist/)
+npm run build      # Production build, Vite base /fields/ (output: dist/). PR previews set VITE_BASE_PATH.
 ```
 
 ## Dependency notes
