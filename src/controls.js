@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Boat } from './boat.js';
-import { resetContacts } from './rules.js';
+import { chargePendingPenalty, PENALTY_MANEUVER_WINDOW_S, resetContacts } from './rules.js';
 import { range_map } from './utils.js';
 
 let key_bind_list = [];
@@ -12,8 +12,18 @@ let physics_frame = 0;
 
 let _map, _getCamera, _bm;
 
+function typingInControl(e) {
+  const target = e && e.target;
+  if (!target || !target.tagName) return false;
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
+}
+
 function checkKeyPress(e) {
   e = e || window.event;
+  // Letter keys (Q, E) also sit on the settings panel. Ignore them, and the
+  // helm keys, while a control has focus so typing does not steer the boat.
+  if (typingInControl(e)) return;
   key_state[e.keyCode] = true;
   key_bind_list.forEach(bind => {
     if (bind.type === "KEYDOWN" && key_state[bind.activation_key] && (key_state[bind.prohibition_key] === false || key_state[bind.prohibition_key] === undefined)) {
@@ -124,7 +134,7 @@ function renderScenarioCard(scenario) {
     bodyEl.textContent = scenario.description || "";
   } else {
     titleEl.textContent = "No scenario";
-    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 9 each have a description.";
+    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 10 each have a description.";
   }
   card.classList.toggle("collapsed", scenarioCardCollapsed);
   if (toggle) {
@@ -149,6 +159,10 @@ function autokeybind(players) {
     key_bind_list.push({type: "PRESSED", activation_key: 38, prohibition_key: 40, object: players[0], input_handler: players[0].input_autopilot_heading_decrease.name});
     key_bind_list.push({type: "KEYDOWN", activation_key: 32, prohibition_key: -1, object: players[0], input_handler: players[0].input_autopilot_enabled_toggle.name});
     key_bind_list.push({type: "KEYDOWN", activation_key: 13, prohibition_key: -1, object: players[0], input_handler: players[0].input_autopilot_tack_toggle.name});
+    // Q counter-clockwise, E clockwise. Separate keys: holding one does not
+    // flip the other, and a repeat of the same key does not restart the turn.
+    key_bind_list.push({type: "KEYDOWN", activation_key: 81, prohibition_key: 69, object: players[0], input_handler: players[0].input_penalty_turn_ccw.name});
+    key_bind_list.push({type: "KEYDOWN", activation_key: 69, prohibition_key: 81, object: players[0], input_handler: players[0].input_penalty_turn_cw.name});
   }
 
   if (players[1] !== undefined) {
@@ -265,7 +279,7 @@ scenarios[6].frames[90] = () => { players[0].input_autopilot_tack_toggle(); };
 // ?devmode=1&scenario_selector=7
 scenarios[7] = makeScenario(
   "Rule 10 collision, port boat at fault",
-  "Both boats start on port close-hauled; the windward boat bears away onto a port beam reach and sails across, and the leeward boat tacks to gain starboard. Rule 13 applies during the tack. On reaching close-hauled, Rule 15 briefly blocks Rule 10. Then Rule 10 applies and the port-tack boat collides and gets the fault."
+  "Both boats start on port close-hauled; the windward boat bears away onto a port beam reach and sails across, and the leeward boat tacks to gain starboard. Rule 13 applies during the tack. On reaching close-hauled, Rule 15 briefly blocks Rule 10. Then Rule 10 applies and the port-tack boat collides and gets the fault. She keeps the FAULT badge until she tacks and gybes in a row (one turn). Steer her with A and D. Q and E are boat 0's autopilot circles; scenario 10 starts boat 0 already charged so you can try them."
 );
 scenarios[7].frames[0] = () => {
   // Both port close-hauled. Boat 1 is upwind and to port (windward).
@@ -380,6 +394,36 @@ scenarios[9].frames[2] = () => {
 for (let frame = 8; frame <= 220; frame++) {
   scenarios[9].frames[frame] = () => { players[1].motor_input = 1; };
 }
+
+// One boat, already charged, so the penalty can be sailed without waiting
+// for a collision. Wind-from defaults to +Y. She starts on a starboard beam
+// reach with way on. The FAULT badge stays until a tack and a gybe in a row
+// (rules.js PENALTY_MANEUVER_WINDOW_S). Q and E are boat 0.
+// Dev mode: ?devmode=1&scenario_selector=10
+scenarios[10] = makeScenario(
+  "Penalty turn: tack + gybe, one pending fault",
+  "Boat 0 starts with one pending penalty (red FAULT badge). To take it, tack and then gybe, or gybe and then tack, with no other tack or gybe in between and the second within " + PENALTY_MANEUVER_WINDOW_S + " s of the first. That is one turn in one direction. Steer by hand with the left and right arrows; the amber label shows which half is done and the seconds left (Tack ✓ · Gybe … 7.2s). A tack back (or a second gybe) becomes the new first half; running out of time starts over. Or press Q for an autopilot circle counter-clockwise, E for clockwise: it eases off and stops on the heading it started from, then holds that heading. One tack + gybe clears one penalty, then CLEARED flashes; a second fault needs a second pair. Left or right arrow, up or down arrow, Enter, or Space cancels the autopilot and gives you the helm. Holding Q or E does not restart it."
+);
+scenarios[10].frames[0] = () => {
+  // Starboard beam reach (TWA -90°) with way on, in open water.
+  const heading = -Math.PI / 2;
+  // Sailing toward −X. Start east of center so camera follow (clamped at
+  // ±30) still has her in frame while you read the card and press Q or E.
+  // The autopilot circle itself stays within a few metres of where it starts.
+  const boat = new Boat(_map, 18, 0, heading);
+  players.push(boat);
+  boat.physics_model.setLinearVelocity({ x: -2.2, y: 0 });
+  chargePendingPenalty(boat, { time: 0, finalRule: 'penalty', faultBoat: boat });
+};
+scenarios[10].frames[1] = () => {
+  autokeybind(players);
+  const follow = document.getElementById('camera_follow');
+  if (follow && !follow.checked) {
+    follow.checked = true;
+    follow.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  _map.camera_zoom = 16;
+};
 
 export function setupControls(map, getCamera, bm) {
   _map = map;
