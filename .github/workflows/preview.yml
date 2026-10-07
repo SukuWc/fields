@@ -1,0 +1,66 @@
+# Deploy a per-PR preview into gh-pages/pr-preview/pr-<N>/ and leave one
+# sticky comment with the URL. A new push updates that comment and folder.
+# Closing the PR removes the folder and updates the comment.
+#
+# Fork pull requests are skipped. GITHUB_TOKEN on a fork is read-only, so
+# the job cannot push to this repo's gh-pages branch or comment on the PR.
+# rossjrw/pr-preview-action does not support fork previews until its v2.
+#
+# Repository settings this depends on:
+# - Settings → Pages → Build and deployment → Source: Deploy from a branch,
+#   branch gh-pages, folder / (root). The "GitHub Actions" Pages source does
+#   not publish this branch and will not serve the previews.
+# - Settings → Actions → General → Workflow permissions → Read and write
+#   permissions. A workflow `permissions` block cannot exceed that cap, so
+#   contents: write below is not enough on its own when the repo is read-only.
+name: Deploy PR previews
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - closed
+
+# One group per PR. A newer push cancels a stale deploy so the sticky
+# comment matches the latest commit. Production uses pages-production in
+# main.yml; both jobs push to gh-pages with force: false.
+concurrency:
+  group: pr-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  deploy-preview:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install and build
+        if: github.event.action != 'closed'
+        env:
+          # Same path the preview action publishes under the project site.
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/pr-preview/pr-${{ github.event.pull_request.number }}/
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy preview
+        uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: dist
+          preview-branch: gh-pages
+          umbrella-dir: pr-preview
+          action: auto

@@ -6,6 +6,12 @@
     <title>New webpage</title>
   
     <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        height: 100%;
+      }
 
 #info {
         position: absolute;
@@ -144,7 +150,7 @@
     </style>
   
   </head>
-  <body style="padding:0px; margin:0px">  
+  <body>
 
     <div id="scenario_card">
       <div id="scenario_card_head">
@@ -220,10 +226,6 @@
 
     </div>
 
-    <canvas id="theCanvas" width="300" height="120" style="position: absolute; z-index: -10">This application runs only in modern
-      browsers. For best results, use Google Chrome.
-    </canvas>
-    
     <script type="module" src="./src/main.js"></script>
 
     

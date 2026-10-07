@@ -98,6 +98,9 @@ function dispatchControl(el) {
 
 function replaceQuery(params) {
   const qs = params.toString();
+  // pathname already includes the Pages folder (/fields/, or a PR preview
+  // under /fields/pr-preview/pr-<N>/). Replacing only the query keeps that
+  // prefix; an absolute "/" would drop the app out of its subfolder.
   const next = window.location.pathname + (qs ? "?" + qs : "") + window.location.hash;
   const current = window.location.pathname + window.location.search + window.location.hash;
   if (next === current) return;
