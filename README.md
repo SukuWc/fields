@@ -46,7 +46,7 @@ Last updated: 2026-10-06
 - [ ] Rule 18
 - [ ] Rule 31
 - [ ] Rule 28
-- [ ] Penalties and exoneration (partial: [#12](https://github.com/SukuWc/fields/pull/12) assigns fault on contact)
+- [ ] Penalties and exoneration (partial: [#12](https://github.com/SukuWc/fields/pull/12) assigns fault on contact; 360° penalty turn in progress, [#20](https://github.com/SukuWc/fields/pull/20))
 - [ ] Incident log (partial: [#12](https://github.com/SukuWc/fields/pull/12) stores contact incidents and a FAULT badge)
 - [ ] Rule-stack labels (partial: [#12](https://github.com/SukuWc/fields/pull/12) shows the active rule and inhibited rules)
 
