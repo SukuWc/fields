@@ -6,7 +6,7 @@
 
 ## Roadmap
 
-Last updated: 2026-10-07
+Last updated: 2026-10-08
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -17,8 +17,8 @@ Last updated: 2026-10-07
 - [x] Guide and hull lines no longer vanish as the camera follows the boat: [#22](https://github.com/SukuWc/fields/pull/22)
 
 ### 2. Wind and boat feel
-- [ ] Fluid sim on (in progress, [#9](https://github.com/SukuWc/fields/pull/9))
-- [ ] Per-boat wind shadow / dirty air
+- [x] Fluid sim on, stable from wind 5 through 25 with the sail wake on the fine grid: [#9](https://github.com/SukuWc/fields/pull/9)
+- [ ] Per-boat wind shadow / dirty air (partial: [#9](https://github.com/SukuWc/fields/pull/9) gives each boat a sail wake, so a downwind boat reads slower true wind)
 - [ ] Strategy tuning
 
 ### 3. Multiplayer open water
