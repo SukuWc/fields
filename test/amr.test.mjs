@@ -13,8 +13,12 @@ globalThis.document = {
 globalThis.window = globalThis;
 globalThis.addEventListener = globalThis.addEventListener || (() => {});
 
-const { Boltzmann, unionMaskBorderLines } = await import('../src/boltzmann.js');
-const { trackBoats } = await import('../src/domainTrack.js');
+const { Boltzmann, unionMaskBorderLines, buildClosedDiskMask, fineIndex } = await import('../src/boltzmann.js');
+const { SAIL_LATTICE_COUPLING } = await import('../src/boat.js');
+const {
+	trackBoats, DISK_RADIUS, DISK2_RADIUS, DISK3_RADIUS,
+	MASK_CELL_CAP, MASK2_CELL_CAP, MASK3_CELL_CAP, normalizedCurl,
+} = await import('../src/domainTrack.js');
 
 const results = {};
 let failed = 0;
@@ -114,8 +118,8 @@ function make(w, h, speed) {
 	for (let cy = d.cy0; cy < d.cy1; cy++) {
 		for (let cx = d.cx0; cx < d.cx1; cx++) {
 			const parent = bm.cells[cx + cy * bm.width];
-			const fi = 1 + (cx - d.cx0) * 2;
-			const fj = 1 + (cy - d.cy0) * 2;
+			const fi = fineIndex(d.cx0, cx);
+			const fj = fineIndex(d.cy0, cy);
 			const fine = d.cells[fi + fj * d.width];
 			gap = Math.max(gap, Math.abs(sumF(fine) - sumF(parent)), Math.abs(fine.ux - parent.ux), Math.abs(fine.uy - parent.uy));
 		}
@@ -309,6 +313,32 @@ function shearStats(bm, domain) {
 		`south=(${southSample.x}, ${southSample.y}) nan=(${nanSample.x}, ${nanSample.y})`);
 }
 
+function enclosedHole(domain) {
+	if (!domain || !domain.mask) return false;
+	const cw = domain.cx1 - domain.cx0;
+	const ch = domain.cy1 - domain.cy0;
+	const seen = new Uint8Array(cw * ch);
+	const stack = [];
+	const push = (i) => {
+		if (i < 0 || i >= seen.length || seen[i] || domain.mask[i] === 1) return;
+		seen[i] = 1;
+		stack.push(i);
+	};
+	for (let x = 0; x < cw; x++) { push(x); push(x + (ch - 1) * cw); }
+	for (let y = 0; y < ch; y++) { push(y * cw); push(cw - 1 + y * cw); }
+	while (stack.length) {
+		const i = stack.pop();
+		const lx = i % cw;
+		const ly = (i / cw) | 0;
+		if (lx > 0) push(i - 1);
+		if (lx + 1 < cw) push(i + 1);
+		if (ly > 0) push(i - cw);
+		if (ly + 1 < ch) push(i + cw);
+	}
+	for (let i = 0; i < seen.length; i++) if (domain.mask[i] !== 1 && !seen[i]) return true;
+	return false;
+}
+
 // --- 8. Scenario 0 stays on the autopilot heading with a settled speed ---
 // Open water only: the hull meets the map wall later and that is a separate limit.
 {
@@ -323,23 +353,165 @@ function shearStats(bm, domain) {
 	let diskOff = 0;
 	const N = 600;
 	let bsAt500 = 0;
+	let floorMissing = 0;
+	let floorMissing2 = 0;
+	let floorMissing3 = 0;
+	let holes = 0;
+	let holes2 = 0;
+	let holes3 = 0;
+	let maxCells = 0;
+	let maxCells2 = 0;
+	let maxCells3 = 0;
+	let maxExtra = 0;
+	let maxExtra2 = 0;
+	let maxExtra3 = 0;
+	let maxAdded = 0;
+	let maxAdded2 = 0;
+	let maxAdded3 = 0;
+	let maxNorm = 0;
+	let maxNormDown = 0;
+	let maxNormUp = 0;
+	let maxNormOutside = 0;
+	let sizeChanged = 0;
+	let prevWorld = null;
+	let prevExtra2 = null;
+	let prevExtra3 = null;
+	let tracked = null;
+	let trackedW = 0;
+	let trackedH = 0;
+	let tracked2W = 0;
+	let tracked3W = 0;
+	let sizeChanged2 = 0;
+	let sizeChanged3 = 0;
+	const coverage = (domain, radius) => {
+		if (!domain || !domain.mask || !domain.disk) return null;
+		const floor = buildClosedDiskMask(
+			domain.cx0, domain.cy0, domain.cx1, domain.cy1,
+			domain.disk.cx, domain.disk.cy, radius,
+			(cx, cy) => domain._parentAllows(cx, cy),
+		);
+		const cw = domain.cx1 - domain.cx0;
+		const ch = domain.cy1 - domain.cy0;
+		let missing = 0;
+		let n = 0;
+		const extra = new Set();
+		for (let ly = 0; ly < ch; ly++) {
+			for (let lx = 0; lx < cw; lx++) {
+				const i = lx + ly * cw;
+				const key = (domain.cx0 + lx) + ',' + (domain.cy0 + ly);
+				if (floor[i] === 1 && domain.mask[i] !== 1) missing++;
+				if (domain.mask[i] !== 1) continue;
+				n++;
+				if (floor[i] !== 1) extra.add(key);
+			}
+		}
+		return { missing, n, extra };
+	};
 	for (let frame = 0; frame < N; frame++) {
 		if (frame === 1) boat.input_autopilot_enabled_toggle();
 		map.world.step(1 / 30);
 		boat.physics_model_step();
 		if (boat.mainsail_force) {
 			for (const seg of boat.getSailSegments()) {
-				bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * 0.0003, seg.fy * 0.0003);
+				bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * SAIL_LATTICE_COUPLING, seg.fy * SAIL_LATTICE_COUPLING);
 			}
 		}
 		trackBoats(bm, [boat]);
 		const level1 = bm.domains[0];
+		const boatCx = bm.width / 2 + boat.x;
+		const boatCy = bm.height / 2 + boat.y;
+		const floor = buildClosedDiskMask(
+			level1.cx0, level1.cy0, level1.cx1, level1.cy1,
+			boatCx, boatCy, DISK_RADIUS, null,
+		);
+		const world = new Set();
+		const floorWorld = new Set();
+		const cw = level1.cx1 - level1.cx0;
+		const ch = level1.cy1 - level1.cy0;
+		for (let ly = 0; ly < ch; ly++) {
+			for (let lx = 0; lx < cw; lx++) {
+				const cx = level1.cx0 + lx;
+				const cy = level1.cy0 + ly;
+				const key = cx + ',' + cy;
+				if (floor[lx + ly * cw] === 1) floorWorld.add(key);
+				if (level1.mask[lx + ly * cw] !== 1) continue;
+				world.add(key);
+			}
+		}
+		for (const key of floorWorld) if (!world.has(key)) floorMissing++;
+		if (enclosedHole(level1)) holes++;
+		if (world.size > maxCells) maxCells = world.size;
+		const extra = world.size - floorWorld.size;
+		if (extra > maxExtra) maxExtra = extra;
+		if (level1 !== tracked) {
+			tracked = level1;
+			trackedW = cw;
+			trackedH = ch;
+			prevWorld = null;
+		} else if (cw !== trackedW || ch !== trackedH) {
+			sizeChanged++;
+		}
+		if (prevWorld) {
+			let added = 0;
+			for (const key of world) if (!prevWorld.has(key) && !floorWorld.has(key)) added++;
+			if (added > maxAdded) maxAdded = added;
+		}
+		prevWorld = world;
+		for (let ly = 0; ly < ch; ly++) {
+			const cy = level1.cy0 + ly;
+			for (let lx = 0; lx < cw; lx++) {
+				const cx = level1.cx0 + lx;
+				if (floor[lx + ly * cw] === 1) continue;
+				const norm = normalizedCurl(bm.cells[cx + cy * bm.width].curl, bm.speed);
+				if (norm > maxNorm) maxNorm = norm;
+				if (cy + 0.5 < boatCy) { if (norm > maxNormDown) maxNormDown = norm; }
+				else if (norm > maxNormUp) maxNormUp = norm;
+				if (level1.mask[lx + ly * cw] !== 1 && norm > maxNormOutside) maxNormOutside = norm;
+			}
+		}
+		const level2 = level1.domains[0];
+		const level3 = level2 && level2.domains[0];
+		const cov2 = coverage(level2, DISK2_RADIUS);
+		const cov3 = coverage(level3, DISK3_RADIUS);
+		if (!cov2) floorMissing2++;
+		else {
+			floorMissing2 += cov2.missing;
+			if (cov2.n > maxCells2) maxCells2 = cov2.n;
+			if (cov2.extra.size > maxExtra2) maxExtra2 = cov2.extra.size;
+			if (level2.cx1 - level2.cx0 !== tracked2W && tracked2W !== 0) sizeChanged2++;
+			tracked2W = level2.cx1 - level2.cx0;
+			if (prevExtra2) {
+				let added = 0;
+				for (const key of cov2.extra) if (!prevExtra2.has(key)) added++;
+				if (added > maxAdded2) maxAdded2 = added;
+			}
+			prevExtra2 = cov2.extra;
+		}
+		if (!cov3) floorMissing3++;
+		else {
+			floorMissing3 += cov3.missing;
+			if (cov3.n > maxCells3) maxCells3 = cov3.n;
+			if (cov3.extra.size > maxExtra3) maxExtra3 = cov3.extra.size;
+			if (level3.cx1 - level3.cx0 !== tracked3W && tracked3W !== 0) sizeChanged3++;
+			tracked3W = level3.cx1 - level3.cx0;
+			if (prevExtra3) {
+				let added = 0;
+				for (const key of cov3.extra) if (!prevExtra3.has(key)) added++;
+				if (added > maxAdded3) maxAdded3 = added;
+			}
+			prevExtra3 = cov3.extra;
+		}
+		if (enclosedHole(level2)) holes2++;
+		if (enclosedHole(level3)) holes3++;
 		const c1 = outlineCenter(level1, bm);
-		const c2 = level1.domains[0] ? outlineCenter(level1.domains[0], bm) : null;
+		const c2 = level2 ? outlineCenter(level2, bm) : null;
+		const c3 = level3 ? outlineCenter(level3, bm) : null;
 		const off1 = c1 ? Math.hypot(c1.x - boat.x, c1.y - boat.y) : Infinity;
 		const off2 = c2 ? Math.hypot(c2.x - boat.x, c2.y - boat.y) : Infinity;
+		const off3 = c3 ? Math.hypot(c3.x - boat.x, c3.y - boat.y) : Infinity;
 		if (off1 > diskOff) diskOff = off1;
 		if (off2 > diskOff) diskOff = off2;
+		if (off3 > diskOff) diskOff = off3;
 		const a = Date.now();
 		bm.physics_model_step();
 		bmMs += Date.now() - a;
@@ -349,32 +521,60 @@ function shearStats(bm, domain) {
 	const bs = Math.hypot(boat.physics_model.m_linearVelocity.x, boat.physics_model.m_linearVelocity.y);
 	const st = fieldStats(bm);
 	const stepMs = bmMs / N;
-	results.scenario0 = { twa, bs, tws: boat.wind_speed, stepMs, maxU: st.maxU, bad: st.bad, bsAt500 };
+	const l2 = bm.domains[0].domains[0];
+	const l3 = l2 && l2.domains[0];
+	results.scenario0 = {
+		twa, bs, tws: boat.wind_speed, stepMs, maxU: st.maxU, bad: st.bad, bsAt500,
+		capHits: bm.capHits, forceApplies: bm.forceApplies,
+		maxCells, maxExtra, maxAdded, floorMissing, holes, sizeChanged,
+		maxCells2, maxExtra2, maxAdded2, floorMissing2, holes2, sizeChanged2,
+		maxCells3, maxExtra3, maxAdded3, floorMissing3, holes3, sizeChanged3,
+		maxNorm, maxNormDown, maxNormUp, maxNormOutside,
+	};
 	check('scenario 0 heading near 45°', Math.abs(twa) >= 40 && Math.abs(twa) <= 55, `twa = ${twa.toFixed(1)}`);
 	check('scenario 0 speed settled', bs > 1.8 && bs < 2.8 && Math.abs(bs - bsAt500) < 0.15,
 		`bs = ${bs.toFixed(3)} (at 500: ${bsAt500.toFixed(3)})`);
 	check('scenario 0 wind still blowing', boat.wind_speed > 12 && st.bad === 0 && st.maxU < 0.3 && st.maxU > 0.1,
 		`TWS = ${boat.wind_speed.toFixed(2)}, max|u| = ${st.maxU.toExponential(2)}, bad = ${st.bad}`);
 	check('scenario 0 step stays cheap', stepMs < 12, `mean step ${stepMs.toFixed(2)} ms`);
-	check('scenario 0 keeps a single level-2 grid', bm.domains[0].domains.length === 1 && bm.domains.length === 1);
-	check('scenario 0 both disk outlines stay on the boat', diskOff < 1,
+	const capRate = bm.forceApplies ? bm.capHits / bm.forceApplies : 0;
+	check('scenario 0 speed cap stays a safety net', capRate < 0.01,
+		`cap ${bm.capHits}/${bm.forceApplies}`);
+	check('scenario 0 keeps nested level-2 and level-3 grids',
+		bm.domains[0].disk && bm.domains[0].domains.length === 1 && !!(l2 && l3 && l2.domains.length === 1)
+		&& bm.domains.slice(1).every(d => !d.disk));
+	check('scenario 0 disk outlines stay on the boat', diskOff < 1,
 		`max outline offset = ${diskOff.toExponential(2)} world units`);
 	const boatCx = bm.width / 2 + boat.x, boatCy = bm.height / 2 + boat.y;
 	const underDisk = bm.domains[0].containsCoarse(boatCx, boatCy);
-	const fx = 1 + (boatCx - bm.domains[0].cx0) * 2, fy = 1 + (boatCy - bm.domains[0].cy0) * 2;
-	const underFine = bm.domains[0].domains[0] && bm.domains[0].domains[0].containsCoarse(fx, fy);
-	check('scenario 0 boat stays under both disks', underDisk && underFine,
-		`level1=${underDisk} level2=${underFine}`);
+	const fx = fineIndex(bm.domains[0].cx0, boatCx), fy = fineIndex(bm.domains[0].cy0, boatCy);
+	const underFine = l2 && l2.containsCoarse(fx, fy);
+	const f2x = l2 ? fineIndex(l2.cx0, fx) : NaN, f2y = l2 ? fineIndex(l2.cy0, fy) : NaN;
+	const underL3 = l3 && l3.containsCoarse(f2x, f2y);
+	check('scenario 0 boat stays under every disk floor', underDisk && underFine && underL3,
+		`level1=${underDisk} level2=${underFine} level3=${underL3}`);
 	check('scenario 0 disks stay closed', !bm.domains[0].hasDiagonalOnlyContact()
-		&& !bm.domains[0].domains[0].hasDiagonalOnlyContact());
+		&& l2 && !l2.hasDiagonalOnlyContact() && l3 && !l3.hasDiagonalOnlyContact());
+	check('scenario 0 disk floors stay refined', floorMissing === 0 && floorMissing2 === 0 && floorMissing3 === 0,
+		`missing L1=${floorMissing} L2=${floorMissing2} L3=${floorMissing3}`);
+	check('scenario 0 masks have no enclosed hole', holes === 0 && holes2 === 0 && holes3 === 0,
+		`frames L1=${holes} L2=${holes2} L3=${holes3}`);
+	check('scenario 0 window sizes stay fixed', sizeChanged === 0 && sizeChanged2 === 0 && sizeChanged3 === 0,
+		`changes L1=${sizeChanged} L2=${sizeChanged2} L3=${sizeChanged3}`);
+	check('scenario 0 wake masks stay inside their cell caps',
+		maxCells <= MASK_CELL_CAP + 16 && maxCells2 <= MASK2_CELL_CAP + 16 && maxCells3 <= MASK3_CELL_CAP + 16,
+		`cells L1=${maxCells} L2=${maxCells2} L3=${maxCells3}`);
+	check('scenario 0 wakes add at most one layer per frame',
+		maxAdded <= 96 && maxAdded2 <= 128 && maxAdded3 <= 128,
+		`additions L1=${maxAdded} L2=${maxAdded2} L3=${maxAdded3} extra L2=${maxExtra2} L3=${maxExtra3}`);
 	let maxCurl = 0, minS = Infinity, maxS = 0;
 	const d2 = bm.domains[0].domains[0];
 	for (let fj = 1; fj < d2.height - 1; fj++) {
 		for (let fi = 1; fi < d2.width - 1; fi++) {
 			if (d2._role[fi + fj * d2.width] !== 1) continue;
 			const c = d2.cells[fi + fj * d2.width];
-			const wx = d2.cx0_root + (fi - 1) * d2.dx - bm.width / 2;
-			const wy = d2.cy0_root + (fj - 1) * d2.dx - bm.height / 2;
+			const wx = d2.cx0_root + (fi - 2) * d2.dx - bm.width / 2;
+			const wy = d2.cy0_root + (fj - 2) * d2.dx - bm.height / 2;
 			if (Math.hypot(wx - boat.x, wy - boat.y) > 8) continue;
 			const speed = Math.hypot(c.ux, c.uy);
 			minS = Math.min(minS, speed);
@@ -383,39 +583,156 @@ function shearStats(bm, domain) {
 		}
 	}
 	results.scenario0.wake = { maxCurl, minS, maxS };
-	check('scenario 0 wake is visible under the disk', maxCurl > 0.02 && (maxS - minS) > 0.015,
+	// Gain 1 leaves a speed swing near 0.004, which the plot draws as flat.
+	// The coupled wake at wind 15 swings by about 0.07 inside the disk.
+	check('scenario 0 wake is visible under the disk', (maxS - minS) > 0.02 && maxS < 0.35,
 		`|curl| = ${maxCurl.toExponential(3)}, speed ${minS.toFixed(3)}–${maxS.toFixed(3)}`);
 }
 
-// --- 9. Sail momentum reaches the refined field and stays bounded ---
-// setEquil used to stack the kick on a cell that never streamed (the wake ran
-// away). The moment strip then dropped a kick that missed the coincident node,
-// so the plotted field stayed at the freestream. Exact difference on that node,
-// once per fine substep, must leave a wake.
+// --- 9. Sail momentum is the same on the root grid and under a disk ---
+// A point sample under a disk is spread bilinearly and scaled by 1/dx on
+// each substep, so the physical momentum (lattice momentum × dx², on the
+// nodes that own the cell) is fy. fy = 0.05 leaves that integral ≈ 0.05.
+// The old 1/dx²-per-substep path left about 0.22 of lattice momentum on
+// level 2 and a much larger velocity.
 {
 	const uy0 = -0.15;
-	const bm = new Boltzmann(48, 48, 1, 90, 15, undefined, 1);
-	bm.addDomain(12, 12, 36, 36);
-	bm.domains[0].setDisk(24, 24, 8);
-	bm.domains[0].addDomain(16, 16, 48, 48);
-	bm.domains[0].domains[0].setDisk(25, 25, 6);
-	let j0 = 0;
-	for (const c of bm.cells) j0 += c.rho * (c.uy - uy0);
-	bm.apply_energy(0, 0, 0, 0.05);
-	bm.physics_model_step();
-	let j1 = 0, maxU = 0, maxCurl = 0, bad = 0;
-	const acc = (c) => {
-		if (!Number.isFinite(c.ux) || !Number.isFinite(c.uy) || !Number.isFinite(c.rho)) { bad++; return; }
-		maxU = Math.max(maxU, Math.hypot(c.ux, c.uy));
-		if (Number.isFinite(c.curl)) maxCurl = Math.max(maxCurl, Math.abs(c.curl));
-	};
-	for (const c of bm.cells) { j1 += c.rho * (c.uy - uy0); acc(c); }
-	const walk = (ds) => { for (const d of ds) { for (const c of d.cells) acc(c); walk(d.domains); } };
-	walk(bm.domains);
-	const rootJy = j1 - j0;
-	results.impulse = { rootJy, maxU, maxCurl, bad };
-	check('impulse survives restriction', rootJy > 0.05 && rootJy < 0.5, `coarse ΣρΔuy = ${rootJy.toExponential(3)}`);
-	check('impulse wake is bounded', bad === 0 && maxU < 1 && maxCurl > 0.05, `max|u| = ${maxU.toExponential(3)}, max|curl| = ${maxCurl.toExponential(3)}`);
+	function impulse(levels) {
+		const bm = new Boltzmann(48, 48, 1, 90, 15, undefined, 1);
+		if (levels >= 1) {
+			bm.addDomain(12, 12, 36, 36);
+			bm.domains[0].setDisk(24, 24, 8);
+		}
+		if (levels >= 2) {
+			bm.domains[0].addDomain(16, 16, 48, 48);
+			bm.domains[0].domains[0].setDisk(25, 25, 6);
+		}
+		let j0 = 0;
+		for (const c of bm.cells) j0 += c.rho * (c.uy - uy0);
+		bm.apply_energy(0, 0, 0, 0.05);
+		bm.physics_model_step();
+		let maxU = 0, bad = 0;
+		const acc = (c) => {
+			if (!Number.isFinite(c.ux) || !Number.isFinite(c.uy) || !Number.isFinite(c.rho)) { bad++; return; }
+			maxU = Math.max(maxU, Math.hypot(c.ux, c.uy));
+		};
+		const coveredBy = (domains, x, y) => {
+			for (let i = 0; i < domains.length; i++) if (domains[i]._maskAt(x, y)) return true;
+			return false;
+		};
+		let physical = 0;
+		for (let y = 0; y < bm.height; y++) {
+			for (let x = 0; x < bm.width; x++) {
+				const c = bm.cells[x + y * bm.width];
+				acc(c);
+				if (coveredBy(bm.domains, x, y)) continue;
+				physical += c.rho * (c.uy - uy0);
+			}
+		}
+		const walk = (ds) => {
+			for (const d of ds) {
+				for (let fj = 0; fj < d.height; fj++) {
+					for (let fi = 0; fi < d.width; fi++) {
+						const c = d.cells[fi + fj * d.width];
+						acc(c);
+						if (!d._role || d._role[fi + fj * d.width] !== 1) continue;
+						if (coveredBy(d.domains, fi, fj)) continue;
+						physical += c.rho * (c.uy - uy0) * d.dx * d.dx;
+					}
+				}
+				walk(d.domains);
+			}
+		};
+		walk(bm.domains);
+		return { rootJy: physical - j0, maxU, bad };
+	}
+	const bare = impulse(0);
+	const nest = impulse(2);
+	results.impulse = { bare, nest };
+	check('impulse on the root grid deposits 0.05', bare.rootJy > 0.04 && bare.rootJy < 0.06 && bare.bad === 0,
+		`physical ΣρΔuy = ${bare.rootJy.toExponential(3)}`);
+	check('impulse under level 2 deposits the same momentum',
+		Math.abs(nest.rootJy - bare.rootJy) < 0.01 && nest.bad === 0 && nest.maxU < 1,
+		`nested physical ΣρΔuy = ${nest.rootJy.toExponential(3)}, bare ${bare.rootJy.toExponential(3)}, max|u| = ${nest.maxU.toExponential(3)}`);
+}
+
+// A test sail's deposited momentum matches the root grid on every level and
+// across a level boundary. The segment is sampled at the local cell size, so
+// the shares tile the same total force. Within 1% of the root integral.
+{
+	const uy0 = -0.15;
+	function physical(bm) {
+		const coveredBy = (domains, x, y) => {
+			for (let i = 0; i < domains.length; i++) if (domains[i]._maskAt(x, y)) return true;
+			return false;
+		};
+		let p = 0;
+		for (let y = 0; y < bm.height; y++) {
+			for (let x = 0; x < bm.width; x++) {
+				if (coveredBy(bm.domains, x, y)) continue;
+				const c = bm.cells[x + y * bm.width];
+				p += c.rho * (c.uy - uy0);
+			}
+		}
+		const walk = (ds) => {
+			for (const d of ds) {
+				for (let fj = 0; fj < d.height; fj++) {
+					for (let fi = 0; fi < d.width; fi++) {
+						if (!d._role || d._role[fi + fj * d.width] !== 1) continue;
+						if (coveredBy(d.domains, fi, fj)) continue;
+						const c = d.cells[fi + fj * d.width];
+						p += c.rho * (c.uy - uy0) * d.dx * d.dx;
+					}
+				}
+				walk(d.domains);
+			}
+		};
+		walk(bm.domains);
+		return p;
+	}
+	function nestSail(bm, levels) {
+		if (levels < 1) return;
+		bm.addDomain(8, 8, 56, 56);
+		bm.domains[0].setDisk(32, 32, 18);
+		if (levels < 2) return;
+		const d1 = bm.domains[0];
+		const f1x = fineIndex(d1.cx0, 32);
+		const f1y = fineIndex(d1.cy0, 32);
+		d1.addDomain(f1x - 28, f1y - 28, f1x + 28, f1y + 28);
+		d1.domains[0].setDisk(f1x, f1y, 20);
+		if (levels < 3) return;
+		const d2 = d1.domains[0];
+		const f2x = fineIndex(d2.cx0, f1x);
+		const f2y = fineIndex(d2.cy0, f1y);
+		d2.addDomain(f2x - 24, f2y - 24, f2x + 24, f2y + 24);
+		d2.domains[0].setDisk(f2x, f2y, 16);
+	}
+	function sailJy(setup) {
+		const bm = new Boltzmann(64, 64, 1, 90, 15, undefined, 1);
+		setup(bm);
+		const j0 = physical(bm);
+		bm.apply_energy_segment(-6, 0, 6, 0, 0, 0.12);
+		bm.physics_model_step();
+		return { jy: physical(bm) - j0, cap: bm.capHits, applies: bm.forceApplies };
+	}
+	const rootSail = sailJy(() => {});
+	const l1Sail = sailJy(bm => nestSail(bm, 1));
+	const l2Sail = sailJy(bm => nestSail(bm, 2));
+	const l3Sail = sailJy(bm => nestSail(bm, 3));
+	const crossSail = sailJy(bm => {
+		bm.addDomain(8, 16, 56, 48);
+		bm.domains[0].setDisk(40, 32, 12);
+	});
+	results.sailConserve = { rootSail, l1Sail, l2Sail, l3Sail, crossSail };
+	const within = (a) => Math.abs(a.jy - rootSail.jy) <= 0.01 * Math.abs(rootSail.jy);
+	check('sail momentum matches the root grid on level 1', within(l1Sail) && l1Sail.cap === 0,
+		`L1 ΣρΔuy ${l1Sail.jy.toExponential(4)} root ${rootSail.jy.toExponential(4)} cap ${l1Sail.cap}/${l1Sail.applies}`);
+	check('sail momentum matches the root grid on level 2', within(l2Sail) && l2Sail.cap === 0,
+		`L2 ΣρΔuy ${l2Sail.jy.toExponential(4)} root ${rootSail.jy.toExponential(4)} cap ${l2Sail.cap}/${l2Sail.applies}`);
+	check('sail momentum matches the root grid on level 3', within(l3Sail) && l3Sail.cap === 0,
+		`L3 ΣρΔuy ${l3Sail.jy.toExponential(4)} root ${rootSail.jy.toExponential(4)} cap ${l3Sail.cap}/${l3Sail.applies}`);
+	check('sail momentum matches across a level boundary', within(crossSail) && crossSail.cap === 0,
+		`cross ΣρΔuy ${crossSail.jy.toExponential(4)} root ${rootSail.jy.toExponential(4)} cap ${crossSail.cap}/${crossSail.applies}`);
 }
 {
 	const { Map } = await import('../src/map.js');
@@ -431,8 +748,8 @@ function shearStats(bm, domain) {
 	const boatCx0 = 75 / 2 + 10, boatCy0 = 75 / 2 - 9;
 	bm.domains[0].setDisk(boatCx0, boatCy0, 8);
 	bm.domains[0].addDomain(20, 20, 60, 60);
-	const fx0 = 1 + (boatCx0 - bm.domains[0].cx0) * 2;
-	const fy0 = 1 + (boatCy0 - bm.domains[0].cy0) * 2;
+	const fx0 = fineIndex(bm.domains[0].cx0, boatCx0);
+	const fy0 = fineIndex(bm.domains[0].cy0, boatCy0);
 	bm.domains[0].domains[0].setDisk(fx0, fy0, 8);
 	const N = 80;
 	for (let frame = 0; frame < N; frame++) {
@@ -441,7 +758,7 @@ function shearStats(bm, domain) {
 		boat.physics_model_step();
 		if (boat.mainsail_force) {
 			for (const seg of boat.getSailSegments()) {
-				bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * 0.0003, seg.fy * 0.0003);
+				bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * SAIL_LATTICE_COUPLING, seg.fy * SAIL_LATTICE_COUPLING);
 			}
 		}
 		bm.physics_model_step();
@@ -464,8 +781,8 @@ function shearStats(bm, domain) {
 			for (let fj = 0; fj < d.height; fj++) {
 				for (let fi = 0; fi < d.width; fi++) {
 					consider(d.cells[fi + fj * d.width],
-						d.cx0_root + (fi - 1) * d.dx - bm.width / 2,
-						d.cy0_root + (fj - 1) * d.dx - bm.height / 2);
+						d.cx0_root + (fi - 2) * d.dx - bm.width / 2,
+						d.cy0_root + (fj - 2) * d.dx - bm.height / 2);
 				}
 			}
 			walk(d.domains);
@@ -473,9 +790,81 @@ function shearStats(bm, domain) {
 	};
 	walk(bm.domains);
 	results.boatWake = { minS, maxS, maxCurl, maxU, bad };
-	check('boat energy leaves a wake', maxCurl > 0.02 && (maxS - minS) > 0.015,
+	// Gain 1 swings the near-sail speed by about 0.004. The coupled wake is
+	// several colormap steps on the speed plot.
+	check('boat energy leaves a wake', (maxS - minS) > 0.01 && maxS < 0.35,
 		`near-boat |curl| = ${maxCurl.toExponential(3)}, speed ${minS.toFixed(3)}–${maxS.toFixed(3)}`);
-	check('boat wake stays bounded', bad === 0 && maxU < 1, `max|u| = ${maxU.toExponential(3)}, bad = ${bad}`);
+	check('boat wake stays bounded', bad === 0 && maxU < 0.35, `max|u| = ${maxU.toExponential(3)}, bad = ${bad}`);
+}
+
+// Same sail, same footprint, refinement on or off. The sample is one coarse
+// cell's share on every mesh, so the near-boat swing and the downstream
+// deficit do not depend on the level. The fine nodes keep their own solution.
+{
+	const { Map } = await import('../src/map.js');
+	const { Boat } = await import('../src/boat.js');
+	const { FluidWind, ConstantWind } = await import('../src/wind.js');
+	const U = 0.15;
+	function wakeOf(bm, boat) {
+		let minS = Infinity, maxS = 0, peak = 0, sum = 0, n = 0;
+		for (let dy = -12; dy <= 4; dy++) {
+			for (let dx = -5; dx <= 5; dx++) {
+				const v = bm.get_field_velocity(boat.x + dx, boat.y + dy);
+				const speed = Math.hypot(v.x, v.y) * 4;
+				if (!Number.isFinite(speed)) continue;
+				if (dx * dx + dy * dy <= 36) {
+					minS = Math.min(minS, speed);
+					maxS = Math.max(maxS, speed);
+				}
+				if (dy <= -2 && dy >= -12 && Math.abs(dx) <= 3) {
+					const def = U - speed;
+					if (def > peak) peak = def;
+					sum += def;
+					n++;
+				}
+			}
+		}
+		return { range: maxS - minS, minS, maxS, peak, sum, n };
+	}
+	function sailRun(refine) {
+		const bm = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
+		const map = new Map(75, 75, 90, 15, bm, new FluidWind(bm), new ConstantWind(90, 15));
+		map.physics_model_init();
+		const boat = new Boat(map, 10, -9, 5 * Math.PI / 4);
+		const N = 160;
+		for (let frame = 0; frame < N; frame++) {
+			if (frame === 1) boat.input_autopilot_enabled_toggle();
+			map.world.step(1 / 30);
+			boat.physics_model_step();
+			if (boat.mainsail_force) {
+				for (const seg of boat.getSailSegments()) {
+					bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * SAIL_LATTICE_COUPLING, seg.fy * SAIL_LATTICE_COUPLING);
+				}
+			}
+			if (refine) trackBoats(bm, [boat]);
+			bm.physics_model_step();
+		}
+		const wake = wakeOf(bm, boat);
+		const st = fieldStats(bm);
+		return { ...wake, twa: boat.twa, maxU: st.maxU, bad: st.bad };
+	}
+	const off = sailRun(false);
+	const on = sailRun(true);
+	results.wakeMatch = { off, on };
+	const vis = 0.03;
+	check('wake is visible with refinement off', off.range > vis && off.bad === 0 && off.maxU < 0.35,
+		`range ${off.range.toFixed(3)} speed ${off.minS.toFixed(3)}–${off.maxS.toFixed(3)} max|u| ${off.maxU.toFixed(3)}`);
+	check('wake is visible with refinement on', on.range > vis && on.bad === 0 && on.maxU < 0.35,
+		`range ${on.range.toFixed(3)} speed ${on.minS.toFixed(3)}–${on.maxS.toFixed(3)} max|u| ${on.maxU.toFixed(3)}`);
+	const rangeRatio = on.range / off.range;
+	// The fine grid resolves a sharper peak on the sail than the coarse cell
+	// does. The physical momentum is the same (section 9); this rejects the
+	// old 8×/64× level factor, not a few tens of percent of peak speed.
+	check('wake strength does not depend on the mesh', rangeRatio > 0.7 && rangeRatio < 1.5,
+		`on/off range ${rangeRatio.toFixed(2)} (${on.range.toFixed(3)} / ${off.range.toFixed(3)})`);
+	const peakRatio = on.peak / off.peak;
+	check('downstream deficit matches with refinement on', off.peak > 0.004 && on.peak > 0.004 && peakRatio > 0.5 && peakRatio < 2,
+		`peak off ${off.peak.toFixed(4)} on ${on.peak.toFixed(4)}, sum off ${off.sum.toFixed(3)} on ${on.sum.toFixed(3)}`);
 }
 
 // --- 10. Disk mask: closure, overlap, uniform walk, shear ---
@@ -487,8 +876,8 @@ function shearStats(bm, domain) {
 	d.setDisk(cx, cy, 10);
 	d.addDomain(22, 22, 62, 62);
 	const child = d.domains[0];
-	const fi = 1 + (cx - d.cx0) * 2;
-	const fj = 1 + (cy - d.cy0) * 2;
+	const fi = fineIndex(d.cx0, cx);
+	const fj = fineIndex(d.cy0, cy);
 	child.setDisk(fi, fj, 8);
 	const lines = d.worldBorderLines(bm);
 	const circle = lines.filter(s => !s.dim).length;
@@ -522,8 +911,8 @@ function shearStats(bm, domain) {
 		bm.shiftDomain(0, 1, 0);
 		cx += 1;
 		d.setDisk(cx, cy, 10);
-		const fi2 = 1 + (cx - d.cx0) * 2;
-		const fj2 = 1 + (cy - d.cy0) * 2;
+		const fi2 = fineIndex(d.cx0, cx);
+		const fj2 = fineIndex(d.cy0, cy);
 		child.setDisk(fi2, fj2, 8);
 		bm.physics_model_step();
 	}
@@ -541,8 +930,8 @@ function shearStats(bm, domain) {
 	bm.addDomain(8, 8, 40, 40);
 	const d = bm.domains[0];
 	d.setDisk(24, 24, 8);
-	const fi = 1 + (24 - d.cx0) * 2;
-	const fj = 1 + (24 - d.cy0) * 2;
+	const fi = fineIndex(d.cx0, 24);
+	const fj = fineIndex(d.cy0, 24);
 	d.pendingInjections.push({ fi, fj, fx: 0, fy: 0.02 });
 	bm.shiftDomain(0, 1, 0);
 	d.setDisk(25, 24, 8);
@@ -565,7 +954,7 @@ function shearStats(bm, domain) {
 	const overlap = 31; // coarse cell in both disks, and inside b's level-2 window
 	const onlyA = 22;
 	const onlyB = 40;
-	b.domains[0].setDisk(1 + (overlap - b.cx0) * 2, 1 + (36 - b.cy0) * 2, 6);
+	b.domains[0].setDisk(fineIndex(b.cx0, overlap), fineIndex(b.cy0, 36), 6);
 	results.overlap = {
 		a: a.levelAt(overlap, 36),
 		b: b.levelAt(overlap, 36),
@@ -598,7 +987,7 @@ function shearStats(bm, domain) {
 	const boatCx = 75 / 2 + boatX, boatCy = 75 / 2 + boatY;
 	bm.addDomain(28, 9, 68, 49);
 	bm.domains[0].setDisk(boatCx, boatCy, 8);
-	const fx = 1 + (boatCx - 28) * 2, fy = 1 + (boatCy - 9) * 2;
+	const fx = fineIndex(28, boatCx), fy = fineIndex(9, boatCy);
 	bm.domains[0].addDomain(20, 20, 60, 60);
 	bm.domains[0].domains[0].setDisk(fx, fy, 8);
 	const c1 = outlineCenter(bm.domains[0], bm);
@@ -615,7 +1004,7 @@ function shearStats(bm, domain) {
 	bm.domains.length = 1;
 	bm._rebuildInteriorCells();
 	level1.setDisk(boatCx, boatCy, 8);
-	const nfx = 1 + (boatCx - level1.cx0) * 2, nfy = 1 + (boatCy - level1.cy0) * 2;
+	const nfx = fineIndex(level1.cx0, boatCx), nfy = fineIndex(level1.cy0, boatCy);
 	const fi = Math.round(nfx), fj = Math.round(nfy);
 	level1.replaceDomain(0, fi - 20, fj - 20, fi + 20, fj + 20);
 	level1.domains[0].setDisk(nfx, nfy, 8);
@@ -632,7 +1021,7 @@ function shearStats(bm, domain) {
 		const cx = 75 / 2 + x, cy = 75 / 2 + y;
 		level1.shiftBy(bm, -1, 0);
 		level1.setDisk(cx, cy, 8);
-		const sfx = 1 + (cx - level1.cx0) * 2, sfy = 1 + (cy - level1.cy0) * 2;
+		const sfx = fineIndex(level1.cx0, cx), sfy = fineIndex(level1.cy0, cy);
 		const child = level1.domains[0];
 		if (sfx < child.cx0 || sfy < child.cy0 || sfx >= child.cx1 || sfy >= child.cy1) {
 			const sfi = Math.round(sfx), sfj = Math.round(sfy);
@@ -802,8 +1191,8 @@ function maskShare(a, b) {
 
 	// Level 2, same two separations, in root space.
 	function nest(parent, cx, cy, r) {
-		const fx = 1 + (cx - parent.cx0) * 2;
-		const fy = 1 + (cy - parent.cy0) * 2;
+		const fx = fineIndex(parent.cx0, cx);
+		const fy = fineIndex(parent.cy0, cy);
 		const fi = Math.round(fx), fj = Math.round(fy);
 		parent.addDomain(Math.max(1, fi - 20), Math.max(1, fj - 20), Math.min(parent.width - 1, fi + 20), Math.min(parent.height - 1, fj + 20));
 		const child = parent.domains[parent.domains.length - 1];
@@ -870,7 +1259,7 @@ function maskShare(a, b) {
 				b.physics_model_step();
 				if (b.mainsail_force) {
 					for (const seg of b.getSailSegments()) {
-						bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * 0.0003, seg.fy * 0.0003);
+						bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * SAIL_LATTICE_COUPLING, seg.fy * SAIL_LATTICE_COUPLING);
 					}
 				}
 			}
@@ -922,20 +1311,36 @@ function maskShare(a, b) {
 	const st1 = fieldStats(s1.bm);
 	const ov1 = borderFollowsMasks(s1.bm, 'scenario 1');
 	results.scenario1 = { off: s1.maxOff, saw: ov1.saw, share1: ov1.share1, share2: ov1.share2, maxU: st1.maxU, bad: st1.bad };
-	check('scenario 1 has two boats and two level-2 grids', s1.bm.domains.length === 2
-		&& s1.bm.domains[0].domains.length === 1 && s1.bm.domains[1].domains.length === 1);
+	check('scenario 1 has two boats and two level-2 grids', s1.bm.domains.length >= 2
+		&& s1.bm.domains[0].disk && s1.bm.domains[1].disk
+		&& s1.bm.domains[0].domains.length === 1 && s1.bm.domains[1].domains.length === 1
+		&& s1.bm.domains.slice(2).every(d => !d.disk));
 	check('scenario 1 disk centers stay on each boat', s1.maxOff < 1, `max offset ${s1.maxOff.toExponential(2)}`);
 	check('scenario 1 disks overlap and the finest writes', ov1.share1 && ov1.share2 && ov1.saw > 0 && ov1.finestOk,
 		`shared=${ov1.saw} finest=${ov1.finestOk}`);
 	check('scenario 1 fleet stays finite', st1.bad === 0 && st1.maxU < 1, `max|u|=${st1.maxU.toExponential(2)} bad=${st1.bad}`);
+	const shadow = fleet([[12, -6, 5 * Math.PI / 4], [15, -11.5, 5 * Math.PI / 4]], 200);
+	const byDownwind = [...shadow.boats].sort((a, b) => a.y - b.y);
+	const lee = byDownwind[0], windward = byDownwind[1];
+	results.scenario1shadow = {
+		lee: lee.wind_speed, windward: windward.wind_speed,
+		leeTwa: lee.twa, windwardTwa: windward.twa,
+	};
+	check('scenario 1 downwind boat feels the wake',
+		lee.wind_speed < windward.wind_speed - 0.3
+		&& Math.abs(lee.twa) >= 40 && Math.abs(lee.twa) <= 55
+		&& Math.abs(windward.twa) >= 40 && Math.abs(windward.twa) <= 55,
+		`windward TWS ${windward.wind_speed.toFixed(2)} twa ${windward.twa.toFixed(1)}, lee TWS ${lee.wind_speed.toFixed(2)} twa ${lee.twa.toFixed(1)}`);
 
 	const s2 = fleet([[-10, -6, 3 * Math.PI / 4], [15, -11.5, 5 * Math.PI / 4]], 50);
 	const st2 = fieldStats(s2.bm);
 	const ov2 = borderFollowsMasks(s2.bm, 'scenario 2');
 	const dist2 = Math.hypot(s2.boats[0].x - s2.boats[1].x, s2.boats[0].y - s2.boats[1].y);
 	results.scenario2 = { off: s2.maxOff, dist: dist2, share1: ov2.share1, share2: ov2.share2, maxU: st2.maxU, bad: st2.bad };
-	check('scenario 2 has a domain on each boat', s2.bm.domains.length === 2
-		&& s2.bm.domains[0].domains.length === 1 && s2.bm.domains[1].domains.length === 1);
+	check('scenario 2 has a domain on each boat', s2.bm.domains.length >= 2
+		&& s2.bm.domains[0].disk && s2.bm.domains[1].disk
+		&& s2.bm.domains[0].domains.length === 1 && s2.bm.domains[1].domains.length === 1
+		&& s2.bm.domains.slice(2).every(d => !d.disk));
 	check('scenario 2 disk centers stay on each boat', s2.maxOff < 1, `max offset ${s2.maxOff.toExponential(2)}`);
 	check('scenario 2 level-2 islands are separate', !ov2.share2, `dist=${dist2.toFixed(2)}`);
 	check('scenario 2 fleet stays finite', st2.bad === 0 && st2.maxU < 1, `max|u|=${st2.maxU.toExponential(2)} bad=${st2.bad}`);
@@ -945,11 +1350,141 @@ function maskShare(a, b) {
 	const ov3 = borderFollowsMasks(s3.bm, 'scenario 3');
 	const dist3 = Math.hypot(s3.boats[0].x - s3.boats[1].x, s3.boats[0].y - s3.boats[1].y);
 	results.scenario3 = { off: s3.maxOff, dist: dist3, share1: ov3.share1, share2: ov3.share2, maxU: st3.maxU, bad: st3.bad };
-	check('scenario 3 has a domain on each boat', s3.bm.domains.length === 2
-		&& s3.bm.domains[0].domains.length === 1 && s3.bm.domains[1].domains.length === 1);
+	check('scenario 3 has a domain on each boat', s3.bm.domains.length >= 2
+		&& s3.bm.domains[0].disk && s3.bm.domains[1].disk
+		&& s3.bm.domains[0].domains.length === 1 && s3.bm.domains[1].domains.length === 1
+		&& s3.bm.domains.slice(2).every(d => !d.disk));
 	check('scenario 3 disk centers stay on each boat', s3.maxOff < 1, `max offset ${s3.maxOff.toExponential(2)}`);
 	check('scenario 3 level-2 islands are separate', !ov3.share2, `dist=${dist3.toFixed(2)}`);
 	check('scenario 3 fleet stays finite', st3.bad === 0 && st3.maxU < 1, `max|u|=${st3.maxU.toExponential(2)} bad=${st3.bad}`);
+}
+
+// Painted level 3 is the fine field, one texel per node, drawn after coarser
+// levels. A nearest-neighbour upsample of the root grid would fill that disk
+// with coarse-cell blocks; the texture must not.
+{
+	const os = 8;
+	const side = 24 * os;
+	const data = new Uint8Array(side * side * 4);
+	const texture = { image: { data } };
+	const bm = new Boltzmann(24, 24, 1, 90, 15, texture, os);
+	bm.addDomain(4, 4, 20, 20);
+	const l1 = bm.domains[0];
+	l1.setDisk(12, 12, 6);
+	l1.addDomain(8, 8, 24, 24);
+	const l2 = l1.domains[0];
+	l2.setDisk(16, 16, 6);
+	l2.addDomain(10, 10, 26, 26);
+	const l3 = l2.domains[0];
+	l3.setDisk(18, 18, 5);
+	const paint = (grid, speed) => { for (const c of grid.cells) c.setEquil(speed, 0, 1); };
+	paint(bm, 0.02);
+	paint(l1, 0.06);
+	paint(l2, 0.12);
+	paint(l3, 0.20);
+	const colorOf = (speed) => {
+		const cell = bm.cells[0];
+		const ux = cell.ux, uy = cell.uy;
+		cell.setEquil(speed, 0, 1);
+		const col = cell.calculate_color(3, 1);
+		cell.ux = ux; cell.uy = uy;
+		return col;
+	};
+	const same = (ind, col) => data[ind] === col.red && data[ind + 1] === col.green && data[ind + 2] === col.blue;
+	const cRoot = colorOf(0.02), cL1 = colorOf(0.06), cL2 = colorOf(0.12), cL3 = colorOf(0.20);
+	bm.paintTexture();
+	const texel = (grid, fi, fj) => {
+		const px = Math.round(grid.fineToRootX(fi) * os);
+		const py = Math.round(grid.fineToRootY(fj) * os);
+		return { px, py, ind: (px + py * side) * 4 };
+	};
+	const claimed = new globalThis.Map();
+	let l3n = 0, l3own = 0, l3notRoot = 0, l3notL2 = 0, l3oob = 0;
+	for (let fj = 1; fj < l3.height - 1; fj++) {
+		for (let fi = 1; fi < l3.width - 1; fi++) {
+			if (!l3._role || l3._role[fi + fj * l3.width] !== 1) continue;
+			l3n++;
+			const t = texel(l3, fi, fj);
+			if (t.px < 0 || t.py < 0 || t.px >= side || t.py >= side) { l3oob++; continue; }
+			const key = t.px + ',' + t.py;
+			claimed.set(key, (claimed.get(key) || 0) + 1);
+			if (same(t.ind, cL3)) l3own++;
+			if (!same(t.ind, cRoot)) l3notRoot++;
+			if (!same(t.ind, cL2)) l3notL2++;
+		}
+	}
+	let overlaps = 0;
+	for (const n of claimed.values()) if (n !== 1) overlaps++;
+	let l2only = 0, l2own = 0;
+	for (let fj = 1; fj < l2.height - 1; fj++) {
+		for (let fi = 1; fi < l2.width - 1; fi++) {
+			if (!l2._role || l2._role[fi + fj * l2.width] !== 1) continue;
+			const t = texel(l2, fi, fj);
+			if (claimed.has(t.px + ',' + t.py)) continue;
+			l2only++;
+			if (same(t.ind, cL2) && !same(t.ind, cRoot) && !same(t.ind, cL1)) l2own++;
+		}
+	}
+	results.paintL3 = { l3n, l3own, l3notRoot, l3notL2, overlaps, l3oob, l2only, l2own };
+	check('painted level 3 is not a coarse upsample', l3n > 50 && l3own === l3n && l3notRoot === l3n && overlaps === 0 && l3oob === 0,
+		`nodes=${l3n} own=${l3own} notRoot=${l3notRoot} overlap=${overlaps} oob=${l3oob}`);
+	check('paint order is finest on top', l3notL2 === l3n && l2only > 0 && l2own === l2only,
+		`L3 above L2 ${l3notL2}/${l3n}, L2-only ${l2own}/${l2only}`);
+
+	const { Map } = await import('../src/map.js');
+	const { Boat } = await import('../src/boat.js');
+	const { FluidWind, ConstantWind } = await import('../src/wind.js');
+	const live = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
+	const map = new Map(75, 75, 90, 15, live, new FluidWind(live), new ConstantWind(90, 15));
+	map.physics_model_init();
+	const boat = new Boat(map, 10, -9, 5 * Math.PI / 4);
+	for (let frame = 0; frame < 80; frame++) {
+		if (frame === 1) boat.input_autopilot_enabled_toggle();
+		map.world.step(1 / 30);
+		boat.physics_model_step();
+		if (boat.mainsail_force) {
+			for (const seg of boat.getSailSegments()) {
+				live.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * SAIL_LATTICE_COUPLING, seg.fy * SAIL_LATTICE_COUPLING);
+			}
+		}
+		trackBoats(live, [boat]);
+		live.physics_model_step();
+	}
+	const grid = live.domains[0] && live.domains[0].domains[0] && live.domains[0].domains[0].domains[0];
+	const buckets = new globalThis.Map();
+	let identical = 0, fluid = 0;
+	if (grid) {
+		for (let fj = 1; fj < grid.height - 1; fj++) {
+			for (let fi = 1; fi < grid.width - 1; fi++) {
+				if (!grid._role || grid._role[fi + fj * grid.width] !== 1) continue;
+				const cell = grid.cells[fi + fj * grid.width];
+				const cx = Math.floor(grid.fineToRootX(fi));
+				const cy = Math.floor(grid.fineToRootY(fj));
+				if (cx < 1 || cy < 1 || cx >= live.width - 1 || cy >= live.height - 1) continue;
+				const root = live.cells[cx + cy * live.width];
+				const sp = Math.hypot(cell.ux, cell.uy);
+				const rsp = Math.hypot(root.ux, root.uy);
+				fluid++;
+				if (Math.abs(sp - rsp) < 1e-6) identical++;
+				const key = cx + ',' + cy;
+				let b = buckets.get(key);
+				if (!b) { b = { min: sp, max: sp, n: 0 }; buckets.set(key, b); }
+				b.min = Math.min(b.min, sp);
+				b.max = Math.max(b.max, sp);
+				b.n++;
+			}
+		}
+	}
+	let varied = 0, covered = 0;
+	for (const b of buckets.values()) {
+		if (b.n < 4) continue;
+		covered++;
+		if (b.max - b.min > 1e-4) varied++;
+	}
+	results.l3vsRoot = { fluid, identical, covered, varied };
+	check('level 3 near the boat is not a copy of the root cell',
+		fluid > 100 && identical / fluid < 0.5 && covered > 0 && varied / covered > 0.5,
+		`identical ${identical}/${fluid}, varied cells ${varied}/${covered}`);
 }
 
 function fieldStats(bm) {

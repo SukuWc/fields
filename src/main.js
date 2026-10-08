@@ -8,7 +8,11 @@ import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera } from './renderer.js';
 import { setupControls, getPlayers, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
+
+import { SAIL_LATTICE_COUPLING } from './boat.js';
+
 import { beginRule15Step, contactGuides, evaluateAllPairs, penaltyAutopilotRemainingDeg, penaltyGuides, penaltyJustCleared, penaltyManeuverText, penaltyManeuverView, pendingPenaltyCount, recordContacts, trueWindAngleDeg } from './rules.js';
+
 
 const map_w = 75;
 const map_h = 75;
@@ -18,11 +22,16 @@ const map_h = 75;
 const wind_angle = 90;
 const wind_speed = 15;
 const bm_resolution = 1;
-const texture_oversampling = 4;
+// Level 3 cells are dx = 0.125. The speed plot stamps oversampling*dx pixels,
+// and a fractional stamp collapses several fine nodes onto one texel (the
+// coarse blocks inside the inner disk). 8 lands each level-3 node on one texel.
+const texture_oversampling = 8;
 
 // Fine domain tracking: half-width in coarse cells. The window steps one cell at a time
 // once the boat is more than SHIFT_THRESHOLD cells from the window center.
-const SAIL_EFFICIENCY = 0.0003 * bm_resolution; // scales sail aerodynamic force → fluid momentum transfer
+// Sail reaction → lattice momentum. See SAIL_LATTICE_COUPLING. bm_resolution
+// stays in the product so a finer root grid (not the AMR level) still scales.
+const SAIL_EFFICIENCY = SAIL_LATTICE_COUPLING * bm_resolution;
 
 // Data texture for fluid field visualisation
 const _side1 = texture_oversampling * map_w * bm_resolution;
@@ -69,12 +78,18 @@ runner.start((simDt) => {
   beginRule15Step(rulesTime);
   guides = [];
 
-  // Smooth circle per boat. The light staircase is the union of every mask at
-  // that level, so overlapping boats share one border and separate boats keep
-  // one island each. A rectangle with no disk still uses its four sides.
+  // Smooth circle per boat disk. A field island has a mask and no disk, so
+  // only its staircase is drawn. The light staircase is the union of every
+  // mask at that level: overlapping boats share one border, and a detached
+  // curl island keeps its own outline. A rectangle with no disk and no mask
+  // still uses its four sides.
   function pushRefinementGuides(domains) {
     const masked = [];
     for (const domain of domains) {
+      if (domain.mask && !domain.disk) {
+        masked.push(domain);
+        continue;
+      }
       for (const seg of domain.worldBorderLines(bm)) {
         if (domain.disk && seg.dim) continue;
         guides.push({
@@ -176,10 +191,12 @@ runner.start((simDt) => {
   guides.push(...contactGuides());
   guides.push(...penaltyGuides(racing));
 
-  // Dynamic domain placement: one reusable window per boat, a disk mask inside it,
-  // and a smaller level-2 disk carried with the level-1 window. The window slides
-  // one parent cell per frame. A level-1 slide carries level 2.
-  // Dev mode leaves the lattice frozen. A NaN body must not be rounded into a domain corner.
+  // Dynamic domain placement: one reusable window per boat, plus a field
+  // window where curl stays high away from every boat. Each boat level is a
+  // disk floor plus curl (one layer in or out per frame, including a detached
+  // island once a small cluster has held). A slide of the parent carries the
+  // nested windows. Dev mode leaves the lattice frozen. A NaN body must not
+  // be rounded into a domain corner.
   if (!map.devMode && document.getElementById('amr').checked) trackBoats(bm, getPlayers());
 
   // AMR off: a restart that removed a boat would keep drawing a ring.
