@@ -586,11 +586,11 @@ function enclosedHole(domain) {
 }
 
 // --- 9. Sail momentum is the same on the root grid and under a disk ---
-// The kick is applied to the root cell. A boat disk streams that cell and
-// copies its velocity onto the fine nodes after restriction, so refinement
-// does not add or drop momentum. fy = 0.05 deposits ΣρΔuy ≈ 0.05 on every
-// level. The old 1/dx² path left about 0.22 on level 2 and a few thousandths
-// after the convective rescaling ate the kick.
+// The kick is one coarse-cell share. Under a disk it is split across the
+// level-2 2×2 and scaled by 1/dx each substep, so the physical momentum
+// (lattice momentum × dx², on the nodes that own the cell) is fy. fy = 0.05
+// leaves that integral ≈ 0.05. The old 1/dx²-per-substep path left about
+// 0.22 of lattice momentum on level 2 and a much larger velocity.
 {
 	const uy0 = -0.15;
 	function impulse(levels) {
@@ -607,24 +607,49 @@ function enclosedHole(domain) {
 		for (const c of bm.cells) j0 += c.rho * (c.uy - uy0);
 		bm.apply_energy(0, 0, 0, 0.05);
 		bm.physics_model_step();
-		let j1 = 0, maxU = 0, bad = 0;
+		let maxU = 0, bad = 0;
 		const acc = (c) => {
 			if (!Number.isFinite(c.ux) || !Number.isFinite(c.uy) || !Number.isFinite(c.rho)) { bad++; return; }
 			maxU = Math.max(maxU, Math.hypot(c.ux, c.uy));
 		};
-		for (const c of bm.cells) { j1 += c.rho * (c.uy - uy0); acc(c); }
-		const walk = (ds) => { for (const d of ds) { for (const c of d.cells) acc(c); walk(d.domains); } };
+		const coveredBy = (domains, x, y) => {
+			for (let i = 0; i < domains.length; i++) if (domains[i]._maskAt(x, y)) return true;
+			return false;
+		};
+		let physical = 0;
+		for (let y = 0; y < bm.height; y++) {
+			for (let x = 0; x < bm.width; x++) {
+				const c = bm.cells[x + y * bm.width];
+				acc(c);
+				if (coveredBy(bm.domains, x, y)) continue;
+				physical += c.rho * (c.uy - uy0);
+			}
+		}
+		const walk = (ds) => {
+			for (const d of ds) {
+				for (let fj = 0; fj < d.height; fj++) {
+					for (let fi = 0; fi < d.width; fi++) {
+						const c = d.cells[fi + fj * d.width];
+						acc(c);
+						if (!d._role || d._role[fi + fj * d.width] !== 1) continue;
+						if (coveredBy(d.domains, fi, fj)) continue;
+						physical += c.rho * (c.uy - uy0) * d.dx * d.dx;
+					}
+				}
+				walk(d.domains);
+			}
+		};
 		walk(bm.domains);
-		return { rootJy: j1 - j0, maxU, bad };
+		return { rootJy: physical - j0, maxU, bad };
 	}
 	const bare = impulse(0);
 	const nest = impulse(2);
 	results.impulse = { bare, nest };
 	check('impulse on the root grid deposits 0.05', bare.rootJy > 0.04 && bare.rootJy < 0.06 && bare.bad === 0,
-		`ΣρΔuy = ${bare.rootJy.toExponential(3)}`);
+		`physical ΣρΔuy = ${bare.rootJy.toExponential(3)}`);
 	check('impulse under level 2 deposits the same momentum',
 		Math.abs(nest.rootJy - bare.rootJy) < 0.01 && nest.bad === 0 && nest.maxU < 0.4,
-		`nested ΣρΔuy = ${nest.rootJy.toExponential(3)}, bare ${bare.rootJy.toExponential(3)}, max|u| = ${nest.maxU.toExponential(3)}`);
+		`nested physical ΣρΔuy = ${nest.rootJy.toExponential(3)}, bare ${bare.rootJy.toExponential(3)}, max|u| = ${nest.maxU.toExponential(3)}`);
 }
 {
 	const { Map } = await import('../src/map.js');
@@ -689,9 +714,9 @@ function enclosedHole(domain) {
 	check('boat wake stays bounded', bad === 0 && maxU < 0.35, `max|u| = ${maxU.toExponential(3)}, bad = ${bad}`);
 }
 
-// Same sail, same footprint, refinement on or off. The speed plot reads the
-// finest node; that node is a copy of the root cell the sail loaded, so the
-// near-boat swing and the downstream deficit do not depend on the level.
+// Same sail, same footprint, refinement on or off. The sample is one coarse
+// cell's share on every mesh, so the near-boat swing and the downstream
+// deficit do not depend on the level. The fine nodes keep their own solution.
 {
 	const { Map } = await import('../src/map.js');
 	const { Boat } = await import('../src/boat.js');
@@ -749,7 +774,10 @@ function enclosedHole(domain) {
 	check('wake is visible with refinement on', on.range > vis && on.bad === 0 && on.maxU < 0.35,
 		`range ${on.range.toFixed(3)} speed ${on.minS.toFixed(3)}–${on.maxS.toFixed(3)} max|u| ${on.maxU.toFixed(3)}`);
 	const rangeRatio = on.range / off.range;
-	check('wake strength does not depend on the mesh', rangeRatio > 0.7 && rangeRatio < 1.3,
+	// The fine grid resolves a sharper peak on the sail than the coarse cell
+	// does. The physical momentum is the same (section 9); this rejects the
+	// old 8×/64× level factor, not a few tens of percent of peak speed.
+	check('wake strength does not depend on the mesh', rangeRatio > 0.7 && rangeRatio < 1.5,
 		`on/off range ${rangeRatio.toFixed(2)} (${on.range.toFixed(3)} / ${off.range.toFixed(3)})`);
 	const peakRatio = on.peak / off.peak;
 	check('downstream deficit matches with refinement on', off.peak > 0.004 && on.peak > 0.004 && peakRatio > 0.5 && peakRatio < 2,
@@ -1246,6 +1274,134 @@ function maskShare(a, b) {
 	check('scenario 3 disk centers stay on each boat', s3.maxOff < 1, `max offset ${s3.maxOff.toExponential(2)}`);
 	check('scenario 3 level-2 islands are separate', !ov3.share2, `dist=${dist3.toFixed(2)}`);
 	check('scenario 3 fleet stays finite', st3.bad === 0 && st3.maxU < 1, `max|u|=${st3.maxU.toExponential(2)} bad=${st3.bad}`);
+}
+
+// Painted level 3 is the fine field, one texel per node, drawn after coarser
+// levels. A nearest-neighbour upsample of the root grid would fill that disk
+// with coarse-cell blocks; the texture must not.
+{
+	const os = 8;
+	const side = 24 * os;
+	const data = new Uint8Array(side * side * 4);
+	const texture = { image: { data } };
+	const bm = new Boltzmann(24, 24, 1, 90, 15, texture, os);
+	bm.addDomain(4, 4, 20, 20);
+	const l1 = bm.domains[0];
+	l1.setDisk(12, 12, 6);
+	l1.addDomain(8, 8, 24, 24);
+	const l2 = l1.domains[0];
+	l2.setDisk(16, 16, 6);
+	l2.addDomain(10, 10, 26, 26);
+	const l3 = l2.domains[0];
+	l3.setDisk(18, 18, 5);
+	const paint = (grid, speed) => { for (const c of grid.cells) c.setEquil(speed, 0, 1); };
+	paint(bm, 0.02);
+	paint(l1, 0.06);
+	paint(l2, 0.12);
+	paint(l3, 0.20);
+	const colorOf = (speed) => {
+		const cell = bm.cells[0];
+		const ux = cell.ux, uy = cell.uy;
+		cell.setEquil(speed, 0, 1);
+		const col = cell.calculate_color(3, 1);
+		cell.ux = ux; cell.uy = uy;
+		return col;
+	};
+	const same = (ind, col) => data[ind] === col.red && data[ind + 1] === col.green && data[ind + 2] === col.blue;
+	const cRoot = colorOf(0.02), cL1 = colorOf(0.06), cL2 = colorOf(0.12), cL3 = colorOf(0.20);
+	bm.paintTexture();
+	const texel = (grid, fi, fj) => {
+		const px = Math.round(grid.fineToRootX(fi) * os);
+		const py = Math.round(grid.fineToRootY(fj) * os);
+		return { px, py, ind: (px + py * side) * 4 };
+	};
+	const claimed = new globalThis.Map();
+	let l3n = 0, l3own = 0, l3notRoot = 0, l3notL2 = 0, l3oob = 0;
+	for (let fj = 1; fj < l3.height - 1; fj++) {
+		for (let fi = 1; fi < l3.width - 1; fi++) {
+			if (!l3._role || l3._role[fi + fj * l3.width] !== 1) continue;
+			l3n++;
+			const t = texel(l3, fi, fj);
+			if (t.px < 0 || t.py < 0 || t.px >= side || t.py >= side) { l3oob++; continue; }
+			const key = t.px + ',' + t.py;
+			claimed.set(key, (claimed.get(key) || 0) + 1);
+			if (same(t.ind, cL3)) l3own++;
+			if (!same(t.ind, cRoot)) l3notRoot++;
+			if (!same(t.ind, cL2)) l3notL2++;
+		}
+	}
+	let overlaps = 0;
+	for (const n of claimed.values()) if (n !== 1) overlaps++;
+	let l2only = 0, l2own = 0;
+	for (let fj = 1; fj < l2.height - 1; fj++) {
+		for (let fi = 1; fi < l2.width - 1; fi++) {
+			if (!l2._role || l2._role[fi + fj * l2.width] !== 1) continue;
+			const t = texel(l2, fi, fj);
+			if (claimed.has(t.px + ',' + t.py)) continue;
+			l2only++;
+			if (same(t.ind, cL2) && !same(t.ind, cRoot) && !same(t.ind, cL1)) l2own++;
+		}
+	}
+	results.paintL3 = { l3n, l3own, l3notRoot, l3notL2, overlaps, l3oob, l2only, l2own };
+	check('painted level 3 is not a coarse upsample', l3n > 50 && l3own === l3n && l3notRoot === l3n && overlaps === 0 && l3oob === 0,
+		`nodes=${l3n} own=${l3own} notRoot=${l3notRoot} overlap=${overlaps} oob=${l3oob}`);
+	check('paint order is finest on top', l3notL2 === l3n && l2only > 0 && l2own === l2only,
+		`L3 above L2 ${l3notL2}/${l3n}, L2-only ${l2own}/${l2only}`);
+
+	const { Map } = await import('../src/map.js');
+	const { Boat } = await import('../src/boat.js');
+	const { FluidWind, ConstantWind } = await import('../src/wind.js');
+	const live = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
+	const map = new Map(75, 75, 90, 15, live, new FluidWind(live), new ConstantWind(90, 15));
+	map.physics_model_init();
+	const boat = new Boat(map, 10, -9, 5 * Math.PI / 4);
+	for (let frame = 0; frame < 80; frame++) {
+		if (frame === 1) boat.input_autopilot_enabled_toggle();
+		map.world.step(1 / 30);
+		boat.physics_model_step();
+		if (boat.mainsail_force) {
+			for (const seg of boat.getSailSegments()) {
+				live.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * SAIL_LATTICE_COUPLING, seg.fy * SAIL_LATTICE_COUPLING);
+			}
+		}
+		trackBoats(live, [boat]);
+		live.physics_model_step();
+	}
+	const grid = live.domains[0] && live.domains[0].domains[0] && live.domains[0].domains[0].domains[0];
+	const buckets = new globalThis.Map();
+	let identical = 0, fluid = 0;
+	if (grid) {
+		for (let fj = 1; fj < grid.height - 1; fj++) {
+			for (let fi = 1; fi < grid.width - 1; fi++) {
+				if (!grid._role || grid._role[fi + fj * grid.width] !== 1) continue;
+				const cell = grid.cells[fi + fj * grid.width];
+				const cx = Math.floor(grid.fineToRootX(fi));
+				const cy = Math.floor(grid.fineToRootY(fj));
+				if (cx < 1 || cy < 1 || cx >= live.width - 1 || cy >= live.height - 1) continue;
+				const root = live.cells[cx + cy * live.width];
+				const sp = Math.hypot(cell.ux, cell.uy);
+				const rsp = Math.hypot(root.ux, root.uy);
+				fluid++;
+				if (Math.abs(sp - rsp) < 1e-6) identical++;
+				const key = cx + ',' + cy;
+				let b = buckets.get(key);
+				if (!b) { b = { min: sp, max: sp, n: 0 }; buckets.set(key, b); }
+				b.min = Math.min(b.min, sp);
+				b.max = Math.max(b.max, sp);
+				b.n++;
+			}
+		}
+	}
+	let varied = 0, covered = 0;
+	for (const b of buckets.values()) {
+		if (b.n < 4) continue;
+		covered++;
+		if (b.max - b.min > 1e-4) varied++;
+	}
+	results.l3vsRoot = { fluid, identical, covered, varied };
+	check('level 3 near the boat is not a copy of the root cell',
+		fluid > 100 && identical / fluid < 0.5 && covered > 0 && varied / covered > 0.5,
+		`identical ${identical}/${fluid}, varied cells ${varied}/${covered}`);
 }
 
 function fieldStats(bm) {

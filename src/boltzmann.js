@@ -1316,30 +1316,6 @@ export class RefinementDomain {
 		return this.mask[(cx - this.cx0) + (cy - this.cy0) * cw] === 1;
 	}
 
-	// The root cell (cx, cy) owns the sail momentum. Copy its velocity onto the
-	// fine nodes that paint that cell, and on into any nested disk, so the
-	// speed plot and Map.get_wind read the same wake the root grid carries.
-	mirrorCoarseVelocity(cx, cy, ux, uy, rho) {
-		const fi0 = fineIndex(this.cx0, cx);
-		const fj0 = fineIndex(this.cy0, cy);
-		for (let dj = 0; dj <= 1; dj++) {
-			for (let di = 0; di <= 1; di++) {
-				const fi = fi0 + di;
-				const fj = fj0 + dj;
-				const cell = latticeCell(this.cells, this.width, this.height, fi, fj);
-				if (!cell || cell.barrier) continue;
-				if (this._role && this._role[fi + fj * this.width] !== ROLE_FLUID) continue;
-				cell.setEquil(ux, uy, rho);
-				for (let k = 0; k < this.domains.length; k++) {
-					const child = this.domains[k];
-					if (fi < child.cx0 || fj < child.cy0 || fi >= child.cx1 || fj >= child.cy1) continue;
-					if (child.mask && !child._maskAt(fi, fj)) continue;
-					child.mirrorCoarseVelocity(fi, fj, ux, uy, rho);
-				}
-			}
-		}
-	}
-
 	// A level-2 cell is a fine index of its parent. It may be refined only
 	// where that parent node sits inside the parent mask.
 	_parentAllows(cx, cy) {
@@ -1576,6 +1552,7 @@ export class RefinementDomain {
 		for (let j = 2; j <= this.height - 3; j += 2) {
 			for (let i = 2; i <= w - 3; i += 2) {
 				if (this._role[i + j * w] !== ROLE_FLUID) continue;
+				if (this.cells[i + j * w].barrier) continue;
 				const d = (i - fi) * (i - fi) + (j - fj) * (j - fj);
 				if (d < bestD) { bestD = d; best = { fi: i, fj: j }; }
 			}
@@ -1711,11 +1688,10 @@ export class RefinementDomain {
 	}
 
 	// Apply an energy impulse at a coordinate in the PARENT's cell space.
-	// Delegates to the finest child disk that contains the point.
-	// The impulse is stored and added once per fine substep (exact difference),
-	// on the coincident node restriction will copy. It is not applied here:
-	// an immediate setEquil stacked on top of the per-substep kicks (5× on a
-	// nested grid) and wiped f_neq.
+	// Delegates to the finest child disk that contains the point, then splits
+	// the share across the fluid 2×2 of the coincident node. The impulse is
+	// stored and added once per fine substep. It is not applied here: an
+	// immediate setEquil stacked on top of the per-substep kicks and wiped f_neq.
 	applyEnergyAt(cx_cont, cy_cont, fx, fy) {
 		if (!Number.isFinite(cx_cont) || !Number.isFinite(cy_cont)) return;
 		if (!Number.isFinite(fx) || !Number.isFinite(fy)) return;
@@ -1725,26 +1701,45 @@ export class RefinementDomain {
 		if (child) { child.applyEnergyAt(fi_f, fj_f, fx, fy); return; }
 		let fi = snapToNode(Math.max(1, Math.min(this.width  - 2, Math.round(fi_f))), this.width);
 		let fj = snapToNode(Math.max(1, Math.min(this.height - 2, Math.round(fj_f))), this.height);
-		if (!this._isFluid(fi, fj)) {
+		const landed = latticeCell(this.cells, this.width, this.height, fi, fj);
+		if (!this._isFluid(fi, fj) || (landed && landed.barrier)) {
 			const alt = this._nearestFluidCoincident(fi, fj);
 			if (!alt) return;
 			fi = alt.fi;
 			fj = alt.fj;
 		}
-		this.pendingInjections.push({ fi, fj, fx, fy });
+		// Split across the 2×2 so one node does not take the whole 1/dx².
+		// The four nodes are the fine field inside that coarse cell; after they
+		// stream, the speed plot shows that structure instead of one flat block.
+		const parts = [];
+		for (let dj = 0; dj <= 1; dj++) {
+			for (let di = 0; di <= 1; di++) {
+				const nfi = fi + di;
+				const nfj = fj + dj;
+				const node = latticeCell(this.cells, this.width, this.height, nfi, nfj);
+				if (!node || node.barrier || !this._isFluid(nfi, nfj)) continue;
+				parts.push({ fi: nfi, fj: nfj });
+			}
+		}
+		if (!parts.length) return;
+		const share = 1 / parts.length;
+		for (let p = 0; p < parts.length; p++) {
+			this.pendingInjections.push({ fi: parts[p].fi, fj: parts[p].fj, fx: fx * share, fy: fy * share });
+		}
 	}
 
-	// Once per fine substep. (fx, fy) is this sample's share of the sail momentum.
-	// Convective scaling: lattice Δu per local step scales as δt²/δx. With
-	// δt = δx in root units that factor is this.dx (1/2 on level 1, 1/4 on
-	// level 2). Two level-1 substeps, or four level-2 substeps, then deposit
-	// the same total momentum as one coarse kick. The old 1/dx² factor put
-	// about 8× on level 1 and 64× on level 2. The kick is snapped onto the
-	// coincident node so Eq. 33 keeps it.
+	// Once per fine substep. The stored (fx, fy) is this node's share of the
+	// coarse-cell impulse. This level takes 1/dx substeps, and a node stands
+	// for area dx², so multiplying by 1/dx deposits physical momentum equal
+	// to that share. 1/dx² per substep was the old overshoot (8× on level 1,
+	// 64× on level 2). A cell that is already fast — the barrier jet at wind
+	// 25 — does not take the full spike; that is what collapsed its density.
 	_applyForceFineCell(fi, fj, fx, fy) {
 		const cell = latticeCell(this.cells, this.width, this.height, fi, fj);
-		if (!cell) return;
-		const s = this.dx;
+		if (!cell || cell.barrier) return;
+		let s = 1 / this.dx;
+		const speed = Math.hypot(cell.ux, cell.uy);
+		if (speed > 0.32) s *= 0.32 / speed;
 		addMomentum(cell, fx * s, fy * s);
 	}
 
@@ -1975,27 +1970,13 @@ export class Boltzmann {
 			}
 			return false;
 		};
-		// A boat disk is a window the sail wake has to cross. Those root cells
-		// keep streaming, and mirrorCoarseVelocity puts their velocity back after
-		// restriction, so the wake on the speed plot does not depend on the level.
-		// A field island has no disk and stays on the fine grid.
-		const boatDisk = (x, y) => {
-			for (let i = 0; i < this.domains.length; i++) {
-				const d = this.domains[i];
-				if (d.disk && d._maskAt(x, y)) return true;
-			}
-			return false;
-		};
 		const stream = [];
 		const interior = [];
 		for (let y = 1; y < this.height - 1; y++) {
 			for (let x = 1; x < this.width - 1; x++) {
 				const cell = this.cells[x + y * this.width];
 				const on = covered(x, y);
-				// A barrier cell stays on the fine grid. Streaming it here and
-				// writing the sail snapshot back punches through the obstacle.
-				const sail = boatDisk(x, y) && !cell.barrier;
-				const deep = on && !sail && covered(x - 1, y) && covered(x + 1, y) && covered(x, y - 1) && covered(x, y + 1);
+				const deep = on && covered(x - 1, y) && covered(x + 1, y) && covered(x, y - 1) && covered(x, y + 1);
 				if (!deep) stream.push(cell);
 				if (!on) interior.push(cell);
 			}
@@ -2053,50 +2034,6 @@ export class Boltzmann {
 		}
 	}
 
-	_boatDiskAt(x, y) {
-		for (let i = 0; i < this.domains.length; i++) {
-			const d = this.domains[i];
-			if (d.disk && d._maskAt(x, y)) return true;
-		}
-		return false;
-	}
-
-	// Populations of every root cell a boat disk covers, after the coarse
-	// stream and before restriction replaces them.
-	_snapshotBoatDisk() {
-		const snap = [];
-		const w = this.width;
-		for (let y = 1; y < this.height - 1; y++) {
-			for (let x = 1; x < w - 1; x++) {
-				if (!this._boatDiskAt(x, y)) continue;
-				const c = this.cells[x + y * w];
-				if (c.barrier) continue;
-				snap.push({
-					x, y,
-					f0: c.f0, fN: c.fN, fS: c.fS, fE: c.fE, fW: c.fW,
-					fNE: c.fNE, fNW: c.fNW, fSE: c.fSE, fSW: c.fSW,
-					rho: c.rho, ux: c.ux, uy: c.uy,
-				});
-			}
-		}
-		return snap;
-	}
-
-	_restoreBoatDisk(snap) {
-		const w = this.width;
-		for (let i = 0; i < snap.length; i++) {
-			const s = snap[i];
-			const c = this.cells[s.x + s.y * w];
-			c.f0 = s.f0; c.fN = s.fN; c.fS = s.fS; c.fE = s.fE; c.fW = s.fW;
-			c.fNE = s.fNE; c.fNW = s.fNW; c.fSE = s.fSE; c.fSW = s.fSW;
-			c.rho = s.rho; c.ux = s.ux; c.uy = s.uy;
-			for (let d = 0; d < this.domains.length; d++) {
-				const dom = this.domains[d];
-				if (dom.disk && dom._maskAt(s.x, s.y)) dom.mirrorCoarseVelocity(s.x, s.y, s.ux, s.uy, s.rho);
-			}
-		}
-	}
-
 	// Simulate function executes a bunch of steps and then schedules another call to itself:
 	physics_model_step() {
 
@@ -2119,16 +2056,9 @@ export class Boltzmann {
 		this.collideAndStream(this.streamCells, omega_c);
 		this.setBoundaries();
 
-		// Boat-disk cells just streamed the sail kick. Restriction is about to
-		// overwrite them from the fine grid, which does not carry that kick.
-		// The snapshot is the root wake; it is written back onto those cells
-		// and onto the fine nodes that paint them.
-		const boatSnap = this._snapshotBoatDisk();
-
 		for (let d = 0; d < this.domains.length; d++) {
 			this.domains[d].step(this);
 		}
-		this._restoreBoatDisk(boatSnap);
 
 		// Clear pending injections for all domains after all sub-steps are done.
 		// Must happen here (not inside step()) so recursive child calls at any level
@@ -2178,16 +2108,18 @@ export class Boltzmann {
 		return best;
 	}
 
-	// Apply a force vector (fx, fy) at world position (wx, wy) on the root cell.
-	// A refined disk does not get its own copy: the fine substeps stream that
-	// kick out through the mask, and Eq. 33 only copies the coincident node, so
-	// the plotted field never shows it. The root cell keeps the whole momentum
-	// (the same total on the root grid, level 1, and level 2). physics_model_step
-	// copies that cell onto the fine nodes that paint it.
+	// Apply a force vector (fx, fy) at world position (wx, wy).
+	// Inside a refined disk the share goes to the finest level. applyEnergyAt
+	// splits it across that level's 2×2 and scales by 1/dx per substep, so the
+	// physical momentum matches a root cell and the speed plot reads the fine
+	// field, not a copy of the coarse cell. Outside any disk the root cell
+	// takes the whole share.
 	apply_energy(wx, wy, fx, fy) {
 		if (!Number.isFinite(wx) || !Number.isFinite(wy) || !Number.isFinite(fx) || !Number.isFinite(fy)) return;
 		const cx_cont = this.width/2  + wx * this.resolution;
 		const cy_cont = this.height/2 + wy * this.resolution;
+		const best = this._finestDomain(cx_cont, cy_cont);
+		if (best) { best.applyEnergyAt(cx_cont, cy_cont, fx, fy); return; }
 		const x = Math.max(1, Math.min(this.width  - 2, Math.round(cx_cont)));
 		const y = Math.max(1, Math.min(this.height - 2, Math.round(cy_cont)));
 		this.apply_force_to_cell(x, y, fx, fy);
@@ -2204,10 +2136,9 @@ export class Boltzmann {
 		const length = Math.sqrt(dx*dx + dy*dy);
 		if (!(length > 1e-9)) return;
 
-		// One sample per coarse cell. The finest dx would split the same total
-		// across a node per fine cell, and the speed plot then cannot show a
-		// wake: each node's Δu shrinks as  dx² while the integral stays put.
-		// Root, level 1, and level 2 therefore load the same coarse footprint.
+		// One sample per coarse cell. The whole share goes to one coincident
+		// node on the finest grid that covers it. Splitting the share across
+		// every fine node would shrink each Δu as dx² and the wake would vanish.
 		const step = 1 / this.resolution;
 
 		const ux = dx / length;

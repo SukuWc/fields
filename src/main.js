@@ -19,7 +19,10 @@ const map_h = 75;
 const wind_angle = 90;
 const wind_speed = 15;
 const bm_resolution = 1;
-const texture_oversampling = 4;
+// Level 3 cells are dx = 0.125. The speed plot stamps oversampling*dx pixels,
+// and a fractional stamp collapses several fine nodes onto one texel (the
+// coarse blocks inside the inner disk). 8 lands each level-3 node on one texel.
+const texture_oversampling = 8;
 
 // Fine domain tracking: half-width in coarse cells. The window steps one cell at a time
 // once the boat is more than SHIFT_THRESHOLD cells from the window center.

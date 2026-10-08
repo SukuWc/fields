@@ -13,9 +13,10 @@ import { updateTackingState } from './rules.js';
 // Before convective rescaling, level 2 applied 1/dx² on each of four substeps
 // (64× this impulse) and level 1 applied 8×. That level-dependent kick was
 // the wake on the plot, and it is not coming back. SAIL_WAKE_GAIN is one
-// multiple of the same impulse on every grid. The root cell keeps the whole
-// momentum; a refined disk copies that cell's velocity onto the nodes that
-// paint it, so the wake does not change with the mesh.
+// multiple of the same impulse on every grid. Inside a refined disk the
+// share is split across the finest 2×2 and scaled by 1/dx each substep, so
+// the physical momentum matches the root cell. Those nodes keep the field
+// they stream; they are not overwritten with the coarse cell.
 //
 // 16 is the largest multiple that stays comfortable at wind 25: the near-sail
 // speed peaks near 0.34, under the lattice's ~0.5 stability edge, and
