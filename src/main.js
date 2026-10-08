@@ -8,8 +8,11 @@ import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera } from './renderer.js';
 import { setupControls, getPlayers, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
+
 import { SAIL_LATTICE_COUPLING } from './boat.js';
-import { beginRule15Step, contactGuides, evaluateAllPairs, recordContacts, trueWindAngleDeg } from './rules.js';
+
+import { beginRule15Step, contactGuides, evaluateAllPairs, penaltyAutopilotRemainingDeg, penaltyGuides, penaltyJustCleared, penaltyManeuverText, penaltyManeuverView, pendingPenaltyCount, recordContacts, trueWindAngleDeg } from './rules.js';
+
 
 const map_w = 75;
 const map_h = 75;
@@ -148,6 +151,7 @@ runner.start((simDt) => {
   // call is constant wind in dev mode and the lattice otherwise. Every
   // unordered pair inside 12 m is evaluated; nothing here assumes two boats.
   const racing = getPlayers();
+  let showPenaltyKeys = false;
   for (let i = 0; i < racing.length; i++) {
     const sample = map.get_wind(racing[i].x, racing[i].y);
     const from = sample && Number.isFinite(sample.direction) ? sample.direction : null;
@@ -155,7 +159,25 @@ runner.start((simDt) => {
     const onto = racing[i].tacking && racing[i].tackingOnto ? ' onto ' + racing[i].tackingOnto : '';
     const twaText = twa === null ? '?' : String(Math.round(twa));
     infoEl.innerHTML += 'Boat ' + i + ' TWA ' + twaText + (racing[i].tacking ? ' tacking' + onto : '') + '<br>';
+    const pending = pendingPenaltyCount(racing[i]);
+    const steered = racing[i].penalty_turn;
+    if (pending > 0 || steered) {
+      showPenaltyKeys = true;
+      let line = 'Boat ' + i + (pending === 0 && penaltyJustCleared(racing[i]) ? ' CLEARED' : ' penalty ' + pending);
+      const maneuvers = pending > 0 ? penaltyManeuverText(penaltyManeuverView(racing[i])) : null;
+      if (steered) {
+        const left = Math.max(0, Math.ceil(penaltyAutopilotRemainingDeg(racing[i])));
+        line += ' · ' + (steered.dir < 0 ? 'CW ' : 'CCW ') + left + '°';
+      }
+      if (maneuvers) line += ' · ' + maneuvers;
+      else if (pending > 0) line += ' · needs tack + gybe';
+      infoEl.innerHTML += line + '<br>';
+    } else if (penaltyJustCleared(racing[i])) {
+      showPenaltyKeys = true;
+      infoEl.innerHTML += 'Boat ' + i + ' CLEARED<br>';
+    }
   }
+  if (showPenaltyKeys) infoEl.innerHTML += 'Q CCW · E CW<br>';
   const getWind = (x, y) => map.get_wind(x, y);
   const resolutions = evaluateAllPairs(racing, getWind, rulesTime);
   for (let i = 0; i < resolutions.length; i++) {
@@ -164,6 +186,7 @@ runner.start((simDt) => {
   }
   recordContacts(resolutions, rulesTime, racing);
   guides.push(...contactGuides());
+  guides.push(...penaltyGuides(racing));
 
   // Dynamic domain placement: one reusable window per boat, plus a field
   // window where curl stays high away from every boat. Each boat level is a
