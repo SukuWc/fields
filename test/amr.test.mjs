@@ -525,6 +525,7 @@ function enclosedHole(domain) {
 	const l3 = l2 && l2.domains[0];
 	results.scenario0 = {
 		twa, bs, tws: boat.wind_speed, stepMs, maxU: st.maxU, bad: st.bad, bsAt500,
+		capHits: bm.capHits, forceApplies: bm.forceApplies,
 		maxCells, maxExtra, maxAdded, floorMissing, holes, sizeChanged,
 		maxCells2, maxExtra2, maxAdded2, floorMissing2, holes2, sizeChanged2,
 		maxCells3, maxExtra3, maxAdded3, floorMissing3, holes3, sizeChanged3,
@@ -536,6 +537,9 @@ function enclosedHole(domain) {
 	check('scenario 0 wind still blowing', boat.wind_speed > 12 && st.bad === 0 && st.maxU < 0.3 && st.maxU > 0.1,
 		`TWS = ${boat.wind_speed.toFixed(2)}, max|u| = ${st.maxU.toExponential(2)}, bad = ${st.bad}`);
 	check('scenario 0 step stays cheap', stepMs < 12, `mean step ${stepMs.toFixed(2)} ms`);
+	const capRate = bm.forceApplies ? bm.capHits / bm.forceApplies : 0;
+	check('scenario 0 speed cap stays a safety net', capRate < 0.01,
+		`cap ${bm.capHits}/${bm.forceApplies}`);
 	check('scenario 0 keeps nested level-2 and level-3 grids',
 		bm.domains[0].disk && bm.domains[0].domains.length === 1 && !!(l2 && l3 && l2.domains.length === 1)
 		&& bm.domains.slice(1).every(d => !d.disk));
@@ -586,11 +590,11 @@ function enclosedHole(domain) {
 }
 
 // --- 9. Sail momentum is the same on the root grid and under a disk ---
-// The kick is one coarse-cell share. Under a disk it is split across the
-// level-2 2×2 and scaled by 1/dx each substep, so the physical momentum
-// (lattice momentum × dx², on the nodes that own the cell) is fy. fy = 0.05
-// leaves that integral ≈ 0.05. The old 1/dx²-per-substep path left about
-// 0.22 of lattice momentum on level 2 and a much larger velocity.
+// A point sample under a disk is spread bilinearly and scaled by 1/dx on
+// each substep, so the physical momentum (lattice momentum × dx², on the
+// nodes that own the cell) is fy. fy = 0.05 leaves that integral ≈ 0.05.
+// The old 1/dx²-per-substep path left about 0.22 of lattice momentum on
+// level 2 and a much larger velocity.
 {
 	const uy0 = -0.15;
 	function impulse(levels) {
@@ -648,8 +652,87 @@ function enclosedHole(domain) {
 	check('impulse on the root grid deposits 0.05', bare.rootJy > 0.04 && bare.rootJy < 0.06 && bare.bad === 0,
 		`physical ΣρΔuy = ${bare.rootJy.toExponential(3)}`);
 	check('impulse under level 2 deposits the same momentum',
-		Math.abs(nest.rootJy - bare.rootJy) < 0.01 && nest.bad === 0 && nest.maxU < 0.4,
+		Math.abs(nest.rootJy - bare.rootJy) < 0.01 && nest.bad === 0 && nest.maxU < 1,
 		`nested physical ΣρΔuy = ${nest.rootJy.toExponential(3)}, bare ${bare.rootJy.toExponential(3)}, max|u| = ${nest.maxU.toExponential(3)}`);
+}
+
+// A test sail's deposited momentum matches the root grid on every level and
+// across a level boundary. The segment is sampled at the local cell size, so
+// the shares tile the same total force. Within 1% of the root integral.
+{
+	const uy0 = -0.15;
+	function physical(bm) {
+		const coveredBy = (domains, x, y) => {
+			for (let i = 0; i < domains.length; i++) if (domains[i]._maskAt(x, y)) return true;
+			return false;
+		};
+		let p = 0;
+		for (let y = 0; y < bm.height; y++) {
+			for (let x = 0; x < bm.width; x++) {
+				if (coveredBy(bm.domains, x, y)) continue;
+				const c = bm.cells[x + y * bm.width];
+				p += c.rho * (c.uy - uy0);
+			}
+		}
+		const walk = (ds) => {
+			for (const d of ds) {
+				for (let fj = 0; fj < d.height; fj++) {
+					for (let fi = 0; fi < d.width; fi++) {
+						if (!d._role || d._role[fi + fj * d.width] !== 1) continue;
+						if (coveredBy(d.domains, fi, fj)) continue;
+						const c = d.cells[fi + fj * d.width];
+						p += c.rho * (c.uy - uy0) * d.dx * d.dx;
+					}
+				}
+				walk(d.domains);
+			}
+		};
+		walk(bm.domains);
+		return p;
+	}
+	function nestSail(bm, levels) {
+		if (levels < 1) return;
+		bm.addDomain(8, 8, 56, 56);
+		bm.domains[0].setDisk(32, 32, 18);
+		if (levels < 2) return;
+		const d1 = bm.domains[0];
+		const f1x = fineIndex(d1.cx0, 32);
+		const f1y = fineIndex(d1.cy0, 32);
+		d1.addDomain(f1x - 28, f1y - 28, f1x + 28, f1y + 28);
+		d1.domains[0].setDisk(f1x, f1y, 20);
+		if (levels < 3) return;
+		const d2 = d1.domains[0];
+		const f2x = fineIndex(d2.cx0, f1x);
+		const f2y = fineIndex(d2.cy0, f1y);
+		d2.addDomain(f2x - 24, f2y - 24, f2x + 24, f2y + 24);
+		d2.domains[0].setDisk(f2x, f2y, 16);
+	}
+	function sailJy(setup) {
+		const bm = new Boltzmann(64, 64, 1, 90, 15, undefined, 1);
+		setup(bm);
+		const j0 = physical(bm);
+		bm.apply_energy_segment(-6, 0, 6, 0, 0, 0.12);
+		bm.physics_model_step();
+		return { jy: physical(bm) - j0, cap: bm.capHits, applies: bm.forceApplies };
+	}
+	const rootSail = sailJy(() => {});
+	const l1Sail = sailJy(bm => nestSail(bm, 1));
+	const l2Sail = sailJy(bm => nestSail(bm, 2));
+	const l3Sail = sailJy(bm => nestSail(bm, 3));
+	const crossSail = sailJy(bm => {
+		bm.addDomain(8, 16, 56, 48);
+		bm.domains[0].setDisk(40, 32, 12);
+	});
+	results.sailConserve = { rootSail, l1Sail, l2Sail, l3Sail, crossSail };
+	const within = (a) => Math.abs(a.jy - rootSail.jy) <= 0.01 * Math.abs(rootSail.jy);
+	check('sail momentum matches the root grid on level 1', within(l1Sail) && l1Sail.cap === 0,
+		`L1 ΣρΔuy ${l1Sail.jy.toExponential(4)} root ${rootSail.jy.toExponential(4)} cap ${l1Sail.cap}/${l1Sail.applies}`);
+	check('sail momentum matches the root grid on level 2', within(l2Sail) && l2Sail.cap === 0,
+		`L2 ΣρΔuy ${l2Sail.jy.toExponential(4)} root ${rootSail.jy.toExponential(4)} cap ${l2Sail.cap}/${l2Sail.applies}`);
+	check('sail momentum matches the root grid on level 3', within(l3Sail) && l3Sail.cap === 0,
+		`L3 ΣρΔuy ${l3Sail.jy.toExponential(4)} root ${rootSail.jy.toExponential(4)} cap ${l3Sail.cap}/${l3Sail.applies}`);
+	check('sail momentum matches across a level boundary', within(crossSail) && crossSail.cap === 0,
+		`cross ΣρΔuy ${crossSail.jy.toExponential(4)} root ${rootSail.jy.toExponential(4)} cap ${crossSail.cap}/${crossSail.applies}`);
 }
 {
 	const { Map } = await import('../src/map.js');

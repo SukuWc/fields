@@ -384,16 +384,61 @@ function addMomentum(cell, fx, fy) {
 	cell.uy = nuy;
 }
 
-// Parent nodes sit on even fine indices (2, 4, …). Snapping the sail sample onto
-// that node is what makes the impulse survive restriction: ρ and u are copied from
-// the coincident node only, so a kick on a halfway fine node is stripped.
-function snapToNode(i, n) {
-	// First refined site is 2. Last is n-3 (n-1 is the outer ghost, n-2 the halfway node).
-	let s = (i & 1) ? i - 1 : i;
-	if (s < 2) s = 2;
-	const maxNode = n - 3;
-	if (s > maxNode) s = maxNode;
-	return s;
+// Bilinear weights on the four nodes around a continuous index. A corner that
+// cannot take a kick (barrier, ghost, or off the grid) gives its weight to the
+// corners that can, in proportion to the weight they already hold, so the
+// sample's momentum is not dropped. If none of the four can take it, the
+// nearest ring of nodes that can takes the whole sample.
+function depositBilinear(iCont, jCont, fx, fy, accept, push) {
+	const i0 = Math.floor(iCont);
+	const j0 = Math.floor(jCont);
+	const hf = iCont - i0;
+	const vf = jCont - j0;
+	const corners = [
+		[i0,     j0,     (1 - hf) * (1 - vf)],
+		[i0 + 1, j0,     hf * (1 - vf)],
+		[i0,     j0 + 1, (1 - hf) * vf],
+		[i0 + 1, j0 + 1, hf * vf],
+	];
+	let fluidW = 0;
+	let dropped = 0;
+	const fluid = [];
+	for (let k = 0; k < 4; k++) {
+		const w = corners[k][2];
+		if (!(w > 0)) continue;
+		if (accept(corners[k][0], corners[k][1])) {
+			fluid.push(corners[k]);
+			fluidW += w;
+		} else {
+			dropped += w;
+		}
+	}
+	if (fluidW > 0) {
+		const scale = (fluidW + dropped) / fluidW;
+		for (let k = 0; k < fluid.length; k++) {
+			push(fluid[k][0], fluid[k][1], fx * fluid[k][2] * scale, fy * fluid[k][2] * scale);
+		}
+		return;
+	}
+	const iCenter = Math.round(iCont);
+	const jCenter = Math.round(jCont);
+	for (let r = 1; r <= 64; r++) {
+		const band = [];
+		for (let j = jCenter - r; j <= jCenter + r; j++) {
+			for (let i = iCenter - r; i <= iCenter + r; i++) {
+				if (Math.max(Math.abs(i - iCenter), Math.abs(j - jCenter)) !== r) continue;
+				if (!accept(i, j)) continue;
+				band.push([i, j, 1 / Math.max(Math.hypot(i - iCont, j - jCont), 1e-3)]);
+			}
+		}
+		if (!band.length) continue;
+		let sum = 0;
+		for (let k = 0; k < band.length; k++) sum += band[k][2];
+		for (let k = 0; k < band.length; k++) {
+			push(band[k][0], band[k][1], fx * band[k][2] / sum, fy * band[k][2] / sum);
+		}
+		return;
+	}
 }
 
 // Remove Σ f_neq and Σ ξ f_neq. w_i and w_i * 3 ξ_i are the D2Q9 mass/momentum modes.
@@ -1688,9 +1733,9 @@ export class RefinementDomain {
 	}
 
 	// Apply an energy impulse at a coordinate in the PARENT's cell space.
-	// Delegates to the finest child disk that contains the point, then splits
-	// the share across the fluid 2×2 of the coincident node. The impulse is
-	// stored and added once per fine substep. It is not applied here: an
+	// Delegates to the finest child disk that contains the point, then spreads
+	// the share bilinearly onto the fine nodes around the sample. The impulse
+	// is stored and added once per fine substep. It is not applied here: an
 	// immediate setEquil stacked on top of the per-substep kicks and wiped f_neq.
 	applyEnergyAt(cx_cont, cy_cont, fx, fy) {
 		if (!Number.isFinite(cx_cont) || !Number.isFinite(cy_cont)) return;
@@ -1699,33 +1744,34 @@ export class RefinementDomain {
 		const fj_f = fineIndex(this.cy0, cy_cont);
 		const child = this._finestChild(fi_f, fj_f);
 		if (child) { child.applyEnergyAt(fi_f, fj_f, fx, fy); return; }
-		let fi = snapToNode(Math.max(1, Math.min(this.width  - 2, Math.round(fi_f))), this.width);
-		let fj = snapToNode(Math.max(1, Math.min(this.height - 2, Math.round(fj_f))), this.height);
-		const landed = latticeCell(this.cells, this.width, this.height, fi, fj);
-		if (!this._isFluid(fi, fj) || (landed && landed.barrier)) {
-			const alt = this._nearestFluidCoincident(fi, fj);
-			if (!alt) return;
-			fi = alt.fi;
-			fj = alt.fj;
+		const self = this;
+		depositBilinear(fi_f, fj_f, fx, fy,
+			(i, j) => self._canTakeForce(i, j),
+			(i, j, sx, sy) => { self.pendingInjections.push({ fi: i, fj: j, fx: sx, fy: sy }); });
+	}
+
+	_canTakeForce(fi, fj) {
+		if (!this._isFluid(fi, fj)) return false;
+		const cell = latticeCell(this.cells, this.width, this.height, fi, fj);
+		if (!cell || cell.barrier) return false;
+		// A child owns this node and overwrites it on restriction. The sample
+		// that belongs on the child is delegated before this; a bilinear corner
+		// that merely spills onto the child would be wiped.
+		for (let c = 0; c < this.domains.length; c++) {
+			if (this.domains[c]._maskAt(fi, fj)) return false;
 		}
-		// Split across the 2×2 so one node does not take the whole 1/dx².
-		// The four nodes are the fine field inside that coarse cell; after they
-		// stream, the speed plot shows that structure instead of one flat block.
-		const parts = [];
-		for (let dj = 0; dj <= 1; dj++) {
-			for (let di = 0; di <= 1; di++) {
-				const nfi = fi + di;
-				const nfj = fj + dj;
-				const node = latticeCell(this.cells, this.width, this.height, nfi, nfj);
-				if (!node || node.barrier || !this._isFluid(nfi, nfj)) continue;
-				parts.push({ fi: nfi, fj: nfj });
+		// The rim streams into a ghost, and the ghost is replaced from the parent
+		// at the end of the step. A kick there would leave the integral. One cell
+		// in from the rim stays on nodes this level still owns.
+		for (let dj = -1; dj <= 1; dj++) {
+			for (let di = -1; di <= 1; di++) {
+				if (di === 0 && dj === 0) continue;
+				if (!this._isFluid(fi + di, fj + dj)) return false;
+				const n = latticeCell(this.cells, this.width, this.height, fi + di, fj + dj);
+				if (!n || n.barrier) return false;
 			}
 		}
-		if (!parts.length) return;
-		const share = 1 / parts.length;
-		for (let p = 0; p < parts.length; p++) {
-			this.pendingInjections.push({ fi: parts[p].fi, fj: parts[p].fj, fx: fx * share, fy: fy * share });
-		}
+		return true;
 	}
 
 	// Once per fine substep. The stored (fx, fy) is this node's share of the
@@ -1738,9 +1784,23 @@ export class RefinementDomain {
 		const cell = latticeCell(this.cells, this.width, this.height, fi, fj);
 		if (!cell || cell.barrier) return;
 		let s = 1 / this.dx;
+		let capped = false;
 		const speed = Math.hypot(cell.ux, cell.uy);
-		if (speed > 0.32) s *= 0.32 / speed;
+		if (speed > 0.32) {
+			s *= 0.32 / speed;
+			capped = true;
+		}
+		this._tallyForce(capped);
 		addMomentum(cell, fx * s, fy * s);
+	}
+
+	// capHits counts kicks that the 0.32 safety net scaled down. The counter
+	// lives on the root lattice so a nested disk and the test see one total.
+	_tallyForce(capped) {
+		let p = this;
+		while (p.parent) p = p.parent;
+		p.forceApplies = (p.forceApplies || 0) + 1;
+		if (capped) p.capHits = (p.capHits || 0) + 1;
 	}
 
 }
@@ -1820,6 +1880,9 @@ export class Boltzmann {
 
 		this.texture = texture;
 		this.resolution = resolution;
+		// Fine-grid kicks that the 0.32 speed cap scaled down, and the kicks it saw.
+		this.capHits = 0;
+		this.forceApplies = 0;
 
 		this.width = width * this.resolution;
 		this.height = height * this.resolution;
@@ -2108,26 +2171,63 @@ export class Boltzmann {
 		return best;
 	}
 
+	// Finest refinement depth covering this root-cell coordinate. 0 is the root grid.
+	_finestLevel(cx, cy) {
+		let level = 0;
+		for (let d = 0; d < this.domains.length; d++) {
+			const lv = this.domains[d].levelAt(cx, cy);
+			if (lv > level) level = lv;
+		}
+		return level;
+	}
+
+	// World length of one cell on the finest level at this point.
+	// Root dx is 1 coarse cell; level n is 2^(−n). Dividing by the root
+	// resolution puts that in world units (½, ¼, ⅛ at resolution 1).
+	_worldStepAt(wx, wy) {
+		const cx = this.width / 2 + wx * this.resolution;
+		const cy = this.height / 2 + wy * this.resolution;
+		const level = this._finestLevel(cx, cy);
+		const dx = level === 0 ? 1 : 2 ** -level;
+		return dx / this.resolution;
+	}
+
+	_rootCanTake(i, j) {
+		if (i < 1 || j < 1 || i > this.width - 2 || j > this.height - 2) return false;
+		const cell = this.cells[i + j * this.width];
+		if (!cell || cell.barrier) return false;
+		// A refined mask overwrites this cell from the fine grid. Weight that
+		// would have landed here is given to the root corners the mask does not cover.
+		for (let d = 0; d < this.domains.length; d++) {
+			if (this.domains[d]._maskAt(i, j)) return false;
+		}
+		return true;
+	}
+
 	// Apply a force vector (fx, fy) at world position (wx, wy).
 	// Inside a refined disk the share goes to the finest level. applyEnergyAt
-	// splits it across that level's 2×2 and scales by 1/dx per substep, so the
-	// physical momentum matches a root cell and the speed plot reads the fine
-	// field, not a copy of the coarse cell. Outside any disk the root cell
-	// takes the whole share.
+	// spreads it bilinearly across the fine nodes around the sample and scales
+	// by 1/dx per substep, so the physical momentum matches the share and the
+	// speed plot reads the fine field. Outside any disk the root nodes around
+	// the sample take the same bilinear weights, once.
 	apply_energy(wx, wy, fx, fy) {
 		if (!Number.isFinite(wx) || !Number.isFinite(wy) || !Number.isFinite(fx) || !Number.isFinite(fy)) return;
 		const cx_cont = this.width/2  + wx * this.resolution;
 		const cy_cont = this.height/2 + wy * this.resolution;
 		const best = this._finestDomain(cx_cont, cy_cont);
 		if (best) { best.applyEnergyAt(cx_cont, cy_cont, fx, fy); return; }
-		const x = Math.max(1, Math.min(this.width  - 2, Math.round(cx_cont)));
-		const y = Math.max(1, Math.min(this.height - 2, Math.round(cy_cont)));
-		this.apply_force_to_cell(x, y, fx, fy);
+		const self = this;
+		depositBilinear(cx_cont, cy_cont, fx, fy,
+			(i, j) => self._rootCanTake(i, j),
+			(i, j, sx, sy) => self.apply_force_to_cell(i, j, sx, sy));
 	}
 
 	// Distribute a total force (fx, fy) evenly along a world-space line segment.
-	// One sample per coarse cell, on every level, so the same sail loads the
-	// same footprint on the root grid and inside a refined disk.
+	// The step is one cell of the finest level covering the sample, so a sail
+	// inside level 3 is sampled eight times per coarse cell and a sail on the
+	// root grid once. Each sample's share is the fraction of the segment it
+	// covers. A step that would cross into another level stops on the boundary,
+	// so the pieces tile the segment: no gap and no double count.
 	apply_energy_segment(x0, y0, x1, y1, fx, fy) {
 		if (!Number.isFinite(x0) || !Number.isFinite(y0) || !Number.isFinite(x1) || !Number.isFinite(y1)) return;
 		if (!Number.isFinite(fx) || !Number.isFinite(fy)) return;
@@ -2136,21 +2236,37 @@ export class Boltzmann {
 		const length = Math.sqrt(dx*dx + dy*dy);
 		if (!(length > 1e-9)) return;
 
-		// One sample per coarse cell. The whole share goes to one coincident
-		// node on the finest grid that covers it. Splitting the share across
-		// every fine node would shrink each Δu as dx² and the wake would vanish.
-		const step = 1 / this.resolution;
-
 		const ux = dx / length;
 		const uy = dy / length;
-
 		let t = 0;
-		while (t < length) {
-			const actualStep = Math.min(step, length - t);
+		const limit = Math.ceil(length * this.resolution * 16) + 8;
+		for (let n = 0; t < length - 1e-12 && n < limit; n++) {
+			const remain = length - t;
+			const eps = Math.min(remain * 0.5, 1e-5);
+			const px = x0 + ux * (t + eps);
+			const py = y0 + uy * (t + eps);
+			let step = this._worldStepAt(px, py);
+			if (!(step > 1e-12)) step = 1 / this.resolution;
+			if (step < remain) {
+				const endStep = this._worldStepAt(x0 + ux * (t + step), y0 + uy * (t + step));
+				if (Math.abs(endStep - step) > step * 1e-6) {
+					let lo = 0;
+					let hi = step;
+					for (let k = 0; k < 16; k++) {
+						const mid = (lo + hi) * 0.5;
+						const s = this._worldStepAt(x0 + ux * (t + mid), y0 + uy * (t + mid));
+						if (Math.abs(s - step) > step * 1e-6) hi = mid;
+						else lo = mid;
+					}
+					step = hi > 1e-8 ? hi : endStep;
+				}
+			}
+			const actualStep = Math.min(step, remain);
+			if (!(actualStep > 1e-12)) break;
 			const wx = x0 + ux * (t + actualStep * 0.5);
 			const wy = y0 + uy * (t + actualStep * 0.5);
 			this.apply_energy(wx, wy, fx * actualStep / length, fy * actualStep / length);
-			t += step;
+			t += actualStep;
 		}
 	}
 
