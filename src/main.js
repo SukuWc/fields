@@ -6,7 +6,7 @@ import { trackBoats } from './domainTrack.js';
 import { Map } from './map.js';
 import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera } from './renderer.js';
-import { setupControls, getPlayers, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
+import { setupControls, getPlayers, getMarks, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
 
 import { SAIL_LATTICE_COUPLING } from './boat.js';
@@ -149,6 +149,15 @@ runner.start((simDt) => {
 
     infoEl.innerHTML += "Phys Time: " + bm.t_delta + "<br>";
   });
+
+  // Marks: anchor spring + damper once per world.step (planck clears forces
+  // after each step), drawn every frame. Marks are not boats, so they stay
+  // out of the rules overlay below.
+  const stepped = typeof simDt === 'number' && Number.isFinite(simDt) && simDt > 0;
+  for (const mark of getMarks()) {
+    if (stepped) mark.physics_model_step();
+    guides.push(...mark.graphics_model_render());
+  }
 
   // Rules overlay. map.get_wind follows the active provider, so the same
   // call is constant wind in dev mode and the lattice otherwise. Every
