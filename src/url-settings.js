@@ -2,6 +2,8 @@
 //
 // Defaults are whatever the controls hold when this runs, so JS that adjusts
 // the initial HTML (the wind inputs) is the default — not the raw markup.
+// Checkboxes are the exception: they are reset to their markup state first,
+// so a box the browser restored on reload is not mistaken for a default.
 // show_forces stays unchecked, matching the HTML and Map. Only values that
 // differ from those defaults are written. Unknown
 // query keys are left alone. `devmode=1` (also `true`) is the existing link
@@ -119,6 +121,14 @@ export function installUrlSettings(root) {
   }
 
   const controls = Array.from(panel.querySelectorAll("input, select, textarea")).filter(isSettingsControl);
+  // Firefox restores form state on reload (autocomplete="off" in index.html
+  // opts out). If a checkbox still came back from the browser, put it back to
+  // its markup state so it can't become the "default": otherwise a restored
+  // checked Dev mode box made devmode=1 look like the default, so the param
+  // was dropped and no change event turned dev mode on.
+  for (const el of controls) {
+    if (el.type === "checkbox") el.checked = el.defaultChecked;
+  }
   const defaults = new Map(controls.map((el) => [el.id, readControl(el)]));
   let writing = false;
 

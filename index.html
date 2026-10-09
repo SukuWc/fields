@@ -165,19 +165,19 @@
     <div id="devmode_banner" title="The angle is where the wind comes from. The arrow points downwind, the way it blows.">DEV MODE · fluid off · wind <span id="dev_wind_label"></span><span id="dev_wind_arrow">➤</span></div>
     <div id="fps" style="position:absolute; bottom:10px; left:10px; color:white; font-family:'Courier New',monospace; z-index:100;"></div>
     <div id="settings">
-      <input id="devmode" type="checkbox" title="Constant wind, no fluid simulation. Also enabled by ?devmode=1">Dev mode
+      <input id="devmode" autocomplete="off" type="checkbox" title="Constant wind, no fluid simulation. Also enabled by ?devmode=1">Dev mode
       <br>
-      <input id="amr" type="checkbox" checked>Mesh refinement
+      <input id="amr" autocomplete="off" type="checkbox" checked>Mesh refinement
       <br>
-      <input id="barrier" type="checkbox" title="Circular obstacle at the map centre. Off by default. Check it and set wind speed to about 25 to shed waves that refine on their own, away from the boat.">Barrier
+      <input id="barrier" autocomplete="off" type="checkbox" title="Circular obstacle at the map centre. Off by default. Check it and set wind speed to about 25 to shed waves that refine on their own, away from the boat.">Barrier
       <br>
-      <input id="boat_energy" type="checkbox" checked>Boat energy
+      <input id="boat_energy" autocomplete="off" type="checkbox" checked>Boat energy
       <br>
-      <input id="show_field" type="checkbox">Toggle Field
+      <input id="show_field" autocomplete="off" type="checkbox">Toggle Field
       <br>
-      <input id="show_forces" type="checkbox">Toggle Forces
+      <input id="show_forces" autocomplete="off" type="checkbox">Toggle Forces
       <br>
-      <input id="camera_follow" type="checkbox">Camera Follow
+      <input id="camera_follow" autocomplete="off" type="checkbox">Camera Follow
       <br>
       <input id="camera_zoom_in" type="button" value="+"><input id="camera_zoom_out" type="button" value="-">Zoom
       <br>
@@ -187,13 +187,13 @@
       <input id="camera_move_down" type="button" value="▼">
       <br>
       Wind angle<br>
-      <input id="windAngle" type="number" min="0" max="360" step="5" value="90">
+      <input id="windAngle" autocomplete="off" type="number" min="0" max="360" step="5" value="90">
       <br>
       Wind speed<br>
-      <input id="windSpeed" type="number" min="0" max="40" step="1" value="15">
+      <input id="windSpeed" autocomplete="off" type="number" min="0" max="40" step="1" value="15">
       <br>
       Select Scenario<br>
-      <input id="scenario_selector" type="number" min="0" max="10" value="0" style="width: 50px;" title="Scenario 6: Rule 13 tack. Scenario 7: leeward boat tacks into a Rule 10 collision. Scenario 8: Rule 15 overlap. Scenario 9: contact during Rule 15. Scenario 10: penalty turn, a tack and a gybe in a row (Q counter-clockwise, E clockwise autopilot circle). Use with Dev mode.">
+      <input id="scenario_selector" autocomplete="off" type="number" min="0" max="10" value="0" style="width: 50px;" title="Scenario 6: Rule 13 tack. Scenario 7: leeward boat tacks into a Rule 10 collision. Scenario 8: Rule 15 overlap. Scenario 9: contact during Rule 15. Scenario 10: penalty turn, a tack and a gybe in a row (Q counter-clockwise, E clockwise autopilot circle). Use with Dev mode.">
       
       <input id="scenario_restart" type="button" min="0" max="10" style="width: 50px;" value="Restart">
     
@@ -203,7 +203,7 @@
 
 
       <div>
-        <select id="plotSelect">
+        <select id="plotSelect" autocomplete="off">
           <option>Plot density</option>
           <option>Plot x velocity</option>
           <option>Plot y velocity</option>
@@ -211,15 +211,15 @@
           <option>Plot curl</option>
         </select>
         &nbsp;&nbsp;Contrast:
-        <input id="contrastSlider" type="range" min="-10" max="10" step="1" value="0">
+        <input id="contrastSlider" autocomplete="off" type="range" min="-10" max="10" step="1" value="0">
         &nbsp;&nbsp;Mirror:
-        <input id="mirrorSlider" type="range" min="0" max="359" step="1" value="0">
+        <input id="mirrorSlider" autocomplete="off" type="range" min="0" max="359" step="1" value="0">
       </div>
       <div>
         Animation speed:
-        <input id="stepsSlider" type="range" min="1" max="40" step="1" value="1" onchange="resetTimer()">
+        <input id="stepsSlider" autocomplete="off" type="range" min="1" max="40" step="1" value="1" onchange="resetTimer()">
         &nbsp;&nbsp;Steps per second: <span id="speedReadout">60</span>
-        &nbsp;&nbsp;<input id="rafCheck" type="checkbox" onchange="resetTimer()">Faster?
+        &nbsp;&nbsp;<input id="rafCheck" autocomplete="off" type="checkbox" onchange="resetTimer()">Faster?
       </div>
       <br>
       <input id="reset_settings" type="button" value="Reset settings">
