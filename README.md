@@ -6,7 +6,7 @@
 
 ## Roadmap
 
-Last updated: 2026-10-08
+Last updated: 2026-10-09
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -15,6 +15,7 @@ Last updated: 2026-10-08
 - [x] Constant-wind dev mode with the fluid sim off (`?devmode=1`): [#2](https://github.com/SukuWc/fields/pull/2)
 - [x] WebGL canvas resizes with the window so the page no longer scrolls: [#17](https://github.com/SukuWc/fields/pull/17)
 - [x] Guide and hull lines no longer vanish as the camera follows the boat: [#22](https://github.com/SukuWc/fields/pull/22)
+- [ ] Firefox keeps `?devmode=1` (and other URL settings) across reload (in progress, [#25](https://github.com/SukuWc/fields/pull/25))
 
 ### 2. Wind and boat feel
 - [x] Fluid sim on, stable from wind 5 through 25 with the sail wake on the fine grid: [#9](https://github.com/SukuWc/fields/pull/9)
