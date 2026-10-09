@@ -10,6 +10,7 @@ import { setupControls, getPlayers, getMarks, incrementPhysicsFrame, processKeys
 import { installUrlSettings } from './url-settings.js';
 import { setupPerfOverlay, isPerfOverlayOn, recordFieldStep } from './perf-overlay.js';
 import { setupMobileMenu } from './mobile-menu.js';
+import { setupTouchControls } from './touch-controls.js';
 
 import { SAIL_LATTICE_COUPLING } from './boat.js';
 
@@ -61,6 +62,8 @@ document.getElementById('barrier').addEventListener('change', e => bm.setBarrier
 setupControls(map, getCamera, bm);
 // Before installUrlSettings so ?perf=1 turns the overlay on through its change listener.
 setupPerfOverlay(map, bm);
+// Before installUrlSettings: the device default must be the checkbox default.
+setupTouchControls();
 installUrlSettings();
 setupMobileMenu();
 

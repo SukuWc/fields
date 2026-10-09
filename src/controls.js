@@ -40,6 +40,22 @@ function checkKeyRelease(e) {
   key_state[e.keyCode] = false;
 }
 
+// Touch controls press the same keys. Held keys (helm, heading) are read by
+// processKeys each frame; KEYDOWN bindings fire once on press, as a real key.
+export function setVirtualKey(keyCode, down) {
+  if (!down) {
+    key_state[keyCode] = false;
+    return;
+  }
+  if (key_state[keyCode] === true) return;
+  key_state[keyCode] = true;
+  key_bind_list.forEach(bind => {
+    if (bind.type === "KEYDOWN" && bind.activation_key === keyCode && (key_state[bind.prohibition_key] === false || key_state[bind.prohibition_key] === undefined)) {
+      bind.object[bind.input_handler]();
+    }
+  });
+}
+
 function mouse_monitor(e) {
   if (_map.devMode) {
     const w = _map.get_wind(0, 0);
@@ -52,9 +68,12 @@ function mouse_monitor(e) {
   const vec = new THREE.Vector3();
   const pos = new THREE.Vector3();
 
+  // The canvas can be the top half of the window (touch controls).
+  const canvas = document.getElementById("sim_canvas");
+  const rect = canvas ? canvas.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
   vec.set(
-    (e.clientX / window.innerWidth) * 2 - 1,
-    -(e.clientY / window.innerHeight) * 2 + 1,
+    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1,
     0.5
   );
   vec.unproject(camera);
