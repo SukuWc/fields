@@ -8,6 +8,7 @@ import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera } from './renderer.js';
 import { setupControls, getPlayers, getMarks, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
+import { setupMobileMenu } from './mobile-menu.js';
 
 import { SAIL_LATTICE_COUPLING } from './boat.js';
 
@@ -58,6 +59,7 @@ initRenderer(map, planeMat);
 document.getElementById('barrier').addEventListener('change', e => bm.setBarriers(e.target.checked));
 setupControls(map, getCamera, bm);
 installUrlSettings();
+setupMobileMenu();
 
 let guides = [];
 startAnimation(map, () => guides);
