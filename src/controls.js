@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Boat } from './boat.js';
 import { Mark, markMassForBoat } from './mark.js';
+import { Course, TRIANGLE_COURSE_LAYOUT } from './course.js';
 import { chargePendingPenalty, PENALTY_MANEUVER_WINDOW_S, resetContacts } from './rules.js';
 import { range_map } from './utils.js';
 
@@ -11,6 +12,8 @@ let scenario_descriptor = {};
 let players = [];
 // Race marks (buoys). Not boats: the rules engine only sees players.
 let marks = [];
+// Active course (ordered marks + per-boat rounding progress), or null.
+let course = null;
 let physics_frame = 0;
 
 let _map, _getCamera, _bm;
@@ -133,6 +136,7 @@ function scenario_clear() {
   players = [];
   marks.forEach(mark => mark.physics_model_deinit());
   marks = [];
+  course = null;
   physics_frame = 0;
   resetContacts();
 }
@@ -158,7 +162,7 @@ function renderScenarioCard(scenario) {
     bodyEl.textContent = scenario.description || "";
   } else {
     titleEl.textContent = "No scenario";
-    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 11 each have a description.";
+    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 12 each have a description.";
   }
   card.classList.toggle("collapsed", scenarioCardCollapsed);
   if (toggle) {
@@ -484,6 +488,39 @@ scenarios[11].frames[1] = () => {
   _map.camera_zoom = 16;
 };
 
+// Triangle course, anticlockwise: every mark rounded to port. Wind-from
+// defaults to +Y. Mark 1 is windward, 2 the wing mark, 3 leeward
+// (course.js TRIANGLE_COURSE_LAYOUT). One boat, normal controls, starts on
+// starboard close-hauled autopilot near mark 3; tack onto port (Enter) to
+// fetch mark 1. The highlighted mark pulses green; the short dashed amber
+// line is its midpoint ray, where the rounding counts. The highlight moves
+// on at the outgoing ray or on leaving the zone. Laps loop. Dev mode: ?devmode=1&scenario_selector=12
+scenarios[12] = makeScenario(
+  "Triangle course, rounding marks to port",
+  "Three anchored marks make an anticlockwise triangle: 1 windward, 2 wing, 3 leeward, every mark left to port. The pulsing green ring and NEXT label show the mark to sail for, with its 12 m zone drawn faintly. The short dashed amber line from that mark shows where the rounding counts: go round the mark on the port side until you have passed that line and the label turns to a tick. The highlight then moves to the next mark once you are heading down the next leg or leave the zone. Rounded marks stay grey with a tick for the rest of the lap. Sailing back round the mark unrounds it. You start on starboard close-hauled autopilot: Enter tacks, arrows steer, Space toggles the autopilot. After mark 3 the course goes round again and the lap count rises."
+);
+scenarios[12].frames[0] = () => {
+  const L = TRIANGLE_COURSE_LAYOUT;
+  const heading = L.startHeading;
+  const boat = new Boat(_map, L.start.x, L.start.y, heading);
+  players.push(boat);
+  boat.physics_model.setLinearVelocity({ x: Math.sin(heading) * 1.5, y: -Math.cos(heading) * 1.5 });
+  const mass = markMassForBoat(boat.physics_model);
+  for (const p of L.marks) marks.push(new Mark(_map, p.x, p.y, { mass }));
+  course = new Course(marks, { start: L.start });
+  players[0].input_autopilot_enabled_toggle();
+};
+scenarios[12].frames[1] = () => {
+  autokeybind(players);
+  const follow = document.getElementById('camera_follow');
+  if (follow && !follow.checked) {
+    follow.checked = true;
+    follow.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  // The whole triangle fits on screen; + and − zoom in for a rounding.
+  _map.camera_zoom = 46;
+};
+
 export function setupControls(map, getCamera, bm) {
   _map = map;
   _getCamera = getCamera;
@@ -557,6 +594,10 @@ export function getPlayers() {
 
 export function getMarks() {
   return marks;
+}
+
+export function getCourse() {
+  return course;
 }
 
 export function processKeys() {

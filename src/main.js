@@ -6,8 +6,9 @@ import { trackBoats } from './domainTrack.js';
 import { Map } from './map.js';
 import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera } from './renderer.js';
-import { setupControls, getPlayers, getMarks, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
+import { setupControls, getPlayers, getMarks, getCourse, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
+import { courseGuides, courseText } from './course.js';
 import { setupPerfOverlay, isPerfOverlayOn, recordFieldStep } from './perf-overlay.js';
 import { setupMobileMenu } from './mobile-menu.js';
 import { setupTouchControls } from './touch-controls.js';
@@ -165,6 +166,22 @@ runner.start((simDt) => {
   for (const mark of getMarks()) {
     if (stepped) mark.physics_model_step();
     guides.push(...mark.graphics_model_render());
+  }
+
+  // Course: each boat's rounding counters advance once per world step; the
+  // overlay (highlighted mark, rounded ticks) is drawn for boat 0.
+  const course = getCourse();
+  if (course) {
+    const boats = getPlayers();
+    for (const boat of boats) {
+      const progress = course.progressFor(boat);
+      if (stepped) progress.update(boat.x, boat.y);
+    }
+    if (boats[0]) {
+      const progress = course.progressFor(boats[0]);
+      guides.push(...courseGuides(course, progress, performance.now()));
+      infoEl.innerHTML += courseText(progress) + '<br>';
+    }
   }
 
   // Rules overlay. map.get_wind follows the active provider, so the same

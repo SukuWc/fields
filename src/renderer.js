@@ -211,7 +211,11 @@ function paintLabelTexture(lines) {
   const badge = role0 === 'badge';
   const turn = role0 === 'turn';
   const cleared = role0 === 'cleared';
-  const compact = badge || turn || cleared;
+  // Course marks: the next mark, a rounded one, and a plain mark number.
+  const next = role0 === 'next';
+  const rounded = role0 === 'rounded';
+  const markno = role0 === 'markno';
+  const compact = badge || turn || cleared || next || rounded || markno;
   const rule15 = lines.some((line) => line.id === '15' && line.role === 'final');
   const fontPx = compact ? 12 : 14;
   const font = '700 ' + fontPx + 'px "Courier New", Courier, monospace';
@@ -251,6 +255,18 @@ function paintLabelTexture(lines) {
     ctx.fillStyle = 'rgba(10, 78, 42, 0.94)';
     ctx.fill();
     ctx.strokeStyle = '#8dffb0';
+  } else if (next) {
+    ctx.fillStyle = 'rgba(22, 92, 10, 0.94)';
+    ctx.fill();
+    ctx.strokeStyle = '#7dff5a';
+  } else if (rounded) {
+    ctx.fillStyle = 'rgba(50, 56, 64, 0.85)';
+    ctx.fill();
+    ctx.strokeStyle = '#8a96a3';
+  } else if (markno) {
+    ctx.fillStyle = 'rgba(70, 36, 0, 0.9)';
+    ctx.fill();
+    ctx.strokeStyle = '#ff8c00';
   } else if (rule15) {
     ctx.fillStyle = 'rgba(40, 28, 0, 0.92)';
     ctx.fill();
@@ -269,7 +285,9 @@ function paintLabelTexture(lines) {
     const line = lines[i];
     const inhibited = line.role === 'inhibited';
     ctx.font = inhibited ? dimFont : font;
-    if (line.role === 'badge' || line.role === 'cleared') ctx.fillStyle = '#ffffff';
+    if (line.role === 'badge' || line.role === 'cleared' || line.role === 'next') ctx.fillStyle = '#ffffff';
+    else if (line.role === 'rounded') ctx.fillStyle = '#c9d1da';
+    else if (line.role === 'markno') ctx.fillStyle = '#ffd9a8';
     else if (line.role === 'turn') ctx.fillStyle = '#ffe7a3';
     else if (inhibited) ctx.fillStyle = 'rgba(210, 214, 220, 0.72)';
     else if (line.id === '15') ctx.fillStyle = '#ffe7a3';
