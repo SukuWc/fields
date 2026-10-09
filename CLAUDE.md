@@ -31,6 +31,7 @@ src/wind.js           — Wind providers (fluid-sampled and constant). Boats onl
 src/boltzmann.js      — Lattice Boltzmann Method (LBM) fluid simulator
 src/boat.js           — Sailboat physics, aerodynamics, autopilot
 src/mark.js           — Race mark: dynamic 1 m buoy (boat mass / 10) on an anchor spring + damper
+src/course.js         — Course (ordered marks + rounding side) and per-boat rounding tracker (check angle), course overlay
 src/map.js            — Planck.js world container, camera control, wind queries
 ```
 
@@ -103,7 +104,7 @@ Defaults are `wind_angle = 90` (from +Y, blowing toward −Y) and `wind_speed = 
 
 ### Scenarios
 
-Scenarios are defined in `src/controls.js` as sparse arrays indexed by physics frame number. Scenario 0 = single boat autopilot; 1 = two-boat race; 2–4 = multi-boat automated sequences; 5 = empty template. 11 = one boat on close-hauled autopilot hitting an anchored mark (physics only). Marks live in `controls.js` `marks[]` (`getMarks()`), separate from `players[]`, so the rules engine never sees them; `main.js` calls `mark.physics_model_step()` once per world step (spring `MARK_SPRING_K`, damper `MARK_DAMPING`). `map.js` intentionally creates two dynamic circle bodies in `physics_model_init` as world objects.
+Scenarios are defined in `src/controls.js` as sparse arrays indexed by physics frame number. Scenario 0 = single boat autopilot; 1 = two-boat race; 2–4 = multi-boat automated sequences; 5 = empty template. 11 = one boat on close-hauled autopilot hitting an anchored mark (physics only). Marks live in `controls.js` `marks[]` (`getMarks()`), separate from `players[]`, so the rules engine never sees them; `main.js` calls `mark.physics_model_step()` once per world step (spring `MARK_SPRING_K`, damper `MARK_DAMPING`). 12 = anticlockwise triangle course, one boat, every mark to port. `controls.js` holds the active `course` (`getCourse()`); `main.js` calls `course.progressFor(boat).update(x, y)` once per world step and draws `courseGuides` for boat 0. A mark is rounded when the bearing from the mark to the boat, integrated inside the 12 m zone and signed by the rounding side, has swept from the incoming ray (toward the previous mark) to the outgoing ray (toward the next): 180° + the turn at that mark, with 5° hysteresis. See the header of `course.js`. `map.js` intentionally creates two dynamic circle bodies in `physics_model_init` as world objects.
 
 ### Coding conventions for `boltzmann.js`
 
