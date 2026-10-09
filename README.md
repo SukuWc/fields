@@ -61,7 +61,7 @@ Last updated: 2026-10-09
 - [ ] Performance (including profiling the render side)
 - [ ] Crash recovery
 - [ ] Spectator mode
-- [ ] Hamburger settings menu on phones and touch screens (in progress, [#29](https://github.com/SukuWc/fields/pull/29))
+- [x] Hamburger settings menu on phones and touch screens: [#29](https://github.com/SukuWc/fields/pull/29)
 - [ ] Accessibility
 - [ ] Telemetry export
 
