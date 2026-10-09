@@ -8,6 +8,7 @@ import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera } from './renderer.js';
 import { setupControls, getPlayers, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
+import { setupPerfOverlay, isPerfOverlayOn, recordFieldStep } from './perf-overlay.js';
 
 import { SAIL_LATTICE_COUPLING } from './boat.js';
 
@@ -57,6 +58,8 @@ map.physics_model_init();
 initRenderer(map, planeMat);
 document.getElementById('barrier').addEventListener('change', e => bm.setBarriers(e.target.checked));
 setupControls(map, getCamera, bm);
+// Before installUrlSettings so ?perf=1 turns the overlay on through its change listener.
+setupPerfOverlay(map, bm);
 installUrlSettings();
 
 let guides = [];
@@ -219,6 +222,7 @@ runner.start((simDt) => {
     }
   } else {
     map.bm.physics_model_step();
+    if (isPerfOverlayOn()) recordFieldStep(map.bm.field_ms);
   }
 
   incrementPhysicsFrame();
