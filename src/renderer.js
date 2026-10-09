@@ -459,12 +459,16 @@ function renderContacts(marks) {
   }
 }
 
+// Size the drawing buffer from the canvas's CSS box (#sim_canvas in
+// index.html), not the window: the touch-controls panel shrinks the canvas
+// to the top half, and the aspect has to follow that box.
 function resizeRenderer() {
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-  camera.aspect = width / Math.max(height, 1);
+  const canvas = renderer.domElement;
+  const width = Math.max(canvas.clientWidth || window.innerWidth, 1);
+  const height = Math.max(canvas.clientHeight || window.innerHeight, 1);
+  camera.aspect = width / height;
   camera.updateProjectionMatrix();
-  renderer.setSize(width, height);
+  renderer.setSize(width, height, false);
 }
 
 export function initRenderer(map, planeMat) {
@@ -485,13 +489,14 @@ export function initRenderer(map, planeMat) {
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
   const canvas = renderer.domElement;
-  // Inline canvases sit on the text baseline and leave a gap that opens scrollbars.
-  canvas.style.display = 'block';
-  canvas.style.position = 'fixed';
-  canvas.style.inset = '0';
-  resizeRenderer();
+  // Position and size come from #sim_canvas in index.html (display: block,
+  // fixed, full window or the top half with touch controls). Inline canvases
+  // sit on the text baseline and leave a gap that opens scrollbars.
+  canvas.id = 'sim_canvas';
   document.body.appendChild(renderer.domElement);
+  resizeRenderer();
   window.addEventListener('resize', resizeRenderer);
+  if (typeof ResizeObserver === 'function') new ResizeObserver(resizeRenderer).observe(canvas);
 }
 
 export function getCamera() {
