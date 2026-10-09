@@ -1890,6 +1890,7 @@ export class Boltzmann {
 
 		this.step_ready = false;
 		this.t_delta = 0;
+		this.field_ms = 0;
 
 		this.speed = speed / 100; // default speed 0.12
 
@@ -2101,6 +2102,7 @@ export class Boltzmann {
 	physics_model_step() {
 
 		const t_start = new Date();
+		const field_t0 = performance.now();
 
 		// Eq. 10: omega_c = 1 / (3*nu + 0.5)  (coarse grid relaxation frequency)
 		// Eq. 24 (Lagrava): omega_f = 2*omega_c / (4 - omega_c)  (fine grid, per domain)
@@ -2134,6 +2136,8 @@ export class Boltzmann {
 		this.computeCurl();
 
 		this.t_delta = new Date() - t_start;
+		// Field iteration only (sub-steps, coupling, curl); paintTexture is excluded.
+		this.field_ms = performance.now() - field_t0;
 		this.step_ready = true;
 
 		this.paintTexture();

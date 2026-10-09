@@ -85,6 +85,24 @@
         font-family: 'Courier New', Courier, monospace;
         background-color: rgba(50,50,50,0.5);
       }
+      #perf_overlay_hud {
+        display: none;
+        position: absolute;
+        left: 10px;
+        bottom: 34px;
+        z-index: 100;
+        margin: 0;
+        padding: 4px 8px;
+        color: #cfe;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 12px;
+        line-height: 1.3;
+        white-space: pre;
+        background: rgba(10, 20, 30, 0.6);
+        border: 1px solid rgba(150, 200, 220, 0.35);
+        border-radius: 4px;
+        pointer-events: none;
+      }
       #devmode_banner {
         display: none;
         position: absolute;
@@ -194,6 +212,17 @@
           right: calc(68px + env(safe-area-inset-right));
           bottom: calc(34px + env(safe-area-inset-bottom));
           font-size: 12px;
+        }
+        /* #info now owns the bottom-left corner, so the perf overlay moves
+           to the bottom-right and #info narrows while the overlay is on. */
+        #perf_overlay_hud {
+          left: auto;
+          right: calc(10px + env(safe-area-inset-right));
+          bottom: calc(34px + env(safe-area-inset-bottom));
+          font-size: 11px;
+        }
+        body:has(#perf:checked) #info {
+          right: calc(180px + env(safe-area-inset-right));
         }
         #scenario_card {
           width: calc(100vw - 92px - env(safe-area-inset-right) - env(safe-area-inset-left));
@@ -322,6 +351,7 @@
     <div id="info"></div>
     <div id="rule_labels"></div>
     <div id="devmode_banner" title="The angle is where the wind comes from. The arrow points downwind, the way it blows.">DEV MODE · fluid off · wind <span id="dev_wind_label"></span><span id="dev_wind_arrow">➤</span></div>
+    <pre id="perf_overlay_hud"></pre>
     <div id="fps" style="position:absolute; bottom:10px; left:10px; color:white; font-family:'Courier New',monospace; z-index:100;"></div>
     <button id="settings_toggle" type="button" aria-controls="settings" aria-expanded="false" aria-label="Settings">☰</button>
     <div id="settings_backdrop" hidden></div>
@@ -339,6 +369,8 @@
       <label class="setting-row"><input id="show_forces" autocomplete="off" type="checkbox">Toggle Forces</label>
       <br>
       <label class="setting-row"><input id="camera_follow" autocomplete="off" type="checkbox">Camera Follow</label>
+      <br>
+      <label class="setting-row"><input id="perf" autocomplete="off" type="checkbox" title="Cells per refinement level and field step time. Also ?perf=1">Perf overlay</label>
       <br>
       <span class="setting-row setting-buttons"><input id="camera_zoom_in" type="button" value="+"><input id="camera_zoom_out" type="button" value="-">Zoom</span>
       <br>
