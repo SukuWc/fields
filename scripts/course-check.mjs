@@ -143,11 +143,10 @@ function roundPort(state, k, r = 5, past = 15) {
   assert(s.p.display === 0 && s.p.displayIndex === 0, "before the outgoing ray: mark 1 is still highlighted");
   const v = s.p.view();
   assert(v.rounded && v.index === 0, "view() is the highlighted mark, flagged rounded");
-  const labels = courseGuides(s.course, s.p, s.at, 0).filter((x) => x.type === "label").map((x) => x.lines[0].text);
-  assert(labels.includes("✓ 1 rounded"), "highlighted mark shows the tick");
-  assert(labels.includes("220° / 146° ✓ · 292°"), `arc label: ${labels.find((t) => /✓ ·/.test(t))}`);
-  assert(labels.includes("rounded") && labels.includes("next leg"), "midpoint and outgoing rays are labelled");
-  assert(/mark 1 rounded, sail on/.test(courseText(s.p)), `progress text: "${courseText(s.p)}"`);
+  const labels = courseGuides(s.course, s.p, 0).filter((x) => x.type === "label").map((x) => x.lines[0].text);
+  assert(labels.includes("✓ 1") && !labels.some((t) => /NEXT/.test(t)), `highlighted mark shows the tick (${labels.join(", ")})`);
+  assert(!labels.some((t) => /°/.test(t)), "no degree numbers in the overlay");
+  assert(courseText(s.p) === "Course: next mark 2 (port) · lap 1", `progress text: "${courseText(s.p)}"`);
 }
 
 {
@@ -275,14 +274,33 @@ function roundPort(state, k, r = 5, past = 15) {
   assert(s.p.target === 3 && s.p.targetIndex === 0 && s.p.displayIndex === 0 && s.p.lap === 2 && s.p.lapsCompleted === 1, "after mark 3 the target is mark 1 again, lap 2");
   assert(s.p.isRounded(0) && !s.p.trackers.has(0), "the oldest rounding is frozen (not tracked)");
   assert(s.p.trackers.size <= COURSE_TRACK_BACK + 1, `at most ${COURSE_TRACK_BACK + 1} counters live`);
-  assert(s.p.roundedThisLap().length === 0, "a new lap starts with no marks rounded");
+  assert(s.p.roundedMarks().size === 0, "lap 2 starts with no ticks");
   roundPort(s, 3);
-  assert(s.p.target === 4 && s.p.lap === 2 && s.p.roundedThisLap()[0] === 0, "lap 2 mark 1 rounds and shows as rounded this lap");
+  const rm = s.p.roundedMarks();
+  assert(s.p.target === 4 && s.p.lap === 2 && rm.size === 1 && rm.has(0), "lap 2 mark 1 rounds: only mark 1 ticked");
   const text = courseText(s.p);
   assert(/next mark 2 \(port\) · lap 2/.test(text), `progress text: "${text}"`);
 }
 
-// --- Guides: next mark labelled, check line and rays present ---
+// --- Ticks follow the current lap ---
+
+{
+  const s = newProgress();
+  s.at = L.start;
+  roundPort(s, 0);
+  walk(s, s.at, pt(s.course.rounding(0).at, s.course.rounding(0).outDeg, 16));
+  roundPort(s, 1);
+  walk(s, s.at, pt(s.course.rounding(1).at, s.course.rounding(1).outDeg, 16));
+  // Mark 3: past the midpoint, short of the outgoing ray.
+  const g = s.course.rounding(2);
+  walk(s, s.at, pt(g.at, g.inDeg + 10, 5));
+  arc(s, g.at, 5, g.inDeg + 10, g.inDeg + 220);
+  assert(s.p.target === 3 && s.p.display === 2, "mark 3 rounded, still highlighted");
+  const labels = courseGuides(s.course, s.p, 0).filter((x) => x.type === "label").map((x) => x.lines[0].text);
+  assert(labels.includes("✓ 3") && labels.includes("2") && labels.includes("1"), `once mark 3 rounds a new lap starts: only the highlighted mark 3 shows a tick (${labels.join(", ")})`);
+}
+
+// --- Guides: minimal overlay ---
 
 {
   const s = newProgress();
@@ -291,13 +309,19 @@ function roundPort(state, k, r = 5, past = 15) {
   walk(s, L.start, pt(g.at, g.inDeg + 10, 5));
   arc(s, g.at, 5, g.inDeg + 10, g.inDeg + 120);
   const boat = s.at;
-  const guides = courseGuides(s.course, s.p, boat, 0);
+  const guides = courseGuides(s.course, s.p, 0);
   const labels = guides.filter((x) => x.type === "label").map((x) => x.lines[0].text);
-  assert(labels.includes("NEXT 1 · port"), "the next mark carries a NEXT label");
-  assert(labels.includes("2") && labels.includes("3"), "other marks are numbered");
-  assert(labels.includes("120° / 146° · 292°"), `check-angle label before rounding (${labels.find((t) => /°/.test(t))})`);
-  const check = guides.find((x) => x.type === "guide" && x.x2 === boat.x && x.y2 === boat.y);
-  assert(check && check.x1 === g.at.x && check.y1 === g.at.y, "a line runs from the mark centre to the boat");
+  assert(labels.length === 3 && labels.includes("NEXT 1 · port") && labels.includes("2") && labels.includes("3"), `only mark labels: ${labels.join(", ")}`);
+  assert(!guides.some((x) => x.type === "guide" && (x.x2 === boat.x || x.x1 === boat.x)), "no line to the boat");
+  const amber = guides.filter((x) => x.type === "guide" && x.color === 0xffd27a);
+  const onMid = amber.every((x) => {
+    const a1 = Math.atan2(x.y1 - g.at.y, x.x1 - g.at.x) / DEG;
+    const a2 = Math.atan2(x.y2 - g.at.y, x.x2 - g.at.x) / DEG;
+    const r2 = Math.hypot(x.x2 - g.at.x, x.y2 - g.at.y);
+    return Math.abs(wrap180(a1 - g.midDeg)) < 1e-6 && Math.abs(wrap180(a2 - g.midDeg)) < 1e-6 && r2 <= COURSE_ACTIVATION_RADIUS_M + 1e-9;
+  });
+  assert(amber.length > 0 && onMid, `one short dashed amber line along the midpoint ray, within the zone (${amber.length} dashes)`);
+  assert(courseText(s.p) === "Course: next mark 1 (port) · lap 1", `progress text: "${courseText(s.p)}"`);
   assert(guides.every((x) => x.type === "label" ? Number.isFinite(x.x) && Number.isFinite(x.y) : [x.x1, x.y1, x.x2, x.y2].every(Number.isFinite)), "all guide coordinates finite");
 }
 
@@ -324,8 +348,8 @@ function roundPort(state, k, r = 5, past = 15) {
   }
   assert(Number.isFinite(boat.x) && Number.isFinite(boat.y) && progress.target === 0, `10 s of starboard close-hauled: boat at (${boat.x.toFixed(1)}, ${boat.y.toFixed(1)}), still sailing for mark 1`);
   assert(course.progressFor(boat) === progress, "one progress tracker per boat");
-  const gs = courseGuides(course, progress, boat, 1234);
-  assert(gs.length > 50, `scenario overlay draws (${gs.length} guides)`);
+  const gs = courseGuides(course, progress, 1234);
+  assert(gs.length > 20, `scenario overlay draws (${gs.length} guides)`);
   for (const p of L.marks) {
     for (const q of [{ x: 0, y: 14.5, r: 0.5 }, { x: 0, y: 20, r: 5 }]) {
       assert(Math.hypot(p.x - q.x, p.y - q.y) > q.r + COURSE_ACTIVATION_RADIUS_M / 2, `mark (${p.x.toFixed(1)}, ${p.y.toFixed(1)}) is clear of the map.js circle at (${q.x}, ${q.y})`);

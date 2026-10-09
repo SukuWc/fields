@@ -161,7 +161,7 @@ runner.start((simDt) => {
   }
 
   // Course: each boat's rounding counters advance once per world step; the
-  // overlay (next mark, check angle) is drawn for boat 0.
+  // overlay (highlighted mark, rounded ticks) is drawn for boat 0.
   const course = getCourse();
   if (course) {
     const boats = getPlayers();
@@ -171,7 +171,7 @@ runner.start((simDt) => {
     }
     if (boats[0]) {
       const progress = course.progressFor(boats[0]);
-      guides.push(...courseGuides(course, progress, boats[0], performance.now()));
+      guides.push(...courseGuides(course, progress, performance.now()));
       infoEl.innerHTML += courseText(progress) + '<br>';
     }
   }

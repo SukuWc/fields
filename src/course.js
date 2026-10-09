@@ -273,15 +273,17 @@ export class CourseProgress {
     return { ...r, swept: t.swept, entered: t.entered, distance: t.distance, rounded: this.isRounded(k), lap: this.lap, lapsCompleted: this.lapsCompleted };
   }
 
-  // Marks rounded in the current lap (indices). The lap is the highlighted
-  // mark's lap, so mark 3 keeps its tick while it is still highlighted.
-  roundedThisLap() {
+  // Mark indices rounded in the current lap (the target's lap). A new lap
+  // starts the moment the last mark is rounded, so mark 1 loses its lap-1
+  // tick then, even while the last mark is still highlighted (that one shows
+  // its own tick through the highlight).
+  roundedMarks() {
     const n = this.course.length;
-    const base = this.display - (this.display % n);
-    const out = [];
-    for (let k = base; k < this.target; k++) out.push(k % n);
+    const out = new Set();
+    for (let k = this.target - (this.target % n); k < this.target; k++) out.add(k % n);
     return out;
   }
+
 }
 
 // ---- Drawing ----
@@ -289,10 +291,8 @@ export class CourseProgress {
 export const COURSE_LINE_COLOR = 0x6f8fb3;
 export const COURSE_NEXT_COLOR = 0x7dff5a;
 export const COURSE_ROUNDED_COLOR = 0x8a96a3;
-export const COURSE_CHECK_COLOR = 0x5cf2ff;
 export const COURSE_MID_COLOR = 0xffd27a;
 export const COURSE_ZONE_COLOR = 0x7dff5a;
-export const COURSE_ARC_RADIUS_M = 4;
 
 function circleSegments(cx, cy, r, color, opacity, steps = 48, dashed = false) {
   const out = [];
@@ -322,34 +322,36 @@ function ray(c, deg, len) {
   return { x: c.x + Math.cos(deg / DEG) * len, y: c.y + Math.sin(deg / DEG) * len };
 }
 
-// Guides for the course as seen by one boat: dashed course line, mark
-// numbers, the highlighted mark (progress.display: pulsing ring, NEXT label,
-// or "✓ n rounded" once past the midpoint ray, faint activation circle),
-// rounded marks greyed, and the check angle at the highlighted mark:
-// mark→boat line, dashed incoming ray, dashed amber midpoint ray ("rounded"),
-// green outgoing ray ("next leg"), and the swept arc labelled
-// "swept / roundedDeg ✓ · nextLegDeg".
-export function courseGuides(course, progress, boat, nowMs = 0) {
+// Course overlay for one boat's progress. Deliberately minimal:
+// - dashed course line between the marks (and start → mark 1 until mark 1
+//   is rounded);
+// - the highlighted mark (progress.display): pulsing green ring, faint 12 m
+//   zone circle, label "NEXT 1 · port", or "✓ 1" once rounded while still
+//   highlighted, and one short dashed amber line along the midpoint ray
+//   (from the ring to the zone edge) showing where the rounding counts;
+// - marks rounded this lap (roundedMarks): grey ring and "✓ n";
+// - other marks: their number.
+export function courseGuides(course, progress, nowMs = 0) {
   const g = [];
   const n = course.length;
   const anchors = course.marks.map(anchorOf);
   const view = progress.view();
 
-  // Course line. The first leg comes from the start until mark 1 is rounded.
   for (let i = 0; i < n; i++) g.push(...dashedLine(anchors[i], anchors[(i + 1) % n], COURSE_LINE_COLOR, 0.45));
   if (progress.display === 0) g.push(...dashedLine(course.start, anchors[0], COURSE_LINE_COLOR, 0.3, 1, 2));
 
-  const rounded = new Set(progress.roundedThisLap());
+  const rounded = progress.roundedMarks();
   for (let i = 0; i < n; i++) {
     const c = centreOf(course.marks[i]);
-    const side = course.sides[i] === PORT ? 'port' : 'stbd';
     if (i === view.index) {
+      const side = course.sides[i] === PORT ? 'port' : 'stbd';
       const pulse = 0.5 + 0.5 * Math.sin(nowMs / 250);
       g.push(...circleSegments(c.x, c.y, 1.1 + 0.6 * pulse, COURSE_NEXT_COLOR, 0.6 + 0.4 * pulse, 32));
-      g.push(...circleSegments(c.x, c.y, 2.2, COURSE_NEXT_COLOR, 0.9, 32));
       g.push(...circleSegments(c.x, c.y, COURSE_ACTIVATION_RADIUS_M, COURSE_ZONE_COLOR, 0.25, 72, true));
-      const text = view.rounded ? '✓ ' + (i + 1) + ' rounded' : 'NEXT ' + (i + 1) + ' · ' + side;
-      g.push({ type: 'label', badge: true, x: c.x, y: c.y + 2.6, lines: [{ text, role: 'next', id: 'mark' }] });
+      const from = ray(c, view.midDeg, 2);
+      g.push(...dashedLine(from, ray(c, view.midDeg, COURSE_ACTIVATION_RADIUS_M), COURSE_MID_COLOR, 0.9, 1.2, 0.8));
+      const text = view.rounded ? '✓ ' + (i + 1) : 'NEXT ' + (i + 1) + ' · ' + side;
+      g.push({ type: 'label', badge: true, x: c.x, y: c.y + 2.2, lines: [{ text, role: 'next', id: 'mark' }] });
     } else if (rounded.has(i)) {
       g.push(...circleSegments(c.x, c.y, 1.3, COURSE_ROUNDED_COLOR, 0.7, 24));
       g.push({ type: 'label', badge: true, x: c.x, y: c.y + 1.6, lines: [{ text: '✓ ' + (i + 1), role: 'rounded', id: 'mark' }] });
@@ -357,52 +359,15 @@ export function courseGuides(course, progress, boat, nowMs = 0) {
       g.push({ type: 'label', badge: true, x: c.x, y: c.y + 1.6, lines: [{ text: String(i + 1), role: 'markno', id: 'mark' }] });
     }
   }
-
-  if (!boat) return g;
-  // Check angle at the highlighted mark.
-  const c = centreOf(view.mark);
-  const R = COURSE_ACTIVATION_RADIUS_M;
-  g.push({ type: 'guide', color: COURSE_CHECK_COLOR, opacity: view.entered ? 1 : 0.35, x1: c.x, y1: c.y, x2: boat.x, y2: boat.y });
-  const outEnd = ray(c, view.outDeg, R);
-  g.push({ type: 'guide', color: COURSE_NEXT_COLOR, opacity: 0.95, x1: c.x, y1: c.y, x2: outEnd.x, y2: outEnd.y });
-  const nextLabel = ray(c, view.outDeg, R + 1.5);
-  g.push({ type: 'label', badge: true, x: nextLabel.x, y: nextLabel.y, lines: [{ text: 'next leg', role: 'rounded', id: 'ray' }] });
-  g.push(...dashedLine(c, ray(c, view.inDeg, R), COURSE_ROUNDED_COLOR, 0.6, 1, 1));
-  g.push(...dashedLine(c, ray(c, view.midDeg, R), COURSE_MID_COLOR, 0.95, 1.2, 0.8));
-  const midLabel = ray(c, view.midDeg, R + 1.5);
-  g.push({ type: 'label', badge: true, x: midLabel.x, y: midLabel.y, lines: [{ text: 'rounded', role: 'rounded', id: 'ray' }] });
-  if (view.entered) {
-    const swept = view.swept;
-    const steps = Math.max(1, Math.ceil(Math.abs(swept) / 5));
-    const color = swept >= 0 ? 0xffc240 : 0xff6b6b;
-    for (let s = 0; s < steps; s++) {
-      const a0 = view.inDeg + view.side * swept * (s / steps);
-      const a1 = view.inDeg + view.side * swept * ((s + 1) / steps);
-      // A second winding is drawn a little further out.
-      const rr = COURSE_ARC_RADIUS_M + 0.6 * Math.floor(Math.abs(swept * s / steps) / 360);
-      const p0 = ray(c, a0, rr);
-      const p1 = ray(c, a1, rr);
-      g.push({ type: 'guide', color, opacity: 1, x1: p0.x, y1: p0.y, x2: p1.x, y2: p1.y });
-    }
-    const mid = ray(c, view.inDeg + view.side * swept / 2, COURSE_ARC_RADIUS_M + 1.8);
-    g.push({ type: 'label', badge: true, x: mid.x, y: mid.y, lines: [{ text: checkText(view), role: 'turn', id: 'check' }] });
-  }
   return g;
 }
 
-// "swept / rounded-at ✓ · next-leg-at", e.g. "172° / 150° ✓ · 300°".
-export function checkText(view) {
-  return Math.round(view.swept) + '° / ' + Math.round(view.roundedDeg) + '°' + (view.rounded ? ' ✓' : '') + ' · ' + Math.round(view.nextLegDeg) + '°';
-}
-
-// One line of progress text for the info panel: the highlighted mark, the
-// lap, and the check angle (or distance to the zone).
+// One line for the info panel: the mark course progress is waiting for, and
+// the lap.
 export function courseText(progress) {
-  const v = progress.view();
-  const side = v.side === PORT ? 'port' : 'starboard';
-  const angle = v.entered ? checkText(v) : 'zone ' + Math.round(v.distance) + ' m';
-  const what = v.rounded ? 'mark ' + (v.index + 1) + ' rounded, sail on' : 'next mark ' + (v.index + 1) + ' (' + side + ')';
-  return 'Course: ' + what + ' · lap ' + v.lap + ' · ' + angle;
+  const i = progress.targetIndex;
+  const side = progress.course.sides[i] === PORT ? 'port' : 'starboard';
+  return 'Course: next mark ' + (i + 1) + ' (' + side + ') · lap ' + progress.lap;
 }
 
 // Scenario 12 layout (wind from +Y). Equilateral triangle, 45 m legs, the
