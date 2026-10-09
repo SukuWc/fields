@@ -473,12 +473,13 @@ scenarios[11].frames[1] = () => {
 // defaults to +Y. Mark 1 is windward, 2 the wing mark, 3 leeward
 // (course.js TRIANGLE_COURSE_LAYOUT). One boat, normal controls, starts on
 // starboard close-hauled autopilot near mark 3; tack onto port (Enter) to
-// fetch mark 1. The next mark pulses green; the cyan line from it to the
-// boat is the check angle being integrated, the green ray is where the
-// rounding completes. Laps loop. Dev mode: ?devmode=1&scenario_selector=12
+// fetch mark 1. The highlighted mark pulses green; the cyan line from it to
+// the boat is the check angle being integrated. Crossing the amber midpoint
+// ray rounds the mark; the highlight moves on at the green outgoing ray or
+// on leaving the zone. Laps loop. Dev mode: ?devmode=1&scenario_selector=12
 scenarios[12] = makeScenario(
   "Triangle course, rounding marks to port",
-  "Three anchored marks make an anticlockwise triangle: 1 windward, 2 wing, 3 leeward, every mark left to port. The pulsing green ring and NEXT label show the mark to sail for; rounded marks turn grey with a tick. At the next mark the cyan line runs from the mark to your boat; that is the check angle. The amber arc and the number show how far it has swept from the dashed ray you came in on, against what the rounding needs. The mark counts once the cyan line passes the green ray toward the next mark. Going back round unwinds it. The faint circle is the 12 m zone where counting starts. You start on starboard close-hauled autopilot: Enter tacks, arrows steer, Space toggles the autopilot. After mark 3 the course goes round again and the lap count rises."
+  "Three anchored marks make an anticlockwise triangle: 1 windward, 2 wing, 3 leeward, every mark left to port. The pulsing green ring and NEXT label show the mark to sail for. At that mark the cyan line runs from the mark to your boat: that is the check angle, and the amber arc shows how far it has swept from the dashed grey ray you came in on. Two more rays matter: the dashed amber 'rounded' ray halfway round, and the green 'next leg' ray toward the next mark. Once the cyan line passes the halfway ray the mark is rounded (a tick appears, e.g. 172° / 150° ✓ · 300°). The highlight stays on it until you reach the green ray or leave the faint 12 m zone, then it moves to the next mark. Sailing back round below the halfway ray unrounds it. You start on starboard close-hauled autopilot: Enter tacks, arrows steer, Space toggles the autopilot. After mark 3 the course goes round again and the lap count rises."
 );
 scenarios[12].frames[0] = () => {
   const L = TRIANGLE_COURSE_LAYOUT;

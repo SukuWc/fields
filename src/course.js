@@ -8,16 +8,24 @@
 //
 // The count is measured from the incoming ray: the half-line from the mark
 // back toward the previous mark (or the course start for the first mark of
-// lap 1). The mark is rounded once the bearing has swept from that ray round
-// to the outgoing ray (the half-line toward the next mark):
+// lap 1). Two rays matter after it, both in the rounding direction:
 //
-//   threshold = angle from incoming ray to outgoing ray, in the rounding
-//               direction = 180° + the course's turn at that mark.
+//   outgoing ray  half-line toward the next mark, at
+//                 nextLegDeg = 180° + the course's turn at that mark;
+//   midpoint ray  the bisector between incoming and outgoing rays, at
+//                 roundedDeg = nextLegDeg / 2.
 //
-// A straight pass with the mark on the required side sweeps 180°; a 120° turn
-// (every corner of an equilateral triangle) needs 300°. Sailing past without
-// going round the outgoing ray, or leaving the mark on the wrong side, never
-// gets there.
+// ROUNDED once the swept angle reaches the midpoint ray. That is what counts
+// for course progress (and later scoring): a boat that has swept past the
+// bisector has gone round the mark on the required side. A straight pass
+// with the mark on the required side sweeps 180° (rounded at 90°); a 120°
+// corner (every corner of an equilateral triangle) is rounded at 150° and
+// its next leg starts at 300°. Leaving the mark on the wrong side never gets
+// there.
+//
+// The highlight (NEXT on screen) is held on a rounded mark until the boat
+// reaches the outgoing ray or leaves the zone, so it does not jump to the
+// next mark while she is still turning round this one. See the order note.
 //
 // Zone. A mark's counter only moves while the boat is within
 // COURSE_ACTIVATION_RADIUS_M of it. On the first entry it starts at her
@@ -30,17 +38,30 @@
 // previous mark's outgoing ray, and a far-away crossing must not unround it.
 // Sailing back round the previous mark inside its zone does.
 //
-// Hysteresis. Rounded at swept ≥ threshold; unrounded only below
-// threshold − ROUNDING_HYST_DEG, so a boat sitting on the outgoing ray does
+// Hysteresis. Rounded at swept ≥ roundedDeg; unrounded only below
+// roundedDeg − ROUNDING_HYST_DEG, so a boat sitting on the midpoint ray does
 // not flicker.
 //
-// Order and laps. Roundings are numbered k = lap·N + i (N marks). The target
-// is the first k not rounded. Counters for the target and the
-// COURSE_TRACK_BACK roundings before it keep running, so sailing back round
-// the previous mark unrounds it and moves the target back. Older roundings
-// are frozen. After the last mark the course loops to mark 1 with a lap
-// counter (no finish yet); lap ≥ 2 measures mark 1's incoming ray from the
-// last mark.
+// Order and laps. Roundings are numbered k = lap·N + i (N marks).
+//
+//   progress.target / targetIndex    first rounding not rounded: the mark
+//                                    course progress is waiting for.
+//   progress.display / displayIndex  the mark highlighted as NEXT. It is the
+//                                    oldest rounded-but-not-released rounding
+//                                    if there is one, else the target. A
+//                                    rounding is released when the swept
+//                                    angle reaches nextLegDeg, or when the
+//                                    boat is outside the zone after rounding
+//                                    it (a boat that crosses the bisector and
+//                                    sails off does not keep the highlight on
+//                                    the old mark). Release is latched until
+//                                    the mark is unrounded.
+//
+// Counters for the target and the COURSE_TRACK_BACK roundings before it keep
+// running, so sailing back round the previous mark (inside its zone) below
+// the midpoint unrounds it and moves the target back. Older roundings are
+// frozen. After the last mark the course loops to mark 1 with a lap counter
+// (no finish yet); lap ≥ 2 measures mark 1's incoming ray from the last mark.
 
 import { BOAT_LENGTH_M } from './rules.js';
 
@@ -76,14 +97,17 @@ export function bearingDeg(from, to) {
   return Math.atan2(to.y - from.y, to.x - from.x) * DEG;
 }
 
-// Rays and threshold at one mark. prev/at/next are {x, y}; side is PORT or
-// STARBOARD. Angles are world degrees (0 = +X, anticlockwise).
+// Rays and thresholds at one mark. prev/at/next are {x, y}; side is PORT or
+// STARBOARD. Ray angles are world degrees (0 = +X, anticlockwise);
+// roundedDeg and nextLegDeg are swept angles from the incoming ray in the
+// rounding direction. midDeg is the world angle of the midpoint ray.
 export function roundingGeometry(prev, at, next, side) {
   const inDeg = bearingDeg(at, prev);
   const outDeg = bearingDeg(at, next);
-  let threshold = side === PORT ? wrap360(outDeg - inDeg) : wrap360(inDeg - outDeg);
-  if (threshold === 0) threshold = 360;
-  return { inDeg, outDeg, thresholdDeg: threshold, turnDeg: threshold - 180 };
+  let nextLeg = side === PORT ? wrap360(outDeg - inDeg) : wrap360(inDeg - outDeg);
+  if (nextLeg === 0) nextLeg = 360;
+  const rounded = nextLeg / 2;
+  return { inDeg, outDeg, midDeg: inDeg + side * rounded, roundedDeg: rounded, nextLegDeg: nextLeg, turnDeg: nextLeg - 180 };
 }
 
 function anchorOf(mark) {
@@ -143,6 +167,9 @@ export class CourseProgress {
   constructor(course) {
     this.course = course;
     this.target = 0;
+    // Highlighted rounding (see the header): target, or an older rounded
+    // one the boat has not yet sailed clear of.
+    this.display = 0;
     // Lowest rounding still counted. Never moves back, so a frozen rounding
     // is not revived with a stale bearing.
     this.floor = 0;
@@ -157,14 +184,20 @@ export class CourseProgress {
     return Math.floor(this.target / this.course.length);
   }
 
+  // Mark index (0-based) course progress is waiting for: first unrounded.
   get targetIndex() {
     return this.target % this.course.length;
+  }
+
+  // Mark index (0-based) highlighted as NEXT.
+  get displayIndex() {
+    return this.display % this.course.length;
   }
 
   tracker(k) {
     let t = this.trackers.get(k);
     if (!t) {
-      t = { k, entered: false, inside: false, swept: 0, lastBearing: null, rounded: false, distance: Infinity, bearing: null };
+      t = { k, entered: false, inside: false, swept: 0, lastBearing: null, rounded: false, released: false, distance: Infinity, bearing: null };
       this.trackers.set(k, t);
     }
     return t;
@@ -201,8 +234,10 @@ export class CourseProgress {
         t.lastBearing = b;
       }
       if (t.entered) {
-        if (!t.rounded && t.swept >= r.thresholdDeg) t.rounded = true;
-        else if (t.rounded && t.swept < r.thresholdDeg - ROUNDING_HYST_DEG) t.rounded = false;
+        if (!t.rounded && t.swept >= r.roundedDeg) t.rounded = true;
+        else if (t.rounded && t.swept < r.roundedDeg - ROUNDING_HYST_DEG) t.rounded = false;
+        if (!t.rounded) t.released = false;
+        else if (t.swept >= r.nextLegDeg || !t.inside) t.released = true;
       }
     }
     // Target = first live rounding not done.
@@ -219,20 +254,30 @@ export class CourseProgress {
     const floor = Math.max(this.floor, this.target - COURSE_TRACK_BACK);
     for (const k of [...this.trackers.keys()]) if (k < floor) this.trackers.delete(k);
     this.floor = floor;
+    // Highlight: oldest live rounding that is rounded but not released.
+    // Frozen ones (below the floor) count as released.
+    let display = this.target;
+    for (let k = this.floor; k < this.target; k++) {
+      const t = this.trackers.get(k);
+      if (t && t.rounded && !t.released) { display = k; break; }
+    }
+    this.display = display;
     return this;
   }
 
-  // Target rounding with its live counter, for drawing and text.
-  view() {
-    const r = this.course.rounding(this.target);
-    const t = this.tracker(this.target);
-    return { ...r, swept: t.swept, entered: t.entered, distance: t.distance, lap: this.lap, lapsCompleted: this.lapsCompleted };
+  // Rounding k (default: the highlighted one) with its live counter, for
+  // drawing and text. rounded: swept past the midpoint ray.
+  view(k = this.display) {
+    const r = this.course.rounding(k);
+    const t = this.trackers.get(k) || this.tracker(k);
+    return { ...r, swept: t.swept, entered: t.entered, distance: t.distance, rounded: this.isRounded(k), lap: this.lap, lapsCompleted: this.lapsCompleted };
   }
 
-  // Marks rounded in the current lap (indices).
+  // Marks rounded in the current lap (indices). The lap is the highlighted
+  // mark's lap, so mark 3 keeps its tick while it is still highlighted.
   roundedThisLap() {
     const n = this.course.length;
-    const base = this.target - (this.target % n);
+    const base = this.display - (this.display % n);
     const out = [];
     for (let k = base; k < this.target; k++) out.push(k % n);
     return out;
@@ -245,6 +290,7 @@ export const COURSE_LINE_COLOR = 0x6f8fb3;
 export const COURSE_NEXT_COLOR = 0x7dff5a;
 export const COURSE_ROUNDED_COLOR = 0x8a96a3;
 export const COURSE_CHECK_COLOR = 0x5cf2ff;
+export const COURSE_MID_COLOR = 0xffd27a;
 export const COURSE_ZONE_COLOR = 0x7dff5a;
 export const COURSE_ARC_RADIUS_M = 4;
 
@@ -277,9 +323,12 @@ function ray(c, deg, len) {
 }
 
 // Guides for the course as seen by one boat: dashed course line, mark
-// numbers, the next mark highlighted (pulsing ring, NEXT label, faint
-// activation circle), rounded marks greyed, and the check angle at the target
-// (mark→boat line, incoming and outgoing rays, swept arc with "swept / needed").
+// numbers, the highlighted mark (progress.display: pulsing ring, NEXT label,
+// or "✓ n rounded" once past the midpoint ray, faint activation circle),
+// rounded marks greyed, and the check angle at the highlighted mark:
+// mark→boat line, dashed incoming ray, dashed amber midpoint ray ("rounded"),
+// green outgoing ray ("next leg"), and the swept arc labelled
+// "swept / roundedDeg ✓ · nextLegDeg".
 export function courseGuides(course, progress, boat, nowMs = 0) {
   const g = [];
   const n = course.length;
@@ -288,7 +337,7 @@ export function courseGuides(course, progress, boat, nowMs = 0) {
 
   // Course line. The first leg comes from the start until mark 1 is rounded.
   for (let i = 0; i < n; i++) g.push(...dashedLine(anchors[i], anchors[(i + 1) % n], COURSE_LINE_COLOR, 0.45));
-  if (progress.target === 0) g.push(...dashedLine(course.start, anchors[0], COURSE_LINE_COLOR, 0.3, 1, 2));
+  if (progress.display === 0) g.push(...dashedLine(course.start, anchors[0], COURSE_LINE_COLOR, 0.3, 1, 2));
 
   const rounded = new Set(progress.roundedThisLap());
   for (let i = 0; i < n; i++) {
@@ -299,7 +348,8 @@ export function courseGuides(course, progress, boat, nowMs = 0) {
       g.push(...circleSegments(c.x, c.y, 1.1 + 0.6 * pulse, COURSE_NEXT_COLOR, 0.6 + 0.4 * pulse, 32));
       g.push(...circleSegments(c.x, c.y, 2.2, COURSE_NEXT_COLOR, 0.9, 32));
       g.push(...circleSegments(c.x, c.y, COURSE_ACTIVATION_RADIUS_M, COURSE_ZONE_COLOR, 0.25, 72, true));
-      g.push({ type: 'label', badge: true, x: c.x, y: c.y + 2.6, lines: [{ text: 'NEXT ' + (i + 1) + ' · ' + side, role: 'next', id: 'mark' }] });
+      const text = view.rounded ? '✓ ' + (i + 1) + ' rounded' : 'NEXT ' + (i + 1) + ' · ' + side;
+      g.push({ type: 'label', badge: true, x: c.x, y: c.y + 2.6, lines: [{ text, role: 'next', id: 'mark' }] });
     } else if (rounded.has(i)) {
       g.push(...circleSegments(c.x, c.y, 1.3, COURSE_ROUNDED_COLOR, 0.7, 24));
       g.push({ type: 'label', badge: true, x: c.x, y: c.y + 1.6, lines: [{ text: '✓ ' + (i + 1), role: 'rounded', id: 'mark' }] });
@@ -309,13 +359,18 @@ export function courseGuides(course, progress, boat, nowMs = 0) {
   }
 
   if (!boat) return g;
-  // Check angle at the target.
+  // Check angle at the highlighted mark.
   const c = centreOf(view.mark);
   const R = COURSE_ACTIVATION_RADIUS_M;
   g.push({ type: 'guide', color: COURSE_CHECK_COLOR, opacity: view.entered ? 1 : 0.35, x1: c.x, y1: c.y, x2: boat.x, y2: boat.y });
   const outEnd = ray(c, view.outDeg, R);
   g.push({ type: 'guide', color: COURSE_NEXT_COLOR, opacity: 0.95, x1: c.x, y1: c.y, x2: outEnd.x, y2: outEnd.y });
+  const nextLabel = ray(c, view.outDeg, R + 1.5);
+  g.push({ type: 'label', badge: true, x: nextLabel.x, y: nextLabel.y, lines: [{ text: 'next leg', role: 'rounded', id: 'ray' }] });
   g.push(...dashedLine(c, ray(c, view.inDeg, R), COURSE_ROUNDED_COLOR, 0.6, 1, 1));
+  g.push(...dashedLine(c, ray(c, view.midDeg, R), COURSE_MID_COLOR, 0.95, 1.2, 0.8));
+  const midLabel = ray(c, view.midDeg, R + 1.5);
+  g.push({ type: 'label', badge: true, x: midLabel.x, y: midLabel.y, lines: [{ text: 'rounded', role: 'rounded', id: 'ray' }] });
   if (view.entered) {
     const swept = view.swept;
     const steps = Math.max(1, Math.ceil(Math.abs(swept) / 5));
@@ -330,17 +385,24 @@ export function courseGuides(course, progress, boat, nowMs = 0) {
       g.push({ type: 'guide', color, opacity: 1, x1: p0.x, y1: p0.y, x2: p1.x, y2: p1.y });
     }
     const mid = ray(c, view.inDeg + view.side * swept / 2, COURSE_ARC_RADIUS_M + 1.8);
-    g.push({ type: 'label', badge: true, x: mid.x, y: mid.y, lines: [{ text: Math.round(swept) + '° / ' + Math.round(view.thresholdDeg) + '°', role: 'turn', id: 'check' }] });
+    g.push({ type: 'label', badge: true, x: mid.x, y: mid.y, lines: [{ text: checkText(view), role: 'turn', id: 'check' }] });
   }
   return g;
 }
 
-// One line of progress text for the info panel.
+// "swept / rounded-at ✓ · next-leg-at", e.g. "172° / 150° ✓ · 300°".
+export function checkText(view) {
+  return Math.round(view.swept) + '° / ' + Math.round(view.roundedDeg) + '°' + (view.rounded ? ' ✓' : '') + ' · ' + Math.round(view.nextLegDeg) + '°';
+}
+
+// One line of progress text for the info panel: the highlighted mark, the
+// lap, and the check angle (or distance to the zone).
 export function courseText(progress) {
   const v = progress.view();
   const side = v.side === PORT ? 'port' : 'starboard';
-  const angle = v.entered ? Math.round(v.swept) + '°/' + Math.round(v.thresholdDeg) + '°' : 'zone ' + Math.round(v.distance) + ' m';
-  return 'Course: next mark ' + (v.index + 1) + ' (' + side + ') · lap ' + v.lap + ' · ' + angle;
+  const angle = v.entered ? checkText(v) : 'zone ' + Math.round(v.distance) + ' m';
+  const what = v.rounded ? 'mark ' + (v.index + 1) + ' rounded, sail on' : 'next mark ' + (v.index + 1) + ' (' + side + ')';
+  return 'Course: ' + what + ' · lap ' + v.lap + ' · ' + angle;
 }
 
 // Scenario 12 layout (wind from +Y). Equilateral triangle, 45 m legs, the
