@@ -2,6 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <link rel="icon" href="data:,">
     <title>New webpage</title>
   
@@ -165,9 +166,178 @@
         transform-origin: left center;
       }
 
+      /* Settings menu button and backdrop exist only in the mobile layout. */
+      #settings_toggle,
+      #settings_backdrop {
+        display: none;
+      }
+      /* Phones and small windows, or a touch-only device of any size. */
+      @media (max-width: 768px), (pointer: coarse) and (hover: none) {
+        #settings_toggle {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: fixed;
+          top: calc(10px + env(safe-area-inset-top));
+          right: calc(10px + env(safe-area-inset-right));
+          z-index: 300;
+          width: 48px;
+          height: 48px;
+          padding: 0;
+          font-size: 26px;
+          line-height: 1;
+          color: #fff;
+          background: rgba(12, 18, 28, 0.85);
+          border: 1px solid rgba(180, 200, 220, 0.5);
+          border-radius: 8px;
+          cursor: pointer;
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
+        }
+        #settings_backdrop {
+          position: fixed;
+          inset: 0;
+          z-index: 250;
+          background: rgba(0, 0, 0, 0.45);
+          touch-action: none;
+        }
+        body.settings-open #settings_backdrop {
+          display: block;
+        }
+        /* The desktop #info sits between the scenario card and the settings
+           panel (left 368px, right 270px), which is off screen on a phone. */
+        #info {
+          top: auto;
+          left: calc(10px + env(safe-area-inset-left));
+          right: calc(68px + env(safe-area-inset-right));
+          bottom: calc(34px + env(safe-area-inset-bottom));
+          font-size: 12px;
+        }
+        /* #info now owns the bottom-left corner, so the perf overlay moves
+           to the bottom-right and #info narrows while the overlay is on. */
+        #perf_overlay_hud {
+          left: auto;
+          right: calc(10px + env(safe-area-inset-right));
+          bottom: calc(34px + env(safe-area-inset-bottom));
+          font-size: 11px;
+        }
+        body:has(#perf:checked) #info {
+          right: calc(180px + env(safe-area-inset-right));
+        }
+        #scenario_card {
+          width: calc(100vw - 92px - env(safe-area-inset-right) - env(safe-area-inset-left));
+        }
+        #settings {
+          position: fixed;
+          top: 0;
+          right: 0;
+          bottom: 0;
+          z-index: 260;
+          box-sizing: border-box;
+          width: min(380px, 100vw);
+          padding: calc(68px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
+            calc(24px + env(safe-area-inset-bottom)) 16px;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          -webkit-overflow-scrolling: touch;
+          touch-action: pan-y;
+          font-size: 17px;
+          line-height: 1.3;
+          background: rgba(18, 24, 34, 0.97);
+          box-shadow: -4px 0 18px rgba(0, 0, 0, 0.5);
+          transform: translateX(100%);
+          visibility: hidden;
+          transition: transform 0.2s ease, visibility 0s linear 0.2s;
+        }
+        body.settings-open #settings {
+          transform: none;
+          visibility: visible;
+          transition: transform 0.2s ease;
+        }
+        #settings br {
+          display: none;
+        }
+        #settings .setting-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          min-height: 48px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          cursor: pointer;
+          -webkit-tap-highlight-color: transparent;
+        }
+        #settings .setting-field {
+          justify-content: space-between;
+          cursor: default;
+        }
+        #settings .setting-buttons {
+          flex-wrap: wrap;
+          gap: 8px;
+          padding: 6px 0;
+          cursor: default;
+        }
+        #settings .setting-inline {
+          display: inline-flex;
+          border-bottom: 0;
+        }
+        #settings input[type="checkbox"] {
+          flex: none;
+          width: 26px;
+          height: 26px;
+          margin: 0;
+        }
+        #settings input[type="button"] {
+          min-width: 48px;
+          min-height: 44px;
+          padding: 0 14px;
+          font-size: 18px;
+          touch-action: manipulation;
+        }
+        #settings input[type="number"],
+        #settings select {
+          box-sizing: border-box;
+          min-height: 44px;
+          font-size: 16px;
+          padding: 4px 8px;
+        }
+        #settings input[type="number"] {
+          width: 110px !important;
+        }
+        #settings .setting-field #scenario_selector {
+          width: 72px !important;
+          margin-left: auto;
+        }
+        #settings #scenario_restart {
+          width: auto !important;
+        }
+        #settings .setting-block {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 8px 12px;
+          padding: 10px 0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        #settings select {
+          width: 100%;
+        }
+        #settings input[type="range"] {
+          width: 100%;
+          height: 36px;
+          margin: 0;
+        }
+        #settings #wind_info,
+        #settings #dist_info {
+          padding: 6px 0;
+        }
+        #settings #reset_settings {
+          width: 100%;
+          margin-top: 16px;
+        }
+      }
     </style>
   
-    <script type="module" crossorigin src="/fields/pr-preview/pr-26/assets/index-gODPysMg.js"></script>
+    <script type="module" crossorigin src="/fields/pr-preview/pr-26/assets/index-Cn93PWT8.js"></script>
   </head>
   <body>
 
@@ -184,47 +354,50 @@
     <div id="devmode_banner" title="The angle is where the wind comes from. The arrow points downwind, the way it blows.">DEV MODE · fluid off · wind <span id="dev_wind_label"></span><span id="dev_wind_arrow">➤</span></div>
     <pre id="perf_overlay_hud"></pre>
     <div id="fps" style="position:absolute; bottom:10px; left:10px; color:white; font-family:'Courier New',monospace; z-index:100;"></div>
+    <button id="settings_toggle" type="button" aria-controls="settings" aria-expanded="false" aria-label="Settings">☰</button>
+    <div id="settings_backdrop" hidden></div>
     <div id="settings">
-      <input id="devmode" autocomplete="off" type="checkbox" title="Constant wind, no fluid simulation. Also enabled by ?devmode=1">Dev mode
+      <label class="setting-row"><input id="devmode" autocomplete="off" type="checkbox" title="Constant wind, no fluid simulation. Also enabled by ?devmode=1">Dev mode</label>
       <br>
-      <input id="amr" autocomplete="off" type="checkbox" checked>Mesh refinement
+      <label class="setting-row"><input id="amr" autocomplete="off" type="checkbox" checked>Mesh refinement</label>
       <br>
-      <input id="barrier" autocomplete="off" type="checkbox" title="Circular obstacle at the map centre. Off by default. Check it and set wind speed to about 25 to shed waves that refine on their own, away from the boat.">Barrier
+      <label class="setting-row"><input id="barrier" autocomplete="off" type="checkbox" title="Circular obstacle at the map centre. Off by default. Check it and set wind speed to about 25 to shed waves that refine on their own, away from the boat.">Barrier</label>
       <br>
-      <input id="boat_energy" autocomplete="off" type="checkbox" checked>Boat energy
+      <label class="setting-row"><input id="boat_energy" autocomplete="off" type="checkbox" checked>Boat energy</label>
       <br>
-      <input id="show_field" autocomplete="off" type="checkbox">Toggle Field
+      <label class="setting-row"><input id="show_field" autocomplete="off" type="checkbox">Toggle Field</label>
       <br>
-      <input id="show_forces" autocomplete="off" type="checkbox">Toggle Forces
+      <label class="setting-row"><input id="show_forces" autocomplete="off" type="checkbox">Toggle Forces</label>
       <br>
-      <input id="camera_follow" autocomplete="off" type="checkbox">Camera Follow
+      <label class="setting-row"><input id="camera_follow" autocomplete="off" type="checkbox">Camera Follow</label>
       <br>
-      <input id="perf" autocomplete="off" type="checkbox" title="Cells per refinement level and field step time. Also ?perf=1">Perf overlay
+      <label class="setting-row"><input id="perf" autocomplete="off" type="checkbox" title="Cells per refinement level and field step time. Also ?perf=1">Perf overlay</label>
       <br>
-      <input id="camera_zoom_in" type="button" value="+"><input id="camera_zoom_out" type="button" value="-">Zoom
+      <span class="setting-row setting-buttons"><input id="camera_zoom_in" type="button" value="+"><input id="camera_zoom_out" type="button" value="-">Zoom</span>
       <br>
+      <span class="setting-row setting-buttons">
       <input id="camera_move_left" type="button" value="◄">
       <input id="camera_move_right" type="button" value="►">
       <input id="camera_move_up" type="button" value="▲">
       <input id="camera_move_down" type="button" value="▼">
+      </span>
       <br>
-      Wind angle<br>
-      <input id="windAngle" autocomplete="off" type="number" min="0" max="360" step="5" value="90">
+      <label class="setting-row setting-field">Wind angle<br>
+      <input id="windAngle" autocomplete="off" type="number" min="0" max="360" step="5" value="90"></label>
       <br>
-      Wind speed<br>
-      <input id="windSpeed" autocomplete="off" type="number" min="0" max="40" step="1" value="15">
+      <label class="setting-row setting-field">Wind speed<br>
+      <input id="windSpeed" autocomplete="off" type="number" min="0" max="40" step="1" value="15"></label>
       <br>
-      Select Scenario<br>
-      <input id="scenario_selector" autocomplete="off" type="number" min="0" max="10" value="0" style="width: 50px;" title="Scenario 6: Rule 13 tack. Scenario 7: leeward boat tacks into a Rule 10 collision. Scenario 8: Rule 15 overlap. Scenario 9: contact during Rule 15. Scenario 10: penalty turn, a tack and a gybe in a row (Q counter-clockwise, E clockwise autopilot circle). Use with Dev mode.">
-      
-      <input id="scenario_restart" type="button" min="0" max="10" style="width: 50px;" value="Restart">
+      <span class="setting-row setting-field">Select Scenario<br>
+      <input id="scenario_selector" autocomplete="off" type="number" min="0" max="11" value="0" style="width: 50px;" title="Scenario 6: Rule 13 tack. Scenario 7: leeward boat tacks into a Rule 10 collision. Scenario 8: Rule 15 overlap. Scenario 9: contact during Rule 15. Scenario 10: penalty turn, a tack and a gybe in a row (Q counter-clockwise, E clockwise autopilot circle). Scenario 11: anchored mark buoy, boat hits it. Use with Dev mode.">
+      <input id="scenario_restart" type="button" min="0" max="10" style="width: 50px;" value="Restart"></span>
     
       <div id="wind_info"></div>
       <div style="color:red;" id="dist_info"></div>
 
 
 
-      <div>
+      <div class="setting-block">
         <select id="plotSelect" autocomplete="off">
           <option>Plot density</option>
           <option>Plot x velocity</option>
@@ -237,11 +410,11 @@
         &nbsp;&nbsp;Mirror:
         <input id="mirrorSlider" autocomplete="off" type="range" min="0" max="359" step="1" value="0">
       </div>
-      <div>
+      <div class="setting-block">
         Animation speed:
         <input id="stepsSlider" autocomplete="off" type="range" min="1" max="40" step="1" value="1" onchange="resetTimer()">
         &nbsp;&nbsp;Steps per second: <span id="speedReadout">60</span>
-        &nbsp;&nbsp;<input id="rafCheck" autocomplete="off" type="checkbox" onchange="resetTimer()">Faster?
+        &nbsp;&nbsp;<label class="setting-row setting-inline"><input id="rafCheck" autocomplete="off" type="checkbox" onchange="resetTimer()">Faster?</label>
       </div>
       <br>
       <input id="reset_settings" type="button" value="Reset settings">
