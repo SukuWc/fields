@@ -34,7 +34,7 @@ Last updated: 2026-10-09
 - [ ] Reconnect
 
 ### 4. Core race loop
-- [ ] Course: start line, marks, finish, boundary (partial: [#27](https://github.com/SukuWc/fields/pull/27) adds anchored mark buoy physics and scenario 11, draft)
+- [ ] Course: start line, marks, finish, boundary (partial: [#27](https://github.com/SukuWc/fields/pull/27) adds anchored mark buoy physics and scenario 11)
 - [ ] Equal boats
 - [ ] Race states
 - [ ] Replay scrub
