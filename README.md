@@ -62,6 +62,7 @@ Last updated: 2026-10-09
 - [ ] Crash recovery
 - [ ] Spectator mode
 - [x] Hamburger settings menu on phones and touch screens: [#29](https://github.com/SukuWc/fields/pull/29)
+- [ ] Boat 1 touch controls in the bottom half of the screen (in progress, [#30](https://github.com/SukuWc/fields/pull/30))
 - [ ] Accessibility
 - [ ] Telemetry export
 
