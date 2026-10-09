@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Boat } from './boat.js';
+import { Mark, markMassForBoat } from './mark.js';
 import { chargePendingPenalty, PENALTY_MANEUVER_WINDOW_S, resetContacts } from './rules.js';
 import { range_map } from './utils.js';
 
@@ -8,6 +9,8 @@ let key_state = [];
 
 let scenario_descriptor = {};
 let players = [];
+// Race marks (buoys). Not boats: the rules engine only sees players.
+let marks = [];
 let physics_frame = 0;
 
 let _map, _getCamera, _bm;
@@ -109,6 +112,8 @@ function scenario_clear() {
   key_bind_list = [];
   players.forEach(player => player.physics_model_deinit());
   players = [];
+  marks.forEach(mark => mark.physics_model_deinit());
+  marks = [];
   physics_frame = 0;
   resetContacts();
 }
@@ -134,7 +139,7 @@ function renderScenarioCard(scenario) {
     bodyEl.textContent = scenario.description || "";
   } else {
     titleEl.textContent = "No scenario";
-    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 10 each have a description.";
+    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 11 each have a description.";
   }
   card.classList.toggle("collapsed", scenarioCardCollapsed);
   if (toggle) {
@@ -425,6 +430,41 @@ scenarios[10].frames[1] = () => {
   _map.camera_zoom = 16;
 };
 
+// Anchored mark buoy, physics only (no racing rules at the mark yet).
+// Wind-from defaults to +Y. One boat on starboard close-hauled autopilot,
+// started with way on, sails straight into a 1 m buoy about 9 m ahead. The
+// buoy is a dynamic circle with a tenth of the boat's mass (mark.js). The
+// bow shoves it off station; the anchor spring (MARK_SPRING_K, growing with
+// distance) and damper (MARK_DAMPING) pull it back. The yellow cross is the
+// anchor and the yellow line runs from it to the buoy while displaced.
+// Dev mode: ?devmode=1&scenario_selector=11
+scenarios[11] = makeScenario(
+  "Anchored mark: boat hits the buoy",
+  "One boat sails starboard close-hauled on autopilot, straight at a mark. The mark is an orange 1 m buoy with a tenth of the boat's mass, held by an anchor (the yellow cross). After about three seconds the bow hits it and shoves it a couple of metres off station; the yellow line shows the anchor line. The pull back toward the anchor grows with distance, with some damping, so the buoy drifts back and settles over several seconds. Physics only: no racing rules apply at the mark yet. Restart to watch it again."
+);
+scenarios[11].frames[0] = () => {
+  // About 5° below the 45° the autopilot holds, so she does not luff
+  // before the hit. Way on at close-hauled speed so the hit comes early.
+  const heading = 5 * Math.PI / 4 + 5 * Math.PI / 180;
+  const fx = Math.sin(heading);
+  const fy = -Math.cos(heading);
+  const boat = new Boat(_map, 12, -10, heading);
+  players.push(boat);
+  boat.physics_model.setLinearVelocity({ x: fx * 1.9, y: fy * 1.9 });
+  const ahead = 9;
+  marks.push(new Mark(_map, 12 + fx * ahead, -10 + fy * ahead, { mass: markMassForBoat(boat.physics_model) }));
+  players[0].input_autopilot_enabled_toggle();
+};
+scenarios[11].frames[1] = () => {
+  autokeybind(players);
+  const follow = document.getElementById('camera_follow');
+  if (follow && !follow.checked) {
+    follow.checked = true;
+    follow.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  _map.camera_zoom = 16;
+};
+
 export function setupControls(map, getCamera, bm) {
   _map = map;
   _getCamera = getCamera;
@@ -494,6 +534,10 @@ export function setupControls(map, getCamera, bm) {
 
 export function getPlayers() {
   return players;
+}
+
+export function getMarks() {
+  return marks;
 }
 
 export function processKeys() {

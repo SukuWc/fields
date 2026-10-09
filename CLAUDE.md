@@ -30,6 +30,7 @@ src/utils.js          — range_map and HSVtoRGB helpers
 src/wind.js           — Wind providers (fluid-sampled and constant). Boats only see Map.get_wind
 src/boltzmann.js      — Lattice Boltzmann Method (LBM) fluid simulator
 src/boat.js           — Sailboat physics, aerodynamics, autopilot
+src/mark.js           — Race mark: dynamic 1 m buoy (boat mass / 10) on an anchor spring + damper
 src/map.js            — Planck.js world container, camera control, wind queries
 ```
 
@@ -102,7 +103,7 @@ Defaults are `wind_angle = 90` (from +Y, blowing toward −Y) and `wind_speed = 
 
 ### Scenarios
 
-Scenarios are defined in `src/controls.js` as sparse arrays indexed by physics frame number. Scenario 0 = single boat autopilot; 1 = two-boat race; 2–4 = multi-boat automated sequences; 5 = empty template. `map.js` intentionally creates two dynamic circle bodies in `physics_model_init` as world objects.
+Scenarios are defined in `src/controls.js` as sparse arrays indexed by physics frame number. Scenario 0 = single boat autopilot; 1 = two-boat race; 2–4 = multi-boat automated sequences; 5 = empty template. 11 = one boat on close-hauled autopilot hitting an anchored mark (physics only). Marks live in `controls.js` `marks[]` (`getMarks()`), separate from `players[]`, so the rules engine never sees them; `main.js` calls `mark.physics_model_step()` once per world step (spring `MARK_SPRING_K`, damper `MARK_DAMPING`). `map.js` intentionally creates two dynamic circle bodies in `physics_model_init` as world objects.
 
 ### Coding conventions for `boltzmann.js`
 

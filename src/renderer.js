@@ -64,7 +64,9 @@ function createFixtureLine(fixture, body) {
   const colorByType = { circle: 0x00ff00, edge: 0xff0000, polygon: 0x0000ff };
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pointCount * 3), 3));
-  const material = markOverlay(new THREE.LineBasicMaterial({ color: colorByType[type] }));
+  // A body can pick its own outline (marks set body.render.stroke).
+  const stroke = body.render && typeof body.render.stroke === 'number' ? body.render.stroke : colorByType[type];
+  const material = markOverlay(new THREE.LineBasicMaterial({ color: stroke }));
   const line = new THREE.Line(geometry, material);
   line.renderOrder = ORDER_HULL;
   line.frustumCulled = false;
