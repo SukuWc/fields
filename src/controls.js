@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Boat } from './boat.js';
 import { Mark, markMassForBoat } from './mark.js';
 import { Course, Gate, TRIANGLE_COURSE_LAYOUT, WINDWARD_LEEWARD_LAYOUT } from './course.js';
+import { StartLine, StartSequence, START_COURSE_LAYOUT } from './start.js';
 import { chargePendingPenalty, PENALTY_MANEUVER_WINDOW_S, resetContacts } from './rules.js';
 import { range_map } from './utils.js';
 
@@ -14,6 +15,7 @@ let players = [];
 let marks = [];
 // Active course (ordered marks + per-boat rounding progress), or null.
 let course = null;
+let startSequence = null;
 let physics_frame = 0;
 
 let _map, _getCamera, _bm;
@@ -137,6 +139,7 @@ function scenario_clear() {
   marks.forEach(mark => mark.physics_model_deinit());
   marks = [];
   course = null;
+  startSequence = null;
   physics_frame = 0;
   resetContacts();
 }
@@ -162,7 +165,7 @@ function renderScenarioCard(scenario) {
     bodyEl.textContent = scenario.description || "";
   } else {
     titleEl.textContent = "No scenario";
-    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 13 each have a description.";
+    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 14 each have a description.";
   }
   card.classList.toggle("collapsed", scenarioCardCollapsed);
   if (toggle) {
@@ -554,6 +557,48 @@ scenarios[13].frames[1] = () => {
   _map.camera_zoom = 46;
 };
 
+// Start procedure (start.js START_COURSE_LAYOUT): RRS 26 countdown at 1/5
+// scale (warning −60 s, preparatory −48 s, one-minute −12 s, start 0), a
+// start line between an RC mark (east, starboard end) and a pin (west), then
+// windward mark 1 to port and leeward gate 2. One boat, normal controls, on a
+// port beam reach autopilot below the line. Over the line at the gun: OCS,
+// X flag; return fully below the line and start again. Course progress waits
+// for a valid start. Dev mode: ?devmode=1&scenario_selector=14
+scenarios[14] = makeScenario(
+  "Start sequence and early start (OCS)",
+  "The countdown at the top runs a start sequence at one fifth of real time: warning signal (class flag) at −1:00, preparatory (P flag up) at −0:48, one minute (P flag down) at −0:12, and the start at 0:00. The HUD flashes on each signal. The dashed line between RC (east) and PIN (west) is the start line; its small ticks show the pre-start side, below it. Be below the line at the gun, then sail across it between the ends to start: the clock then shows time since the start and your start time is recorded. If any part of the hull is over the line at the gun you are OCS: the X flag goes up and the boat shows 'OCS — return'. Sail back until the whole hull is below the line (or its extension), then cross again. Mark 1 (windward, to port) and gate 2 only become active after a valid start. You start on a port beam reach on autopilot: arrows steer, Enter tacks, Space toggles the autopilot."
+);
+scenarios[14].frames[0] = () => {
+  const L = START_COURSE_LAYOUT;
+  const boat = new Boat(_map, L.boat.x, L.boat.y, L.boatHeading);
+  players.push(boat);
+  boat.physics_model.setLinearVelocity({ x: Math.sin(L.boatHeading) * 1.5, y: -Math.cos(L.boatHeading) * 1.5 });
+  const mass = markMassForBoat(boat.physics_model);
+  const rc = new Mark(_map, L.committee.x, L.committee.y, { mass });
+  const pin = new Mark(_map, L.pin.x, L.pin.y, { mass });
+  const windward = new Mark(_map, L.windward.x, L.windward.y, { mass });
+  const gateA = new Mark(_map, L.gate[0].x, L.gate[0].y, { mass });
+  const gateB = new Mark(_map, L.gate[1].x, L.gate[1].y, { mass });
+  marks.push(rc, pin, windward, gateA, gateB);
+  const line = new StartLine(rc, pin, L.windward);
+  startSequence = new StartSequence(line, { timings: L.timings, lead: L.lead });
+  course = new Course([windward, new Gate(gateA, gateB)], { start: line.mid, startSequence });
+};
+scenarios[14].frames[1] = () => {
+  autokeybind(players);
+  // Hold the starting beam reach (TWA 90) on the heading autopilot; its
+  // target sign is the side the wind is on, read after the first step.
+  const boat = players[0];
+  boat.autopilot_heading_target = (Math.sign(boat.autopilot_heading_target) || 1) * 90;
+  boat.autopilot_enabled = true;
+  const follow = document.getElementById('camera_follow');
+  if (follow && !follow.checked) {
+    follow.checked = true;
+    follow.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  _map.camera_zoom = 46;
+};
+
 export function setupControls(map, getCamera, bm) {
   _map = map;
   _getCamera = getCamera;
@@ -631,6 +676,10 @@ export function getMarks() {
 
 export function getCourse() {
   return course;
+}
+
+export function getStartSequence() {
+  return startSequence;
 }
 
 export function processKeys() {
