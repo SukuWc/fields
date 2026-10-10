@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Boat } from './boat.js';
 import { Mark, markMassForBoat } from './mark.js';
-import { Course, TRIANGLE_COURSE_LAYOUT } from './course.js';
+import { Course, Gate, TRIANGLE_COURSE_LAYOUT, WINDWARD_LEEWARD_LAYOUT } from './course.js';
 import { chargePendingPenalty, PENALTY_MANEUVER_WINDOW_S, resetContacts } from './rules.js';
 import { range_map } from './utils.js';
 
@@ -162,7 +162,7 @@ function renderScenarioCard(scenario) {
     bodyEl.textContent = scenario.description || "";
   } else {
     titleEl.textContent = "No scenario";
-    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 12 each have a description.";
+    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 13 each have a description.";
   }
   card.classList.toggle("collapsed", scenarioCardCollapsed);
   if (toggle) {
@@ -518,6 +518,39 @@ scenarios[12].frames[1] = () => {
     follow.dispatchEvent(new Event('change', { bubbles: true }));
   }
   // The whole triangle fits on screen; + and − zoom in for a rounding.
+  _map.camera_zoom = 46;
+};
+
+// Windward-leeward with a leeward gate (course.js WINDWARD_LEEWARD_LAYOUT).
+// Element 1: windward mark, rounded to port. Element 2: a gate of two
+// anchored marks 12 m apart; sail between them downwind, then round either
+// one. One boat, normal controls, starts on starboard close-hauled autopilot
+// just above the gate. Laps loop. Dev mode: ?devmode=1&scenario_selector=13
+scenarios[13] = makeScenario(
+  "Windward mark and leeward gate",
+  "A windward-leeward course: mark 1 upwind, left to port, and gate 2 downwind, two marks 12 m apart. Beat up to mark 1 and round it to port, then run back down and sail between the two gate marks: the dashed line between them is the gate line. Crossing it between the marks passes the gate and the label turns to a tick; passing outside either mark does not count, and sailing back through the gate unpasses it. After the gate, round whichever gate mark you like and beat back up; the highlight moves to mark 1 once you are clear of both gate zones. The course loops and the lap count rises. You start on starboard close-hauled autopilot: Enter tacks, arrows steer, Space toggles the autopilot."
+);
+scenarios[13].frames[0] = () => {
+  const L = WINDWARD_LEEWARD_LAYOUT;
+  const heading = L.startHeading;
+  const boat = new Boat(_map, L.start.x, L.start.y, heading);
+  players.push(boat);
+  boat.physics_model.setLinearVelocity({ x: Math.sin(heading) * 1.5, y: -Math.cos(heading) * 1.5 });
+  const mass = markMassForBoat(boat.physics_model);
+  const windward = new Mark(_map, L.windward.x, L.windward.y, { mass });
+  const gateA = new Mark(_map, L.gate[0].x, L.gate[0].y, { mass });
+  const gateB = new Mark(_map, L.gate[1].x, L.gate[1].y, { mass });
+  marks.push(windward, gateA, gateB);
+  course = new Course([windward, new Gate(gateA, gateB)], { start: L.start });
+  players[0].input_autopilot_enabled_toggle();
+};
+scenarios[13].frames[1] = () => {
+  autokeybind(players);
+  const follow = document.getElementById('camera_follow');
+  if (follow && !follow.checked) {
+    follow.checked = true;
+    follow.dispatchEvent(new Event('change', { bubbles: true }));
+  }
   _map.camera_zoom = 46;
 };
 
