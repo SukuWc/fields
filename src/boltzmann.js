@@ -613,6 +613,9 @@ export class RefinementDomain {
 		// Ghost border cells are excluded from interiorCells but their neighbours
 		// are still valid (they point to other cells within this domain).
 		this.interiorCells = [];
+		// Per-call parent decomposition cache for injectFromCoarse.
+		this._decompCache = null;
+		this._decompParent = null;
 		for (let fj = 1; fj < this.height - 1; fj++) {
 			for (let fi = 1; fi < this.width - 1; fi++) {
 				const cell = this.cells[fi + fj * this.width];
@@ -818,23 +821,56 @@ export class RefinementDomain {
 	// A coincident node is an Eq. 34 copy, including the corner where two runs
 	// meet. Palabos has no diagonal node; a both-half site is an evolved cell
 	// center, and the fill below only bilinearly initializes one.
+	//
+	// Neighbouring ghosts share cubic and bilinear samples, so one parent node
+	// used to be decomposed up to four times per pass. The pass only writes
+	// this domain's ghost cells and only reads the parent, so each parent
+	// node is decomposed once per call and reused. The cache lives for one
+	// call; the next sub-step sees the parent's new state.
 	injectFromCoarse(parent) {
 		const locs = this._ghostLoc;
-		for (let k = 0; k < locs.length; k++) {
-			this._injectGhostCell(parent, locs[k].fi, locs[k].fj, true);
+		this._decompCache = new Map();
+		this._decompParent = parent;
+		try {
+			for (let k = 0; k < locs.length; k++) {
+				this._injectGhostCell(parent, locs[k].fi, locs[k].fj, true);
+			}
+		} finally {
+			this._decompCache = null;
+			this._decompParent = null;
 		}
 	}
 
 	// Pack ρ, u and f_neq (POP_KEYS order) from one parent node. Eq. 3.
+	// Inside injectFromCoarse the result is cached per parent node; callers
+	// only read the returned array.
 	_decomposed(parent, x, y) {
 		const W = parent.width;
 		const H = parent.height;
-		const out = new Float64Array(12);
-		out[0] = 1;
-		if (!Number.isFinite(x) || !Number.isFinite(y) || !(W > 0) || !(H > 0)) return out;
+		if (!Number.isFinite(x) || !Number.isFinite(y) || !(W > 0) || !(H > 0)) {
+			const out = new Float64Array(12);
+			out[0] = 1;
+			return out;
+		}
 		const ix = Math.max(0, Math.min(W - 1, Math.round(x)));
 		const iy = Math.max(0, Math.min(H - 1, Math.round(y)));
-		const cell = parent.cells[ix + iy * W];
+		const cache = parent === this._decompParent ? this._decompCache : null;
+		if (cache) {
+			const index = ix + iy * W;
+			let state = cache.get(index);
+			if (!state) {
+				state = this._decomposeNode(parent, index);
+				cache.set(index, state);
+			}
+			return state;
+		}
+		return this._decomposeNode(parent, ix + iy * W);
+	}
+
+	_decomposeNode(parent, index) {
+		const out = new Float64Array(12);
+		out[0] = 1;
+		const cell = parent.cells[index];
 		if (!cell || !Number.isFinite(cell.rho) || !Number.isFinite(cell.ux) || !Number.isFinite(cell.uy)) return out;
 		const eq = computeEquil(cell.ux, cell.uy, cell.rho);
 		out[0] = cell.rho;
