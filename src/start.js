@@ -152,6 +152,11 @@ export class StartSequence {
     return this;
   }
 
+  // Racing (RRS definitions) from the preparatory signal.
+  get racing() {
+    return this.clock >= -this.timings.prep;
+  }
+
   get started() {
     return this.clock >= 0;
   }

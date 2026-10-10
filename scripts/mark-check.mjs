@@ -153,7 +153,7 @@ const springPart = pulls.slice().sort((a, b) => a.d - b.d);
 assert(springPart[springPart.length - 1].spring > springPart[0].spring, "spring pull is larger farther from the anchor");
 const endD = mark.displacement();
 assert(endD < 0.2, `mark is back near its anchor after 20 s (${endD.toFixed(3)} m)`);
-assert(getIncidents().length === 0, "no RRS incident for a boat touching a mark");
+assert(getIncidents().length === 0, "no boat-boat incident for a boat touching a mark (rule 31 lives in mark-touch.js, see mark-touch-check)");
 assert(Number.isFinite(boat.x) && Number.isFinite(boat.y), "boat stays finite");
 
 console.log(`mark mass ${markBody.getMass().toFixed(4)} (boat ${boatMass.toFixed(3)}), k ${MARK_SPRING_K}, c ${MARK_DAMPING}, first contact ${firstContact.toFixed(2)} s, max displacement ${maxD.toFixed(2)} m at ${maxAt.toFixed(2)} s, end ${endD.toFixed(3)} m`);
