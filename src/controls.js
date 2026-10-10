@@ -3,6 +3,7 @@ import { Boat } from './boat.js';
 import { Mark, markMassForBoat } from './mark.js';
 import { Course, Gate, TRIANGLE_COURSE_LAYOUT, WINDWARD_LEEWARD_LAYOUT } from './course.js';
 import { StartLine, StartSequence, START_COURSE_LAYOUT } from './start.js';
+import { nameMarks, resetMarkTouches } from './mark-touch.js';
 import { chargePendingPenalty, PENALTY_MANEUVER_WINDOW_S, resetContacts } from './rules.js';
 import { range_map } from './utils.js';
 
@@ -142,6 +143,7 @@ function scenario_clear() {
   startSequence = null;
   physics_frame = 0;
   resetContacts();
+  resetMarkTouches();
 }
 
 let scenarioCardCollapsed = false;
@@ -465,8 +467,8 @@ scenarios[10].frames[1] = () => {
 // anchor and the yellow line runs from it to the buoy while displaced.
 // Dev mode: ?devmode=1&scenario_selector=11
 scenarios[11] = makeScenario(
-  "Anchored mark: boat hits the buoy",
-  "One boat sails starboard close-hauled on autopilot, straight at a mark. The mark is an orange 1 m buoy with a tenth of the boat's mass, held by an anchor (the yellow cross). After about three seconds the bow hits it and shoves it a couple of metres off station; the yellow line shows the anchor line. The pull back toward the anchor grows with distance, with some damping, so the buoy drifts back and settles over several seconds. Physics only: no racing rules apply at the mark yet. Restart to watch it again."
+  "Anchored mark: boat hits the buoy, rule 31 penalty",
+  "One boat sails starboard close-hauled on autopilot, straight at a mark. The mark is an orange 1 m buoy with a tenth of the boat's mass, held by an anchor (the yellow cross). After about three seconds the bow hits it and shoves it a couple of metres off station; the yellow line shows the anchor line. The pull back toward the anchor grows with distance, with some damping, so the buoy drifts back and settles over several seconds. Touching a mark breaks rule 31: the hit gives the boat a penalty, shown as 'FAULT · Rule 31 · touched mark' behind her, and the buoy flashes red. One touch is one penalty however long she stays against it; a later separate touch is another. Under RRS 44.1 it is a One-Turn Penalty: a tack and a gybe in a row (or Q / E for an autopilot circle) clears it. Arrows steer, Enter tacks, Space toggles the autopilot. Restart to watch it again."
 );
 scenarios[11].frames[0] = () => {
   // About 5° below the 45° the autopilot holds, so she does not luff
@@ -511,6 +513,7 @@ scenarios[12].frames[0] = () => {
   const mass = markMassForBoat(boat.physics_model);
   for (const p of L.marks) marks.push(new Mark(_map, p.x, p.y, { mass }));
   course = new Course(marks, { start: L.start });
+  nameMarks(course);
   players[0].input_autopilot_enabled_toggle();
 };
 scenarios[12].frames[1] = () => {
@@ -545,6 +548,7 @@ scenarios[13].frames[0] = () => {
   const gateB = new Mark(_map, L.gate[1].x, L.gate[1].y, { mass });
   marks.push(windward, gateA, gateB);
   course = new Course([windward, new Gate(gateA, gateB)], { start: L.start });
+  nameMarks(course);
   players[0].input_autopilot_enabled_toggle();
 };
 scenarios[13].frames[1] = () => {
@@ -583,6 +587,7 @@ scenarios[14].frames[0] = () => {
   const line = new StartLine(rc, pin, L.windward);
   startSequence = new StartSequence(line, { timings: L.timings, lead: L.lead });
   course = new Course([windward, new Gate(gateA, gateB)], { start: line.mid, startSequence });
+  nameMarks(course, startSequence);
 };
 scenarios[14].frames[1] = () => {
   autokeybind(players);

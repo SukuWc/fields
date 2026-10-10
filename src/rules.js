@@ -1643,6 +1643,22 @@ export function penaltyAutopilotRemainingDeg(boat) {
   return Math.max(0, 360 - turn.dir * turn.progressDeg);
 }
 
+// "FAULT", "FAULT x2"; with the oldest pending penalty's reason when it has
+// one (mark touches: "FAULT · Rule 31 · touched mark 2").
+export function faultBadgeText(boat, count = pendingPenaltyCount(boat)) {
+  const base = count > 1 ? 'FAULT x' + count : 'FAULT';
+  const queue = pendingPenalties.get(boat);
+  const oldest = queue && queue[0] && queue[0].incident;
+  return oldest && oldest.label ? base + ' · ' + oldest.label : base;
+}
+
+// Reason of the oldest pending penalty ("Rule 31: touched mark 2"), or null.
+export function pendingPenaltyReason(boat) {
+  const queue = pendingPenalties.get(boat);
+  const oldest = queue && queue[0] && queue[0].incident;
+  return oldest && oldest.reason ? oldest.reason : null;
+}
+
 // FAULT badge while a penalty is pending (with a count when several are),
 // the amber tack/gybe progress label, the ring and degrees left while the
 // Q/E autopilot circles, and a short CLEARED flash.
@@ -1664,7 +1680,7 @@ export function penaltyGuides(boats, nowMs) {
         x: boat.x + at.x,
         y: boat.y + at.y,
         lines: [{
-          text: count > 1 ? 'FAULT x' + count : 'FAULT',
+          text: faultBadgeText(boat, count),
           role: 'badge',
           id: 'fault',
         }],

@@ -10,13 +10,14 @@ import { setupControls, getPlayers, getMarks, getCourse, getStartSequence, incre
 import { installUrlSettings } from './url-settings.js';
 import { courseGuides, courseText } from './course.js';
 import { startGuides, startHudHtml, startStatusText } from './start.js';
+import { recordMarkTouches, markTouchGuides } from './mark-touch.js';
 import { setupPerfOverlay, isPerfOverlayOn, recordFieldStep } from './perf-overlay.js';
 import { setupMobileMenu } from './mobile-menu.js';
 import { setupTouchControls } from './touch-controls.js';
 
 import { SAIL_LATTICE_COUPLING } from './boat.js';
 
-import { beginRule15Step, contactGuides, evaluateAllPairs, penaltyAutopilotRemainingDeg, penaltyGuides, penaltyJustCleared, penaltyManeuverText, penaltyManeuverView, pendingPenaltyCount, recordContacts, trueWindAngleDeg } from './rules.js';
+import { beginRule15Step, contactGuides, evaluateAllPairs, penaltyAutopilotRemainingDeg, penaltyGuides, penaltyJustCleared, penaltyManeuverText, penaltyManeuverView, pendingPenaltyCount, pendingPenaltyReason, recordContacts, trueWindAngleDeg } from './rules.js';
 
 
 const map_w = 75;
@@ -229,6 +230,8 @@ runner.start((simDt) => {
         const left = Math.max(0, Math.ceil(penaltyAutopilotRemainingDeg(racing[i])));
         line += ' · ' + (steered.dir < 0 ? 'CW ' : 'CCW ') + left + '°';
       }
+      const reason = pending > 0 ? pendingPenaltyReason(racing[i]) : null;
+      if (reason) line += ' · ' + reason;
       if (maneuvers) line += ' · ' + maneuvers;
       else if (pending > 0) line += ' · needs tack + gybe';
       infoEl.innerHTML += line + '<br>';
@@ -245,6 +248,10 @@ runner.start((simDt) => {
     if (pairGuides && pairGuides.length) guides.push(...pairGuides);
   }
   recordContacts(resolutions, rulesTime, racing);
+  // Rule 31: boat-versus-mark touches, outside the pair engine. Racing from
+  // the preparatory signal when there is a start sequence, else always.
+  recordMarkTouches(racing, getMarks(), { simTime: rulesTime, racing: !startSeq || startSeq.racing });
+  guides.push(...markTouchGuides());
   guides.push(...contactGuides());
   guides.push(...penaltyGuides(racing));
 
