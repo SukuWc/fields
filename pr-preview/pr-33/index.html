@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <link rel="icon" href="data:,">
+    <title>New webpage</title>
+  
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        height: 100%;
+      }
+
+#info {
+        position: absolute;
+        top: 10px;
+        left: 368px;
+        right: 270px;
+        width: auto;
+        color: white;
+        z-index: 100;
+        display:block;
+        font-family: 'Courier New', Courier, monospace;
+        pointer-events: none;
+      }
+      #scenario_card {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        width: min(340px, calc(100vw - 280px));
+        max-height: 42vh;
+        overflow: auto;
+        z-index: 120;
+        color: #f4f7fb;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 13px;
+        line-height: 1.45;
+        background: rgba(12, 18, 28, 0.9);
+        border: 1px solid rgba(180, 200, 220, 0.45);
+        border-radius: 6px;
+        padding: 8px 10px 10px;
+      }
+      #scenario_card_head {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+      #scenario_card_num {
+        flex: none;
+        font-weight: 700;
+        color: #9ef;
+      }
+      #scenario_card_title {
+        flex: 1;
+        font-weight: 700;
+      }
+      #scenario_card_toggle {
+        flex: none;
+        font-family: inherit;
+        font-size: 11px;
+        color: #cde;
+        background: transparent;
+        border: 1px solid rgba(180, 200, 220, 0.5);
+        border-radius: 3px;
+        padding: 1px 6px;
+        cursor: pointer;
+      }
+      #scenario_card_body {
+        margin: 8px 0 0;
+      }
+      #scenario_card.collapsed #scenario_card_body {
+        display: none;
+      }      
+      #settings {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 250px;
+        color: white;
+        z-index: 100;
+        display:block;
+        font-family: 'Courier New', Courier, monospace;
+        background-color: rgba(50,50,50,0.5);
+      }
+      #perf_overlay_hud {
+        display: none;
+        position: absolute;
+        left: 10px;
+        bottom: 34px;
+        z-index: 100;
+        margin: 0;
+        padding: 4px 8px;
+        color: #cfe;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 12px;
+        line-height: 1.3;
+        white-space: pre;
+        background: rgba(10, 20, 30, 0.6);
+        border: 1px solid rgba(150, 200, 220, 0.35);
+        border-radius: 4px;
+        pointer-events: none;
+      }
+      #devmode_banner {
+        display: none;
+        position: absolute;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 100;
+        color: #9ef;
+        font-family: 'Courier New', Courier, monospace;
+        background: rgba(10, 30, 40, 0.8);
+        border: 1px solid #49c;
+        padding: 6px 12px;
+        pointer-events: none;
+        text-align: center;
+        white-space: nowrap;
+      }
+      #start_hud {
+        position: absolute;
+        top: 48px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 100;
+        color: #eef6ff;
+        font-family: 'Courier New', Courier, monospace;
+        background: rgba(10, 20, 30, 0.78);
+        border: 1px solid rgba(150, 200, 220, 0.45);
+        border-radius: 6px;
+        padding: 6px 14px;
+        pointer-events: none;
+        text-align: center;
+        white-space: nowrap;
+        transition: background 0.25s, border-color 0.25s;
+      }
+      #start_hud[hidden] { display: none; }
+      #start_hud.flash { background: rgba(255, 210, 122, 0.55); border-color: #ffd27a; }
+      #start_hud .start-clock { font-size: 34px; font-weight: 700; line-height: 1.1; }
+      #start_hud .start-signal { font-size: 14px; margin-top: 2px; }
+      #start_hud .start-boat { font-size: 13px; margin-top: 2px; color: #c9d1da; }
+      #start_hud .start-boat.ocs { color: #ff8a80; font-weight: 700; }
+      #start_hud .start-boat.ok { color: #8dffb0; }
+      #start_hud .flag { display: inline-block; width: 18px; height: 12px; vertical-align: -1px; margin-right: 3px; border: 1px solid #fff; font-size: 10px; line-height: 12px; font-weight: 700; }
+      #start_hud .flag-class { background: #ff8c00; color: #000; }
+      #start_hud .flag-p { background: linear-gradient(#fff, #fff) center / 8px 5px no-repeat, #1f4fbf; }
+      #start_hud .flag-x { background: linear-gradient(45deg, transparent 42%, #1f4fbf 42% 58%, transparent 58%), linear-gradient(-45deg, transparent 42%, #1f4fbf 42% 58%, transparent 58%), #fff; }
+      #dev_wind_arrow {
+        display: inline-block;
+        margin-left: 8px;
+      }
+      #rule_labels {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 80;
+        overflow: hidden;
+      }
+      .rule-label {
+        position: absolute;
+        transform: translate(-50%, -150%);
+        color: #fff;
+        background: rgba(0, 0, 0, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        border-radius: 3px;
+        padding: 2px 7px;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        white-space: nowrap;
+      }
+      .rule-label-15 {
+        color: #ffe7a3;
+        background: rgba(40, 28, 0, 0.9);
+        border-color: #ffc240;
+        padding-bottom: 5px;
+      }
+      .rule15-track {
+        margin-top: 4px;
+        height: 8px;
+        width: 100%;
+        min-width: 168px;
+        background: rgba(255, 255, 255, 0.22);
+        border-radius: 4px;
+        overflow: hidden;
+      }
+      .rule15-fill {
+        height: 100%;
+        width: 100%;
+        background: #ffc240;
+        transform-origin: left center;
+      }
+
+      #sim_canvas {
+        display: block;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+      }
+      #fps {
+        position: absolute;
+        bottom: 10px;
+        left: 10px;
+        color: white;
+        font-family: 'Courier New', monospace;
+        z-index: 100;
+      }
+      /* Boat 1 touch controls: bottom half; the canvas keeps the top half. */
+      #touch_controls {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 50%;
+        z-index: 150;
+        box-sizing: border-box;
+        display: grid;
+        grid-template-columns: 1.25fr 1fr 1fr 1.25fr;
+        grid-template-rows: repeat(3, 1fr);
+        gap: 8px;
+        padding: 8px calc(8px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));
+        background: #0c121c;
+        border-top: 1px solid rgba(180, 200, 220, 0.35);
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
+        -webkit-tap-highlight-color: transparent;
+        overscroll-behavior: none;
+      }
+      #touch_controls[hidden] {
+        display: none;
+      }
+      .tc-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        min-width: 48px;
+        min-height: 48px;
+        padding: 0;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 17px;
+        font-weight: 700;
+        color: #e8f0f8;
+        background: #223246;
+        border: 1px solid rgba(160, 200, 230, 0.45);
+        border-radius: 12px;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
+      }
+      .tc-btn small {
+        font-size: 11px;
+        font-weight: 400;
+        opacity: 0.65;
+      }
+      .tc-btn.pressed {
+        background: #3d6c9a;
+        border-color: #9ad0ff;
+      }
+      .tc-tap {
+        background: #1a2636;
+      }
+      .tc-steer {
+        grid-row: 1 / span 3;
+        font-size: 40px;
+      }
+      .tc-steer small {
+        font-size: 13px;
+      }
+      .tc-steer:first-child {
+        grid-column: 1;
+      }
+      .tc-right {
+        grid-column: 4;
+        grid-row: 1 / span 3;
+      }
+      /* Landscape phone: same bottom half, shorter rows. */
+      @media (orientation: landscape) and (max-height: 500px) {
+        .tc-btn {
+          font-size: 14px;
+        }
+        .tc-steer {
+          font-size: 30px;
+        }
+        #touch_controls {
+          gap: 6px;
+          padding-top: 6px;
+        }
+      }
+      /* Everything anchored to the bottom moves into the top (canvas) half. */
+      body.touch-on #sim_canvas {
+        height: 50%;
+      }
+      body.touch-on #fps {
+        bottom: calc(50% + 10px);
+      }
+      body.touch-on #perf_overlay_hud {
+        bottom: calc(50% + 34px);
+      }
+      body.touch-on #scenario_card {
+        max-height: calc(50% - 20px);
+      }
+      body.touch-on #settings {
+        max-height: calc(50% - 20px);
+        overflow-y: auto;
+      }
+      /* Settings menu button and backdrop exist only in the mobile layout. */
+      #settings_toggle,
+      #settings_backdrop {
+        display: none;
+      }
+      /* Phones and small windows, or a touch-only device of any size. */
+      @media (max-width: 768px), (pointer: coarse) and (hover: none) {
+        #settings_toggle {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: fixed;
+          top: calc(10px + env(safe-area-inset-top));
+          right: calc(10px + env(safe-area-inset-right));
+          z-index: 300;
+          width: 48px;
+          height: 48px;
+          padding: 0;
+          font-size: 26px;
+          line-height: 1;
+          color: #fff;
+          background: rgba(12, 18, 28, 0.85);
+          border: 1px solid rgba(180, 200, 220, 0.5);
+          border-radius: 8px;
+          cursor: pointer;
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
+        }
+        #settings_backdrop {
+          position: fixed;
+          inset: 0;
+          z-index: 250;
+          background: rgba(0, 0, 0, 0.45);
+          touch-action: none;
+        }
+        body.settings-open #settings_backdrop {
+          display: block;
+        }
+        /* The desktop #info sits between the scenario card and the settings
+           panel (left 368px, right 270px), which is off screen on a phone. */
+        #info {
+          top: auto;
+          left: calc(10px + env(safe-area-inset-left));
+          right: calc(68px + env(safe-area-inset-right));
+          bottom: calc(34px + env(safe-area-inset-bottom));
+          font-size: 12px;
+        }
+        /* #info now owns the bottom-left corner, so the perf overlay moves
+           to the bottom-right and #info narrows while the overlay is on. */
+        #perf_overlay_hud {
+          left: auto;
+          right: calc(10px + env(safe-area-inset-right));
+          bottom: calc(34px + env(safe-area-inset-bottom));
+          font-size: 11px;
+        }
+        body:has(#perf:checked) #info {
+          right: calc(180px + env(safe-area-inset-right));
+        }
+        /* Touch controls on: the readout moves into the top half, in two
+           short columns so it stays clear of the scenario card. */
+        body.touch-on #info {
+          bottom: calc(50% + 34px);
+          font-size: 10px;
+          line-height: 1.2;
+          column-count: 2;
+          column-gap: 10px;
+        }
+        body.touch-on #perf_overlay_hud {
+          font-size: 10px;
+          line-height: 1.15;
+        }
+        /* Half a phone screen is short: the card scrolls inside what is left
+           above the readout (its Hide button collapses it). */
+        body.touch-on #scenario_card {
+          max-height: max(64px, calc(50% - 210px));
+        }
+        /* The drawer stays full height; the half-height cap is for desktop. */
+        body.touch-on #settings {
+          max-height: none;
+        }
+        #scenario_card {
+          width: calc(100vw - 92px - env(safe-area-inset-right) - env(safe-area-inset-left));
+        }
+        #settings {
+          position: fixed;
+          top: 0;
+          right: 0;
+          bottom: 0;
+          z-index: 260;
+          box-sizing: border-box;
+          width: min(380px, 100vw);
+          padding: calc(68px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
+            calc(24px + env(safe-area-inset-bottom)) 16px;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          -webkit-overflow-scrolling: touch;
+          touch-action: pan-y;
+          font-size: 17px;
+          line-height: 1.3;
+          background: rgba(18, 24, 34, 0.97);
+          box-shadow: -4px 0 18px rgba(0, 0, 0, 0.5);
+          transform: translateX(100%);
+          visibility: hidden;
+          transition: transform 0.2s ease, visibility 0s linear 0.2s;
+        }
+        body.settings-open #settings {
+          transform: none;
+          visibility: visible;
+          transition: transform 0.2s ease;
+        }
+        #settings br {
+          display: none;
+        }
+        #settings .setting-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          min-height: 48px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          cursor: pointer;
+          -webkit-tap-highlight-color: transparent;
+        }
+        #settings .setting-field {
+          justify-content: space-between;
+          cursor: default;
+        }
+        #settings .setting-buttons {
+          flex-wrap: wrap;
+          gap: 8px;
+          padding: 6px 0;
+          cursor: default;
+        }
+        #settings .setting-inline {
+          display: inline-flex;
+          border-bottom: 0;
+        }
+        #settings input[type="checkbox"] {
+          flex: none;
+          width: 26px;
+          height: 26px;
+          margin: 0;
+        }
+        #settings input[type="button"] {
+          min-width: 48px;
+          min-height: 44px;
+          padding: 0 14px;
+          font-size: 18px;
+          touch-action: manipulation;
+        }
+        #settings input[type="number"],
+        #settings select {
+          box-sizing: border-box;
+          min-height: 44px;
+          font-size: 16px;
+          padding: 4px 8px;
+        }
+        #settings input[type="number"] {
+          width: 110px !important;
+        }
+        #settings .setting-field #scenario_selector {
+          width: 72px !important;
+          margin-left: auto;
+        }
+        #settings #scenario_restart {
+          width: auto !important;
+        }
+        #settings .setting-block {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 8px 12px;
+          padding: 10px 0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        #settings select {
+          width: 100%;
+        }
+        #settings input[type="range"] {
+          width: 100%;
+          height: 36px;
+          margin: 0;
+        }
+        #settings #wind_info,
+        #settings #dist_info {
+          padding: 6px 0;
+        }
+        #settings #reset_settings {
+          width: 100%;
+          margin-top: 16px;
+        }
+      }
+    </style>
+  
+    <script type="module" crossorigin src="/fields/pr-preview/pr-33/assets/index-CIBQsjp2.js"></script>
+  </head>
+  <body>
+
+    <div id="scenario_card">
+      <div id="scenario_card_head">
+        <span id="scenario_card_num"></span>
+        <span id="scenario_card_title"></span>
+        <button id="scenario_card_toggle" type="button" aria-expanded="true" title="Hide or show the scenario description">Hide</button>
+      </div>
+      <p id="scenario_card_body"></p>
+    </div>
+    <div id="info"></div>
+    <div id="rule_labels"></div>
+    <div id="devmode_banner" title="The angle is where the wind comes from. The arrow points downwind, the way it blows.">DEV MODE · fluid off · wind <span id="dev_wind_label"></span><span id="dev_wind_arrow">➤</span></div>
+    <div id="start_hud" hidden></div>
+    <pre id="perf_overlay_hud"></pre>
+    <div id="fps"></div>
+    <div id="touch_controls" hidden aria-label="Boat 1 touch controls">
+      <button type="button" class="tc-btn tc-steer" data-key="37" aria-label="Steer left (hold)">◀<small>steer</small></button>
+      <button type="button" class="tc-btn" data-key="38" aria-label="Head up (hold)">Head up<small>↑</small></button>
+      <button type="button" class="tc-btn" data-key="40" aria-label="Bear away (hold)">Bear away<small>↓</small></button>
+      <button type="button" class="tc-btn tc-steer tc-right" data-key="39" aria-label="Steer right (hold)">▶<small>steer</small></button>
+      <button type="button" class="tc-btn tc-tap" data-key="32" aria-label="Autopilot">Autopilot<small>space</small></button>
+      <button type="button" class="tc-btn tc-tap" data-key="13" aria-label="Tack">Tack<small>enter</small></button>
+      <button type="button" class="tc-btn tc-tap" data-key="81" aria-label="Penalty turn counter-clockwise">⟲ 360<small>Q</small></button>
+      <button type="button" class="tc-btn tc-tap" data-key="69" aria-label="Penalty turn clockwise">360 ⟳<small>E</small></button>
+    </div>
+    <button id="settings_toggle" type="button" aria-controls="settings" aria-expanded="false" aria-label="Settings">☰</button>
+    <div id="settings_backdrop" hidden></div>
+    <div id="settings">
+      <label class="setting-row"><input id="devmode" autocomplete="off" type="checkbox" title="Constant wind, no fluid simulation. Also enabled by ?devmode=1">Dev mode</label>
+      <br>
+      <label class="setting-row"><input id="amr" autocomplete="off" type="checkbox" checked>Mesh refinement</label>
+      <br>
+      <label class="setting-row"><input id="barrier" autocomplete="off" type="checkbox" title="Circular obstacle at the map centre. Off by default. Check it and set wind speed to about 25 to shed waves that refine on their own, away from the boat.">Barrier</label>
+      <br>
+      <label class="setting-row"><input id="boat_energy" autocomplete="off" type="checkbox" checked>Boat energy</label>
+      <br>
+      <label class="setting-row"><input id="show_field" autocomplete="off" type="checkbox">Toggle Field</label>
+      <br>
+      <label class="setting-row"><input id="show_forces" autocomplete="off" type="checkbox">Toggle Forces</label>
+      <br>
+      <label class="setting-row"><input id="camera_follow" autocomplete="off" type="checkbox">Camera Follow</label>
+      <br>
+      <label class="setting-row"><input id="perf" autocomplete="off" type="checkbox" title="Cells per refinement level and field step time. Also ?perf=1">Perf overlay</label>
+      <br>
+      <label class="setting-row"><input id="touch" autocomplete="off" type="checkbox" title="Boat 1 touch buttons in the bottom half of the screen. On by default on phones and touch screens. Also ?touch=1 / ?touch=0">Touch controls</label>
+      <br>
+      <span class="setting-row setting-buttons"><input id="camera_zoom_in" type="button" value="+"><input id="camera_zoom_out" type="button" value="-">Zoom</span>
+      <br>
+      <span class="setting-row setting-buttons">
+      <input id="camera_move_left" type="button" value="◄">
+      <input id="camera_move_right" type="button" value="►">
+      <input id="camera_move_up" type="button" value="▲">
+      <input id="camera_move_down" type="button" value="▼">
+      </span>
+      <br>
+      <label class="setting-row setting-field">Wind angle<br>
+      <input id="windAngle" autocomplete="off" type="number" min="0" max="360" step="5" value="90"></label>
+      <br>
+      <label class="setting-row setting-field">Wind speed<br>
+      <input id="windSpeed" autocomplete="off" type="number" min="0" max="40" step="1" value="15"></label>
+      <br>
+      <span class="setting-row setting-field">Select Scenario<br>
+      <input id="scenario_selector" autocomplete="off" type="number" min="0" max="14" value="0" style="width: 50px;" title="Scenario 6: Rule 13 tack. Scenario 7: leeward boat tacks into a Rule 10 collision. Scenario 8: Rule 15 overlap. Scenario 9: contact during Rule 15. Scenario 10: penalty turn, a tack and a gybe in a row (Q counter-clockwise, E clockwise autopilot circle). Scenario 11: anchored mark buoy, boat hits it. Scenario 12: anticlockwise triangle course, marks to port, next mark highlighted. Scenario 13: windward mark and leeward gate. Scenario 14: start sequence countdown, OCS individual recall, then windward mark and leeward gate. Use with Dev mode.">
+      <input id="scenario_restart" type="button" min="0" max="10" style="width: 50px;" value="Restart"></span>
+    
+      <div id="wind_info"></div>
+      <div style="color:red;" id="dist_info"></div>
+
+
+
+      <div class="setting-block">
+        <select id="plotSelect" autocomplete="off">
+          <option>Plot density</option>
+          <option>Plot x velocity</option>
+          <option>Plot y velocity</option>
+          <option selected="selected">Plot speed</option>
+          <option>Plot curl</option>
+        </select>
+        &nbsp;&nbsp;Contrast:
+        <input id="contrastSlider" autocomplete="off" type="range" min="-10" max="10" step="1" value="0">
+        &nbsp;&nbsp;Mirror:
+        <input id="mirrorSlider" autocomplete="off" type="range" min="0" max="359" step="1" value="0">
+      </div>
+      <div class="setting-block">
+        Animation speed:
+        <input id="stepsSlider" autocomplete="off" type="range" min="1" max="40" step="1" value="1" onchange="resetTimer()">
+        &nbsp;&nbsp;Steps per second: <span id="speedReadout">60</span>
+        &nbsp;&nbsp;<label class="setting-row setting-inline"><input id="rafCheck" autocomplete="off" type="checkbox" onchange="resetTimer()">Faster?</label>
+      </div>
+      <br>
+      <input id="reset_settings" type="button" value="Reset settings">
+
+    </div>
+
+
+    
+  </body>
+</html>
