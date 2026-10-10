@@ -62,6 +62,28 @@
 // the midpoint unrounds it and moves the target back. Older roundings are
 // frozen. After the last mark the course loops to mark 1 with a lap counter
 // (no finish yet); lap ≥ 2 measures mark 1's incoming ray from the last mark.
+//
+// Gates. A course element can also be a Gate: two anchored marks the boat
+// sails between (new Gate(markA, markB), or {gate: [markA, markB]}). A gate
+// is one course step. Its position for the neighbouring legs (and the course
+// line) is the midpoint of the two anchors. It has no rounding side and no
+// angle counter; instead it counts crossings of the gate line, the segment
+// between the two anchors (anchors, not the displaced buoys, like single
+// marks):
+//
+//   forward   from the side facing the previous element (or the start) to
+//             the far side, through the segment: crossings +1;
+//   backward  the other way through the segment: crossings −1;
+//   outside   crossing the line's extension beyond either mark: no change.
+//
+// PASSED when crossings ≥ 1 and the boat is at least GATE_PASS_HYST_M past
+// the line; UNPASSED when crossings ≤ 0 and she is at least GATE_PASS_HYST_M
+// back on the near side. In between the state holds, so a boat sitting on
+// the line does not flicker. After passing she may round either gate mark
+// (either way); the course does not care. A passed gate keeps the NEXT
+// highlight until she is outside COURSE_ACTIVATION_RADIUS_M of both gate
+// marks (the gate zone), the gate's equivalent of a single mark's release.
+// Passing counts as "rounded" everywhere else (target, display, laps, ticks).
 
 import { BOAT_LENGTH_M } from './rules.js';
 
@@ -74,6 +96,9 @@ export const ROUNDING_HYST_DEG = 5;
 
 // Rounded marks behind the target whose counters keep running.
 export const COURSE_TRACK_BACK = 2;
+
+// Metres past the gate line (either way) needed to change a gate's state.
+export const GATE_PASS_HYST_M = 0.75;
 
 // Rounding direction: +1 port (anticlockwise round the mark), −1 starboard.
 export const PORT = 1;
@@ -123,13 +148,40 @@ function centreOf(mark) {
   return anchorOf(mark);
 }
 
+// A gate: two marks (Mark instances, or {x, y} / {anchor}) the boat sails
+// between, used as one course element. anchor is the midpoint of the two
+// anchors, so neighbouring legs and the course line use it.
+export class Gate {
+  constructor(a, b) {
+    if (!a || !b) throw new Error('Gate needs two marks');
+    this.gate = [a, b];
+  }
+
+  get anchor() {
+    const a = anchorOf(this.gate[0]);
+    const b = anchorOf(this.gate[1]);
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  }
+}
+
+export function isGate(element) {
+  return element instanceof Gate;
+}
+
+function toElement(e) {
+  if (e instanceof Gate) return e;
+  if (e && Array.isArray(e.gate) && !e.physics_model) return new Gate(e.gate[0], e.gate[1]);
+  return e;
+}
+
 export class Course {
-  // marks: Mark instances (or {x, y} / {anchor}) in rounding order.
+  // marks: course elements in order: Mark instances (or {x, y} / {anchor}),
+  // and gates (Gate, or {gate: [markA, markB]}).
   // options.sides: per-mark PORT/STARBOARD (default all PORT, a CCW course).
   // options.start: {x, y} the first leg comes from (boat start / start line).
   constructor(marks, options = {}) {
     if (!marks || marks.length < 2) throw new Error('Course needs at least two marks');
-    this.marks = marks;
+    this.marks = marks.map(toElement);
     this.sides = marks.map((_, i) => (options.sides && options.sides[i]) || PORT);
     this.start = options.start || anchorOf(marks[marks.length - 1]);
     this.progress = new WeakMap();
@@ -149,6 +201,18 @@ export class Course {
     const at = anchorOf(mark);
     const prev = k === 0 ? this.start : anchorOf(this.marks[(i + n - 1) % n]);
     const next = anchorOf(this.marks[(i + 1) % n]);
+    if (isGate(mark)) {
+      const a = anchorOf(mark.gate[0]);
+      const b = anchorOf(mark.gate[1]);
+      const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      const tx = (b.x - a.x) / len;
+      const ty = (b.y - a.y) / len;
+      // Normal pointing to the far side (away from prev).
+      let nx = -ty;
+      let ny = tx;
+      if (nx * (at.x - prev.x) + ny * (at.y - prev.y) < 0) { nx = -nx; ny = -ny; }
+      return { k, index: i, lap: Math.floor(k / n) + 1, mark, gate: true, at, prev, next, side: 0, a, b, len, tx, ty, nx, ny };
+    }
     const side = this.sides[i];
     return { k, index: i, lap: Math.floor(k / n) + 1, mark, at, prev, next, side, ...roundingGeometry(prev, at, next, side) };
   }
@@ -197,7 +261,7 @@ export class CourseProgress {
   tracker(k) {
     let t = this.trackers.get(k);
     if (!t) {
-      t = { k, entered: false, inside: false, swept: 0, lastBearing: null, rounded: false, released: false, distance: Infinity, bearing: null };
+      t = { k, entered: false, inside: false, swept: 0, lastBearing: null, rounded: false, released: false, distance: Infinity, bearing: null, crossings: 0, lastSigned: null };
       this.trackers.set(k, t);
     }
     return t;
@@ -218,6 +282,10 @@ export class CourseProgress {
     for (let k = this.floor; k <= this.target; k++) {
       const r = this.course.rounding(k);
       const t = this.tracker(k);
+      if (r.gate) {
+        updateGate(r, t, x, y);
+        continue;
+      }
       const c = centreOf(r.mark);
       const b = bearingDeg(c, boat);
       t.distance = Math.hypot(x - c.x, y - c.y);
@@ -270,7 +338,7 @@ export class CourseProgress {
   view(k = this.display) {
     const r = this.course.rounding(k);
     const t = this.trackers.get(k) || this.tracker(k);
-    return { ...r, swept: t.swept, entered: t.entered, distance: t.distance, rounded: this.isRounded(k), lap: this.lap, lapsCompleted: this.lapsCompleted };
+    return { ...r, swept: t.swept, crossings: t.crossings, entered: t.entered, distance: t.distance, rounded: this.isRounded(k), lap: this.lap, lapsCompleted: this.lapsCompleted };
   }
 
   // Mark indices rounded in the current lap (the target's lap). A new lap
@@ -284,6 +352,33 @@ export class CourseProgress {
     return out;
   }
 
+}
+
+// One step of a gate tracker (see the header). t.rounded means passed.
+function updateGate(r, t, x, y) {
+  const s = (x - r.at.x) * r.nx + (y - r.at.y) * r.ny;
+  if (t.lastSigned !== null && t.lastPos) {
+    const s0 = t.lastSigned;
+    const fwd = s0 < 0 && s >= 0;
+    const back = s0 >= 0 && s < 0;
+    if (fwd || back) {
+      const f = s0 / (s0 - s);
+      const px = t.lastPos.x + (x - t.lastPos.x) * f;
+      const py = t.lastPos.y + (y - t.lastPos.y) * f;
+      const u = (px - r.a.x) * r.tx + (py - r.a.y) * r.ty;
+      if (u >= 0 && u <= r.len) t.crossings += fwd ? 1 : -1;
+    }
+  }
+  t.lastSigned = s;
+  t.lastPos = { x, y };
+  t.signed = s;
+  t.distance = Math.min(Math.hypot(x - r.a.x, y - r.a.y), Math.hypot(x - r.b.x, y - r.b.y));
+  t.inside = t.distance <= COURSE_ACTIVATION_RADIUS_M;
+  t.entered = t.entered || t.inside;
+  if (!t.rounded && t.crossings >= 1 && s >= GATE_PASS_HYST_M) t.rounded = true;
+  else if (t.rounded && t.crossings <= 0 && s <= -GATE_PASS_HYST_M) t.rounded = false;
+  if (!t.rounded) t.released = false;
+  else if (!t.inside) t.released = true;
 }
 
 // ---- Drawing ----
@@ -342,7 +437,12 @@ export function courseGuides(course, progress, nowMs = 0) {
 
   const rounded = progress.roundedMarks();
   for (let i = 0; i < n; i++) {
-    const c = centreOf(course.marks[i]);
+    const el = course.marks[i];
+    if (isGate(el)) {
+      g.push(...gateGuides(el, i, i === view.index ? view : null, rounded.has(i), nowMs));
+      continue;
+    }
+    const c = centreOf(el);
     if (i === view.index) {
       const side = course.sides[i] === PORT ? 'port' : 'stbd';
       const pulse = 0.5 + 0.5 * Math.sin(nowMs / 250);
@@ -362,13 +462,64 @@ export function courseGuides(course, progress, nowMs = 0) {
   return g;
 }
 
-// One line for the info panel: the mark course progress is waiting for, and
-// the lap.
+// One gate: dashed gate line between the anchors (amber while highlighted),
+// and, while highlighted, pulsing green rings on both marks with faint zones
+// and one label "NEXT GATE n" ("✓ n" once passed); passed this lap: grey
+// rings and "✓ n"; otherwise "GATE n".
+function gateGuides(gate, i, view, passed, nowMs) {
+  const g = [];
+  const a = anchorOf(gate.gate[0]);
+  const b = anchorOf(gate.gate[1]);
+  const ca = centreOf(gate.gate[0]);
+  const cb = centreOf(gate.gate[1]);
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  const no = String(i + 1);
+  let text;
+  let role;
+  if (view) {
+    const pulse = 0.5 + 0.5 * Math.sin(nowMs / 250);
+    g.push(...dashedLine(a, b, COURSE_MID_COLOR, 0.9, 1.2, 0.8));
+    for (const c of [ca, cb]) {
+      g.push(...circleSegments(c.x, c.y, 1.1 + 0.6 * pulse, COURSE_NEXT_COLOR, 0.6 + 0.4 * pulse, 32));
+      g.push(...circleSegments(c.x, c.y, COURSE_ACTIVATION_RADIUS_M, COURSE_ZONE_COLOR, 0.18, 72, true));
+    }
+    text = view.rounded ? '✓ ' + no : 'NEXT GATE ' + no;
+    role = 'next';
+  } else if (passed) {
+    g.push(...dashedLine(a, b, COURSE_ROUNDED_COLOR, 0.5, 1.2, 0.8));
+    for (const c of [ca, cb]) g.push(...circleSegments(c.x, c.y, 1.3, COURSE_ROUNDED_COLOR, 0.7, 24));
+    text = '✓ ' + no;
+    role = 'rounded';
+  } else {
+    g.push(...dashedLine(a, b, COURSE_LINE_COLOR, 0.45, 1.2, 0.8));
+    text = 'GATE ' + no;
+    role = 'markno';
+  }
+  g.push({ type: 'label', badge: true, x: mid.x, y: mid.y + 1.6, lines: [{ text, role, id: 'gate' + i }] });
+  return g;
+}
+
+// One line for the info panel: the mark (or gate) course progress is
+// waiting for, and the lap.
 export function courseText(progress) {
   const i = progress.targetIndex;
+  if (isGate(progress.course.marks[i])) return 'Course: next gate ' + (i + 1) + ' · lap ' + progress.lap;
   const side = progress.course.sides[i] === PORT ? 'port' : 'starboard';
   return 'Course: next mark ' + (i + 1) + ' (' + side + ') · lap ' + progress.lap;
 }
+
+// Scenario 13 layout (wind from +Y): windward-leeward. Element 1 is a
+// windward mark rounded to port, element 2 a leeward gate of two marks 12 m
+// (3 boat lengths) apart, square to the wind. Both sit at x = 22, east of the
+// loose map.js circles at (0, 14.5) and (0, 20), with room to round inside
+// the walls (±35.5). The boat starts starboard close-hauled just above the
+// gate: beat to 1, run back through the gate, round either gate mark, repeat.
+export const WINDWARD_LEEWARD_LAYOUT = {
+  windward: { x: 22, y: 26 },
+  gate: [{ x: 16, y: -24 }, { x: 28, y: -24 }],
+  start: { x: 26, y: -17 },
+  startHeading: 5 * Math.PI / 4,
+};
 
 // Scenario 12 layout (wind from +Y). Equilateral triangle, 45 m legs, the
 // largest that fits the 75 m map with room to round inside the walls (±35.5)
