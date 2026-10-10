@@ -51,7 +51,7 @@ Last updated: 2026-10-10
 - [ ] Rule 16.1
 - [x] Start / OCS and individual recall: [#33](https://github.com/SukuWc/fields/pull/33)
 - [ ] Rule 18
-- [ ] Rule 31
+- [x] Rule 31: [#34](https://github.com/SukuWc/fields/pull/34)
 - [ ] Rule 28
 - [ ] Penalties and exoneration (partial: [#12](https://github.com/SukuWc/fields/pull/12) assigns fault on contact; [#20](https://github.com/SukuWc/fields/pull/20) adds a pending penalty cleared by a tack and a gybe in a row, or a Q/E autopilot circle)
 - [ ] Incident log (partial: [#12](https://github.com/SukuWc/fields/pull/12) stores contact incidents and a FAULT badge)
