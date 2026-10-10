@@ -34,7 +34,7 @@ Last updated: 2026-10-10
 - [ ] Reconnect
 
 ### 4. Core race loop
-- [ ] Course: start line, marks, finish, boundary (partial: [#27](https://github.com/SukuWc/fields/pull/27) adds anchored mark buoy physics and scenario 11; [#28](https://github.com/SukuWc/fields/pull/28) adds anticlockwise triangle course progress, mark rounding, and scenario 12; [#31](https://github.com/SukuWc/fields/pull/31) adds gate marks and windward-leeward scenario 13)
+- [ ] Course: start line, marks, finish, boundary (partial: [#27](https://github.com/SukuWc/fields/pull/27) adds anchored mark buoy physics and scenario 11; [#28](https://github.com/SukuWc/fields/pull/28) adds anticlockwise triangle course progress, mark rounding, and scenario 12; [#31](https://github.com/SukuWc/fields/pull/31) adds gate marks and windward-leeward scenario 13; [#33](https://github.com/SukuWc/fields/pull/33) adds start line, RRS 26 start sequence, and scenario 14)
 - [ ] Equal boats
 - [ ] Race states
 - [ ] Replay scrub
@@ -49,7 +49,7 @@ Last updated: 2026-10-10
 - [ ] Rule 14 with real collisions (partial: [#12](https://github.com/SukuWc/fields/pull/12) detects contact)
 - [x] Rule 15: [#10](https://github.com/SukuWc/fields/pull/10)
 - [ ] Rule 16.1
-- [ ] Start / OCS and individual recall
+- [x] Start / OCS and individual recall: [#33](https://github.com/SukuWc/fields/pull/33)
 - [ ] Rule 18
 - [ ] Rule 31
 - [ ] Rule 28
