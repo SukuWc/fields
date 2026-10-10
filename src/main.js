@@ -6,9 +6,10 @@ import { trackBoats } from './domainTrack.js';
 import { Map } from './map.js';
 import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera } from './renderer.js';
-import { setupControls, getPlayers, getMarks, getCourse, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
+import { setupControls, getPlayers, getMarks, getCourse, getStartSequence, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
 import { courseGuides, courseText } from './course.js';
+import { startGuides, startHudHtml, startStatusText } from './start.js';
 import { setupPerfOverlay, isPerfOverlayOn, recordFieldStep } from './perf-overlay.js';
 import { setupMobileMenu } from './mobile-menu.js';
 import { setupTouchControls } from './touch-controls.js';
@@ -166,6 +167,28 @@ runner.start((simDt) => {
   for (const mark of getMarks()) {
     if (stepped) mark.physics_model_step();
     guides.push(...mark.graphics_model_render());
+  }
+
+  // Start sequence: the clock runs on sim time; each boat's OCS / start
+  // state is evaluated once per world step, before course progress (which
+  // waits for a valid start). HUD and line overlay follow boat 0.
+  const startSeq = getStartSequence();
+  const startHud = document.getElementById('start_hud');
+  if (startSeq) {
+    const boats = getPlayers();
+    if (stepped) {
+      startSeq.step(simDt);
+      startSeq.update(boats);
+    }
+    guides.push(...startGuides(startSeq, boats[0], performance.now()));
+    if (startHud) {
+      startHud.hidden = false;
+      startHud.innerHTML = startHudHtml(startSeq, boats[0]);
+      startHud.classList.toggle('flash', startSeq.flashing);
+    }
+    if (boats[0]) infoEl.innerHTML += 'Start: ' + startStatusText(startSeq, boats[0]) + '<br>';
+  } else if (startHud && !startHud.hidden) {
+    startHud.hidden = true;
   }
 
   // Course: each boat's rounding counters advance once per world step; the

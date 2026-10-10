@@ -84,6 +84,11 @@
 // highlight until she is outside COURSE_ACTIVATION_RADIUS_M of both gate
 // marks (the gate zone), the gate's equivalent of a single mark's release.
 // Passing counts as "rounded" everywhere else (target, display, laps, ticks).
+//
+// Start. options.startSequence (start.js StartSequence) makes progress wait
+// for a valid start: until seq.hasStarted(boat), update() does nothing, no
+// mark is highlighted (the start line is the target, drawn by start.js) and
+// the text reads "Course: start first". Courses without one start at once.
 
 import { BOAT_LENGTH_M } from './rules.js';
 
@@ -184,6 +189,7 @@ export class Course {
     this.marks = marks.map(toElement);
     this.sides = marks.map((_, i) => (options.sides && options.sides[i]) || PORT);
     this.start = options.start || anchorOf(marks[marks.length - 1]);
+    this.startSequence = options.startSequence || null;
     this.progress = new WeakMap();
   }
 
@@ -220,7 +226,7 @@ export class Course {
   progressFor(boat) {
     let p = this.progress.get(boat);
     if (!p) {
-      p = new CourseProgress(this);
+      p = new CourseProgress(this, boat);
       this.progress.set(boat, p);
     }
     return p;
@@ -228,8 +234,9 @@ export class Course {
 }
 
 export class CourseProgress {
-  constructor(course) {
+  constructor(course, boat = null) {
     this.course = course;
+    this.boat = boat;
     this.target = 0;
     // Highlighted rounding (see the header): target, or an older rounded
     // one the boat has not yet sailed clear of.
@@ -238,6 +245,13 @@ export class CourseProgress {
     // is not revived with a stale bearing.
     this.floor = 0;
     this.trackers = new Map();
+  }
+
+  // True while the course has a start sequence and this boat has not made a
+  // valid start yet.
+  get waitingForStart() {
+    const seq = this.course.startSequence;
+    return !!seq && !(this.boat && seq.hasStarted(this.boat));
   }
 
   get lap() {
@@ -278,6 +292,7 @@ export class CourseProgress {
   // Call once per physics step.
   update(x, y) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return this;
+    if (this.waitingForStart) return this;
     const boat = { x, y };
     for (let k = this.floor; k <= this.target; k++) {
       const r = this.course.rounding(k);
@@ -430,10 +445,11 @@ export function courseGuides(course, progress, nowMs = 0) {
   const g = [];
   const n = course.length;
   const anchors = course.marks.map(anchorOf);
-  const view = progress.view();
+  const waiting = progress.waitingForStart;
+  const view = waiting ? { index: -1 } : progress.view();
 
   for (let i = 0; i < n; i++) g.push(...dashedLine(anchors[i], anchors[(i + 1) % n], COURSE_LINE_COLOR, 0.45));
-  if (progress.display === 0) g.push(...dashedLine(course.start, anchors[0], COURSE_LINE_COLOR, 0.3, 1, 2));
+  if (progress.display === 0 && !waiting) g.push(...dashedLine(course.start, anchors[0], COURSE_LINE_COLOR, 0.3, 1, 2));
 
   const rounded = progress.roundedMarks();
   for (let i = 0; i < n; i++) {
@@ -502,6 +518,7 @@ function gateGuides(gate, i, view, passed, nowMs) {
 // One line for the info panel: the mark (or gate) course progress is
 // waiting for, and the lap.
 export function courseText(progress) {
+  if (progress.waitingForStart) return 'Course: start first, then mark 1';
   const i = progress.targetIndex;
   if (isGate(progress.course.marks[i])) return 'Course: next gate ' + (i + 1) + ' · lap ' + progress.lap;
   const side = progress.course.sides[i] === PORT ? 'port' : 'starboard';
