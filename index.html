@@ -119,6 +119,34 @@
         text-align: center;
         white-space: nowrap;
       }
+      #start_hud {
+        position: absolute;
+        top: 48px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 100;
+        color: #eef6ff;
+        font-family: 'Courier New', Courier, monospace;
+        background: rgba(10, 20, 30, 0.78);
+        border: 1px solid rgba(150, 200, 220, 0.45);
+        border-radius: 6px;
+        padding: 6px 14px;
+        pointer-events: none;
+        text-align: center;
+        white-space: nowrap;
+        transition: background 0.25s, border-color 0.25s;
+      }
+      #start_hud[hidden] { display: none; }
+      #start_hud.flash { background: rgba(255, 210, 122, 0.55); border-color: #ffd27a; }
+      #start_hud .start-clock { font-size: 34px; font-weight: 700; line-height: 1.1; }
+      #start_hud .start-signal { font-size: 14px; margin-top: 2px; }
+      #start_hud .start-boat { font-size: 13px; margin-top: 2px; color: #c9d1da; }
+      #start_hud .start-boat.ocs { color: #ff8a80; font-weight: 700; }
+      #start_hud .start-boat.ok { color: #8dffb0; }
+      #start_hud .flag { display: inline-block; width: 18px; height: 12px; vertical-align: -1px; margin-right: 3px; border: 1px solid #fff; font-size: 10px; line-height: 12px; font-weight: 700; }
+      #start_hud .flag-class { background: #ff8c00; color: #000; }
+      #start_hud .flag-p { background: linear-gradient(#fff, #fff) center / 8px 5px no-repeat, #1f4fbf; }
+      #start_hud .flag-x { background: linear-gradient(45deg, transparent 42%, #1f4fbf 42% 58%, transparent 58%), linear-gradient(-45deg, transparent 42%, #1f4fbf 42% 58%, transparent 58%), #fff; }
       #dev_wind_arrow {
         display: inline-block;
         margin-left: 8px;
@@ -478,7 +506,7 @@
       }
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-D2F5gLQW.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-CIBQsjp2.js"></script>
   </head>
   <body>
 
@@ -493,6 +521,7 @@
     <div id="info"></div>
     <div id="rule_labels"></div>
     <div id="devmode_banner" title="The angle is where the wind comes from. The arrow points downwind, the way it blows.">DEV MODE · fluid off · wind <span id="dev_wind_label"></span><span id="dev_wind_arrow">➤</span></div>
+    <div id="start_hud" hidden></div>
     <pre id="perf_overlay_hud"></pre>
     <div id="fps"></div>
     <div id="touch_controls" hidden aria-label="Boat 1 touch controls">
@@ -542,7 +571,7 @@
       <input id="windSpeed" autocomplete="off" type="number" min="0" max="40" step="1" value="15"></label>
       <br>
       <span class="setting-row setting-field">Select Scenario<br>
-      <input id="scenario_selector" autocomplete="off" type="number" min="0" max="13" value="0" style="width: 50px;" title="Scenario 6: Rule 13 tack. Scenario 7: leeward boat tacks into a Rule 10 collision. Scenario 8: Rule 15 overlap. Scenario 9: contact during Rule 15. Scenario 10: penalty turn, a tack and a gybe in a row (Q counter-clockwise, E clockwise autopilot circle). Scenario 11: anchored mark buoy, boat hits it. Scenario 12: anticlockwise triangle course, marks to port, next mark highlighted. Scenario 13: windward mark and leeward gate. Use with Dev mode.">
+      <input id="scenario_selector" autocomplete="off" type="number" min="0" max="14" value="0" style="width: 50px;" title="Scenario 6: Rule 13 tack. Scenario 7: leeward boat tacks into a Rule 10 collision. Scenario 8: Rule 15 overlap. Scenario 9: contact during Rule 15. Scenario 10: penalty turn, a tack and a gybe in a row (Q counter-clockwise, E clockwise autopilot circle). Scenario 11: anchored mark buoy, boat hits it. Scenario 12: anticlockwise triangle course, marks to port, next mark highlighted. Scenario 13: windward mark and leeward gate. Scenario 14: start sequence countdown, OCS individual recall, then windward mark and leeward gate. Use with Dev mode.">
       <input id="scenario_restart" type="button" min="0" max="10" style="width: 50px;" value="Restart"></span>
     
       <div id="wind_info"></div>
