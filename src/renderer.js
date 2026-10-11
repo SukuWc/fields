@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 
 let camera, scene, renderer, fluidPlane;
+let _planeBase = null;
 let _map, _getGuides;
 
 const fpsEl = document.getElementById('fps');
@@ -501,6 +502,7 @@ export function initRenderer(map, planeMat) {
   planeMat.depthTest = true;
   planeMat.depthWrite = true;
   fluidPlane = new THREE.Mesh(new THREE.PlaneGeometry(map.width, map.height), planeMat);
+  _planeBase = { w: map.width, h: map.height };
   fluidPlane.position.z = -0.01;
   fluidPlane.renderOrder = 0;
   scene.add(fluidPlane);
@@ -515,6 +517,13 @@ export function initRenderer(map, planeMat) {
   resizeRenderer();
   window.addEventListener('resize', resizeRenderer);
   if (typeof ResizeObserver === 'function') new ResizeObserver(resizeRenderer).observe(canvas);
+}
+
+// The field plane covers the lattice, which is the map rounded up to whole
+// root cells. At the default resolution that is exactly map.width × map.height.
+export function setFluidPlaneSize(width, height) {
+  if (!fluidPlane || !_planeBase) return;
+  fluidPlane.scale.set(width / _planeBase.w, height / _planeBase.h, 1);
 }
 
 export function getCamera() {

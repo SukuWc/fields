@@ -83,6 +83,46 @@ export const FIELD_DOMAIN_MAX = 2;
 
 const domainByBoat = new WeakMap();
 
+// Every length above is in root cells and every cap in cells at the default
+// resolution (1 root cell = 1 world unit). A coarser root grid (Simulation
+// resolution x2 / x4, bm.cellSize = 2 / 4 world units) keeps the same world
+// footprint: radii and window halves divide by cellSize, cell caps by
+// cellSize². Refinement levels follow the root grid, so a level-n disk radius
+// in level-(n−1) cells scales the same way. Curl is normalised by the world
+// spacing (Δx · cellSize), so τ tracks the same physical vorticity. Tracking
+// runs once per lattice step (main.js), so a hold of CURL_HOLD steps is
+// CURL_HOLD·cellSize frames; it is shortened to keep about 0.2 s, but never
+// below 2 so one noisy step cannot open a cell.
+const paramCache = new Map();
+export function amrParams(bm) {
+	const k = bm && bm.cellSize > 0 ? bm.cellSize : 1;
+	let p = paramCache.get(k);
+	if (p) return p;
+	const len = (v) => v / k;
+	const half = (v, disk) => Math.max(Math.ceil(disk) + 2, Math.round(v / k));
+	const cap = (v, disk) => Math.max(Math.round(v / (k * k)), Math.ceil(Math.PI * (disk + 1) * (disk + 1)));
+	const disk1 = len(DISK_RADIUS);
+	const disk2 = len(DISK2_RADIUS);
+	const disk3 = len(DISK3_RADIUS);
+	p = {
+		cellSize: k,
+		disk1, disk2, disk3,
+		half1: half(DOMAIN_HALF, disk1),
+		half2: half(DOMAIN2_HALF, disk2),
+		half3: half(DOMAIN3_HALF, disk3),
+		cap1: cap(MASK_CELL_CAP, disk1),
+		cap2: cap(MASK2_CELL_CAP, disk2),
+		cap3: cap(MASK3_CELL_CAP, disk3),
+		fieldHalf: Math.max(3, Math.round(FIELD_HALF / k)),
+		fieldCap: Math.max(SEED_MIN * 2, Math.round(FIELD_CELL_CAP / (k * k))),
+		seedMin: Math.max(2, Math.round(SEED_MIN / (k * k))),
+		hold: Math.max(2, Math.round(CURL_HOLD / k)),
+		curlDx: CURL_DX * k,
+	};
+	paramCache.set(k, p);
+	return p;
+}
+
 export function normalizedCurl(curl, speed, dx = CURL_DX) {
 	if (!(speed > 0) || !(dx > 0) || !Number.isFinite(curl)) return 0;
 	return Math.abs(curl) / (2 * dx * speed);
@@ -426,6 +466,7 @@ function outside(domain, x, y) {
 
 // Root lattice only. Covered coarse nodes still hold the restricted curl.
 function sampleRootCurl(bm, domain) {
+	const curlDx = amrParams(bm).curlDx;
 	const cw = domain.cx1 - domain.cx0;
 	const ch = domain.cy1 - domain.cy0;
 	const norm = new Float64Array(cw * ch);
@@ -435,7 +476,7 @@ function sampleRootCurl(bm, domain) {
 		for (let lx = 0; lx < cw; lx++) {
 			const cx = domain.cx0 + lx;
 			const cell = bm.cells[cx + cy * bm.width];
-			norm[lx + ly * cw] = normalizedCurl(cell ? cell.curl : 0, U);
+			norm[lx + ly * cw] = normalizedCurl(cell ? cell.curl : 0, U, curlDx);
 		}
 	}
 	return norm;
@@ -446,11 +487,11 @@ function sampleRootCurl(bm, domain) {
 // A parent cell with any 4-neighbor off the mask is rind: its curl is the
 // interface, or a value left from before the cell was injected, and must not
 // open the next level.
-function sampleParentFluidCurl(parent, domain, speed) {
+function sampleParentFluidCurl(parent, domain, speed, cellSize = 1) {
 	const cw = domain.cx1 - domain.cx0;
 	const ch = domain.cy1 - domain.cy0;
 	const norm = new Float64Array(cw * ch);
-	const dx = parent.dx;
+	const dx = parent.dx * cellSize;
 	const pw = parent.width;
 	for (let ly = 0; ly < ch; ly++) {
 		const cy = domain.cy0 + ly;
@@ -469,7 +510,7 @@ function sampleParentFluidCurl(parent, domain, speed) {
 	return norm;
 }
 
-function installSensorMask(domain, centerX, centerY, radius, cap, curlNorm) {
+function installSensorMask(domain, centerX, centerY, radius, cap, curlNorm, params) {
 	const cw = domain.cx1 - domain.cx0;
 	const ch = domain.cy1 - domain.cy0;
 	if (!(cw * ch > 0)) return;
@@ -491,6 +532,8 @@ function installSensorMask(domain, centerX, centerY, radius, cap, curlNorm) {
 		centerY,
 		allow,
 		cap,
+		hold: params ? params.hold : undefined,
+		seedMin: params ? params.seedMin : undefined,
 	});
 	domain._curlAbove = stepped.above;
 	domain._curlBelow = stepped.below;
@@ -522,16 +565,17 @@ function placeChild(parent, parentShifted, fx, fy, half) {
 function trackOne(bm, player) {
 	const boatCx = bm.width / 2 + player.x * bm.resolution;
 	const boatCy = bm.height / 2 + player.y * bm.resolution;
+	const P = amrParams(bm);
 
 	let level1 = domainByBoat.get(player);
 	let level1Shifted = false;
 	if (outside(level1, boatCx, boatCy)) {
 		const cx = Math.round(boatCx);
 		const cy = Math.round(boatCy);
-		const cx0 = Math.max(1, cx - DOMAIN_HALF);
-		const cy0 = Math.max(1, cy - DOMAIN_HALF);
-		const cx1 = Math.min(bm.width - 1, cx + DOMAIN_HALF);
-		const cy1 = Math.min(bm.height - 1, cy + DOMAIN_HALF);
+		const cx0 = Math.max(1, cx - P.half1);
+		const cy0 = Math.max(1, cy - P.half1);
+		const cx1 = Math.min(bm.width - 1, cx + P.half1);
+		const cy1 = Math.min(bm.height - 1, cy + P.half1);
 		if (!(cx1 > cx0 && cy1 > cy0)) return null;
 		const idx = level1 ? bm.domains.indexOf(level1) : -1;
 		const at = idx >= 0 ? idx : bm.domains.length;
@@ -546,21 +590,21 @@ function trackOne(bm, player) {
 		}
 	}
 
-	installSensorMask(level1, boatCx, boatCy, DISK_RADIUS, MASK_CELL_CAP, sampleRootCurl(bm, level1));
+	installSensorMask(level1, boatCx, boatCy, P.disk1, P.cap1, sampleRootCurl(bm, level1), P);
 
 	const fx = fineIndex(level1.cx0, boatCx);
 	const fy = fineIndex(level1.cy0, boatCy);
-	const placed2 = placeChild(level1, level1Shifted, fx, fy, DOMAIN2_HALF);
+	const placed2 = placeChild(level1, level1Shifted, fx, fy, P.half2);
 	const level2 = placed2.domain;
 	if (!level2) return { domain: level1, shifted: level1Shifted };
-	installSensorMask(level2, fx, fy, DISK2_RADIUS, MASK2_CELL_CAP, sampleParentFluidCurl(level1, level2, bm.speed));
+	installSensorMask(level2, fx, fy, P.disk2, P.cap2, sampleParentFluidCurl(level1, level2, bm.speed, P.cellSize), P);
 
 	const f2x = fineIndex(level2.cx0, fx);
 	const f2y = fineIndex(level2.cy0, fy);
-	const placed3 = placeChild(level2, level1Shifted || placed2.shifted, f2x, f2y, DOMAIN3_HALF);
+	const placed3 = placeChild(level2, level1Shifted || placed2.shifted, f2x, f2y, P.half3);
 	const level3 = placed3.domain;
 	if (level3) {
-		installSensorMask(level3, f2x, f2y, DISK3_RADIUS, MASK3_CELL_CAP, sampleParentFluidCurl(level2, level3, bm.speed));
+		installSensorMask(level3, f2x, f2y, P.disk3, P.cap3, sampleParentFluidCurl(level2, level3, bm.speed, P.cellSize), P);
 	}
 	return { domain: level1, shifted: level1Shifted };
 }
@@ -596,6 +640,7 @@ function updateFieldHolds(bm, boats) {
 	const fieldBelow = state.below;
 	const fieldDomains = state.domains;
 	const U = bm.speed;
+	const P = amrParams(bm);
 	for (let y = 0; y < bm.height; y++) {
 		for (let x = 0; x < bm.width; x++) {
 			const i = x + y * bm.width;
@@ -605,12 +650,12 @@ function updateFieldHolds(bm, boats) {
 				continue;
 			}
 			const cell = bm.cells[i];
-			const norm = normalizedCurl(cell ? cell.curl : 0, U);
+			const norm = normalizedCurl(cell ? cell.curl : 0, U, P.curlDx);
 			if (norm > CURL_TAU_ON) {
-				if (fieldAbove[i] < CURL_HOLD) fieldAbove[i]++;
+				if (fieldAbove[i] < P.hold) fieldAbove[i]++;
 				fieldBelow[i] = 0;
 			} else if (norm < CURL_TAU_OFF) {
-				if (fieldBelow[i] < CURL_HOLD) fieldBelow[i]++;
+				if (fieldBelow[i] < P.hold) fieldBelow[i]++;
 				fieldAbove[i] = 0;
 			} else {
 				fieldAbove[i] = 0;
@@ -626,13 +671,14 @@ function largestHeldCluster(bm, boats) {
 	const fieldDomains = state.domains;
 	const w = bm.width;
 	const h = bm.height;
+	const P = amrParams(bm);
 	const seen = new Uint8Array(w * h);
 	const stack = [];
 	let best = null;
 	for (let y = 1; y < h - 1; y++) {
 		for (let x = 1; x < w - 1; x++) {
 			const i = x + y * w;
-			if (seen[i] || fieldAbove[i] < CURL_HOLD) continue;
+			if (seen[i] || fieldAbove[i] < P.hold) continue;
 			if (coveredBy(boats, x, y) || coveredBy(fieldDomains, x, y)) continue;
 			const comp = [];
 			stack.push(i);
@@ -649,7 +695,7 @@ function largestHeldCluster(bm, boats) {
 				if (cy + 2 < h) nbrs.push(k + w);
 				for (let b = 0; b < nbrs.length; b++) {
 					const nb = nbrs[b];
-					if (seen[nb] || fieldAbove[nb] < CURL_HOLD) continue;
+					if (seen[nb] || fieldAbove[nb] < P.hold) continue;
 					const nx = nb % w;
 					const ny = (nb / w) | 0;
 					if (coveredBy(boats, nx, ny) || coveredBy(fieldDomains, nx, ny)) continue;
@@ -657,7 +703,7 @@ function largestHeldCluster(bm, boats) {
 					stack.push(nb);
 				}
 			}
-			if (comp.length >= SEED_MIN && (!best || comp.length > best.length)) best = comp;
+			if (comp.length >= P.seedMin && (!best || comp.length > best.length)) best = comp;
 		}
 	}
 	return best;
@@ -675,17 +721,18 @@ function clusterCentroid(bm, cluster) {
 
 function clusterInterior(bm, cluster) {
 	const c = clusterCentroid(bm, cluster);
-	const m = FIELD_HALF + 1;
+	const m = amrParams(bm).fieldHalf + 1;
 	return c.x >= m && c.y >= m && c.x < bm.width - m && c.y < bm.height - m;
 }
 
 function fieldBox(bm, x, y) {
 	const cx = Math.round(x);
 	const cy = Math.round(y);
-	const cx0 = Math.max(1, cx - FIELD_HALF);
-	const cy0 = Math.max(1, cy - FIELD_HALF);
-	const cx1 = Math.min(bm.width - 1, cx + FIELD_HALF);
-	const cy1 = Math.min(bm.height - 1, cy + FIELD_HALF);
+	const half = amrParams(bm).fieldHalf;
+	const cx0 = Math.max(1, cx - half);
+	const cy0 = Math.max(1, cy - half);
+	const cx1 = Math.min(bm.width - 1, cx + half);
+	const cy1 = Math.min(bm.height - 1, cy + half);
 	if (!(cx1 > cx0 && cy1 > cy0)) return null;
 	return { cx0, cy0, cx1, cy1 };
 }
@@ -725,12 +772,13 @@ function fieldCentroid(bm, domain) {
 	const ch = domain.cy1 - domain.cy0;
 	let sx = 0, sy = 0, n = 0;
 	const U = bm.speed;
+	const curlDx = amrParams(bm).curlDx;
 	for (let ly = 0; ly < ch; ly++) {
 		const cy = domain.cy0 + ly;
 		for (let lx = 0; lx < cw; lx++) {
 			const cx = domain.cx0 + lx;
 			const cell = bm.cells[cx + cy * bm.width];
-			const norm = normalizedCurl(cell ? cell.curl : 0, U);
+			const norm = normalizedCurl(cell ? cell.curl : 0, U, curlDx);
 			const on = domain.mask && domain.mask[lx + ly * cw] === 1;
 			if (norm <= CURL_TAU_ON && !on) continue;
 			sx += cx + 0.5;
@@ -752,6 +800,7 @@ function installFieldMask(bm, domain, boats) {
 		return true;
 	};
 	const center = fieldCentroid(bm, domain);
+	const P = amrParams(bm);
 	const stepped = stepCurlMask({
 		floor,
 		prev: domain.mask,
@@ -764,7 +813,9 @@ function installFieldMask(bm, domain, boats) {
 		centerX: center.x,
 		centerY: center.y,
 		allow,
-		cap: FIELD_CELL_CAP,
+		cap: P.fieldCap,
+		hold: P.hold,
+		seedMin: P.seedMin,
 	});
 	domain._curlAbove = stepped.above;
 	domain._curlBelow = stepped.below;
@@ -833,6 +884,18 @@ export function trackBoats(bm, players) {
 	for (let i = 0; same && i < next.length; i++) if (next[i] !== bm.domains[i]) same = false;
 	if (!same || shifted) {
 		bm.domains = next;
+		bm._rebuildInteriorCells();
+	}
+}
+
+// Forget every window and field-island hold for this lattice. A resolution
+// change rebuilds the root grid; old windows point at freed cells. Boats keep
+// their WeakMap entry, so pass the live players to drop theirs too.
+export function resetTracking(bm, players) {
+	fieldState.delete(bm);
+	if (players) for (const p of players) domainByBoat.delete(p);
+	if (bm) {
+		bm.domains = [];
 		bm._rebuildInteriorCells();
 	}
 }
