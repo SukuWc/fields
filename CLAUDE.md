@@ -74,6 +74,16 @@ Each `Boat` instance:
 - Has an **autopilot** with heading PID-style control (`autopilot_heading`, `autopilot_active`)
 - Queries `map.get_wind(x, y)` each step. That is the only wind seam: it returns `{ speed, direction, vx, vy }` from whichever provider is active (`FluidWind` or `ConstantWind`)
 
+### Simulation resolution (`#simRes`, `?simRes=2|4`)
+
+Settings select: Default (1 root cell = 1 world unit), x2 coarser (2 units), x4 coarser (4 units). A change calls `bm.setResolution(1/k)` (root lattice rebuilt in place, same `bm` object everywhere), `resetTracking` (drops AMR windows and field-island state), resizes the field plane to `bm.latticeWorldWidth` (the map rounded up to whole cells: 76 units at x2/x4), and clicks Restart.
+
+- **Scaling**: lattice U (= UI wind / 100) and ν stay fixed. The root grid takes `bm.stepsPerFrame = resolution` steps per frame (`advance_frame`, one step every 2nd / 4th frame). Δx and Δt both grow by k, so physical velocity, TWS, `get_field_velocity` units and advection speed in world units per frame are unchanged, and Mach / stability margin are the Default ones. Tradeoff: physical viscosity ν·Δx²/Δt is k× higher (Reynolds k× lower): smoother, shorter wakes; the field also updates every k frames.
+- **Sail**: lattice momentum per frame is `SAIL_LATTICE_COUPLING × resolution²` (a root cell holds k² world units), so physical momentum per frame matches. Kicks on non-stepping frames stay on the populations / `pendingInjections`.
+- **AMR**: levels follow the root grid (finest cell k/8 world units). `amrParams(bm)` in `domainTrack.js` scales disk radii and window halves by 1/k, caps by 1/k² (never below the disk floor), curl normalisation by world spacing, seed size, and hold (tracking runs only on stepping frames). Default values are the original constants.
+- **Sampling**: on a coarse grid `get_field_velocity` is bilinear in the continuous cell coordinate; Default keeps the original lookup.
+- Tests: `test/sim-res.test.mjs` (harness in `scripts/sim-res-harness.mjs`); perf table: `node --import ./test/register.mjs scripts/sim-res-check.mjs`.
+
 ### Wind seam (`wind.js`, `map.js`)
 
 Boats never sample the lattice. `Map.get_wind(x, y)` delegates to the active provider:
