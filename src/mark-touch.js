@@ -19,11 +19,17 @@
 // sequence, touches before it are free; main.js passes racing = !seq ||
 // seq.racing. Scenarios without one (11–13) are always racing.
 //
+// Exoneration (RRS 21 with 18.2). A boat holding a live Rule 18.2
+// mark-room entitlement (rules.js isMarkRoomEntitled) is exonerated for a
+// mark touch: it is recorded with exonerated: true but charges nothing.
+// Simplification: any touch while entitled, whether or not the outside boat
+// pushed her onto it. opts.exonerate overrides the predicate (tests).
+//
 // Names. nameMarks(course, startSequence) gives every mark a name for the
 // reason text: course marks "mark n", gate marks "gate n", start-line ends
 // "RC" and "pin"; anything else is "mark".
 
-import { chargePendingPenalty, hullVerticesWorld } from './rules.js';
+import { chargePendingPenalty, hullVerticesWorld, isMarkRoomEntitled } from './rules.js';
 import { isGate } from './course.js';
 
 export const MARK_TOUCH_M = 0.02;
@@ -113,6 +119,7 @@ function planckTouching(boat, mark) {
 // true), nowMs }. Returns the touches charged on this call.
 export function recordMarkTouches(boats, marks, opts = {}) {
   const racing = opts.racing !== false;
+  const exonerate = typeof opts.exonerate === 'function' ? opts.exonerate : isMarkRoomEntitled;
   const now = typeof opts.nowMs === 'number' ? opts.nowMs : performance.now();
   const charged = [];
   for (const boat of boats || []) {
@@ -143,9 +150,15 @@ export function recordMarkTouches(boats, marks, opts = {}) {
             x: c.x,
             y: c.y,
           };
-          touches.push(t);
-          chargePendingPenalty(boat, t);
-          charged.push(t);
+          if (exonerate(boat)) {
+            t.exonerated = true;
+            t.reason += ' (exonerated, rule 21: mark-room)';
+            touches.push(t);
+          } else {
+            touches.push(t);
+            chargePendingPenalty(boat, t);
+            charged.push(t);
+          }
         }
       } else if (!touching && gap > MARK_TOUCH_REARM_M) {
         m.set(mark, false);

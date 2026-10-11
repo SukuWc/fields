@@ -8,7 +8,7 @@ import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera } from './renderer.js';
 import { setupControls, getPlayers, getMarks, getCourse, getStartSequence, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
-import { courseGuides, courseText } from './course.js';
+import { courseGuides, courseText, markRoomTarget } from './course.js';
 import { startGuides, startHudHtml, startStatusText } from './start.js';
 import { recordMarkTouches, markTouchGuides } from './mark-touch.js';
 import { setupPerfOverlay, isPerfOverlayOn, recordFieldStep } from './perf-overlay.js';
@@ -17,7 +17,7 @@ import { setupTouchControls } from './touch-controls.js';
 
 import { SAIL_LATTICE_COUPLING } from './boat.js';
 
-import { beginRule15Step, contactGuides, evaluateAllPairs, penaltyAutopilotRemainingDeg, penaltyGuides, penaltyJustCleared, penaltyManeuverText, penaltyManeuverView, pendingPenaltyCount, pendingPenaltyReason, recordContacts, trueWindAngleDeg } from './rules.js';
+import { beginRule15Step, contactGuides, evaluateAllPairs, penaltyAutopilotRemainingDeg, penaltyGuides, penaltyJustCleared, penaltyManeuverText, penaltyManeuverView, pendingPenaltyCount, pendingPenaltyReason, recordContacts, markRoomGuides, trueWindAngleDeg } from './rules.js';
 
 
 const map_w = 75;
@@ -242,7 +242,17 @@ runner.start((simDt) => {
   }
   if (showPenaltyKeys) infoEl.innerHTML += 'Q CCW · E CW<br>';
   const getWind = (x, y) => map.get_wind(x, y);
-  const resolutions = evaluateAllPairs(racing, getWind, rulesTime);
+  // Rule 18 asks the course which mark each boat is rounding.
+  const markFor = course ? (boat) => markRoomTarget(course, boat) : null;
+  const resolutions = evaluateAllPairs(racing, getWind, rulesTime, { markFor });
+  for (const r of resolutions) {
+    const m = r.markRoom;
+    if (!m) continue;
+    const ie = racing.indexOf(m.rightOfWay);
+    const io = racing.indexOf(m.giveWay);
+    infoEl.innerHTML += 'Rule 18.2: boat ' + io + ' gives mark-room to boat ' + ie + ' (' + m.basis + ' at the zone)' + (m.decisive ? ' · decides fault' : '') + '<br>';
+  }
+  guides.push(...markRoomGuides(resolutions, racing));
   for (let i = 0; i < resolutions.length; i++) {
     const pairGuides = resolutions[i].guides;
     if (pairGuides && pairGuides.length) guides.push(...pairGuides);

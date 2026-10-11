@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Boat } from './boat.js';
 import { Mark, markMassForBoat } from './mark.js';
-import { Course, Gate, TRIANGLE_COURSE_LAYOUT, WINDWARD_LEEWARD_LAYOUT } from './course.js';
+import { Course, Gate, TRIANGLE_COURSE_LAYOUT, WINDWARD_LEEWARD_LAYOUT, MARK_ROOM_LAYOUT } from './course.js';
 import { StartLine, StartSequence, START_COURSE_LAYOUT } from './start.js';
 import { nameMarks, resetMarkTouches } from './mark-touch.js';
 import { chargePendingPenalty, PENALTY_MANEUVER_WINDOW_S, resetContacts } from './rules.js';
@@ -167,7 +167,7 @@ function renderScenarioCard(scenario) {
     bodyEl.textContent = scenario.description || "";
   } else {
     titleEl.textContent = "No scenario";
-    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 14 each have a description.";
+    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 15 each have a description.";
   }
   card.classList.toggle("collapsed", scenarioCardCollapsed);
   if (toggle) {
@@ -602,6 +602,42 @@ scenarios[14].frames[1] = () => {
     follow.dispatchEvent(new Event('change', { bubbles: true }));
   }
   _map.camera_zoom = 46;
+};
+
+// Rule 18.2 mark-room at the leeward gate (course.js MARK_ROOM_LAYOUT).
+// Boat 0 (inside, windward) and boat 1 (outside, leeward) run overlapped on
+// starboard toward the west gate mark on autopilot; boat 1 squeezes boat 0
+// inside the zone. Dev mode: ?devmode=1&scenario_selector=15
+scenarios[15] = makeScenario(
+  "Rule 18.2: mark-room at the leeward gate",
+  "Two boats run on starboard toward the west gate mark, overlapped. Boat 0 (yours) is inside, nearer the mark; boat 1 is outside. Under Rule 11 boat 0 is the windward boat and must keep clear, but Rule 18.2 changes who is at fault near the mark: when the first boat reaches the zone (12 m, three boat lengths) they are overlapped, so the outside boat must give the inside boat mark-room, and that is frozen even if the overlap changes later. The labels show GETS / GIVES MARK-ROOM, and the rule stack shows Rule 18.2 with Rule 11 struck through. Boat 1 steers a little lower and squeezes boat 0 before the gate: the contact is boat 1's fault (Rule 18.2), and boat 0 is exonerated (rule 21), also for touching the mark while she has mark-room. The entitlement ends once she has passed the gate, left the zone or tacked. Both boats are on autopilot; arrows steer boat 0, Space toggles her autopilot."
+);
+scenarios[15].frames[0] = () => {
+  const L = MARK_ROOM_LAYOUT;
+  for (const p of [L.inside, L.outside]) {
+    const boat = new Boat(_map, p.x, p.y, p.heading);
+    boat.physics_model.setLinearVelocity({ x: Math.sin(p.heading) * 2, y: -Math.cos(p.heading) * 2 });
+    players.push(boat);
+  }
+  const mass = markMassForBoat(players[0].physics_model);
+  const windward = new Mark(_map, L.windward.x, L.windward.y, { mass });
+  const gateA = new Mark(_map, L.gate[0].x, L.gate[0].y, { mass });
+  const gateB = new Mark(_map, L.gate[1].x, L.gate[1].y, { mass });
+  marks.push(windward, gateA, gateB);
+  course = new Course([new Gate(gateA, gateB), windward], { start: L.start });
+  nameMarks(course);
+};
+scenarios[15].frames[1] = () => {
+  autokeybind(players);
+  // Hold the starting headings on the heading autopilot (its target is
+  // -TWA, read after the first step).
+  for (const boat of players) boat.autopilot_enabled = true;
+  const follow = document.getElementById('camera_follow');
+  if (follow && !follow.checked) {
+    follow.checked = true;
+    follow.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  _map.camera_zoom = 30;
 };
 
 export function setupControls(map, getCamera, bm) {
