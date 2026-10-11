@@ -1915,13 +1915,16 @@ export class Boltzmann {
 		this.oversampling = oversampling;
 
 		this.texture = texture;
-		this.resolution = resolution;
 		// Fine-grid kicks that the 0.32 speed cap scaled down, and the kicks it saw.
 		this.capHits = 0;
 		this.forceApplies = 0;
 
-		this.width = width * this.resolution;
-		this.height = height * this.resolution;
+		// Map size in world units. The lattice is built from these and the
+		// resolution, so setResolution can rebuild it in place.
+		this.worldWidth = width;
+		this.worldHeight = height;
+		this.barriersOn = false;
+
 		this.direction = direction + 180;
 
 		this.step_ready = false;
@@ -1947,7 +1950,34 @@ export class Boltzmann {
 		// unless the sail coupling moved with it. TRT would damp ghost modes;
 		// the checkerboard correlation is already ~0 until the blowup, and the
 		// coarse-fine rescaling above is the BGK one.
+		//
+		// Coarser root grids (setResolution) keep this lattice ν and the lattice
+		// inlet speed U. See setResolution for what that means physically.
 		this.nu = 0.025;
+
+		this._build(resolution);
+		this.paintTexture();
+	}
+
+	// Allocate the root lattice for `resolution` root cells per world unit and
+	// reset it to the inlet equilibrium. Domains are dropped.
+	_build(resolution) {
+		if (!(resolution > 0) || !Number.isFinite(resolution)) resolution = 1;
+		this.resolution = resolution;
+		// World units per root cell (1, 2, 4 for the Default / x2 / x4 settings).
+		this.cellSize = 1 / resolution;
+		// Lattice steps per 30 Hz frame. Lattice U and ν stay fixed, so a cell
+		// k times wider needs k times fewer steps for a wind feature to cross
+		// the same world distance per frame (Δt_phys = k·Δt, Δx_phys = k·Δx,
+		// u_phys = U·Δx/Δt unchanged). advance_frame accumulates the fraction.
+		this.stepsPerFrame = resolution;
+		this._stepAcc = 0;
+
+		// A map side that is not a whole number of coarse cells (75 at x2 = 37.5)
+		// rounds up to whole cells. The lattice stays centred on the world origin;
+		// the field plane is sized from width / resolution (latticeWorldWidth).
+		this.width = Math.max(8, Math.round(this.worldWidth * resolution));
+		this.height = Math.max(8, Math.round(this.worldHeight * resolution));
 
 		// Fine refinement domains (multi-domain AMR, Lagrava §3.5).
 		// Add domains via addDomain(cx0, cy0, cx1, cy1).
@@ -1996,16 +2026,83 @@ export class Boltzmann {
 		for (var y = 0; y < this.height; y++) {
 			for (var x = 0; x < this.width; x++) {
 				this.cells[x + y * this.width].barrier = false;
-
-				// No barriers
 			}
 		}
+
+		this._resizeTexture();
 
 		this.running = false;
 
 		this.initFluid();
+		if (this.barriersOn) this.setBarriers(true);
 		this.startStop();
+	}
+
+	// World size the lattice covers. Equal to the map at the default
+	// resolution; one rounded-up cell wider when the map is not a whole number
+	// of coarse cells.
+	get latticeWorldWidth() { return this.width / this.resolution; }
+	get latticeWorldHeight() { return this.height / this.resolution; }
+
+	// Rebuild the root lattice with `resolution` root cells per world unit
+	// (1 = Default, 0.5 = x2 coarser, 0.25 = x4 coarser) and restart the fluid
+	// from the inlet equilibrium.
+	//
+	// Scaling: lattice U (= UI wind / 100) and lattice ν stay as they are, and
+	// the root grid takes `resolution` steps per frame. With Δx_phys and Δt_phys
+	// both k = 1/resolution times larger, physical velocity u·Δx/Δt is unchanged:
+	// the same UI wind is the same TWS, get_field_velocity keeps its units, and a
+	// gust crosses the map in the same number of frames. Mach number and the
+	// stability margin are the Default ones (U is never raised). The cost is
+	// physical viscosity ν·Δx²/Δt, k times higher, so the Reynolds number of a
+	// wake is k times lower: smoother, shorter streets, less fine detail.
+	// Refinement levels follow the root grid (level n is 2^−n of a root cell),
+	// so the finest cell near a boat is k/8 world units.
+	setResolution(resolution) {
+		this._build(resolution);
+		this.capHits = 0;
+		this.forceApplies = 0;
+		this.step_ready = true;
 		this.paintTexture();
+	}
+
+	// Texture side is oversampling × lattice cells. A different lattice size
+	// needs a new pixel buffer; dispose drops the GPU copy so three.js
+	// reallocates it at the new size on the next upload.
+	_resizeTexture() {
+		const tex = this.texture;
+		if (!tex || !tex.image || !this.oversampling) return;
+		const w = this.width * this.oversampling;
+		const h = this.height * this.oversampling;
+		if (tex.image.width === w && tex.image.height === h) return;
+		// A buffer of the right size with no recorded dimensions (a test stub,
+		// or the initial texture) is kept as is.
+		if (tex.image.width === undefined && tex.image.data && tex.image.data.length === w * h * 4) return;
+		tex.image = { data: new Uint8Array(w * h * 4), width: w, height: h };
+		if (typeof tex.dispose === 'function') tex.dispose();
+		tex.needsUpdate = true;
+	}
+
+	// Lattice steps the next advance_frame call will run.
+	stepsDueThisFrame() {
+		return Math.floor(this._stepAcc + this.stepsPerFrame + 1e-9);
+	}
+
+	// One 30 Hz frame: run the lattice steps this frame owes (1 at Default,
+	// one every 2nd / 4th frame at x2 / x4). Sail kicks applied on a frame with
+	// no step stay on the populations (root) or in pendingInjections (fine)
+	// until the next step, so no momentum is dropped. Returns steps run.
+	advance_frame() {
+		this._stepAcc += this.stepsPerFrame;
+		let n = 0;
+		while (this._stepAcc >= 1 - 1e-9 && n < 8) {
+			this._stepAcc -= 1;
+			this.physics_model_step();
+			n++;
+		}
+		if (this._stepAcc < 1e-9) this._stepAcc = 0;
+		if (n === 0) this.field_ms = 0;
+		return n;
 	}
 
 	// Add a rectangular fine refinement domain in coarse grid coordinates.
@@ -2088,9 +2185,13 @@ export class Boltzmann {
 	// Enable or disable a circular barrier obstacle at the grid centre.
 	// Radius is in coarse cells; fine domains pick up the flag via their constructor.
 	setBarriers(enabled) {
+		this.barriersOn = !!enabled;
 		const cx = this.width  / 2;
 		const cy = this.height / 2;
-		const r2 = 6 * 6; // radius 6 coarse cells ≈ 3 world units
+		// Radius 6 world units: 6 root cells at the default resolution, and the
+		// same world size on a coarser root grid.
+		const r = 6 * this.resolution;
+		const r2 = r * r;
 		for (let y = 0; y < this.height; y++) {
 			for (let x = 0; x < this.width; x++) {
 				const dx = x - cx, dy = y - cy;
@@ -2327,8 +2428,18 @@ export class Boltzmann {
 		const best = this._finestDomain(cx_cont, cy_cont);
 		if (best) return best.getVelocityAt(cx_cont, cy_cont);
 
-		let x = this.width/2  + Math.floor(worldX * this.resolution);
-		let y = this.height/2 + Math.floor(worldY * this.resolution);
+		// Default resolution keeps the original per-world-unit lookup. On a
+		// coarser root grid a cell is 2 or 4 world units wide, and that lookup
+		// would step the wind a boat feels by a whole cell at a time, so the
+		// sample is bilinear in the continuous cell coordinate.
+		let x, y;
+		if (this.resolution === 1) {
+			x = this.width/2  + Math.floor(worldX * this.resolution);
+			y = this.height/2 + Math.floor(worldY * this.resolution);
+		} else {
+			x = cx_cont - 0.5;
+			y = cy_cont - 0.5;
+		}
 
 		// The ±2 world-unit wind stencil (and the mouse probe) can land past the
 		// outer cells. An unclamped index is undefined there — negative y underflows
