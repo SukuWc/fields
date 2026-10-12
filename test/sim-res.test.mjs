@@ -195,16 +195,39 @@ check('x2 and x4 with refinement are no slower per frame than Default',
 		off.map(v => v.toFixed(3)).join(' / '));
 }
 
-// --- 6. Scenario 1: the boat clear astern and to leeward sits in a shadow ---
-// Physical viscosity is k× Default on every level of a coarse setting, so the
-// shadow is weaker there; at x4 with the full 5-level stack it is small
-// (about 0.07 TWS). That is a known limit of the fixed-ν scaling.
+// --- 6. Two boats: one flow where their grids overlap, and a wind shadow ---
+// Same-depth grids of different boats are synced on coincident fluid nodes
+// after every root step (Boltzmann._syncBoatOverlaps). Without that the
+// downwind boat's grids never saw the upwind wake, and the scenario-1 number
+// (1.16 / 0.40 / 0.07) was mostly the two grids disagreeing.
+const S1 = [[12, -6, 5 * Math.PI / 4], [15, -11.5, 5 * Math.PI / 4]];
+const INWAKE = [[12, -6, 5 * Math.PI / 4], [12, -13, 5 * Math.PI / 4]];
+const s1 = {}, wk = {};
 for (const k of KS) {
 	const on = H.scenario1(k);
 	const off = H.scenario1(k, { energy: false });
-	check(`x${k} scenario 1 leeward boat is in the wind shadow`,
-		on.tws1 < on.tws0 - (k === 4 ? 0.05 : 0.2) && near(off.tws0, 15, 1e-6) && near(off.tws1, 15, 1e-6) && on.bad === 0,
-		`windward ${on.tws0.toFixed(2)} leeward ${on.tws1.toFixed(2)} (no kicks: ${off.tws0.toFixed(2)} / ${off.tws1.toFixed(2)})`);
+	s1[k] = on.tws0 - on.tws1;
+	check(`x${k} scenario 1 grids carry one flow; leeward boat sails in less wind`,
+		on.overlapGap < 1e-12 && s1[k] > 0.1 && near(off.tws0, 15, 1e-6) && near(off.tws1, 15, 1e-6) && on.bad === 0 && on.maxU < 0.3,
+		`windward ${on.tws0.toFixed(2)} leeward ${on.tws1.toFixed(2)} gap=${on.overlapGap.toExponential(1)}`);
+	const w = H.wakeShadow(k, INWAKE);
+	wk[k] = w.shadow;
+	check(`x${k} boat directly downwind loses wind to the upwind sail`, w.shadow > 0.25 && w.overlapGap < 1e-12 && w.bad === 0,
+		`TWS ${w.off.toFixed(2)} → ${w.on.toFixed(2)} (shadow ${w.shadow.toFixed(2)})`);
+}
+check('scenario 1 and in-wake shadows on x2 / x4 come close to Default',
+	[2, 4].every(k => Math.abs(s1[k] - s1[1]) < 0.15 && wk[k] > 0.6 * wk[1]),
+	`s1 ${KS.map(k => s1[k].toFixed(2)).join(' / ')} · in-wake ${KS.map(k => wk[k].toFixed(2)).join(' / ')}`);
+for (const [name, spec, tacks] of [
+	['scenario 2', [[-10, -6, 3 * Math.PI / 4], [15, -11.5, 5 * Math.PI / 4]], {}],
+	['scenario 3', [[-3, -3, 3 * Math.PI / 4], [18, -11.5, 5 * Math.PI / 4]], { 0: 350 }],
+]) {
+	for (const k of KS) {
+		const r = H.fleet(k, spec, { frames: 500, tacks });
+		check(`x${k} ${name} stays finite with one flow`, r.bad === 0 && r.maxU < 0.3 && r.overlapGap < 1e-12
+			&& r.boats.every(b => Number.isFinite(b.x) && b.wind_speed > 10),
+			`max|u|=${r.maxU.toFixed(3)} TWS ${r.tws.map(t => t.toFixed(2)).join(' / ')}`);
+	}
 }
 
 // --- 7. Barrier at wind 5, 15, 25 for 1500 frames on the coarse grids ---

@@ -81,21 +81,72 @@ export function scenario0(k, { frames = 600, amr = true, energy = true } = {}) {
 	};
 }
 
-// Scenario 1: boat 1 clear astern and to leeward of boat 0. TWS over the
-// last 100 frames, with sail kicks on and off; the drop on the leeward boat
-// with kicks on is the wind shadow.
-export function scenario1(k, { frames = 300, energy = true } = {}) {
+// Fleet run: boats [x, y, heading], autopilot on at frame 1, optional
+// tack per boat at a frame. TWS of each boat over the last 100 frames.
+// kick[i] false turns boat i's sail push off (to isolate another boat's wake).
+export function fleet(k, boatsSpec, { frames = 300, kick = null, tacks = {} } = {}) {
 	const { bm, map } = makeWorld(k);
-	const boats = [new Boat(map, 12, -6, 5 * Math.PI / 4), new Boat(map, 15, -11.5, 5 * Math.PI / 4)];
-	const tws = [0, 0];
-	let n = 0;
+	const boats = boatsSpec.map(([x, y, h]) => new Boat(map, x, y, h));
+	const tws = boats.map(() => 0);
+	let n = 0, maxU = 0, bad = 0, minGap = Infinity;
 	for (let f = 0; f < frames; f++) {
-		if (f === 1) { boats[0].input_autopilot_enabled_toggle(); boats[1].input_autopilot_enabled_toggle(); }
-		frame(map, bm, boats, { amr: true, energy });
-		if (f >= frames - 100) { tws[0] += boats[0].wind_speed; tws[1] += boats[1].wind_speed; n++; }
+		if (f === 1) boats.forEach(b => b.input_autopilot_enabled_toggle());
+		for (const [i, at] of Object.entries(tacks)) if (f === at) boats[i].input_autopilot_tack_toggle();
+		map.world.step(1 / 30);
+		boats.forEach((b, i) => {
+			b.physics_model_step();
+			if ((!kick || kick[i]) && b.mainsail_force) {
+				const eff = SAIL_LATTICE_COUPLING * bm.resolution * bm.resolution;
+				for (const seg of b.getSailSegments()) bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * eff, seg.fy * eff);
+			}
+		});
+		if (bm.stepsDueThisFrame() > 0) trackBoats(bm, boats);
+		bm.advance_frame();
+		if (f >= frames - 100) { boats.forEach((b, i) => { tws[i] += b.wind_speed; }); n++; }
+		if (f % 25 === 24) {
+			const st = fieldStats(bm);
+			maxU = Math.max(maxU, st.maxU); bad += st.bad;
+			minGap = Math.min(minGap, overlapGap(bm));
+		}
 	}
-	const st = fieldStats(bm);
-	return { k, energy, tws0: tws[0] / n, tws1: tws[1] / n, ...st };
+	return { k, bm, boats, tws: tws.map(t => t / n), maxU, bad, overlapGap: minGap === Infinity ? 0 : -minGap };
+}
+
+// Largest population mismatch between coincident fluid nodes of two boats'
+// same-depth grids (returned negated so min() keeps the worst). 0 = one flow.
+function overlapGap(bm) {
+	let worst = 0;
+	let level = bm.domains.filter(d => d.disk);
+	while (level.length > 1) {
+		for (let a = 0; a < level.length; a++) for (let b = a + 1; b < level.length; b++) {
+			const A = level[a], B = level[b];
+			if (A.dx !== B.dx) continue;
+			const ox = Math.round((A.cx0_root - B.cx0_root) / A.dx);
+			const oy = Math.round((A.cy0_root - B.cy0_root) / A.dx);
+			for (let fj = 0; fj < A.height; fj++) for (let fi = 0; fi < A.width; fi++) {
+				const gi = fi + ox, gj = fj + oy;
+				if (!A._isFluid(fi, fj) || !B._isFluid(gi, gj)) continue;
+				const ca = A.cells[fi + fj * A.width], cb = B.cells[gi + gj * B.width];
+				worst = Math.max(worst, Math.abs(ca.fN - cb.fN), Math.abs(ca.fE - cb.fE), Math.abs(ca.fNE - cb.fNE));
+			}
+		}
+		level = level.flatMap(d => d.domains);
+	}
+	return -worst;
+}
+
+// Scenario 1: boat 1 clear astern and to leeward of boat 0.
+export function scenario1(k, { frames = 300, energy = true } = {}) {
+	const r = fleet(k, [[12, -6, 5 * Math.PI / 4], [15, -11.5, 5 * Math.PI / 4]], { frames, kick: energy ? null : [false, false] });
+	return { k, energy, tws0: r.tws[0], tws1: r.tws[1], maxU: r.maxU, bad: r.bad, overlapGap: r.overlapGap };
+}
+
+// Wind shadow from the upwind boat alone: the downwind boat's TWS with the
+// upwind boat's sail push on minus off (downwind boat's own push on in both).
+export function wakeShadow(k, spec, opts = {}) {
+	const on = fleet(k, spec, opts);
+	const off = fleet(k, spec, { ...opts, kick: [false, true] });
+	return { k, on: on.tws[1], off: off.tws[1], shadow: off.tws[1] - on.tws[1], maxU: on.maxU, bad: on.bad, overlapGap: on.overlapGap };
 }
 
 // Barrier at the map centre, no boats. Frame loop with tracking (refine

@@ -1919,6 +1919,40 @@ export function unionMaskBorderLines(domains, boltzmann) {
 	return segs;
 }
 
+
+// Owner→non-owner copy on the coincident fluid nodes of two same-depth grids.
+function coveredByChild(d, fi, fj) {
+	for (let i = 0; i < d.domains.length; i++) if (d.domains[i]._maskAt(fi, fj)) return true;
+	return false;
+}
+function syncPair(ea, eb) {
+	const A = ea.d, B = eb.d;
+	if (A.dx !== B.dx) return;
+	const dx = A.dx;
+	// Root coordinate of node fi is cx0_root + (fi − 2)·dx.
+	const ox = Math.round((A.cx0_root - B.cx0_root) / dx);
+	const oy = Math.round((A.cy0_root - B.cy0_root) / dx);
+	const i0 = Math.max(0, -ox), i1 = Math.min(A.width, B.width - ox);
+	const j0 = Math.max(0, -oy), j1 = Math.min(A.height, B.height - oy);
+	if (!(i1 > i0 && j1 > j0)) return;
+	const aLater = ea.order > eb.order;
+	for (let fj = j0; fj < j1; fj++) {
+		for (let fi = i0; fi < i1; fi++) {
+			if (!A._isFluid(fi, fj)) continue;
+			const gi = fi + ox, gj = fj + oy;
+			if (!B._isFluid(gi, gj)) continue;
+			const ca = coveredByChild(A, fi, fj), cb = coveredByChild(B, gi, gj);
+			const aOwns = ca !== cb ? ca : aLater;
+			const src = aOwns ? A.cells[fi + fj * A.width] : B.cells[gi + gj * B.width];
+			const dst = aOwns ? B.cells[gi + gj * B.width] : A.cells[fi + fj * A.width];
+			if (src.barrier || dst.barrier) continue;
+			dst.f0 = src.f0; dst.fN = src.fN; dst.fS = src.fS; dst.fE = src.fE; dst.fW = src.fW;
+			dst.fNE = src.fNE; dst.fNW = src.fNW; dst.fSE = src.fSE; dst.fSW = src.fSW;
+			dst.rho = src.rho; dst.ux = src.ux; dst.uy = src.uy;
+		}
+	}
+}
+
 export class Boltzmann {
 
 	constructor(width, height, resolution, direction, speed, texture, oversampling) {
@@ -2287,6 +2321,7 @@ export class Boltzmann {
 		for (let d = 0; d < this.domains.length; d++) {
 			this.domains[d].step(this);
 		}
+		this._syncBoatOverlaps();
 
 		// Clear pending injections for all domains after all sub-steps are done.
 		// Must happen here (not inside step()) so recursive child calls at any level
@@ -2304,6 +2339,31 @@ export class Boltzmann {
 		this.step_ready = true;
 
 		this.paintTexture();
+	}
+
+	// Two boats' grids at the same depth step independently (depth-first per
+	// boat). Where their fluid nodes coincide, the non-owner takes the owner's
+	// populations after every root step, so both carry one flow and a wake
+	// made in one boat's grid reaches the other's. Same-depth grids share one
+	// global lattice (every level halves its parent, origins on parent nodes),
+	// so coincident nodes map by an integer offset. Owner: the grid refined
+	// further at that node (it holds the restriction of the finer flow), else
+	// the later boat, as in _ownsWrite. Field islands never overlap a boat
+	// mask and are skipped. One boat: nothing to do (Default scenario 0 is
+	// unchanged).
+	_syncBoatOverlaps() {
+		const roots = [];
+		for (let i = 0; i < this.domains.length; i++) if (this.domains[i].disk) roots.push(this.domains[i]);
+		if (roots.length < 2 || this.syncOverlaps === false) return;
+		let level = roots.map((d, order) => ({ d, order }));
+		while (level.length > 1) {
+			for (let a = 0; a < level.length; a++) {
+				for (let b = a + 1; b < level.length; b++) syncPair(level[a], level[b]);
+			}
+			const next = [];
+			for (const e of level) for (const c of e.d.domains) next.push({ d: c, order: e.order });
+			level = next;
+		}
 	}
 
 	// Delegates to the module-level collideAndStream function (defined before RefinementDomain).
