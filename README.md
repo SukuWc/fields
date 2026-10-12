@@ -64,6 +64,7 @@ Last updated: 2026-10-12
 - [ ] Spectator mode
 - [x] Hamburger settings menu on phones and touch screens: [#29](https://github.com/SukuWc/fields/pull/29)
 - [x] Boat 1 touch controls in the bottom half of the screen: [#30](https://github.com/SukuWc/fields/pull/30)
+- [x] Touch controls panel 30% shorter (35% of the screen): [#37](https://github.com/SukuWc/fields/pull/37)
 - [ ] Accessibility
 - [ ] Telemetry export
 
