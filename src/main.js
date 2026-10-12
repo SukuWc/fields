@@ -74,6 +74,8 @@ if (map_w !== 75) {
   const lim = (map_w - 15) / 2;
   map.camera_position_x_max = lim; map.camera_position_y_max = lim;
   map.camera_position_x_min = -lim; map.camera_position_y_min = -lim;
+  // Zoom out far enough to see most of the map; the camera far plane is 85.
+  map.camera_zoom_max = 80;
 }
 
 // Renderer and controls — must init renderer before controls (controls needs getCamera).
