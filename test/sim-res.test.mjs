@@ -101,6 +101,30 @@ for (const k of KS) {
 		sizes.join() === [8, 16, 608, 32, 608, 8, 600].join(), sizes.join());
 }
 
+// --- 2b. Viscosity: refined levels carry Default's physical ν ---
+{
+	const omegaOf = (nu) => 1 / (3 * nu + 0.5);
+	const eq24 = (w) => 2 * w / (4 - w);
+	// Default: ω of a level with cell c world units (root c = 1).
+	const def = new Map();
+	let w = omegaOf(0.025);
+	for (let c = 1; c >= 0.125; c /= 2) { def.set(c, w); w = eq24(w); }
+	// A 2-unit cell at Default's physical ν: ν_lat = 0.025 / 2 (Eq. 24 run backwards).
+	def.set(2, omegaOf(0.0125));
+	for (const k of [1, 2, 4]) {
+		const bm = lattice(k);
+		bm.addDomain(6, 6, 10, 10);
+		const l1 = bm.domains[0];
+		l1.addDomain(4, 4, 8, 8);
+		const l2 = l1.domains[0];
+		const c = k / 2;
+		const worst = Math.max(Math.abs(l1.omega_f - def.get(c)), Math.abs(l2.omega_f - def.get(c / 2)));
+		const parts = [`c${c}:ω${l1.omega_f.toFixed(4)}`, `c${c / 2}:ω${l2.omega_f.toFixed(4)}`];
+		check(`x${k} level-1 ω_f equals Default's ω for its cell size`, worst < 1e-12 && bm.nu === 0.025
+			&& near(bm.matchedNu, 0.025 / k, 1e-15), `${parts.join(' ')} root ν=${bm.nu} matched=${bm.matchedNu}`);
+	}
+}
+
 // --- 3. Sail momentum: same physical momentum per frame on every grid ---
 {
 	const out = [];

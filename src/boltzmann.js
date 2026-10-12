@@ -312,6 +312,9 @@ function collideAndStream(cells, omega) {
 	for (let i = 0; i < cells.length; i++) cells[i].consolidate();
 }
 
+// Lowest root lattice ν kept on a coarse setting. See Boltzmann._build.
+export const ROOT_NU_FLOOR = 0.025;
+
 const POP_KEYS = ['f0','fN','fS','fE','fW','fNE','fNW','fSE','fSW'];
 
 // D2Q9 directions and weights, used to strip mass and momentum out of a filtered f_neq
@@ -582,7 +585,15 @@ export class RefinementDomain {
 		// Eq. 24: omega_c for this domain = parent's effective omega.
 		// Recursive application: level-1 uses root omega_c; level-2 uses level-1 omega_f; etc.
 		this.omega_c = (parent instanceof RefinementDomain) ? parent.omega_f : 1 / (3 * parent.nu + 0.5);
-		this.omega_f = 2 * this.omega_c / (4 - this.omega_c);
+		// Level 1 under a root whose ν was floored (coarse settings): build
+		// ω_f from the matched root ν, so this level and everything below
+		// (Eq. 24 recursion) carries Default's physical viscosity. The root
+		// keeps its own ω_c, and the Eq. 29/30 factor ω_c/(2ω_f) = τ_f/(2τ_c)
+		// still maps the strain rate across the jump; only the viscous stress
+		// steps at the outer edge. At Default matchedNu = nu, so this is Eq. 24.
+		const omegaParentMatched = (parent instanceof RefinementDomain || parent.matchedNu === undefined || parent.matchedNu === parent.nu)
+			? this.omega_c : 1 / (3 * parent.matchedNu + 0.5);
+		this.omega_f = 2 * omegaParentMatched / (4 - omegaParentMatched);
 
 		// Cell size and top-left corner in ROOT coarse grid coordinates.
 		// Used by paintTexture and worldBorderLines at any depth.
@@ -1957,7 +1968,8 @@ export class Boltzmann {
 		//
 		// Coarser root grids (setResolution) keep this lattice ν and the lattice
 		// inlet speed U. See setResolution for what that means physically.
-		this.nu = 0.025;
+		this.baseNu = 0.025;
+		this.nu = this.baseNu;
 
 		this._build(resolution);
 		this.paintTexture();
@@ -1975,6 +1987,15 @@ export class Boltzmann {
 		// the same world distance per frame (Δt_phys = k·Δt, Δx_phys = k·Δx,
 		// u_phys = U·Δx/Δt unchanged). advance_frame accumulates the fraction.
 		this.stepsPerFrame = resolution;
+		// Physical ν = ν_lat·Δx²/Δt ∝ ν_lat·k, so Default's physical viscosity
+		// on a k-unit root cell is ν_lat = baseNu/k (matchedNu). Plain BGK at
+		// 0.0125 (x2) diverges at wind 25 with the barrier, like 0.020 did at
+		// Default. The root keeps ν_lat ≥ ROOT_NU_FLOOR (0.025) instead, and
+		// every refined level is built from matchedNu (RefinementDomain), so
+		// the boat stack and field islands run at Default's physical ν and only
+		// the unrefined root stays more viscous. At Default both are 0.025.
+		this.matchedNu = (this.baseNu ?? 0.025) * Math.min(1, resolution);
+		this.nu = Math.max(this.matchedNu, Math.min(this.baseNu ?? 0.025, ROOT_NU_FLOOR));
 		if (this.baseOversampling) this.oversampling = Math.round(this.baseOversampling / Math.min(1, resolution));
 		this._stepAcc = 0;
 
