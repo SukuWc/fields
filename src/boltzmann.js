@@ -1912,6 +1912,10 @@ export class Boltzmann {
 
 	constructor(width, height, resolution, direction, speed, texture, oversampling) {
 
+		// Texels per finest cell stay at one: the boat stack reaches 1/8 world
+		// unit on every resolution (extra outer rings on coarse grids), so the
+		// texels per root cell grow with the root cell (8, 16, 32).
+		this.baseOversampling = oversampling;
 		this.oversampling = oversampling;
 
 		this.texture = texture;
@@ -1971,6 +1975,7 @@ export class Boltzmann {
 		// the same world distance per frame (Δt_phys = k·Δt, Δx_phys = k·Δx,
 		// u_phys = U·Δx/Δt unchanged). advance_frame accumulates the fraction.
 		this.stepsPerFrame = resolution;
+		if (this.baseOversampling) this.oversampling = Math.round(this.baseOversampling / Math.min(1, resolution));
 		this._stepAcc = 0;
 
 		// A map side that is not a whole number of coarse cells (75 at x2 = 37.5)

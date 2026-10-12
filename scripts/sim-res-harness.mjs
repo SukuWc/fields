@@ -70,8 +70,12 @@ export function scenario0(k, { frames = 600, amr = true, energy = true } = {}) {
 		}
 	}
 	const st = fieldStats(bm);
+	// Boat stack depth and the finest world cell at the boat.
+	let depth = 0;
+	for (let d = bm.domains[0]; d; d = d.domains[0]) depth++;
+	const finestStep = bm._worldStepAt(boat.x, boat.y);
 	return {
-		k, amr, twa: boat.twa, twaSpread: twaMax - twaMin, bs: speedOf(boat), bsAt500,
+		k, amr, depth, finestStep, twa: boat.twa, twaSpread: twaMax - twaMin, bs: speedOf(boat), bsAt500,
 		tws: tws / twsN, msPerFrame: ms / frames, msPerStep: steps ? ms / steps : 0, steps,
 		cells: bm.width * bm.height, ...st, capHits: bm.capHits, domains: bm.domains.length,
 	};

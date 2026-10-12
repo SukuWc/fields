@@ -94,30 +94,65 @@ const domainByBoat = new WeakMap();
 // CURL_HOLD·cellSize frames; it is shortened to keep about 0.2 s, but never
 // below 2 so one noisy step cannot open a cell.
 const paramCache = new Map();
+
+// Boat refinement stack in world units, finest last. The inner three are the
+// Default levels (cells 1/2, 1/4, 1/8 world unit): disk radius R, window
+// half-width H, cell cap A (world area). A coarser root grid (cellSize k = 2
+// or 4) adds log2(k) outer rings first so the finest cell is 1/8 world unit
+// on every setting:
+//   x2: ring of 1-unit cells,  R 12 (4 own cells beyond the R 8 level)
+//   x4: ring of 2-unit cells,  R 20 (4 own cells beyond R 12), then R 12
+// Windows leave 12 world units of wake room beyond R; caps are the disk plus
+// about 60 % for the curl wake, never below the disk floor area.
+export const BOAT_LEVELS = [
+	{ R: DISK_RADIUS, H: DOMAIN_HALF, A: MASK_CELL_CAP },            // cell 1/2
+	{ R: DISK2_RADIUS / 2, H: DOMAIN2_HALF / 2, A: MASK2_CELL_CAP / 4 }, // cell 1/4
+	{ R: DISK3_RADIUS / 4, H: DOMAIN3_HALF / 4, A: MASK3_CELL_CAP / 16 }, // cell 1/8
+];
+export const OUTER_RINGS = {
+	1: { R: 12, H: 24, A: 750 },
+	2: { R: 20, H: 32, A: 1760 },
+};
+
 export function amrParams(bm) {
 	const k = bm && bm.cellSize > 0 ? bm.cellSize : 1;
 	let p = paramCache.get(k);
 	if (p) return p;
-	const len = (v) => v / k;
-	const half = (v, disk) => Math.max(Math.ceil(disk) + 2, Math.round(v / k));
-	const cap = (v, disk) => Math.max(Math.round(v / (k * k)), Math.ceil(Math.PI * (disk + 1) * (disk + 1)));
-	const disk1 = len(DISK_RADIUS);
-	const disk2 = len(DISK2_RADIUS);
-	const disk3 = len(DISK3_RADIUS);
+	const extra = Math.max(0, Math.round(Math.log2(k)));
+	const stack = [];
+	// Outer rings, coarsest first: cell size k/2, k/4, … down to 1.
+	for (let e = extra; e >= 1; e--) {
+		const cell = 2 ** (e - 1);
+		stack.push({ ...OUTER_RINGS[cell] || { R: 12 * cell, H: 24 * cell, A: 750 * cell * cell }, ring: true });
+	}
+	for (const lv of BOAT_LEVELS) stack.push({ ...lv, ring: false });
+	// Per level, in that level's parent cells. Parent cell of level i is k/2^i.
+	const levels = stack.map((lv, i) => {
+		const pc = k / 2 ** i;
+		const radius = lv.R / pc;
+		return {
+			radius,
+			half: Math.max(Math.ceil(radius) + 2, Math.round(lv.H / pc)),
+			cap: Math.max(Math.round(lv.A / (pc * pc)), Math.ceil(Math.PI * (radius + 1) * (radius + 1))),
+			parentCell: pc,
+			worldRadius: lv.R,
+			ring: lv.ring,
+		};
+	});
 	p = {
 		cellSize: k,
-		disk1, disk2, disk3,
-		half1: half(DOMAIN_HALF, disk1),
-		half2: half(DOMAIN2_HALF, disk2),
-		half3: half(DOMAIN3_HALF, disk3),
-		cap1: cap(MASK_CELL_CAP, disk1),
-		cap2: cap(MASK2_CELL_CAP, disk2),
-		cap3: cap(MASK3_CELL_CAP, disk3),
+		levels,
+		extraLevels: extra,
+		// Field islands stay one level below the root (barrier waves): cell k/2.
 		fieldHalf: Math.max(3, Math.round(FIELD_HALF / k)),
 		fieldCap: Math.max(SEED_MIN * 2, Math.round(FIELD_CELL_CAP / (k * k))),
 		seedMin: Math.max(2, Math.round(SEED_MIN / (k * k))),
 		hold: Math.max(2, Math.round(CURL_HOLD / k)),
 		curlDx: CURL_DX * k,
+		// Tracking runs once per root step, k frames apart. A boat can cross
+		// more than one fine cell in that time, so a window may slide up to
+		// k cells per call (1 at Default, as before).
+		maxShift: Math.max(1, Math.round(k)),
 	};
 	paramCache.set(k, p);
 	return p;
@@ -543,7 +578,7 @@ function installSensorMask(domain, centerX, centerY, radius, cap, curlNorm, para
 // Place or slide the single child window. A parent slide already carried it
 // (moveOrigin false), so this frame does not shift it again. Returns whether
 // this call itself slid the child.
-function placeChild(parent, parentShifted, fx, fy, half) {
+function placeChild(parent, parentShifted, fx, fy, half, maxShift = 1) {
 	let shifted = false;
 	if (parent.domains.length === 0 || outside(parent.domains[0], fx, fy)) {
 		const box = nestedBox(parent, fx, fy, half);
@@ -551,8 +586,9 @@ function placeChild(parent, parentShifted, fx, fy, half) {
 		parent.replaceDomain(0, box.x0, box.y0, box.x1, box.y1);
 	} else if (!parentShifted) {
 		const child = parent.domains[0];
-		const step = shiftToward(fx, fy, child, parent.width, parent.height);
-		if (step.dcx || step.dcy) {
+		for (let n = 0; n < maxShift; n++) {
+			const step = shiftToward(fx, fy, child, parent.width, parent.height);
+			if (!step.dcx && !step.dcy) break;
 			child.shiftBy(parent, step.dcx, step.dcy);
 			parent._rebuildInteriorCells();
 			shifted = true;
@@ -572,10 +608,11 @@ function trackOne(bm, player) {
 	if (outside(level1, boatCx, boatCy)) {
 		const cx = Math.round(boatCx);
 		const cy = Math.round(boatCy);
-		const cx0 = Math.max(1, cx - P.half1);
-		const cy0 = Math.max(1, cy - P.half1);
-		const cx1 = Math.min(bm.width - 1, cx + P.half1);
-		const cy1 = Math.min(bm.height - 1, cy + P.half1);
+		const h1 = P.levels[0].half;
+		const cx0 = Math.max(1, cx - h1);
+		const cy0 = Math.max(1, cy - h1);
+		const cx1 = Math.min(bm.width - 1, cx + h1);
+		const cy1 = Math.min(bm.height - 1, cy + h1);
 		if (!(cx1 > cx0 && cy1 > cy0)) return null;
 		const idx = level1 ? bm.domains.indexOf(level1) : -1;
 		const at = idx >= 0 ? idx : bm.domains.length;
@@ -583,28 +620,31 @@ function trackOne(bm, player) {
 		if (!level1) return null;
 		domainByBoat.set(player, level1);
 	} else {
-		const step = shiftToward(boatCx, boatCy, level1, bm.width, bm.height);
-		if (step.dcx || step.dcy) {
+		for (let n = 0; n < P.maxShift; n++) {
+			const step = shiftToward(boatCx, boatCy, level1, bm.width, bm.height);
+			if (!step.dcx && !step.dcy) break;
 			level1.shiftBy(bm, step.dcx, step.dcy);
 			level1Shifted = true;
 		}
 	}
 
-	installSensorMask(level1, boatCx, boatCy, P.disk1, P.cap1, sampleRootCurl(bm, level1), P);
+	const L = P.levels;
+	installSensorMask(level1, boatCx, boatCy, L[0].radius, L[0].cap, sampleRootCurl(bm, level1), P);
 
-	const fx = fineIndex(level1.cx0, boatCx);
-	const fy = fineIndex(level1.cy0, boatCy);
-	const placed2 = placeChild(level1, level1Shifted, fx, fy, P.half2);
-	const level2 = placed2.domain;
-	if (!level2) return { domain: level1, shifted: level1Shifted };
-	installSensorMask(level2, fx, fy, P.disk2, P.cap2, sampleParentFluidCurl(level1, level2, bm.speed, P.cellSize), P);
-
-	const f2x = fineIndex(level2.cx0, fx);
-	const f2y = fineIndex(level2.cy0, fy);
-	const placed3 = placeChild(level2, level1Shifted || placed2.shifted, f2x, f2y, P.half3);
-	const level3 = placed3.domain;
-	if (level3) {
-		installSensorMask(level3, f2x, f2y, P.disk3, P.cap3, sampleParentFluidCurl(level2, level3, bm.speed, P.cellSize), P);
+	// Nested levels, each a disk floor plus curl inside its parent's mask.
+	let parent = level1;
+	let px = boatCx, py = boatCy;
+	let parentShifted = level1Shifted;
+	for (let i = 1; i < L.length; i++) {
+		const fx = fineIndex(parent.cx0, px);
+		const fy = fineIndex(parent.cy0, py);
+		const placed = placeChild(parent, parentShifted, fx, fy, L[i].half, P.maxShift);
+		const child = placed.domain;
+		if (!child) break;
+		installSensorMask(child, fx, fy, L[i].radius, L[i].cap, sampleParentFluidCurl(parent, child, bm.speed, P.cellSize), P);
+		parentShifted = parentShifted || placed.shifted;
+		parent = child;
+		px = fx; py = fy;
 	}
 	return { domain: level1, shifted: level1Shifted };
 }
