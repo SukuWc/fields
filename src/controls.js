@@ -127,7 +127,7 @@ function applyWindSpeed() {
   const speed = parseFloat(document.getElementById("windSpeed").value);
   if (!Number.isFinite(speed)) return;
   _map.wind_speed = speed;
-  _map.bm.speed = speed / 100;
+  if (_map.bm.setWindSpeed) _map.bm.setWindSpeed(speed); else _map.bm.speed = speed / 100;
   _map.constantWind.setSpeed(speed);
   syncDevModeUi();
 }

@@ -20,8 +20,12 @@ import { SAIL_LATTICE_COUPLING } from './boat.js';
 import { beginRule15Step, contactGuides, evaluateAllPairs, penaltyAutopilotRemainingDeg, penaltyGuides, penaltyJustCleared, penaltyManeuverText, penaltyManeuverView, pendingPenaltyCount, pendingPenaltyReason, recordContacts, markRoomGuides, trueWindAngleDeg } from './rules.js';
 
 
-const map_w = 75;
-const map_h = 75;
+// Map side in metres. ?mapSize=150 doubles both sides (4× the area); the
+// #mapSize select reloads the page with that param. Default 75.
+const MAP_SIZES = [75, 150];
+const _mapSizeParam = Number(new URLSearchParams(location.search).get('mapSize'));
+const map_w = MAP_SIZES.includes(_mapSizeParam) ? _mapSizeParam : 75;
+const map_h = map_w;
 // UI wind, and the uniform wind used while dev mode is on.
 // Angle is where the wind comes from: 0 = from +X, 90 = from +Y (blows toward −Y).
 // Speed is true-wind speed (the value boats report as TWS).
@@ -39,8 +43,12 @@ const texture_oversampling = 8;
 // physical momentum per frame is SAIL_LATTICE_COUPLING × resolution² in
 // lattice units: 1 at Default, 1/4 at x2, 1/16 at x4. Kicks on frames with no
 // lattice step are kept until the next one, so the per-frame total holds.
+// On a fast-wind grid lattice velocity is velScale × smaller per unit of
+// physical wind, so the same physical momentum is velScale × fewer lattice
+// units: divide by it.
 function sailEfficiency() {
-  return SAIL_LATTICE_COUPLING * bm.resolution * bm.resolution;
+  const e = SAIL_LATTICE_COUPLING * bm.resolution * bm.resolution;
+  return bm.velScale === undefined || bm.velScale === 1 ? e : e / bm.velScale;
 }
 
 // Data texture for fluid field visualisation
@@ -61,6 +69,12 @@ const constantWind = new ConstantWind(wind_angle, wind_speed);
 // Domains are created dynamically in the physics loop as players spawn.
 const map = new Map(map_w, map_h, wind_angle, wind_speed, bm, fluidWind, constantWind);
 map.physics_model_init();
+if (map_w !== 75) {
+  // Camera pan limits: ±30 on the 75 m map, the same 7.5 m margin on larger ones.
+  const lim = (map_w - 15) / 2;
+  map.camera_position_x_max = lim; map.camera_position_y_max = lim;
+  map.camera_position_x_min = -lim; map.camera_position_y_min = -lim;
+}
 
 // Renderer and controls — must init renderer before controls (controls needs getCamera).
 // The barrier listener has to exist before URL settings dispatch change events.
@@ -72,15 +86,29 @@ setupControls(map, getCamera, bm);
 // in place (every module keeps the same bm), drops the refinement windows,
 // resizes the field plane, and restarts the scenario like the Restart button.
 // Before installUrlSettings so a query value goes through this listener.
+// Fast-wind options ("2f", "2f34") use the x2 root cell but step it every
+// frame (or 1.2× per frame): stepsPerFrame is explicit, see Boltzmann._build.
+export const SIM_RES_MODES = {
+  '1': { resolution: 1 }, '2': { resolution: 0.5 }, '4': { resolution: 0.25 },
+  '2f': { resolution: 0.5, stepsPerFrame: 1 }, '2f34': { resolution: 0.5, stepsPerFrame: 1.2 },
+};
 document.getElementById('simRes').addEventListener('change', (e) => {
-  const k = Number(e.target.value);
-  const resolution = k === 2 || k === 4 ? 1 / k : 1;
-  if (resolution === bm.resolution) return;
+  const mode = SIM_RES_MODES[e.target.value] || SIM_RES_MODES['1'];
+  const steps = mode.stepsPerFrame ?? mode.resolution;
+  if (mode.resolution === bm.resolution && steps === bm.stepsPerFrame) return;
   resetTracking(bm, getPlayers());
-  bm.setResolution(resolution);
+  bm.setResolution(mode.resolution, mode.stepsPerFrame);
+  bm.setWindSpeed(map.wind_speed);
   setFluidPlaneSize(bm.latticeWorldWidth, bm.latticeWorldHeight);
   dataTextureMaterial.needsUpdate = true;
   document.getElementById('scenario_restart').click();
+});
+document.getElementById('mapSize').addEventListener('change', (e) => {
+  const v = Number(e.target.value);
+  if (v === map_w || !MAP_SIZES.includes(v)) return;
+  const u = new URL(location.href);
+  if (v === 75) u.searchParams.delete('mapSize'); else u.searchParams.set('mapSize', String(v));
+  location.href = u.toString();
 });
 // Before installUrlSettings so ?perf=1 turns the overlay on through its change listener.
 setupPerfOverlay(map, bm);

@@ -558,11 +558,19 @@
       <br>
       <label class="setting-row"><input id="barrier" autocomplete="off" type="checkbox" title="Circular obstacle at the map centre. Off by default. Check it and set wind speed to about 25 to shed waves that refine on their own, away from the boat.">Barrier</label>
       <br>
-      <label class="setting-row setting-field" title="Root lattice cell size. Default is 1 world unit per cell. x2 / x4 use cells 2 / 4 world units wide and step the field every 2nd / 4th frame: same wind speed and map, much cheaper, smoother (more viscous) wakes. Changing it restarts the scenario. Also ?simRes=2 / ?simRes=4">Simulation resolution<br>
+      <label class="setting-row setting-field" title="Root lattice cell size. Default is 1 world unit per cell. x2 / x4 use cells 2 / 4 world units wide and step the field every 2nd / 4th frame: same wind speed and map, much cheaper, smoother (more viscous) wakes. x2 fast wind steps the 2 m cell every frame (1.2× per frame for the 35 kn option): the lattice runs a lower U, so the stable wind range doubles (or 2.4×). Changing it restarts the scenario. Also ?simRes=2 / ?simRes=4">Simulation resolution<br>
       <select id="simRes" autocomplete="off">
         <option value="1" selected>Default</option>
         <option value="2">x2 coarser</option>
         <option value="4">x4 coarser</option>
+        <option value="2f">x2 fast wind (to ~29 kn)</option>
+        <option value="2f34">x2 fast wind 1.2× (to ~35 kn)</option>
+      </select></label>
+      <br>
+      <label class="setting-row setting-field" title="Map side in metres. 150 is twice as wide (4× the area). Changing it reloads the page. Also ?mapSize=150">Map size<br>
+      <select id="mapSize" autocomplete="off">
+        <option value="75" selected>75 m</option>
+        <option value="150">150 m</option>
       </select></label>
       <br>
       <label class="setting-row"><input id="boat_energy" autocomplete="off" type="checkbox" checked>Boat energy</label>

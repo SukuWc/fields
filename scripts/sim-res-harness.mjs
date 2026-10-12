@@ -32,7 +32,7 @@ function frame(map, bm, boats, opts) {
 	for (const boat of boats) {
 		boat.physics_model_step();
 		if (opts.energy !== false && boat.mainsail_force) {
-			const eff = SAIL_LATTICE_COUPLING * bm.resolution * bm.resolution;
+			const eff = SAIL_LATTICE_COUPLING * bm.resolution * bm.resolution / (bm.velScale ?? 1);
 			for (const seg of boat.getSailSegments()) {
 				bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * eff, seg.fy * eff);
 			}
@@ -44,10 +44,21 @@ function frame(map, bm, boats, opts) {
 	return { ms: now() - t0, steps };
 }
 
+// k is 1 / 2 / 4, or a fast-wind mode: '2f' (2 m cell, 1 step per frame),
+// '2f34' (2 m cell, 1.2 steps per frame). Same table as main.js SIM_RES_MODES.
+export const MODES = {
+	1: { resolution: 1 }, 2: { resolution: 0.5 }, 4: { resolution: 0.25 },
+	'2f': { resolution: 0.5, stepsPerFrame: 1 }, '2f34': { resolution: 0.5, stepsPerFrame: 1.2 },
+};
+// Map side for every world made after this call (75 = main.js default).
+let MAP_SIDE = 75;
+export function setMapSize(n) { MAP_SIDE = n; }
+
 export function makeWorld(k, wind = 15) {
-	const bm = new Boltzmann(75, 75, 1, 90, wind, undefined, 1);
-	if (k !== 1) bm.setResolution(1 / k);
-	const map = new Map(75, 75, 90, wind, bm, new FluidWind(bm), new ConstantWind(90, wind));
+	const bm = new Boltzmann(MAP_SIDE, MAP_SIDE, 1, 90, wind, undefined, 1);
+	const m = MODES[k] || { resolution: 1 / k };
+	if (k !== 1) bm.setResolution(m.resolution, m.stepsPerFrame);
+	const map = new Map(MAP_SIDE, MAP_SIDE, 90, wind, bm, new FluidWind(bm), new ConstantWind(90, wind));
 	map.physics_model_init();
 	return { bm, map };
 }
@@ -96,7 +107,7 @@ export function fleet(k, boatsSpec, { frames = 300, kick = null, tacks = {} } = 
 		boats.forEach((b, i) => {
 			b.physics_model_step();
 			if ((!kick || kick[i]) && b.mainsail_force) {
-				const eff = SAIL_LATTICE_COUPLING * bm.resolution * bm.resolution;
+				const eff = SAIL_LATTICE_COUPLING * bm.resolution * bm.resolution / (bm.velScale ?? 1);
 				for (const seg of b.getSailSegments()) bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * eff, seg.fy * eff);
 			}
 		});

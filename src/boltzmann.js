@@ -1980,7 +1980,11 @@ export class Boltzmann {
 		this.t_delta = 0;
 		this.field_ms = 0;
 
-		this.speed = speed / 100; // default speed 0.12
+		// uiSpeed is the UI wind / 100: the lattice U of a Default-grid
+		// lattice. The lattice inlet U is uiSpeed / velScale (see _build),
+		// so a given UI wind is the same physical wind on every setting.
+		this.uiSpeed = speed / 100;
+		this.speed = this.uiSpeed; // default speed 0.12
 
 		// Kinematic viscosity in lattice units. ω_c = 1/(3ν + 1/2) and, on each
 		// refined level, ω_f = 2ω_c/(4 − ω_c) (Eq. 24). The Eq. 29/30 factors are
@@ -2011,7 +2015,7 @@ export class Boltzmann {
 
 	// Allocate the root lattice for `resolution` root cells per world unit and
 	// reset it to the inlet equilibrium. Domains are dropped.
-	_build(resolution) {
+	_build(resolution, stepsPerFrame) {
 		if (!(resolution > 0) || !Number.isFinite(resolution)) resolution = 1;
 		this.resolution = resolution;
 		// World units per root cell (1, 2, 4 for the Default / x2 / x4 settings).
@@ -2020,7 +2024,18 @@ export class Boltzmann {
 		// k times wider needs k times fewer steps for a wind feature to cross
 		// the same world distance per frame (Δt_phys = k·Δt, Δx_phys = k·Δx,
 		// u_phys = U·Δx/Δt unchanged). advance_frame accumulates the fraction.
-		this.stepsPerFrame = resolution;
+		//
+		// stepsPerFrame may be given explicitly ("fast wind": a 2-unit root
+		// cell stepped every frame, or 1.2× per frame). Then Δt_phys is shorter
+		// than the cell needs to keep U fixed, so the lattice runs a lower U
+		// for the same physical wind. velScale = cellSize · stepsPerFrame is
+		// world units per frame per unit of lattice velocity, relative to
+		// Default (1 at Default / x2 / x4). Lattice U = uiSpeed / velScale and
+		// the sound speed in world units is velScale times Default's, so the
+		// stable wind ceiling (lattice U ≲ 0.25) is velScale × UI wind 25.
+		this.stepsPerFrame = stepsPerFrame > 0 && Number.isFinite(stepsPerFrame) ? stepsPerFrame : resolution;
+		this.velScale = this.cellSize * this.stepsPerFrame;
+		if (this.uiSpeed !== undefined) this.speed = this.velScale === 1 ? this.uiSpeed : this.uiSpeed / this.velScale;
 		// Physical ν = ν_lat·Δx²/Δt ∝ ν_lat·k, so Default's physical viscosity
 		// on a k-unit root cell is ν_lat = baseNu/k (matchedNu). Plain BGK at
 		// 0.0125 (x2) diverges at wind 25 with the barrier, like 0.020 did at
@@ -2028,7 +2043,10 @@ export class Boltzmann {
 		// every refined level is built from matchedNu (RefinementDomain), so
 		// the boat stack and field islands run at Default's physical ν and only
 		// the unrefined root stays more viscous. At Default both are 0.025.
-		this.matchedNu = (this.baseNu ?? 0.025) * Math.min(1, resolution);
+		// In general ν_phys ∝ ν_lat · cellSize² / Δt ∝ ν_lat · cellSize² · stepsPerFrame,
+		// so matchedNu = baseNu / (cellSize² · stepsPerFrame): 1/k at x2/x4,
+		// 0.00625 for the 2-unit cell stepped every frame, 0.0052 at 1.2/frame.
+		this.matchedNu = (this.baseNu ?? 0.025) * Math.min(1, 1 / (this.cellSize * this.cellSize * this.stepsPerFrame));
 		this.nu = Math.max(this.matchedNu, Math.min(this.baseNu ?? 0.025, ROOT_NU_FLOOR));
 		if (this.baseOversampling) this.oversampling = Math.round(this.baseOversampling / Math.min(1, resolution));
 		this._stepAcc = 0;
@@ -2118,12 +2136,18 @@ export class Boltzmann {
 	// wake is k times lower: smoother, shorter streets, less fine detail.
 	// Refinement levels follow the root grid (level n is 2^−n of a root cell),
 	// so the finest cell near a boat is k/8 world units.
-	setResolution(resolution) {
-		this._build(resolution);
+	setResolution(resolution, stepsPerFrame) {
+		this._build(resolution, stepsPerFrame);
 		this.capHits = 0;
 		this.forceApplies = 0;
 		this.step_ready = true;
 		this.paintTexture();
+	}
+
+	// UI wind (TWS units) → lattice inlet U on the current grid.
+	setWindSpeed(uiWind) {
+		this.uiSpeed = uiWind / 100;
+		this.speed = this.velScale === 1 ? this.uiSpeed : this.uiSpeed / this.velScale;
 	}
 
 	// Texture side is oversampling × lattice cells. A different lattice size
@@ -2569,7 +2593,10 @@ export class Boltzmann {
 	paintTexture() {
 		if (this.texture === undefined) return;
 
-		const contrast = Math.pow(1.2, Number(contrastSlider.value));
+		// Fast-wind grids hold a lower lattice u for the same wind; scale the
+		// plot so a given wind paints the same colour on every setting.
+		let contrast = Math.pow(1.2, Number(contrastSlider.value));
+		if (this.velScale !== undefined && this.velScale !== 1) contrast *= this.velScale;
 		const plotType = plotSelect.selectedIndex;
 
 		// Paint coarse grid
