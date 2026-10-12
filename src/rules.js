@@ -135,7 +135,56 @@
 // it on both boats. Rule 10 does not draw it. The segment is 4 m long,
 // centered on the aftermost station, a bit wider than the 1.5 m beam.
 
+// Rule 18 (mark-room, Section C). Evaluated per pair after Section A, from
+// a mark provider passed to evaluateAllPairs (opts.markFor(boat) →
+// { key, at: {x, y}, done } or null; main.js builds it from course.js
+// markRoomTarget). `key` identifies the mark she is rounding or passing:
+// a single course mark, or for a gate the gate mark nearest to her (each
+// gate mark is its own mark). `done` means she has rounded it (midpoint ray)
+// or passed the gate.
+//
+// 18.1: applies while both boats are leaving the same mark (same key, so the
+// same side) and at least one of them is in the zone: some hull vertex
+// within RULE18_ZONE_M (3 boat lengths, 12 m) of the mark's anchor. Not
+// between boats on opposite tacks on a beat (18.1(a)): both |TWA| < 90°.
+//
+// 18.2(a)/(b): frozen when the first of the two reaches the zone (the first
+// step either is in the zone with 18 applying). Overlapped then (the RRS
+// overlap definition, the same clear-astern test as Rules 11/12, used for
+// any tacks): the inside boat is entitled: further toward the mark
+// across the pair's mean course: on the side the mark is to be left on
+// (provider `side`, else the side it lies on), the mark's offset from her
+// course line is smaller and the outside boat owes her mark-room. One boat
+// clear ahead then: the clear-astern boat owes the clear-ahead boat
+// mark-room. Later changes of overlap do not change it. Mutual clear astern
+// at that moment: no entitlement.
+//
+// 18.2(c): the entitlement ends when the entitled boat has rounded / passed
+// the mark (done, or her target has moved on), leaves the zone after being
+// in it, or passes head to wind (Rule 13 tacking flag). Once both boats are
+// out of the zone (or not leaving the same mark) the pair resets, so the
+// next rounding freezes afresh.
+//
+// Effect. Rule 18 does not change right of way. Approximation of "sailing
+// within the mark-room she is entitled to": while the entitlement is live
+// (she is in the zone, has not rounded), any contact is charged to the boat
+// that owes mark-room, and the entitled boat is exonerated (RRS 21) for a
+// Section A breach. In the resolver this is the `sectionC` layer: when the
+// entitled boat is the Section A keep-clear boat (or there is no single
+// Section A decision), Rule 18 is decisive: it inhibits that Section A rule
+// (struck through in the label stack) and becomes the final rule, so fault
+// goes to the boat owing room. When Section A already favours the entitled
+// boat, 18 is shown but not decisive. isMarkRoomEntitled(boat) also lets
+// mark-touch.js exonerate her rule 31 touches while entitled.
+//
+// Approximations: the freeze happens on the first step the pair is inside
+// the 12 m pair gate with one boat in the zone (pairs further apart are not
+// evaluated); "rounding" a gate mark ends at the gate line.
+
 export const BOAT_LENGTH_M = 4;
+export const RULE18_ZONE_M = 3 * BOAT_LENGTH_M;
+// 18.1(a): both boats are beating when |TWA| is below this.
+export const RULE18_BEAT_TWA_DEG = 90;
 // Shared Section A gate. The name is historical; Rules 10, 11, 12, and 13 all use it.
 export const RULE10_INTEREST_RANGE_M = 3 * BOAT_LENGTH_M;
 // Rule 13 ends once |true wind angle| reaches this on the tack she just
@@ -868,6 +917,115 @@ function evaluateRule15(ctx, state) {
   };
 }
 
+function hullDistanceTo(boat, p) {
+  const hull = hullVerticesWorld(boat);
+  if (!hull.length) return Math.hypot(boat.x - p.x, boat.y - p.y);
+  let d = Infinity;
+  for (let i = 0; i < hull.length; i++) {
+    const a = hull[i];
+    const b = hull[(i + 1) % hull.length];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const l2 = dx * dx + dy * dy;
+    let t = l2 > 0 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    d = Math.min(d, Math.hypot(p.x - a.x - dx * t, p.y - a.y - dy * t));
+  }
+  return d;
+}
+
+const markRoomEntitled = new Set();
+
+// True while `boat` holds a live Rule 18.2 entitlement in some pair (updated
+// by evaluateAllPairs). mark-touch.js exonerates her rule 31 touches then.
+export function isMarkRoomEntitled(boat) {
+  return markRoomEntitled.has(boat);
+}
+
+// Rule 18 for one pair; state is the pair's '18' slot. See the header.
+function evaluateRule18(ctx, state) {
+  const markFor = ctx.markFor;
+  const A = ctx.boatA;
+  const B = ctx.boatB;
+  if (typeof markFor !== 'function') return null;
+  const mA = markFor(A);
+  const mB = markFor(B);
+  const same = !!(mA && mB && mA.key === mB.key);
+  let applies = same;
+  if (applies) {
+    const sA = windSample(ctx, A);
+    const sB = windSample(ctx, B);
+    if (sA.tack && sB.tack && sA.tack !== sB.tack && sA.from !== null && sB.from !== null) {
+      const twaA = Math.abs(trueWindAngleDeg(A.hull_angle, sA.from));
+      const twaB = Math.abs(trueWindAngleDeg(B.hull_angle, sB.from));
+      if (twaA < RULE18_BEAT_TWA_DEG && twaB < RULE18_BEAT_TWA_DEG) applies = false;
+    }
+  }
+  const at = same ? mA.at : null;
+  const inA = same && hullDistanceTo(A, at) <= RULE18_ZONE_M;
+  const inB = same && hullDistanceTo(B, at) <= RULE18_ZONE_M;
+  if (!applies || (!inA && !inB)) {
+    // Out of the zone or not the same mark: forget, so the next rounding
+    // freezes afresh.
+    for (const k of Object.keys(state)) delete state[k];
+    return null;
+  }
+  if (!state.frozen) {
+    state.frozen = true;
+    state.markKey = mA.key;
+    const geo = pairGeometry(ctx);
+    if (!geo || geo.mutualClearAstern) {
+      state.entitled = null;
+    } else if (geo.overlapped) {
+      // Inside: further toward the mark across their course. f is the mean
+      // course; off = signed offset of the mark from each boat's course line
+      // (left positive). On the side the mark is to be left on, the boat
+      // with the smaller offset is inside.
+      const fa = headingForward(A.hull_angle) || { x: 0, y: 1 };
+      const fb = headingForward(B.hull_angle) || fa;
+      let fx = fa.x + fb.x;
+      let fy = fa.y + fb.y;
+      const fl = Math.hypot(fx, fy);
+      if (fl < 1e-9) { fx = fa.x; fy = fa.y; } else { fx /= fl; fy /= fl; }
+      const off = (b) => fx * (at.y - b.y) - fy * (at.x - b.x);
+      // Required side when the provider gives it (+1: mark to port, on
+      // her left), else the side the mark is on from the pair.
+      const side = mA.side === 1 || mA.side === -1 ? mA.side : (Math.sign(off(A) + off(B)) || 1);
+      state.entitled = off(A) * side <= off(B) * side ? A : B;
+      state.owes = state.entitled === A ? B : A;
+      state.basis = 'overlapped';
+    } else {
+      state.entitled = geo.clearAhead;
+      state.owes = geo.clearAstern;
+      state.basis = 'clear ahead';
+    }
+    state.entitledEntered = false;
+    state.ended = !state.entitled;
+  }
+  if (state.ended || !state.entitled) return null;
+  const ent = state.entitled;
+  const entMark = ent === A ? mA : mB;
+  const entIn = ent === A ? inA : inB;
+  if (entIn) state.entitledEntered = true;
+  if (!entMark || entMark.key !== state.markKey || entMark.done || (state.entitledEntered && !entIn) || isTacking(ent)) {
+    state.ended = true;
+    return null;
+  }
+  const secA = ctx.sectionA && ctx.sectionA.final;
+  const decisive = !secA || !!secA.bothGiveWay || secA.giveWay === ent;
+  return {
+    id: '18',
+    rule: 'Rule 18.2 mark-room',
+    applies: true,
+    rightOfWay: ent,
+    giveWay: state.owes,
+    decisive,
+    basis: state.basis,
+    blockedId: decisive && secA ? secA.id : null,
+    label: 'Rule 18.2 mark-room',
+  };
+}
+
 // `rank` is the hierarchy: a higher rank can be the final rule while a lower
 // one stays applicable but inhibited. Section A shares rank 0. Registry order
 // is the tie-break inside a rank (earlier wins) and the order of `applicable`.
@@ -909,6 +1067,17 @@ export const ruleRegistry = [
       return result.blockedId ? [result.blockedId] : [];
     },
     evaluate: evaluateRule15,
+  },
+  {
+    id: '18',
+    layer: 'sectionC',
+    rank: 2,
+    // Decisive only: the Section A rule that would make the entitled boat
+    // keep clear does not decide fault while she has mark-room.
+    inhibits(result) {
+      return result.decisive && result.blockedId ? [result.blockedId] : [];
+    },
+    evaluate: evaluateRule18,
   },
 ];
 
@@ -988,6 +1157,8 @@ export function resolveRuleOutputs(results) {
       boats: result.boats || null,
       blockedId: result.blockedId || null,
       blockedRule: result.blockedRule || null,
+      decisive: result.decisive !== false,
+      basis: result.basis || null,
       progress: result.progress,
       label: result.label || result.rule,
       inhibited: inhibitedBy.has(result.id),
@@ -1001,6 +1172,8 @@ export function resolveRuleOutputs(results) {
   for (let i = 0; i < applicable.length; i++) {
     const item = applicable[i];
     if (item.inhibited) continue;
+    // A Section C rule that Section A already agrees with is shown, not final.
+    if (item.layer === 'sectionC' && !item.decisive) continue;
     const index = registryIndex(item.id);
     if (item.rank > bestRank || (item.rank === bestRank && index < bestIndex)) {
       final = item;
@@ -1107,6 +1280,8 @@ function guidesFor(resolution) {
       rightOfWay: final.rightOfWay,
       giveWay: final.giveWay,
     }, final.blockedRule, final.progress);
+  } else if (final.id === '18') {
+    guides = obligationOverlay({ rule: final.rule, rightOfWay: final.rightOfWay, giveWay: final.giveWay });
   } else {
     guides = obligationOverlay({
       rule: final.rule,
@@ -1141,13 +1316,17 @@ function ruleState(slot, id) {
 // overlay call (the headless checks) keeps the same memory as before. The
 // all-pairs step does not call this for pairs outside the gate; it drops
 // their state instead.
-function evaluatePair(boatA, boatB, getWind, clearance, simTime, slot) {
+function evaluatePair(boatA, boatB, getWind, clearance, simTime, slot, markFor) {
   const inRange = Number.isFinite(clearance) && clearance <= RULE10_INTEREST_RANGE_M;
-  const ctx = { boatA, boatB, getWind, clearance, simTime, sectionA: null };
+  const ctx = { boatA, boatB, getWind, clearance, simTime, sectionA: null, markFor };
   const outputs = inRange ? sectionAOutputs(ctx) : [];
   ctx.sectionA = resolveRuleOutputs(outputs);
   const rule15 = evaluateRule15(ctx, ruleState(slot, '15'));
   if (rule15) outputs.push(rule15);
+  if (inRange) {
+    const rule18 = evaluateRule18(ctx, ruleState(slot, '18'));
+    if (rule18) outputs.push(rule18);
+  }
   const resolution = resolveRuleOutputs(outputs);
   resolution.clearance = clearance;
   resolution.boatA = boatA;
@@ -1193,8 +1372,11 @@ export function pairRuleState(boatA, boatB, ruleId) {
 
 // Every unordered pair inside the 12 m gate. Pair state for a pair that is
 // outside the gate, or that names a boat not in `boats`, is deleted.
-export function evaluateAllPairs(boats, getWind, simTime) {
+// opts.markFor: Rule 18 mark provider (see the Rule 18 header).
+export function evaluateAllPairs(boats, getWind, simTime, opts) {
   const list = boats || [];
+  const markFor = opts && typeof opts.markFor === 'function' ? opts.markFor : null;
+  markRoomEntitled.clear();
   const live = new Set();
   for (let i = 0; i < list.length; i++) {
     if (list[i]) live.add(boatId(list[i]));
@@ -1212,8 +1394,10 @@ export function evaluateAllPairs(boats, getWind, simTime) {
       if (!(Number.isFinite(clearance) && clearance <= RULE10_INTEREST_RANGE_M)) continue;
       const key = pairKey(boatA, boatB);
       seen.add(key);
-      const resolution = evaluatePair(boatA, boatB, getWind, clearance, simTime, pairSlot(key));
+      const resolution = evaluatePair(boatA, boatB, getWind, clearance, simTime, pairSlot(key), markFor);
       resolution.pairKey = key;
+      resolution.markRoom = resolution.applicable.find((r) => r.id === '18') || null;
+      if (resolution.markRoom) markRoomEntitled.add(resolution.markRoom.rightOfWay);
       resolutions.push(resolution);
     }
   }
@@ -1385,6 +1569,13 @@ export function recordContacts(resolutions, simTime, boats) {
           x: point.x,
           y: point.y,
         };
+        // Rule 18.2 decided it: the boat owing mark-room is at fault, the
+        // entitled boat is exonerated (RRS 21) for her Section A breach.
+        if (resolution.final.id === '18') {
+          incident.exonerated = [resolution.final.rightOfWay];
+          incident.reason = 'Rule 18.2: did not give mark-room';
+          incident.label = 'Rule 18.2 · mark-room';
+        }
         incidents.push(incident);
         contactFlashes.push({ x: point.x, y: point.y, startedAtMs: now });
         chargePendingPenalty(resolution.faultBoat, incident);
@@ -1641,6 +1832,26 @@ export function penaltyAutopilotRemainingDeg(boat) {
   const turn = boat && boat.penalty_turn;
   if (!turn || !Number.isFinite(turn.progressDeg)) return null;
   return Math.max(0, 360 - turn.dir * turn.progressDeg);
+}
+
+// Small labels while Rule 18.2 is live for a pair: "GETS MARK-ROOM" on the
+// entitled boat, "GIVES MARK-ROOM → boat n" on the other (n = index in
+// `boats`, as in the info panel).
+export function markRoomGuides(resolutions, boats) {
+  const g = [];
+  const list = boats || [];
+  for (const r of resolutions || []) {
+    const m = r && r.markRoom;
+    if (!m || !m.rightOfWay || !m.giveWay) continue;
+    const ent = m.rightOfWay;
+    const owes = m.giveWay;
+    const n = list.indexOf(ent);
+    // Stacked above the higher boat so the two badges never overlap.
+    const top = Math.max(ent.y, owes.y) + 3.3;
+    g.push({ type: 'label', badge: true, x: ent.x, y: top + 1.3, lines: [{ text: 'GETS MARK-ROOM', role: 'cleared', id: 'mr' }] });
+    g.push({ type: 'label', badge: true, x: owes.x, y: top, lines: [{ text: 'GIVES MARK-ROOM' + (n >= 0 ? ' → boat ' + n : ''), role: 'turn', id: 'mr' }] });
+  }
+  return g;
 }
 
 // "FAULT", "FAULT x2"; with the oldest pending penalty's reason when it has
