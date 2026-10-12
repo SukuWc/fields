@@ -396,6 +396,56 @@ function updateGate(r, t, x, y) {
   else if (!t.inside) t.released = true;
 }
 
+// Rule 18 mark provider: the mark this boat is rounding or passing now
+// (the highlighted rounding, progress.display), as { key, at, done, gate,
+// side } (side +1: leave it to port, −1: to starboard; a gate mark is left
+// on the side away from the other gate mark).
+// For a gate the key is the gate mark nearer to where her course line meets
+// the gate line (her position if that is behind her): the mark she is
+// heading for. Each gate mark is its own mark for Rule 18. done: rounded (midpoint ray) or
+// gate passed. Null before a valid start.
+export function markRoomTarget(course, boat) {
+  if (!course || !boat) return null;
+  const p = course.progressFor(boat);
+  if (p.waitingForStart) return null;
+  const k = p.display;
+  const el = course.marks[k % course.length];
+  const done = p.isRounded(k);
+  if (isGate(el)) {
+    const [a, b] = el.gate;
+    const pa = anchorOf(a);
+    const pb = anchorOf(b);
+    // Where her course line meets the gate line (if ahead of her); else her
+    // position. The gate mark nearer that point is the one she is heading for.
+    let ref = { x: boat.x, y: boat.y };
+    const h = boat.hull_angle;
+    if (Number.isFinite(h)) {
+      const fx = Math.sin(h);
+      const fy = -Math.cos(h);
+      const gx = pb.x - pa.x;
+      const gy = pb.y - pa.y;
+      const den = fx * gy - fy * gx;
+      if (Math.abs(den) > 1e-9) {
+        const t = ((pa.x - boat.x) * gy - (pa.y - boat.y) * gx) / den;
+        if (t > 0) ref = { x: boat.x + fx * t, y: boat.y + fy * t };
+      }
+    }
+    const nearA = Math.hypot(ref.x - pa.x, ref.y - pa.y) <= Math.hypot(ref.x - pb.x, ref.y - pb.y);
+    const near = nearA ? a : b;
+    const pn = nearA ? pa : pb;
+    const po = nearA ? pb : pa;
+    // She passes between: this mark is on the side away from the other one.
+    let side;
+    if (Number.isFinite(h)) {
+      const fx = Math.sin(h);
+      const fy = -Math.cos(h);
+      side = Math.sign(fx * (pn.y - po.y) - fy * (pn.x - po.x)) || undefined;
+    }
+    return { key: near, at: pn, done, gate: true, side };
+  }
+  return { key: el, at: anchorOf(el), done, gate: false, side: course.sides[k % course.length] };
+}
+
 // ---- Drawing ----
 
 export const COURSE_LINE_COLOR = 0x6f8fb3;
@@ -537,6 +587,33 @@ export const WINDWARD_LEEWARD_LAYOUT = {
   start: { x: 26, y: -17 },
   startHeading: 5 * Math.PI / 4,
 };
+
+// Scenario 15 layout (Rule 18.2 at a leeward gate, wind from +Y). The gate
+// of scenario 13; the course is [gate, windward mark], so the run to the
+// gate is the first leg. Two boats on starboard on the run (heading 30° west
+// of south), overlapped, 3 m apart abeam, 24 m from the west gate mark,
+// aimed 2.5 m inside it. The inside boat (nearer the mark, boat 0) is the
+// windward boat, so Rule 11 makes her keep clear; the outside leeward boat
+// (boat 1) steers 4° lower toward her and squeezes her about 5 m before the
+// gate, inside the zone, where Rule 18.2 gives the inside boat mark-room.
+export const MARK_ROOM_LAYOUT = (() => {
+  const gate = WINDWARD_LEEWARD_LAYOUT.gate;
+  const D = Math.PI / 180;
+  const hIn = -30 * D;
+  const hOut = -34 * D;
+  const fx = Math.sin(hIn);
+  const fy = -Math.cos(hIn);
+  const aim = { x: gate[0].x + 2.5, y: gate[0].y };
+  const inside = { x: aim.x - fx * 24, y: aim.y - fy * 24 };
+  const outside = { x: inside.x - fy * 3, y: inside.y + fx * 3 };
+  return {
+    gate,
+    windward: WINDWARD_LEEWARD_LAYOUT.windward,
+    inside: { ...inside, heading: hIn },
+    outside: { ...outside, heading: hOut },
+    start: { x: (inside.x + outside.x) / 2, y: (inside.y + outside.y) / 2 },
+  };
+})();
 
 // Scenario 12 layout (wind from +Y). Equilateral triangle, 45 m legs, the
 // largest that fits the 75 m map with room to round inside the walls (±35.5)
