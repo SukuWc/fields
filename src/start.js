@@ -132,7 +132,9 @@ export class StartSequence {
     this.line = line;
     this.timings = { ...RRS_START_TIMINGS, ...(options.timings || {}) };
     this.lead = options.lead || 0;
-    this.clock = -(this.timings.warning + this.lead);
+    // options.clock: start the clock there instead (scenarios that begin
+    // after the gun, with seedStarted).
+    this.clock = Number.isFinite(options.clock) ? options.clock : -(this.timings.warning + this.lead);
     this.prevClock = this.clock;
     this.states = new Map();
     this.signalClock = -Infinity;
@@ -193,6 +195,17 @@ export class StartSequence {
       s = { gunChecked: false, ocs: false, wasOcs: false, started: false, startTime: null, lastBowSide: null, lastBow: null, lastClock: null };
       this.states.set(boat, s);
     }
+    return s;
+  }
+
+  // Scenario helper: record a valid start for the boat at startTime (race
+  // clock seconds) without sailing it.
+  seedStarted(boat, startTime = 0) {
+    const s = this.stateFor(boat);
+    s.gunChecked = true;
+    s.ocs = false;
+    s.started = true;
+    s.startTime = startTime;
     return s;
   }
 

@@ -89,6 +89,15 @@
 // for a valid start: until seq.hasStarted(boat), update() does nothing, no
 // mark is highlighted (the start line is the target, drawn by start.js) and
 // the text reads "Course: start first". Courses without one start at once.
+//
+// Laps and finish. options.laps (default Infinity: the course loops) caps
+// the roundings at laps·N. Once all are done, progress.courseComplete is
+// true, the target stops there and nothing past it is tracked. With
+// options.finish (finish.js FinishLine) the finish line is then the next
+// step: courseGuides highlights it (NEXT FINISH) once the last rounding is
+// released and courseText reads "Course: finish". finish.js decides the
+// finish itself. progress.seed(k) puts a boat straight at rounding k (all
+// earlier ones done) for scenarios that start partway round.
 
 import { BOAT_LENGTH_M } from './rules.js';
 
@@ -190,7 +199,14 @@ export class Course {
     this.sides = marks.map((_, i) => (options.sides && options.sides[i]) || PORT);
     this.start = options.start || anchorOf(marks[marks.length - 1]);
     this.startSequence = options.startSequence || null;
+    this.laps = Number.isFinite(options.laps) && options.laps >= 1 ? Math.floor(options.laps) : Infinity;
+    this.finish = options.finish || null;
     this.progress = new WeakMap();
+  }
+
+  // Roundings in the whole course (laps · marks), Infinity when it loops.
+  get totalRoundings() {
+    return this.laps * this.marks.length;
   }
 
   get length() {
@@ -255,7 +271,31 @@ export class CourseProgress {
   }
 
   get lap() {
-    return Math.floor(this.target / this.course.length) + 1;
+    const lap = Math.floor(this.target / this.course.length) + 1;
+    return Math.min(lap, this.course.laps);
+  }
+
+  // Every rounding of every lap done (never, on a looping course).
+  get courseComplete() {
+    return !this.waitingForStart && this.target >= this.course.totalRoundings;
+  }
+
+  // True when the finish line is the highlighted next step.
+  get finishNext() {
+    return !!this.course.finish && this.courseComplete && this.display >= this.course.totalRoundings;
+  }
+
+  // Scenario helper: put the boat at rounding k (0-based, k = lap·N + i) as
+  // if every earlier rounding was done and released. k = totalRoundings:
+  // the course is complete and the finish is next.
+  seed(k) {
+    const total = this.course.totalRoundings;
+    const kk = Math.max(0, Math.min(Math.floor(k), total));
+    this.target = kk;
+    this.display = kk;
+    this.floor = kk;
+    this.trackers.clear();
+    return this;
   }
 
   get lapsCompleted() {
@@ -294,7 +334,8 @@ export class CourseProgress {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return this;
     if (this.waitingForStart) return this;
     const boat = { x, y };
-    for (let k = this.floor; k <= this.target; k++) {
+    const last = this.course.totalRoundings - 1;
+    for (let k = this.floor; k <= Math.min(this.target, last); k++) {
       const r = this.course.rounding(k);
       const t = this.tracker(k);
       if (r.gate) {
@@ -327,7 +368,7 @@ export class CourseProgress {
     let target = this.target;
     for (let k = this.floor; k <= this.target; k++) {
       if (!this.isRounded(k)) { target = k; break; }
-      if (k === this.target) target = k + 1;
+      if (k === this.target) target = Math.min(k + 1, last + 1);
     }
     if (target < this.target) {
       // Moved back: forget counters past the new target; they start afresh.
@@ -351,6 +392,7 @@ export class CourseProgress {
   // Rounding k (default: the highlighted one) with its live counter, for
   // drawing and text. rounded: swept past the midpoint ray.
   view(k = this.display) {
+    if (k >= this.course.totalRoundings) return { k, index: -1, finish: true, rounded: false, lap: this.lap, lapsCompleted: this.lapsCompleted };
     const r = this.course.rounding(k);
     const t = this.trackers.get(k) || this.tracker(k);
     return { ...r, swept: t.swept, crossings: t.crossings, entered: t.entered, distance: t.distance, rounded: this.isRounded(k), lap: this.lap, lapsCompleted: this.lapsCompleted };
@@ -363,6 +405,10 @@ export class CourseProgress {
   roundedMarks() {
     const n = this.course.length;
     const out = new Set();
+    if (this.courseComplete) {
+      for (let i = 0; i < n; i++) out.add(i);
+      return out;
+    }
     for (let k = this.target - (this.target % n); k < this.target; k++) out.add(k % n);
     return out;
   }
@@ -409,6 +455,7 @@ export function markRoomTarget(course, boat) {
   const p = course.progressFor(boat);
   if (p.waitingForStart) return null;
   const k = p.display;
+  if (k >= course.totalRoundings) return null;
   const el = course.marks[k % course.length];
   const done = p.isRounded(k);
   if (isGate(el)) {
@@ -498,7 +545,14 @@ export function courseGuides(course, progress, nowMs = 0) {
   const waiting = progress.waitingForStart;
   const view = waiting ? { index: -1 } : progress.view();
 
-  for (let i = 0; i < n; i++) g.push(...dashedLine(anchors[i], anchors[(i + 1) % n], COURSE_LINE_COLOR, 0.45));
+  // Course line; with a finish on a set number of laps the last leg goes to
+  // the finish line instead of looping back to mark 1.
+  const fin = course.finish;
+  const finMid = fin ? fin.mid : null;
+  for (let i = 0; i < n; i++) {
+    if (fin && i === n - 1 && Number.isFinite(course.laps)) g.push(...dashedLine(anchors[i], finMid, COURSE_LINE_COLOR, 0.45));
+    else g.push(...dashedLine(anchors[i], anchors[(i + 1) % n], COURSE_LINE_COLOR, 0.45));
+  }
   if (progress.display === 0 && !waiting) g.push(...dashedLine(course.start, anchors[0], COURSE_LINE_COLOR, 0.3, 1, 2));
 
   const rounded = progress.roundedMarks();
@@ -569,10 +623,12 @@ function gateGuides(gate, i, view, passed, nowMs) {
 // waiting for, and the lap.
 export function courseText(progress) {
   if (progress.waitingForStart) return 'Course: start first, then mark 1';
+  if (progress.courseComplete) return progress.course.finish ? 'Course: finish' : 'Course: complete';
+  const laps = Number.isFinite(progress.course.laps) ? '/' + progress.course.laps : '';
   const i = progress.targetIndex;
-  if (isGate(progress.course.marks[i])) return 'Course: next gate ' + (i + 1) + ' · lap ' + progress.lap;
+  if (isGate(progress.course.marks[i])) return 'Course: next gate ' + (i + 1) + ' · lap ' + progress.lap + laps;
   const side = progress.course.sides[i] === PORT ? 'port' : 'starboard';
-  return 'Course: next mark ' + (i + 1) + ' (' + side + ') · lap ' + progress.lap;
+  return 'Course: next mark ' + (i + 1) + ' (' + side + ') · lap ' + progress.lap + laps;
 }
 
 // Scenario 13 layout (wind from +Y): windward-leeward. Element 1 is a

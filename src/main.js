@@ -6,9 +6,10 @@ import { trackBoats, resetTracking } from './domainTrack.js';
 import { Map } from './map.js';
 import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera, setFluidPlaneSize } from './renderer.js';
-import { setupControls, getPlayers, getMarks, getCourse, getStartSequence, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
+import { setupControls, getPlayers, getMarks, getCourse, getStartSequence, getRaceResults, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
 import { courseGuides, courseText, markRoomTarget } from './course.js';
+import { finishGuides, resultsHtml } from './finish.js';
 import { startGuides, startHudHtml, startStatusText } from './start.js';
 import { recordMarkTouches, markTouchGuides } from './mark-touch.js';
 import { setupPerfOverlay, isPerfOverlayOn, recordFieldStep } from './perf-overlay.js';
@@ -226,6 +227,24 @@ runner.start((simDt) => {
       guides.push(...courseGuides(course, progress, performance.now()));
       infoEl.innerHTML += courseText(progress) + '<br>';
     }
+  }
+
+  // Finish (finish.js): after course progress, bow crossings of the finish
+  // line by boats with a complete course are recorded on the race clock
+  // (time since the gun, or since the scenario start without a sequence).
+  const results = getRaceResults();
+  const resultsEl = document.getElementById('finish_results');
+  if (course && course.finish && results) {
+    const boats = getPlayers();
+    const clock = startSeq ? startSeq.clock : results.relClock(rulesTime);
+    if (stepped) results.update(boats, clock);
+    guides.push(...finishGuides(course, boats[0] ? course.progressFor(boats[0]) : null, results, boats, clock, performance.now()));
+    if (resultsEl) {
+      resultsEl.hidden = false;
+      resultsEl.innerHTML = resultsHtml(results);
+    }
+  } else if (resultsEl && !resultsEl.hidden) {
+    resultsEl.hidden = true;
   }
 
   // Rules overlay. map.get_wind follows the active provider, so the same

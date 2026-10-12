@@ -137,6 +137,24 @@
         transition: background 0.25s, border-color 0.25s;
       }
       #start_hud[hidden] { display: none; }
+      #finish_results {
+        position: absolute;
+        right: 12px;
+        bottom: 12px;
+        z-index: 100;
+        color: #eef6ff;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 13px;
+        background: rgba(10, 20, 30, 0.78);
+        border: 1px solid rgba(150, 200, 220, 0.45);
+        border-radius: 6px;
+        padding: 6px 10px;
+        pointer-events: none;
+        white-space: nowrap;
+      }
+      #finish_results[hidden] { display: none; }
+      #finish_results .finish-title { font-weight: 700; margin-bottom: 2px; }
+      #finish_results .finish-row.pen { color: #ffd27a; }
       #start_hud.flash { background: rgba(255, 210, 122, 0.55); border-color: #ffd27a; }
       #start_hud .start-clock { font-size: 34px; font-weight: 700; line-height: 1.1; }
       #start_hud .start-signal { font-size: 14px; margin-top: 2px; }
@@ -537,6 +555,7 @@
     <div id="rule_labels"></div>
     <div id="devmode_banner" title="The angle is where the wind comes from. The arrow points downwind, the way it blows.">DEV MODE · fluid off · wind <span id="dev_wind_label"></span><span id="dev_wind_arrow">➤</span></div>
     <div id="start_hud" hidden></div>
+    <div id="finish_results" hidden></div>
     <pre id="perf_overlay_hud"></pre>
     <div id="fps"></div>
     <div id="touch_controls" hidden aria-label="Boat 1 touch controls">
@@ -593,7 +612,7 @@
       <input id="windSpeed" autocomplete="off" type="number" min="0" max="40" step="1" value="15"></label>
       <br>
       <span class="setting-row setting-field">Select Scenario<br>
-      <input id="scenario_selector" autocomplete="off" type="number" min="0" max="15" value="0" style="width: 50px;" title="Scenario 6: Rule 13 tack. Scenario 7: leeward boat tacks into a Rule 10 collision. Scenario 8: Rule 15 overlap. Scenario 9: contact during Rule 15. Scenario 10: penalty turn, a tack and a gybe in a row (Q counter-clockwise, E clockwise autopilot circle). Scenario 11: anchored mark buoy, boat hits it. Scenario 12: anticlockwise triangle course, marks to port, next mark highlighted. Scenario 13: windward mark and leeward gate. Scenario 14: start sequence countdown, OCS individual recall, then windward mark and leeward gate. Scenario 15: Rule 18.2 mark-room, two boats overlapped at the leeward gate. Use with Dev mode.">
+      <input id="scenario_selector" autocomplete="off" type="number" min="0" max="16" value="0" style="width: 50px;" title="Scenario 6: Rule 13 tack. Scenario 7: leeward boat tacks into a Rule 10 collision. Scenario 8: Rule 15 overlap. Scenario 9: contact during Rule 15. Scenario 10: penalty turn, a tack and a gybe in a row (Q counter-clockwise, E clockwise autopilot circle). Scenario 11: anchored mark buoy, boat hits it. Scenario 12: anticlockwise triangle course, marks to port, next mark highlighted. Scenario 13: windward mark and leeward gate. Scenario 14: start sequence countdown, OCS individual recall, then windward mark and leeward gate. Scenario 15: Rule 18.2 mark-room, two boats overlapped at the leeward gate. Scenario 16: finish line and results list, unserved penalty becomes a time penalty. Use with Dev mode.">
       <input id="scenario_restart" type="button" min="0" max="10" style="width: 50px;" value="Restart"></span>
     
       <div id="wind_info"></div>
