@@ -74,6 +74,17 @@ Each `Boat` instance:
 - Has an **autopilot** with heading PID-style control (`autopilot_heading`, `autopilot_active`)
 - Queries `map.get_wind(x, y)` each step. That is the only wind seam: it returns `{ speed, direction, vx, vy }` from whichever provider is active (`FluidWind` or `ConstantWind`)
 
+### Simulation resolution (`#simRes`, `?simRes=2|4`)
+
+Settings select: Default (1 root cell = 1 world unit), x2 coarser (2 units), x4 coarser (4 units). A change calls `bm.setResolution(1/k)` (root lattice rebuilt in place, same `bm` object everywhere), `resetTracking` (drops AMR windows and field-island state), resizes the field plane to `bm.latticeWorldWidth` (the map rounded up to whole cells: 76 units at x2/x4), and clicks Restart.
+
+- **Scaling**: lattice U (= UI wind / 100) and ν stay fixed. The root grid takes `bm.stepsPerFrame = resolution` steps per frame (`advance_frame`, one step every 2nd / 4th frame). Δx and Δt both grow by k, so physical velocity, TWS, `get_field_velocity` units and advection speed in world units per frame are unchanged, and Mach / stability margin are the Default ones. Tradeoff: physical viscosity ν·Δx²/Δt is k× higher (Reynolds k× lower): smoother, shorter wakes; the field also updates every k frames.
+- **Viscosity**: `bm.matchedNu = 0.025·resolution` is Default's physical ν on a k-unit cell. Level 1 builds ω_f from it (Eq. 24), so the boat stack and field islands run at Default's ω for their cell size. The root keeps ν_lat ≥ `ROOT_NU_FLOOR` (0.025): plain BGK at 0.0125 diverged on the x2 barrier at wind 25. So only the unrefined root stays k× more viscous; Eq. 29/30 (τ_f/2τ_c) maps strain rate across that jump.
+- **Sail**: lattice momentum per frame is `SAIL_LATTICE_COUPLING × resolution²` (a root cell holds k² world units), so physical momentum per frame matches. Kicks on non-stepping frames stay on the populations / `pendingInjections`.
+- **AMR**: the boat stack always reaches 1/8-unit cells. `amrParams(bm).levels` is the Default three (cells ½ / ¼ / ⅛, R 8 / 4 / 2 world units) preceded by log2(k) outer rings: x2 adds cell 1, R 12; x4 adds cell 2, R 20 and cell 1, R 12 (4 own cells of buffer each, window half R + 12, cap ≈ disk + 60 %). Every level is a disk floor plus curl growth/erosion inside its parent's mask; `trackOne` nests them in a loop. Field islands stay one level below the root. Curl is normalised by world spacing; hold, seed size and caps scale with k; windows may slide up to k cells per tracking call (tracking runs on stepping frames). Texture oversampling is 8k so the finest cell keeps one texel. Default values are the original constants.
+- **Sampling**: on a coarse grid `get_field_velocity` is bilinear in the continuous cell coordinate; Default keeps the original lookup.
+- Tests: `test/sim-res.test.mjs` (harness in `scripts/sim-res-harness.mjs`); perf table: `node --import ./test/register.mjs scripts/sim-res-check.mjs`.
+
 ### Wind seam (`wind.js`, `map.js`)
 
 Boats never sample the lattice. `Map.get_wind(x, y)` delegates to the active provider:
@@ -124,3 +135,4 @@ The LBM implementation is kept as close as possible to the Lagrava paper. Follow
 ### Visualization Modes
 
 The `plotSelect` dropdown controls what the `DataTexture` displays: density, x-velocity, y-velocity, speed, or curl. Contrast and mirror adjustments are applied at render time in `boltzmann.js`.
+- **Overlap sync**: after every root step, `Boltzmann._syncBoatOverlaps()` makes same-depth boat grids that overlap share one flow. Coincident fluid nodes map through an integer lattice offset. The owner is the grid that has its own finer child at that node; if neither or both do, the later boat owns. The other grid copies the owner's populations and macros, and barrier cells are skipped. With one boat it does nothing, so single-boat results are bit-identical. `bm.syncOverlaps=false` turns it off.

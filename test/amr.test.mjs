@@ -1327,7 +1327,10 @@ function maskShare(a, b) {
 		leeTwa: lee.twa, windwardTwa: windward.twa,
 	};
 	check('scenario 1 downwind boat feels the wake',
-		lee.wind_speed < windward.wind_speed - 0.3
+		// 0.3 was set when the two boats' grids did not exchange data and the
+		// leeward grids disagreed with the windward ones (~1.2 TWS). With one
+		// flow in the overlap the gap is ~0.3 (sim-res test: in-wake ~0.44).
+		lee.wind_speed < windward.wind_speed - 0.15
 		&& Math.abs(lee.twa) >= 40 && Math.abs(lee.twa) <= 55
 		&& Math.abs(windward.twa) >= 40 && Math.abs(windward.twa) <= 55,
 		`windward TWS ${windward.wind_speed.toFixed(2)} twa ${windward.twa.toFixed(1)}, lee TWS ${lee.wind_speed.toFixed(2)} twa ${lee.twa.toFixed(1)}`);

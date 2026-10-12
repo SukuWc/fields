@@ -558,6 +558,13 @@
       <br>
       <label class="setting-row"><input id="barrier" autocomplete="off" type="checkbox" title="Circular obstacle at the map centre. Off by default. Check it and set wind speed to about 25 to shed waves that refine on their own, away from the boat.">Barrier</label>
       <br>
+      <label class="setting-row setting-field" title="Root lattice cell size. Default is 1 world unit per cell. x2 / x4 use cells 2 / 4 world units wide and step the field every 2nd / 4th frame: same wind speed and map, much cheaper, smoother (more viscous) wakes. Changing it restarts the scenario. Also ?simRes=2 / ?simRes=4">Simulation resolution<br>
+      <select id="simRes" autocomplete="off">
+        <option value="1" selected>Default</option>
+        <option value="2">x2 coarser</option>
+        <option value="4">x4 coarser</option>
+      </select></label>
+      <br>
       <label class="setting-row"><input id="boat_energy" autocomplete="off" type="checkbox" checked>Boat energy</label>
       <br>
       <label class="setting-row"><input id="show_field" autocomplete="off" type="checkbox">Toggle Field</label>

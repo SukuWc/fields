@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import { Runner } from 'planck-renderer';
 
 import { Boltzmann, unionMaskBorderLines } from './boltzmann.js';
-import { trackBoats } from './domainTrack.js';
+import { trackBoats, resetTracking } from './domainTrack.js';
 import { Map } from './map.js';
 import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
-import { initRenderer, startAnimation, getCamera } from './renderer.js';
+import { initRenderer, startAnimation, getCamera, setFluidPlaneSize } from './renderer.js';
 import { setupControls, getPlayers, getMarks, getCourse, getStartSequence, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
 import { courseGuides, courseText, markRoomTarget } from './course.js';
@@ -33,11 +33,15 @@ const bm_resolution = 1;
 // coarse blocks inside the inner disk). 8 lands each level-3 node on one texel.
 const texture_oversampling = 8;
 
-// Fine domain tracking: half-width in coarse cells. The window steps one cell at a time
-// once the boat is more than SHIFT_THRESHOLD cells from the window center.
-// Sail reaction → lattice momentum. See SAIL_LATTICE_COUPLING. bm_resolution
-// stays in the product so a finer root grid (not the AMR level) still scales.
-const SAIL_EFFICIENCY = SAIL_LATTICE_COUPLING * bm_resolution;
+// Sail reaction → lattice momentum. See SAIL_LATTICE_COUPLING. A root cell
+// holds cellSize² world units of fluid (ρ and lattice u keep their physical
+// scale at every resolution, see Boltzmann.setResolution), so the same
+// physical momentum per frame is SAIL_LATTICE_COUPLING × resolution² in
+// lattice units: 1 at Default, 1/4 at x2, 1/16 at x4. Kicks on frames with no
+// lattice step are kept until the next one, so the per-frame total holds.
+function sailEfficiency() {
+  return SAIL_LATTICE_COUPLING * bm.resolution * bm.resolution;
+}
 
 // Data texture for fluid field visualisation
 const _side1 = texture_oversampling * map_w * bm_resolution;
@@ -62,7 +66,22 @@ map.physics_model_init();
 // The barrier listener has to exist before URL settings dispatch change events.
 initRenderer(map, planeMat);
 document.getElementById('barrier').addEventListener('change', e => bm.setBarriers(e.target.checked));
+setFluidPlaneSize(bm.latticeWorldWidth, bm.latticeWorldHeight);
 setupControls(map, getCamera, bm);
+// Simulation resolution (#simRes, ?simRes=2 / 4). Rebuilds the root lattice
+// in place (every module keeps the same bm), drops the refinement windows,
+// resizes the field plane, and restarts the scenario like the Restart button.
+// Before installUrlSettings so a query value goes through this listener.
+document.getElementById('simRes').addEventListener('change', (e) => {
+  const k = Number(e.target.value);
+  const resolution = k === 2 || k === 4 ? 1 / k : 1;
+  if (resolution === bm.resolution) return;
+  resetTracking(bm, getPlayers());
+  bm.setResolution(resolution);
+  setFluidPlaneSize(bm.latticeWorldWidth, bm.latticeWorldHeight);
+  dataTextureMaterial.needsUpdate = true;
+  document.getElementById('scenario_restart').click();
+});
 // Before installUrlSettings so ?perf=1 turns the overlay on through its change listener.
 setupPerfOverlay(map, bm);
 // Before installUrlSettings: the device default must be the checkbox default.
@@ -152,9 +171,10 @@ runner.start((simDt) => {
     guides.push(...player.graphics_model_render());
 
     if (!map.devMode && document.getElementById('boat_energy').checked) {
+      const eff = sailEfficiency();
       for (const seg of player.getSailSegments()) {
         map.bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1,
-          seg.fx * SAIL_EFFICIENCY, seg.fy * SAIL_EFFICIENCY);
+          seg.fx * eff, seg.fy * eff);
       }
     }
 
@@ -271,7 +291,9 @@ runner.start((simDt) => {
   // island once a small cluster has held). A slide of the parent carries the
   // nested windows. Dev mode leaves the lattice frozen. A NaN body must not
   // be rounded into a domain corner.
-  if (!map.devMode && document.getElementById('amr').checked) trackBoats(bm, getPlayers());
+  // Tracking reads curl, which only changes on a lattice step. On a coarse
+  // setting (one step every 2nd / 4th frame) it runs on the stepping frames.
+  if (!map.devMode && document.getElementById('amr').checked && bm.stepsDueThisFrame() > 0) trackBoats(bm, getPlayers());
 
   // AMR off: a restart that removed a boat would keep drawing a ring.
   // AMR on: trackBoats already installed exactly the live boats, in player order.
@@ -292,8 +314,8 @@ runner.start((simDt) => {
       guides.push({ color: 0x66eeff, type: 'guide', x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2 });
     }
   } else {
-    map.bm.physics_model_step();
-    if (isPerfOverlayOn()) recordFieldStep(map.bm.field_ms);
+    const steps = map.bm.advance_frame();
+    if (steps > 0 && isPerfOverlayOn()) recordFieldStep(map.bm.field_ms);
   }
 
   incrementPhysicsFrame();
