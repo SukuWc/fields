@@ -194,7 +194,7 @@ export class Course {
   // options.sides: per-mark PORT/STARBOARD (default all PORT, a CCW course).
   // options.start: {x, y} the first leg comes from (boat start / start line).
   constructor(marks, options = {}) {
-    if (!marks || marks.length < 2) throw new Error('Course needs at least two marks');
+    if (!marks || marks.length < (options.finish ? 1 : 2)) throw new Error('Course needs at least two marks (one with a finish)');
     this.marks = marks.map(toElement);
     this.sides = marks.map((_, i) => (options.sides && options.sides[i]) || PORT);
     this.start = options.start || anchorOf(marks[marks.length - 1]);
@@ -222,7 +222,8 @@ export class Course {
     const mark = this.marks[i];
     const at = anchorOf(mark);
     const prev = k === 0 ? this.start : anchorOf(this.marks[(i + n - 1) % n]);
-    const next = anchorOf(this.marks[(i + 1) % n]);
+    // The last rounding of a course with a finish leads to the finish line.
+    const next = this.finish && k === this.totalRoundings - 1 ? this.finish.mid : anchorOf(this.marks[(i + 1) % n]);
     if (isGate(mark)) {
       const a = anchorOf(mark.gate[0]);
       const b = anchorOf(mark.gate[1]);
