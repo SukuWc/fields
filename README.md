@@ -42,7 +42,7 @@ Last updated: 2026-10-12
 
 ### 5. Rules engine
 - [x] Primitives: overlap, clear ahead/astern: [#6](https://github.com/SukuWc/fields/pull/6)
-- [ ] Primitives: keep-clear border, zone, mark-room
+- [ ] Primitives: keep-clear border, zone, mark-room (partial: [#35](https://github.com/SukuWc/fields/pull/35) adds the 3-length mark zone and mark-room entitlement)
 - [x] Rule registry, all-pairs evaluation, resolver: [#11](https://github.com/SukuWc/fields/pull/11)
 - [x] Rule 10: [#5](https://github.com/SukuWc/fields/pull/5)
 - [x] Rule 11 and Rule 12: [#6](https://github.com/SukuWc/fields/pull/6)
@@ -51,10 +51,10 @@ Last updated: 2026-10-12
 - [x] Rule 15: [#10](https://github.com/SukuWc/fields/pull/10)
 - [ ] Rule 16.1
 - [x] Start / OCS and individual recall: [#33](https://github.com/SukuWc/fields/pull/33)
-- [ ] Rule 18 (in progress, [#35](https://github.com/SukuWc/fields/pull/35) for Rule 18.2)
+- [ ] Rule 18 (partial: [#35](https://github.com/SukuWc/fields/pull/35) adds Rule 18.1 scope, Rule 18.2 mark-room, and scenario 15; still open: Rules 18.3 and 18.4)
 - [x] Rule 31: [#34](https://github.com/SukuWc/fields/pull/34)
 - [ ] Rule 28
-- [ ] Penalties and exoneration (partial: [#12](https://github.com/SukuWc/fields/pull/12) assigns fault on contact; [#20](https://github.com/SukuWc/fields/pull/20) adds a pending penalty cleared by a tack and a gybe in a row, or a Q/E autopilot circle)
+- [ ] Penalties and exoneration (partial: [#12](https://github.com/SukuWc/fields/pull/12) assigns fault on contact; [#20](https://github.com/SukuWc/fields/pull/20) adds a pending penalty cleared by a tack and a gybe in a row, or a Q/E autopilot circle; [#35](https://github.com/SukuWc/fields/pull/35) exonerates the mark-room boat under Rule 21)
 - [ ] Incident log (partial: [#12](https://github.com/SukuWc/fields/pull/12) stores contact incidents and a FAULT badge)
 - [ ] Rule-stack labels (partial: [#12](https://github.com/SukuWc/fields/pull/12) shows the active rule and inhibited rules)
 
