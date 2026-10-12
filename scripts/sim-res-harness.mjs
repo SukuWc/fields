@@ -95,11 +95,11 @@ export function scenario0(k, { frames = 600, amr = true, energy = true } = {}) {
 // Fleet run: boats [x, y, heading], autopilot on at frame 1, optional
 // tack per boat at a frame. TWS of each boat over the last 100 frames.
 // kick[i] false turns boat i's sail push off (to isolate another boat's wake).
-export function fleet(k, boatsSpec, { frames = 300, kick = null, tacks = {} } = {}) {
+export function fleet(k, boatsSpec, { frames = 300, kick = null, tacks = {}, amr = true, timing = false } = {}) {
 	const { bm, map } = makeWorld(k);
 	const boats = boatsSpec.map(([x, y, h]) => new Boat(map, x, y, h));
 	const tws = boats.map(() => 0);
-	let n = 0, maxU = 0, bad = 0, minGap = Infinity;
+	let n = 0, maxU = 0, bad = 0, minGap = Infinity, fieldMs = 0;
 	for (let f = 0; f < frames; f++) {
 		if (f === 1) boats.forEach(b => b.input_autopilot_enabled_toggle());
 		for (const [i, at] of Object.entries(tacks)) if (f === at) boats[i].input_autopilot_tack_toggle();
@@ -111,16 +111,18 @@ export function fleet(k, boatsSpec, { frames = 300, kick = null, tacks = {} } = 
 				for (const seg of b.getSailSegments()) bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * eff, seg.fy * eff);
 			}
 		});
-		if (bm.stepsDueThisFrame() > 0) trackBoats(bm, boats);
+		const t0 = now();
+		if (amr && bm.stepsDueThisFrame() > 0) trackBoats(bm, boats);
 		bm.advance_frame();
+		if (timing && f >= 50) fieldMs += now() - t0;
 		if (f >= frames - 100) { boats.forEach((b, i) => { tws[i] += b.wind_speed; }); n++; }
-		if (f % 25 === 24) {
+		if (!timing && f % 25 === 24) {
 			const st = fieldStats(bm);
 			maxU = Math.max(maxU, st.maxU); bad += st.bad;
 			minGap = Math.min(minGap, overlapGap(bm));
 		}
 	}
-	return { k, bm, boats, tws: tws.map(t => t / n), maxU, bad, overlapGap: minGap === Infinity ? 0 : -minGap };
+	return { k, bm, boats, tws: tws.map(t => t / n), maxU, bad, msPerFrame: fieldMs / Math.max(1, frames - 50), overlapGap: minGap === Infinity ? 0 : -minGap };
 }
 
 // Largest population mismatch between coincident fluid nodes of two boats'

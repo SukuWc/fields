@@ -314,6 +314,7 @@ function collideAndStream(cells, omega) {
 
 // Lowest root lattice ν kept on a coarse setting. See Boltzmann._build.
 export const ROOT_NU_FLOOR = 0.025;
+export const FAST_MATCHED_NU_FLOOR = 0.0125;
 
 const POP_KEYS = ['f0','fN','fS','fE','fW','fNE','fNW','fSE','fSW'];
 
@@ -2047,6 +2048,14 @@ export class Boltzmann {
 		// so matchedNu = baseNu / (cellSize² · stepsPerFrame): 1/k at x2/x4,
 		// 0.00625 for the 2-unit cell stepped every frame, 0.0052 at 1.2/frame.
 		this.matchedNu = (this.baseNu ?? 0.025) * Math.min(1, 1 / (this.cellSize * this.cellSize * this.stepsPerFrame));
+		// Fast-wind grids run lattice U up to 0.25 on a 2 m cell, so level 1
+		// (1 m cells) would sit at ν_lat 0.0125 (τ 0.5375) for a matched 0.00625
+		// and the barrier diverges at UI wind 50 / 55 (2f / 2f34) once a field
+		// island opens. matchedNu ≥ FAST_MATCHED_NU_FLOOR keeps level 1 at
+		// ν_lat ≥ 0.025, the τ Default's root is proven at, and both modes then
+		// hold lattice U 0.25 like Default. Physically the boat stack is 2× /
+		// 2.4× Default's viscosity. x2 / x4 (steps = resolution) are untouched.
+		if (this.stepsPerFrame > resolution) this.matchedNu = Math.max(this.matchedNu, FAST_MATCHED_NU_FLOOR);
 		this.nu = Math.max(this.matchedNu, Math.min(this.baseNu ?? 0.025, ROOT_NU_FLOOR));
 		if (this.baseOversampling) this.oversampling = Math.round(this.baseOversampling / Math.min(1, resolution));
 		this._stepAcc = 0;

@@ -243,6 +243,36 @@ for (const k of [2, 4]) {
 	}
 }
 
+// --- 8. Fast-wind grids (2 m root cell stepped 1× / 1.2× per frame) and the 150 m map ---
+{
+	const { FluidWind } = await import('../src/wind.js');
+	for (const [mode, steps, vs] of [['2f', 1, 2], ['2f34', 1.2, 2.4]]) {
+		const { bm } = H.makeWorld(mode, 15);
+		let n = 0;
+		for (let f = 0; f < 10; f++) n += bm.advance_frame();
+		const w = new FluidWind(bm).getWind(3, -4);
+		check(`${mode}: ${steps} steps/frame, velScale ${vs}, lattice U = 0.15/${vs}, felt wind 15`,
+			n === Math.floor(10 * steps + 1e-9) && near(bm.velScale, vs, 1e-12) && near(bm.speed, 0.15 / vs, 1e-15)
+			&& near(w.speed, 15, 1e-6) && bm.nu === 0.025 && bm.matchedNu === 0.0125,
+			`steps=${n} U=${bm.speed.toFixed(4)} TWS=${w.speed.toFixed(3)} ν=${bm.nu}/${bm.matchedNu}`);
+		const r = H.scenario0(mode);
+		check(`${mode} scenario 0 holds close-hauled like Default`,
+			r.twa < -45 && r.twa > -54 && r.twaSpread < 3 && r.bs > 1.9 && r.bs < 2.4 && r.bad === 0 && r.finestStep === 0.125,
+			`twa=${r.twa.toFixed(2)} bs=${r.bs.toFixed(3)}`);
+	}
+	for (const [mode, wind] of [['2f', 45], ['2f34', 58]]) {
+		const r = H.barrier(mode, wind, { frames: 1500, amr: true });
+		check(`${mode} barrier at UI wind ${wind} (refine-anywhere) stable for 1500 frames`,
+			r.diverge === null && r.bad === 0 && r.worstU < 0.6 && r.worstDr < 0.3,
+			`max|u|=${r.worstU.toFixed(3)} islands=${r.islands}`);
+	}
+	H.setMapSize(150);
+	const big = H.scenario0('2f', { frames: 300 });
+	H.setMapSize(75);
+	check('150 m map: 2f lattice is 75² cells and scenario 0 runs finite',
+		big.cells === 75 * 75 && big.bad === 0 && Number.isFinite(big.twa), `cells=${big.cells} twa=${big.twa.toFixed(2)}`);
+}
+
 if (failed) {
 	console.error(`${failed} check(s) failed`);
 	process.exit(1);
