@@ -60,6 +60,10 @@ export function nameMarks(course, seq) {
       else el.markName = 'mark ' + (i + 1);
     });
   }
+  if (course && course.finish) {
+    course.finish.committee.markName = 'finish boat';
+    course.finish.pin.markName = 'finish pin';
+  }
   if (seq && seq.line) {
     seq.line.committee.markName = 'RC';
     seq.line.pin.markName = 'pin';

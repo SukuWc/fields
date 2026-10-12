@@ -4,6 +4,7 @@ import { Mark, markMassForBoat } from './mark.js';
 import { Course, Gate, TRIANGLE_COURSE_LAYOUT, WINDWARD_LEEWARD_LAYOUT, MARK_ROOM_LAYOUT } from './course.js';
 import { StartLine, StartSequence, START_COURSE_LAYOUT } from './start.js';
 import { nameMarks, resetMarkTouches } from './mark-touch.js';
+import { FinishLine, RaceResults, FINISH_COURSE_LAYOUT, FINISH_UNSERVED_PENALTY_S } from './finish.js';
 import { chargePendingPenalty, PENALTY_MANEUVER_WINDOW_S, resetContacts } from './rules.js';
 import { range_map } from './utils.js';
 
@@ -17,6 +18,7 @@ let marks = [];
 // Active course (ordered marks + per-boat rounding progress), or null.
 let course = null;
 let startSequence = null;
+let raceResults = null;
 let physics_frame = 0;
 
 let _map, _getCamera, _bm;
@@ -141,6 +143,7 @@ function scenario_clear() {
   marks = [];
   course = null;
   startSequence = null;
+  raceResults = null;
   physics_frame = 0;
   resetContacts();
   resetMarkTouches();
@@ -167,7 +170,7 @@ function renderScenarioCard(scenario) {
     bodyEl.textContent = scenario.description || "";
   } else {
     titleEl.textContent = "No scenario";
-    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 15 each have a description.";
+    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 16 each have a description.";
   }
   card.classList.toggle("collapsed", scenarioCardCollapsed);
   if (toggle) {
@@ -640,6 +643,56 @@ scenarios[15].frames[1] = () => {
   _map.camera_zoom = 30;
 };
 
+// Finish procedure (finish.js FINISH_COURSE_LAYOUT): start line, windward
+// mark, leeward gate, one lap, finish line upwind of the gate. Both boats
+// begin after the gun with the course seeded complete, beating to the
+// finish; boat 1 carries an unserved Rule 31 penalty.
+// Dev mode: ?devmode=1&scenario_selector=16
+scenarios[16] = makeScenario(
+  "Finish line and results",
+  "A one-lap race (start, windward mark 1, leeward gate 2, then the finish line) picked up 3 minutes after the gun: both boats have started and rounded everything, and are beating from the gate to the finish line (dashed, NEXT FINISH, between the finish boat east and the pin west). A boat finishes when her bow crosses the line from the course side after completing the whole course; crossing earlier, backward or outside the ends does not count. The results list (bottom right) shows position, boat, elapsed time since the gun and any penalty. Boat 1 still owes a penalty for touching gate 2 (FAULT badge) and does not take it: a penalty must be taken before finishing (RRS 44.2), so if she crosses with it unserved she gets +" + FINISH_UNSERVED_PENALTY_S + " s per penalty on her time, and the list is ordered by corrected time. Boat 0 (yours) is behind on autopilot: arrows steer, Enter tacks, Space toggles the autopilot. Nothing charged after a boat finishes counts."
+);
+scenarios[16].frames[0] = () => {
+  const L = FINISH_COURSE_LAYOUT;
+  for (const p of L.boats) {
+    const boat = new Boat(_map, p.x, p.y, p.heading);
+    boat.physics_model.setLinearVelocity({ x: Math.sin(p.heading) * 1.5, y: -Math.cos(p.heading) * 1.5 });
+    players.push(boat);
+  }
+  const mass = markMassForBoat(players[0].physics_model);
+  const rc = new Mark(_map, L.committee.x, L.committee.y, { mass });
+  const pin = new Mark(_map, L.pin.x, L.pin.y, { mass });
+  const windward = new Mark(_map, L.windward.x, L.windward.y, { mass });
+  const gateA = new Mark(_map, L.gate[0].x, L.gate[0].y, { mass });
+  const gateB = new Mark(_map, L.gate[1].x, L.gate[1].y, { mass });
+  const fBoat = new Mark(_map, L.finishBoat.x, L.finishBoat.y, { mass });
+  const fPin = new Mark(_map, L.finishPin.x, L.finishPin.y, { mass });
+  marks.push(rc, pin, windward, gateA, gateB, fBoat, fPin);
+  const line = new StartLine(rc, pin, L.windward);
+  startSequence = new StartSequence(line, { timings: START_COURSE_LAYOUT.timings, clock: L.clock });
+  const gate = new Gate(gateA, gateB);
+  const finish = new FinishLine(fBoat, fPin, gate.anchor);
+  course = new Course([windward, gate], { start: line.mid, startSequence, laps: L.laps, finish });
+  nameMarks(course, startSequence);
+  raceResults = new RaceResults(course);
+  // Seed: started at the gun, every rounding done (finish next).
+  for (const boat of players) {
+    startSequence.seedStarted(boat, 0);
+    course.progressFor(boat).seed(course.totalRoundings);
+  }
+  chargePendingPenalty(players[1], { time: 0, rule: '31', finalRule: '31', kind: 'mark', faultBoat: players[1], markName: 'gate 2', reason: 'Rule 31: touched gate 2', label: 'Rule 31 · touched gate 2' });
+};
+scenarios[16].frames[1] = () => {
+  autokeybind(players);
+  for (const boat of players) boat.autopilot_enabled = true;
+  const follow = document.getElementById('camera_follow');
+  if (follow && !follow.checked) {
+    follow.checked = true;
+    follow.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  _map.camera_zoom = 34;
+};
+
 export function setupControls(map, getCamera, bm) {
   _map = map;
   _getCamera = getCamera;
@@ -717,6 +770,10 @@ export function getMarks() {
 
 export function getCourse() {
   return course;
+}
+
+export function getRaceResults() {
+  return raceResults;
 }
 
 export function getStartSequence() {

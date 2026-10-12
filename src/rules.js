@@ -1528,6 +1528,7 @@ export function resetContacts() {
   pendingPenalties.clear();
   penaltyManeuvers.clear();
   penaltyCleared.length = 0;
+  finishedBoats.clear();
 }
 
 function pruneContactVisuals(boats, now) {
@@ -1654,6 +1655,34 @@ const PENALTY_RING_R = 3.15;
 
 const pendingPenalties = new Map();
 const penaltyManeuvers = new Map();
+// Boats that have finished (finish.js). chargePendingPenalty ignores them:
+// penalties incurred after finishing do not apply.
+const finishedBoats = new Set();
+
+// Mark a boat finished and hand back her unserved pending penalties (oldest
+// first, each { time, incident }); her queue is emptied, so the FAULT badge
+// goes and finish.js converts them (time penalty or DSQ).
+export function finishBoatPenalties(boat) {
+  if (!boat) return [];
+  finishedBoats.add(boat);
+  const queue = pendingPenalties.get(boat) || [];
+  pendingPenalties.delete(boat);
+  penaltyManeuvers.delete(boat);
+  return queue.slice();
+}
+
+export function hasFinished(boat) {
+  return finishedBoats.has(boat);
+}
+
+// Short rule name of a penalty incident: 'Rule 31', 'Rule 18.2', 'Rule 10'.
+export function penaltyRuleName(incident) {
+  if (!incident) return 'penalty';
+  if (incident.rule === '31' || incident.kind === 'mark') return 'Rule 31';
+  if (incident.finalId === '18') return 'Rule 18.2';
+  if (incident.finalId) return 'Rule ' + incident.finalId;
+  return incident.finalRule && incident.finalRule !== 'penalty' ? String(incident.finalRule) : 'penalty';
+}
 const penaltyCleared = [];
 
 function maneuverTracker(boat) {
@@ -1737,6 +1766,8 @@ function clearOldestPending(boat, now) {
 // with at least { time } for a scenario that starts already charged.
 export function chargePendingPenalty(boat, incident) {
   if (!boat || !incident) return;
+  // A finished boat is no longer racing (finish.js): nothing more accrues.
+  if (finishedBoats.has(boat)) return;
   let queue = pendingPenalties.get(boat);
   const wasEmpty = !queue || queue.length === 0;
   if (!queue) {
