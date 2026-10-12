@@ -210,20 +210,24 @@
         font-family: 'Courier New', monospace;
         z-index: 100;
       }
-      /* Boat 1 touch controls: bottom half; the canvas keeps the top half. */
+      /* Boat 1 touch controls: the bottom 35% of the screen; the canvas keeps
+         the rest. --touch-panel-h is a percentage of the viewport height. */
+      :root {
+        --touch-panel-h: 35%;
+      }
       #touch_controls {
         position: fixed;
         left: 0;
         right: 0;
         bottom: 0;
-        height: 50%;
+        height: var(--touch-panel-h);
         z-index: 150;
         box-sizing: border-box;
         display: grid;
         grid-template-columns: 1.25fr 1fr 1fr 1.25fr;
         grid-template-rows: repeat(3, 1fr);
-        gap: 8px;
-        padding: 8px calc(8px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));
+        gap: 6px;
+        padding: 6px calc(8px + env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));
         background: #0c121c;
         border-top: 1px solid rgba(180, 200, 220, 0.35);
         touch-action: none;
@@ -246,7 +250,8 @@
         min-height: 48px;
         padding: 0;
         font-family: 'Courier New', Courier, monospace;
-        font-size: 17px;
+        /* "Autopilot" has to fit a ~80px-wide button on a phone. */
+        font-size: clamp(13px, 3.5vw, 17px);
         font-weight: 700;
         color: #e8f0f8;
         background: #223246;
@@ -283,34 +288,45 @@
         grid-column: 4;
         grid-row: 1 / span 3;
       }
-      /* Landscape phone: same bottom half, shorter rows. */
+      /* Landscape phone: 35% of a ~400px-tall screen fits two rows of 44px+
+         buttons, not three, so the six middle buttons go 3 + 3. */
       @media (orientation: landscape) and (max-height: 500px) {
+        #touch_controls {
+          grid-template-columns: 1.25fr 1fr 1fr 1fr 1.25fr;
+          grid-template-rows: repeat(2, 1fr);
+          gap: 5px;
+          padding-top: 5px;
+          padding-bottom: calc(5px + env(safe-area-inset-bottom));
+        }
         .tc-btn {
           font-size: 14px;
         }
         .tc-steer {
-          font-size: 30px;
+          font-size: 28px;
         }
-        #touch_controls {
-          gap: 6px;
-          padding-top: 6px;
+        .tc-steer:first-child {
+          grid-row: 1 / span 2;
+        }
+        .tc-right {
+          grid-column: 5;
+          grid-row: 1 / span 2;
         }
       }
-      /* Everything anchored to the bottom moves into the top (canvas) half. */
+      /* Everything anchored to the bottom moves up into the canvas area. */
       body.touch-on #sim_canvas {
-        height: 50%;
+        height: calc(100% - var(--touch-panel-h));
       }
       body.touch-on #fps {
-        bottom: calc(50% + 10px);
+        bottom: calc(var(--touch-panel-h) + 10px);
       }
       body.touch-on #perf_overlay_hud {
-        bottom: calc(50% + 34px);
+        bottom: calc(var(--touch-panel-h) + 34px);
       }
       body.touch-on #scenario_card {
-        max-height: calc(50% - 20px);
+        max-height: calc(100% - var(--touch-panel-h) - 20px);
       }
       body.touch-on #settings {
-        max-height: calc(50% - 20px);
+        max-height: calc(100% - var(--touch-panel-h) - 20px);
         overflow-y: auto;
       }
       /* Settings menu button and backdrop exist only in the mobile layout. */
@@ -371,10 +387,10 @@
         body:has(#perf:checked) #info {
           right: calc(180px + env(safe-area-inset-right));
         }
-        /* Touch controls on: the readout moves into the top half, in two
+        /* Touch controls on: the readout moves into the canvas area, in two
            short columns so it stays clear of the scenario card. */
         body.touch-on #info {
-          bottom: calc(50% + 34px);
+          bottom: calc(var(--touch-panel-h) + 34px);
           font-size: 10px;
           line-height: 1.2;
           column-count: 2;
@@ -384,10 +400,10 @@
           font-size: 10px;
           line-height: 1.15;
         }
-        /* Half a phone screen is short: the card scrolls inside what is left
-           above the readout (its Hide button collapses it). */
+        /* The canvas area is short on a phone: the card scrolls inside what
+           is left above the readout (its Hide button collapses it). */
         body.touch-on #scenario_card {
-          max-height: max(64px, calc(50% - 210px));
+          max-height: max(64px, calc(100% - var(--touch-panel-h) - 210px));
         }
         /* The drawer stays full height; the half-height cap is for desktop. */
         body.touch-on #settings {
@@ -553,7 +569,7 @@
       <br>
       <label class="setting-row"><input id="perf" autocomplete="off" type="checkbox" title="Cells per refinement level and field step time. Also ?perf=1">Perf overlay</label>
       <br>
-      <label class="setting-row"><input id="touch" autocomplete="off" type="checkbox" title="Boat 1 touch buttons in the bottom half of the screen. On by default on phones and touch screens. Also ?touch=1 / ?touch=0">Touch controls</label>
+      <label class="setting-row"><input id="touch" autocomplete="off" type="checkbox" title="Boat 1 touch buttons at the bottom of the screen. On by default on phones and touch screens. Also ?touch=1 / ?touch=0">Touch controls</label>
       <br>
       <span class="setting-row setting-buttons"><input id="camera_zoom_in" type="button" value="+"><input id="camera_zoom_out" type="button" value="-">Zoom</span>
       <br>
