@@ -6,7 +6,7 @@
 
 ## Roadmap
 
-Last updated: 2026-10-11
+Last updated: 2026-10-12
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -51,7 +51,7 @@ Last updated: 2026-10-11
 - [x] Rule 15: [#10](https://github.com/SukuWc/fields/pull/10)
 - [ ] Rule 16.1
 - [x] Start / OCS and individual recall: [#33](https://github.com/SukuWc/fields/pull/33)
-- [ ] Rule 18
+- [ ] Rule 18 (in progress, [#35](https://github.com/SukuWc/fields/pull/35) for Rule 18.2)
 - [x] Rule 31: [#34](https://github.com/SukuWc/fields/pull/34)
 - [ ] Rule 28
 - [ ] Penalties and exoneration (partial: [#12](https://github.com/SukuWc/fields/pull/12) assigns fault on contact; [#20](https://github.com/SukuWc/fields/pull/20) adds a pending penalty cleared by a tack and a gybe in a row, or a Q/E autopilot circle)
