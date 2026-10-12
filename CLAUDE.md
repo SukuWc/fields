@@ -135,3 +135,4 @@ The LBM implementation is kept as close as possible to the Lagrava paper. Follow
 ### Visualization Modes
 
 The `plotSelect` dropdown controls what the `DataTexture` displays: density, x-velocity, y-velocity, speed, or curl. Contrast and mirror adjustments are applied at render time in `boltzmann.js`.
+- **Overlap sync**: after every root step, `Boltzmann._syncBoatOverlaps()` makes same-depth boat grids that overlap share one flow. Coincident fluid nodes map through an integer lattice offset. The owner is the grid that has its own finer child at that node; if neither or both do, the later boat owns. The other grid copies the owner's populations and macros, and barrier cells are skipped. With one boat it does nothing, so single-boat results are bit-identical. `bm.syncOverlaps=false` turns it off.
