@@ -20,6 +20,7 @@ Last updated: 2026-10-12
 - [ ] Faster coarse-to-fine ghost injection: decompose each coarse cell once, reuse scratch buffers, read populations by index (about 77% of the step after [#9](https://github.com/SukuWc/fields/pull/9), which took scenario 0 from about 4.5 ms to about 18 ms per step) (partial: [#32](https://github.com/SukuWc/fields/pull/32) caches coarse-cell decomposition once per inject pass; still open: reuse scratch buffers, read populations by index)
 - [ ] Fluid steps fit the 16 ms frame budget again (about 36 ms per frame now at 2 steps per frame)
 - [x] Simulation resolution setting (Default / x2 / x4 coarser) for cheaper fluid steps: [#36](https://github.com/SukuWc/fields/pull/36)
+- [ ] Experimental fast-wind grid modes (2 m cell every frame / 1.2×) and 150 m map (in progress, [#40](https://github.com/SukuWc/fields/pull/40))
 - [x] Perf overlay: cells per level and field step time: [#26](https://github.com/SukuWc/fields/pull/26)
 - [ ] Run `npm test` in CI
 
