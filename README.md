@@ -6,7 +6,7 @@
 
 ## Roadmap
 
-Last updated: 2026-10-10
+Last updated: 2026-10-12
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -19,6 +19,7 @@ Last updated: 2026-10-10
 - [ ] Robust fluid perf test: `performance.now()`, warm-up, median, opt-in ms limit, and a machine-independent cap of about 4500 ghost injections per step (the 12 ms "scenario 0 step stays cheap" check has failed since [#9](https://github.com/SukuWc/fields/pull/9))
 - [ ] Faster coarse-to-fine ghost injection: decompose each coarse cell once, reuse scratch buffers, read populations by index (about 77% of the step after [#9](https://github.com/SukuWc/fields/pull/9), which took scenario 0 from about 4.5 ms to about 18 ms per step) (partial: [#32](https://github.com/SukuWc/fields/pull/32) caches coarse-cell decomposition once per inject pass; still open: reuse scratch buffers, read populations by index)
 - [ ] Fluid steps fit the 16 ms frame budget again (about 36 ms per frame now at 2 steps per frame)
+- [ ] Simulation resolution setting (Default / x2 / x4 coarser) for cheaper fluid steps (in progress, [#36](https://github.com/SukuWc/fields/pull/36))
 - [x] Perf overlay: cells per level and field step time: [#26](https://github.com/SukuWc/fields/pull/26)
 - [ ] Run `npm test` in CI
 
@@ -50,7 +51,7 @@ Last updated: 2026-10-10
 - [x] Rule 15: [#10](https://github.com/SukuWc/fields/pull/10)
 - [ ] Rule 16.1
 - [x] Start / OCS and individual recall: [#33](https://github.com/SukuWc/fields/pull/33)
-- [ ] Rule 18
+- [ ] Rule 18 (in progress, [#35](https://github.com/SukuWc/fields/pull/35) for Rule 18.2)
 - [x] Rule 31: [#34](https://github.com/SukuWc/fields/pull/34)
 - [ ] Rule 28
 - [ ] Penalties and exoneration (partial: [#12](https://github.com/SukuWc/fields/pull/12) assigns fault on contact; [#20](https://github.com/SukuWc/fields/pull/20) adds a pending penalty cleared by a tack and a gybe in a row, or a Q/E autopilot circle)
