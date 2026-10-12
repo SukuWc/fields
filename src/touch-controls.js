@@ -1,4 +1,4 @@
-// Touch controls for boat 1, docked to the bottom half of the screen.
+// Touch controls for boat 1, docked to the bottom of the screen (35% of its height).
 //
 // Each button presses the same key code the keyboard uses for players[0]
 // (see autokeybind in controls.js), through setVirtualKey, so the boat
