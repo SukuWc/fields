@@ -594,12 +594,14 @@ function childShellFloor(domain, n) {
 		for (let lx = 0; lx < ccw; lx++) {
 			if (child.mask[lx + ly * ccw] !== 1) continue;
 			const fi = child.cx0 + lx, fj = child.cy0 + ly;
-			const x0 = Math.floor(domain.coarseX(fi - n)) - domain.cx0;
-			const x1 = Math.floor(domain.coarseX(fi + n)) - domain.cx0;
-			const y0 = Math.floor(domain.coarseY(fj - n)) - domain.cy0;
-			const y1 = Math.floor(domain.coarseY(fj + n)) - domain.cy0;
-			for (let y = Math.max(0, y0); y <= Math.min(ch - 1, y1); y++) {
-				for (let x = Math.max(0, x0); x <= Math.min(cw - 1, x1); x++) { out[x + y * cw] = 1; any = true; }
+			// Round (Euclidean) dilation by n fine cells: a square one put the
+			// shell corners √2·n out, past the minimal grading.
+			for (let oy = -n; oy <= n; oy++) for (let ox = -n; ox <= n; ox++) {
+				if (ox * ox + oy * oy > n * n) continue;
+				const x = Math.floor(domain.coarseX(fi + ox)) - domain.cx0;
+				const y = Math.floor(domain.coarseY(fj + oy)) - domain.cy0;
+				if (x < 0 || y < 0 || x >= cw || y >= ch) continue;
+				out[x + y * cw] = 1; any = true;
 			}
 		}
 	}

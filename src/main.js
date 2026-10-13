@@ -171,7 +171,11 @@ runner.start((simDt) => {
         masked.push(domain);
         continue;
       }
-      for (const seg of domain.worldBorderLines(bm)) {
+      // Auto layout: only the finest boat level has a fixed disk. A coarser
+      // level's disk is just its grading-shell floor, so its circle is not
+      // drawn; its real extent is the mask outline below.
+      const shellOnly = bm.amrMode === 'auto' && domain.disk && domain.domains.length > 0;
+      for (const seg of shellOnly ? [] : domain.worldBorderLines(bm)) {
         if (domain.disk && seg.dim) continue;
         guides.push({
           color: seg.dim ? 0x8899aa : 0x000000,
