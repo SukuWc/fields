@@ -2,6 +2,8 @@
 
 <p align="center"><a href="brand-kit/">brand-kit/</a></p>
 
+<p align="center"><a href="https://sukuwc.github.io/fields/"><b>Play the test build</b></a></p>
+
 # fields
 
 ## Roadmap
