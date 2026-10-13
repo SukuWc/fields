@@ -83,6 +83,10 @@ export class FluidWind {
         n++;
       }
     }
+    // Fast-wind grids run a lower lattice U for the same physical wind;
+    // velScale turns lattice velocity back into Default-grid units.
+    const vs = this.bm.velScale;
+    if (vs !== undefined && vs !== 1) { vx *= vs; vy *= vs; }
     return windSample(vx / n, vy / n);
   }
 }

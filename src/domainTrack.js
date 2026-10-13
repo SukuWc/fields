@@ -90,9 +90,9 @@ const domainByBoat = new WeakMap();
 // cellSize². Refinement levels follow the root grid, so a level-n disk radius
 // in level-(n−1) cells scales the same way. Curl is normalised by the world
 // spacing (Δx · cellSize), so τ tracks the same physical vorticity. Tracking
-// runs once per lattice step (main.js), so a hold of CURL_HOLD steps is
-// CURL_HOLD·cellSize frames; it is shortened to keep about 0.2 s, but never
-// below 2 so one noisy step cannot open a cell.
+// runs once per lattice step (main.js), so holds are counted in root steps:
+// CURL_HOLD_SECONDS (0.2 s) × 30 × stepsPerFrame steps, never below 2 so one
+// noisy step cannot open a cell (6 Default, 3 x2, 2 x4, 6 2f, 7 2f34).
 const paramCache = new Map();
 
 // Boat refinement stack in world units, finest last. The inner three are the
@@ -114,9 +114,33 @@ export const OUTER_RINGS = {
 	2: { R: 20, H: 32, A: 1760 },
 };
 
+// ?amr=auto: only the finest boat disk (1/8 world unit cells, R 2) is fixed.
+// Every coarser boat level gets a minimal grading shell instead of its own
+// large disk: its floor is the next finer level's region (its disk and its
+// current curl mask) dilated by AUTO_SHELL own cells. Everything beyond the
+// shell grows and erodes from curl as before, under the same caps.
+//
+// AUTO_SHELL = 3. The finer level grows at most one of its own cells (half a
+// cell of this level) per tracking call, and the shell is built from the
+// finer mask of the previous call, so one cell is lag. One more keeps the
+// parent-mask rind (cells next to an unrefined neighbour, which are not curl
+// sensors and carry the coarse↔fine interpolation) off the finer edge. The
+// third is margin, so a growing wake never presses its own coupler. With 3
+// the floors are R 2 → 2.75 → 4.25 world units at Default (fixed: 2 / 4 / 8),
+// + 7.25 on x2 and + 13.25 on x4 (fixed rings: 12 / 20).
+export const AUTO_SHELL = 3;
+
+// Hold of CURL_HOLD tracking calls at Default (6 calls = 0.2 s at 30 calls/s).
+// Tracking runs once per root step, so the hold in calls is the same time in
+// seconds on every setting: CURL_HOLD · stepsPerFrame calls, never below 2.
+export const CURL_HOLD_SECONDS = CURL_HOLD / 30;
+
 export function amrParams(bm) {
 	const k = bm && bm.cellSize > 0 ? bm.cellSize : 1;
-	let p = paramCache.get(k);
+	const spf = bm && bm.stepsPerFrame > 0 ? bm.stepsPerFrame : 1 / k;
+	const auto = !!(bm && bm.amrMode === 'auto');
+	const key = `${k}|${spf}|${auto ? 'auto' : 'fixed'}`;
+	let p = paramCache.get(key);
 	if (p) return p;
 	const extra = Math.max(0, Math.round(Math.log2(k)));
 	const stack = [];
@@ -127,6 +151,13 @@ export function amrParams(bm) {
 	}
 	for (const lv of BOAT_LEVELS) stack.push({ ...lv, ring: false });
 	// Per level, in that level's parent cells. Parent cell of level i is k/2^i.
+	if (auto) {
+		// Finest disk stays; each coarser level is the finer region + AUTO_SHELL
+		// of its own cells (own cell of level i is k / 2^(i+1)).
+		for (let i = stack.length - 2; i >= 0; i--) {
+			stack[i] = { ...stack[i], R: stack[i + 1].R + AUTO_SHELL * k / 2 ** (i + 1) };
+		}
+	}
 	const levels = stack.map((lv, i) => {
 		const pc = k / 2 ** i;
 		const radius = lv.R / pc;
@@ -147,14 +178,16 @@ export function amrParams(bm) {
 		fieldHalf: Math.max(3, Math.round(FIELD_HALF / k)),
 		fieldCap: Math.max(SEED_MIN * 2, Math.round(FIELD_CELL_CAP / (k * k))),
 		seedMin: Math.max(2, Math.round(SEED_MIN / (k * k))),
-		hold: Math.max(2, Math.round(CURL_HOLD / k)),
+		auto,
+		shell: AUTO_SHELL,
+		hold: Math.max(2, Math.round(CURL_HOLD_SECONDS * 30 * spf)),
 		curlDx: CURL_DX * k,
 		// Tracking runs once per root step, k frames apart. A boat can cross
 		// more than one fine cell in that time, so a window may slide up to
 		// k cells per call (1 at Default, as before).
 		maxShift: Math.max(1, Math.round(k)),
 	};
-	paramCache.set(k, p);
+	paramCache.set(key, p);
 	return p;
 }
 
@@ -545,7 +578,37 @@ function sampleParentFluidCurl(parent, domain, speed, cellSize = 1) {
 	return norm;
 }
 
-function installSensorMask(domain, centerX, centerY, radius, cap, curlNorm, params) {
+// Auto grading shell: this domain's mask cells (its parent's cells) within
+// `n` of this domain's own fine cells that the child currently refines.
+// Child mask cell (lx, ly) is this domain's fine node child.cx0 + lx.
+function childShellFloor(domain, n) {
+	const child = domain.domains && domain.domains[0];
+	const cw = domain.cx1 - domain.cx0;
+	const ch = domain.cy1 - domain.cy0;
+	if (!child || !child.mask) return null;
+	const out = new Uint8Array(cw * ch);
+	const ccw = child.cx1 - child.cx0;
+	const cch = child.cy1 - child.cy0;
+	let any = false;
+	for (let ly = 0; ly < cch; ly++) {
+		for (let lx = 0; lx < ccw; lx++) {
+			if (child.mask[lx + ly * ccw] !== 1) continue;
+			const fi = child.cx0 + lx, fj = child.cy0 + ly;
+			// Round (Euclidean) dilation by n fine cells: a square one put the
+			// shell corners √2·n out, past the minimal grading.
+			for (let oy = -n; oy <= n; oy++) for (let ox = -n; ox <= n; ox++) {
+				if (ox * ox + oy * oy > n * n) continue;
+				const x = Math.floor(domain.coarseX(fi + ox)) - domain.cx0;
+				const y = Math.floor(domain.coarseY(fj + oy)) - domain.cy0;
+				if (x < 0 || y < 0 || x >= cw || y >= ch) continue;
+				out[x + y * cw] = 1; any = true;
+			}
+		}
+	}
+	return any ? out : null;
+}
+
+function installSensorMask(domain, centerX, centerY, radius, cap, curlNorm, params, shell = 0) {
 	const cw = domain.cx1 - domain.cx0;
 	const ch = domain.cy1 - domain.cy0;
 	if (!(cw * ch > 0)) return;
@@ -554,6 +617,15 @@ function installSensorMask(domain, centerX, centerY, radius, cap, curlNorm, para
 		domain.cx0, domain.cy0, domain.cx1, domain.cy1,
 		centerX, centerY, radius, allow,
 	);
+	if (shell > 0) {
+		const extra = childShellFloor(domain, shell);
+		if (extra) {
+			for (let ly = 0; ly < ch; ly++) for (let lx = 0; lx < cw; lx++) {
+				const i = lx + ly * cw;
+				if (extra[i] === 1 && floor[i] !== 1 && allow(domain.cx0 + lx, domain.cy0 + ly)) floor[i] = 1;
+			}
+		}
+	}
 	const stepped = stepCurlMask({
 		floor,
 		prev: domain.mask,
@@ -629,7 +701,8 @@ function trackOne(bm, player) {
 	}
 
 	const L = P.levels;
-	installSensorMask(level1, boatCx, boatCy, L[0].radius, L[0].cap, sampleRootCurl(bm, level1), P);
+	const shellOf = (i) => (P.auto && i < L.length - 1 ? P.shell : 0);
+	installSensorMask(level1, boatCx, boatCy, L[0].radius, L[0].cap, sampleRootCurl(bm, level1), P, shellOf(0));
 
 	// Nested levels, each a disk floor plus curl inside its parent's mask.
 	let parent = level1;
@@ -641,7 +714,7 @@ function trackOne(bm, player) {
 		const placed = placeChild(parent, parentShifted, fx, fy, L[i].half, P.maxShift);
 		const child = placed.domain;
 		if (!child) break;
-		installSensorMask(child, fx, fy, L[i].radius, L[i].cap, sampleParentFluidCurl(parent, child, bm.speed, P.cellSize), P);
+		installSensorMask(child, fx, fy, L[i].radius, L[i].cap, sampleParentFluidCurl(parent, child, bm.speed, P.cellSize), P, shellOf(i));
 		parentShifted = parentShifted || placed.shifted;
 		parent = child;
 		px = fx; py = fy;

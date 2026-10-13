@@ -14,7 +14,7 @@ globalThis.addEventListener = globalThis.addEventListener || (() => {});
 
 const { Boltzmann, buildClosedDiskMask, fineIndex } = await import('../src/boltzmann.js');
 const {
-	trackBoats, stepCurlMask, normalizedCurl,
+	trackBoats, stepCurlMask, normalizedCurl, amrParams,
 	DISK_RADIUS, DISK2_RADIUS, DISK3_RADIUS, DOMAIN_HALF, DOMAIN2_HALF, DOMAIN3_HALF,
 	CURL_HOLD, CURL_TAU_ON, CURL_TAU_OFF, MASK_CELL_CAP, MASK2_CELL_CAP, MASK3_CELL_CAP,
 	SEED_MIN, FIELD_CELL_CAP, FIELD_DOMAIN_MAX,
@@ -284,6 +284,25 @@ function make(w, h, speed) {
 	return new Boltzmann(w, h, 1, 90, speed, undefined, 1);
 }
 
+// The disk-floor mechanics below (exact R 8 / 8 / 8 floors, DOMAIN_HALF
+// windows, one-layer growth and retraction measured against those floors) are
+// fixed-ring geometry. In auto the coarser floors are a shell around the finer
+// mask and change every step, so those exact-floor checks run on fixed rings.
+// Auto's own calm / retract behaviour is checked in the block after them.
+function makeFixed(w, h, speed) {
+	const bm = make(w, h, speed);
+	bm.amrMode = 'fixed';
+	return bm;
+}
+
+// Boat level-1 mask holds the disk floor of the engine's current layout.
+function boatFloorHeld(bm, dom) {
+	const R = amrParams(bm).levels[0].radius;
+	const floor = buildClosedDiskMask(dom.cx0, dom.cy0, dom.cx1, dom.cy1, dom.disk.cx, dom.disk.cy, R,
+		(cx, cy) => dom._parentAllows(cx, cy));
+	return floorHeld(dom.mask, floor);
+}
+
 function countMask(domain) {
 	let n = 0;
 	for (let i = 0; i < domain.mask.length; i++) if (domain.mask[i] === 1) n++;
@@ -358,7 +377,7 @@ function paintNonSensor(parent, value) {
 
 // Lattice wiring: root curl only on level 1, parent fluid curl on the children.
 {
-	const bm = make(75, 75, 15);
+	const bm = makeFixed(75, 75, 15);
 	const boat = { x: 0, y: 0 };
 	trackBoats(bm, [boat]);
 	const d = bm.domains[0];
@@ -436,7 +455,7 @@ function paintNonSensor(parent, value) {
 
 // Holds slide with the window. A hot field cannot fill the rectangle or resize it.
 {
-	const bm = make(75, 75, 15);
+	const bm = makeFixed(75, 75, 15);
 	const boat = { x: 0, y: 0 };
 	trackBoats(bm, [boat]);
 	const d = bm.domains[0];
@@ -476,7 +495,7 @@ function paintNonSensor(parent, value) {
 
 // Two boats: each wake is its own mask. The other boat does not inherit an island.
 {
-	const bm = make(75, 75, 15);
+	const bm = makeFixed(75, 75, 15);
 	const a = { x: -12, y: 0 };
 	const b = { x: 12, y: 0 };
 	trackBoats(bm, [a, b]);
@@ -498,7 +517,7 @@ function paintNonSensor(parent, value) {
 // Interior parent curl grows the next level one layer at a time, then erodes
 // back to the disk. The floor never leaves. A hot parent cannot fill the window.
 {
-	const bm = make(75, 75, 15);
+	const bm = makeFixed(75, 75, 15);
 	const boat = { x: 0, y: 0 };
 	trackBoats(bm, [boat]);
 	const d = bm.domains[0];
@@ -587,6 +606,34 @@ function paintNonSensor(parent, value) {
 		`cells=${countMask(l3)}`);
 }
 
+// Auto layout (engine default): calm water leaves the finest level on its
+// R 2 disk and every coarser level on disk + grading shell, all inside the
+// window; hot root curl grows level 1 and quiet water takes it back.
+{
+	const bm = make(75, 75, 15);
+	const boat = { x: 0.3, y: -0.2 };
+	for (let i = 0; i < 3; i++) trackBoats(bm, [boat]);
+	const P = amrParams(bm);
+	const d = bm.domains[0], l2 = d.domains[0], l3 = l2 && l2.domains[0];
+	const calm = [countMask(d), countMask(l2), countMask(l3)];
+	check('auto (default): calm trackBoats keeps the finest disk and minimal shells',
+		P.auto && l3 && maskEqualsFloor(l3, DISK3_RADIUS) && boatFloorHeld(bm, d)
+		&& calm[0] < Math.PI * 6 * 6 && calm[1] < Math.PI * 7 * 7 && d.cx1 - d.cx0 === DOMAIN_HALF * 2,
+		`cells ${calm.join('/')} floors R ${P.levels.map(l => l.worldRadius).join('/')}`);
+	const cx = Math.round(bm.width / 2 + boat.x), cy = Math.round(bm.height / 2 + boat.y) - 6;
+	for (let i = 0; i < CURL_HOLD + 6; i++) {
+		for (let y = cy - 1; y <= cy + 1; y++) for (let x = cx - 1; x <= cx + 1; x++) bm.cells[x + y * bm.width].curl = 1;
+		trackBoats(bm, [boat]);
+	}
+	const grown = countMask(d);
+	for (let i = 0; i < 40; i++) {
+		for (let y = cy - 1; y <= cy + 1; y++) for (let x = cx - 1; x <= cx + 1; x++) bm.cells[x + y * bm.width].curl = 0;
+		trackBoats(bm, [boat]);
+	}
+	check('auto: hot root curl grows level 1 and quiet water retracts it to the shell',
+		grown > calm[0] && countMask(d) === calm[0] && boatFloorHeld(bm, d), `calm ${calm[0]} grown ${grown} after ${countMask(d)}`);
+}
+
 // Curl that never enters the boat window opens its own island. The disk stays a disk.
 {
 	const bm = make(75, 75, 30);
@@ -617,7 +664,7 @@ function paintNonSensor(parent, value) {
 		field.length === 1 && disjoint && hotCovered && countMask(field[0]) >= SEED_MIN
 		&& countMask(field[0]) <= FIELD_CELL_CAP && field.length <= FIELD_DOMAIN_MAX
 		&& !field[0].hasDiagonalOnlyContact()
-		&& maskEqualsFloor(boatDom, DISK_RADIUS) && !field[0].domains.length,
+		&& boatFloorHeld(bm, boatDom) && !field[0].domains.length,
 		`islands=${field.length} cells=${field[0] ? countMask(field[0]) : 0}`);
 }
 
@@ -678,12 +725,7 @@ function paintNonSensor(parent, value) {
 		}
 	}
 	const cells = field.reduce((n, d) => n + countMask(d), 0);
-	const boatFloor = boatDom && buildClosedDiskMask(
-		boatDom.cx0, boatDom.cy0, boatDom.cx1, boatDom.cy1,
-		boatDom.disk.cx, boatDom.disk.cy, DISK_RADIUS,
-		(cx, cy) => boatDom._parentAllows(cx, cy),
-	);
-	const floorOk = !!boatFloor && floorHeld(boatDom.mask, boatFloor);
+	const floorOk = !!boatDom && boatFloorHeld(bm, boatDom);
 	check('barrier waves at wind 25 refine as an island away from the boat',
 		bad === 0 && maxU < 1 && disjoint && cells >= SEED_MIN && cells <= FIELD_CELL_CAP * FIELD_DOMAIN_MAX
 		&& floorOk,

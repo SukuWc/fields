@@ -16,6 +16,25 @@ function check(name, cond, detail) {
 	return ok;
 }
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
+
+// Sections 1–8 measure the fixed rings (Default pinned to main; one main-parity
+// check). The app, the harness and the engine default to auto; sections 0 and 9 cover that.
+{
+	const fs = await import('node:fs');
+	const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+	const sel = html.match(/<select id="amrMode"[^>]*>([\s\S]*?)<\/select>/);
+	const selected = sel && (sel[1].match(/<option value="(\w+)" selected>/) || [])[1];
+	const mainJs = fs.readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+	check('app default refinement layout is auto (dropdown + main.js); fixed stays selectable',
+		selected === 'auto' && /<option value="fixed">/.test(sel[1]) && /bm\.amrMode = 'auto';/.test(mainJs) && H.amrMode() === 'auto',
+		`selected=${selected} harness=${H.amrMode()}`);
+	const eng = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
+	const engFixed = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
+	engFixed.amrMode = 'fixed';
+	check('Boltzmann engine defaults to auto; amrMode = fixed still selects the rings',
+		eng.amrMode === 'auto' && amrParams(eng).auto && !amrParams(engFixed).auto && amrParams(engFixed).levels[0].worldRadius === 8);
+}
+H.setAmrMode('fixed');
 const KS = [1, 2, 4];
 
 function lattice(k, wind = 15) {
@@ -182,7 +201,7 @@ for (const k of KS) {
 	check(`x${k} scenario 0 boat sits in a ${2 + Math.log2(k) + 1}-level stack with 1/8-unit cells`,
 		r.depth === 3 + Math.log2(k) && r.finestStep === 0.125, `depth=${r.depth} finest=${r.finestStep}`);
 }
-check('Default scenario 0 matches main (twa −49.40, bs 2.131)',
+check('Default scenario 0 with ?amrMode=fixed matches main (twa −49.40, bs 2.131)',
 	near(s0[1].twa, -49.4023, 0.01) && near(s0[1].bs, 2.1314, 0.002), `twa=${s0[1].twa.toFixed(4)} bs=${s0[1].bs.toFixed(4)}`);
 // With the outer rings the boat keeps Default's fine levels, so refinement
 // costs about what it does at Default. Coarse settings must not be slower.
@@ -241,6 +260,85 @@ for (const k of [2, 4]) {
 				`max|u|=${r.worstU.toFixed(3)} max|ρ−1|=${r.worstDr.toFixed(3)} islands=${r.islands}`);
 		}
 	}
+}
+
+// --- 8. Fast-wind grids (2 m root cell stepped 1× / 1.2× per frame) and the 150 m map ---
+{
+	const { FluidWind } = await import('../src/wind.js');
+	for (const [mode, steps, vs] of [['2f', 1, 2], ['2f34', 1.2, 2.4]]) {
+		const { bm } = H.makeWorld(mode, 15);
+		let n = 0;
+		for (let f = 0; f < 10; f++) n += bm.advance_frame();
+		const w = new FluidWind(bm).getWind(3, -4);
+		check(`${mode}: ${steps} steps/frame, velScale ${vs}, lattice U = 0.15/${vs}, felt wind 15`,
+			n === Math.floor(10 * steps + 1e-9) && near(bm.velScale, vs, 1e-12) && near(bm.speed, 0.15 / vs, 1e-15)
+			&& near(w.speed, 15, 1e-6) && bm.nu === 0.025 && bm.matchedNu === 0.0125,
+			`steps=${n} U=${bm.speed.toFixed(4)} TWS=${w.speed.toFixed(3)} ν=${bm.nu}/${bm.matchedNu}`);
+		const r = H.scenario0(mode);
+		check(`${mode} scenario 0 holds close-hauled like Default`,
+			r.twa < -45 && r.twa > -54 && r.twaSpread < 3 && r.bs > 1.9 && r.bs < 2.4 && r.bad === 0 && r.finestStep === 0.125,
+			`twa=${r.twa.toFixed(2)} bs=${r.bs.toFixed(3)}`);
+	}
+	for (const [mode, wind] of [['2f', 45], ['2f34', 58]]) {
+		const r = H.barrier(mode, wind, { frames: 1500, amr: true });
+		check(`${mode} barrier at UI wind ${wind} (refine-anywhere) stable for 1500 frames`,
+			r.diverge === null && r.bad === 0 && r.worstU < 0.6 && r.worstDr < 0.3,
+			`max|u|=${r.worstU.toFixed(3)} islands=${r.islands}`);
+	}
+	H.setMapSize(150);
+	const big = H.scenario0('2f', { frames: 300 });
+	H.setMapSize(75);
+	check('150 m map: 2f lattice is 75² cells and scenario 0 runs finite',
+		big.cells === 75 * 75 && big.bad === 0 && Number.isFinite(big.twa), `cells=${big.cells} twa=${big.twa.toFixed(2)}`);
+}
+
+// --- 9. Holds in seconds, and ?amrMode=auto (finest disk + grading shell + curl) ---
+{
+	const holds = [[1, 1, 6], [0.5, 0.5, 3], [0.25, 0.25, 2], [0.5, 1, 6], [0.5, 1.2, 7]]
+		.map(([res, spf, want]) => ({ want, got: amrParams({ cellSize: 1 / res, stepsPerFrame: spf }).hold, secs: amrParams({ cellSize: 1 / res, stepsPerFrame: spf }).hold / (30 * spf) }));
+	check('curl hold is ~0.2 s on every setting (Default / x2 / x4 / 2f / 2f34)',
+		holds.every(h => h.got === h.want && h.secs >= 0.19 && h.secs <= 0.27), holds.map(h => `${h.got} (${h.secs.toFixed(3)} s)`).join(' / '));
+	const a1 = amrParams({ cellSize: 1, amrMode: 'auto' });
+	const a2 = amrParams({ cellSize: 2, stepsPerFrame: 0.5, amrMode: 'auto' });
+	check('auto: finest disk R2 fixed, coarser floors are the 3-cell grading shell',
+		a1.auto && a1.levels.map(l => l.worldRadius).join() === '4.25,2.75,2' && a2.levels.map(l => l.worldRadius).join() === '7.25,4.25,2.75,2'
+		&& a1.levels.every((l, i) => l.cap === amrParams({ cellSize: 1 }).levels[i].cap),
+		`Default ${a1.levels.map(l => l.worldRadius).join('/')} · x2 ${a2.levels.map(l => l.worldRadius).join('/')}`);
+	// Every refined child cell sits AUTO_SHELL − 1 own cells inside its parent's
+	// refined region (one cell of lag allowed), unless that is off the window.
+	const D_AUTO = D.AUTO_SHELL;
+	const shellOk = (bm) => {
+		let worst = Infinity;
+		for (let D = bm.domains.find(d => d.disk); D && D.domains[0]; D = D.domains[0]) {
+			const C = D.domains[0], ccw = C.cx1 - C.cx0;
+			for (let ly = 0; ly < C.cy1 - C.cy0; ly++) for (let lx = 0; lx < ccw; lx++) {
+				if (C.mask[lx + ly * ccw] !== 1) continue;
+				for (let d = 1; d <= D_AUTO - 1; d++) for (const [ox, oy] of [[d, 0], [-d, 0], [0, d], [0, -d]]) {
+					const px = Math.floor(D.coarseX(C.cx0 + lx + ox)), py = Math.floor(D.coarseY(C.cy0 + ly + oy));
+					if (px < D.cx0 + 1 || py < D.cy0 + 1 || px >= D.cx1 - 1 || py >= D.cy1 - 1) continue;
+					if (!D._maskAt(px, py)) worst = Math.min(worst, d - 1);
+				}
+			}
+		}
+		return worst;
+	};
+	H.setAmrMode('auto');
+	for (const k of [1, 2, '2f34']) {
+		const r = H.fleet(k, [[10, -9, 5 * Math.PI / 4]], { frames: 400 });
+		const w = shellOk(r.bm);
+		const reach = H.stackReach(r.bm, r.boats[0].x, r.boats[0].y);
+		check(`auto ${k}: grading shell holds (≥ 2 own cells) and the wake is refined downstream`,
+			w === Infinity && r.bad === 0 && reach.length >= 3 && reach[0] > 12 && r.stack[r.stack.length - 1] > 0,
+			`margin ${w === Infinity ? '≥2' : w} reach ${reach.map(v => v.toFixed(1)).join('/')} cells ${r.stack.join('/')}`);
+	}
+	const s0 = H.scenario0(1);
+	const wk = H.wakeShadow(1, INWAKE);
+	check('auto (app default) Default scenario 0 pinned: twa −49.43, bs 2.129',
+		near(s0.twa, -49.428, 0.01) && near(s0.bs, 2.129, 0.002), `twa=${s0.twa.toFixed(4)} bs=${s0.bs.toFixed(4)}`);
+	H.setAmrMode('fixed');
+	check('auto Default scenario 0 close-hauled and the in-wake shadow is at least the fixed one',
+		s0.twa < -45 && s0.twa > -54 && s0.bs > 1.9 && s0.bs < 2.4 && wk.shadow > 0.4 && wk.overlapGap < 1e-12,
+		`twa=${s0.twa.toFixed(2)} bs=${s0.bs.toFixed(3)} in-wake ${wk.shadow.toFixed(2)}`);
 }
 
 if (failed) {

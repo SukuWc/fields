@@ -32,7 +32,7 @@ function frame(map, bm, boats, opts) {
 	for (const boat of boats) {
 		boat.physics_model_step();
 		if (opts.energy !== false && boat.mainsail_force) {
-			const eff = SAIL_LATTICE_COUPLING * bm.resolution * bm.resolution;
+			const eff = SAIL_LATTICE_COUPLING * bm.resolution * bm.resolution / (bm.velScale ?? 1);
 			for (const seg of boat.getSailSegments()) {
 				bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * eff, seg.fy * eff);
 			}
@@ -44,15 +44,75 @@ function frame(map, bm, boats, opts) {
 	return { ms: now() - t0, steps };
 }
 
+// k is 1 / 2 / 4, or a fast-wind mode: '2f' (2 m cell, 1 step per frame),
+// '2f34' (2 m cell, 1.2 steps per frame). Same table as main.js SIM_RES_MODES.
+export const MODES = {
+	1: { resolution: 1 }, 2: { resolution: 0.5 }, 4: { resolution: 0.25 },
+	'2f': { resolution: 0.5, stepsPerFrame: 1 }, '2f34': { resolution: 0.5, stepsPerFrame: 1.2 },
+};
+// Map side for every world made after this call (75 = main.js default).
+let MAP_SIDE = 75;
+export function setMapSize(n) { MAP_SIDE = n; }
+// Refinement layout for worlds made after this call: 'fixed' or 'auto'.
+// 'auto' is the app and engine default; tests that pin main parity call
+// setAmrMode('fixed').
+let AMR_MODE = 'auto';
+export function amrMode() { return AMR_MODE; }
+export function setAmrMode(m) { AMR_MODE = m; }
+
 export function makeWorld(k, wind = 15) {
-	const bm = new Boltzmann(75, 75, 1, 90, wind, undefined, 1);
-	if (k !== 1) bm.setResolution(1 / k);
-	const map = new Map(75, 75, 90, wind, bm, new FluidWind(bm), new ConstantWind(90, wind));
+	const bm = new Boltzmann(MAP_SIDE, MAP_SIDE, 1, 90, wind, undefined, 1);
+	bm.amrMode = AMR_MODE === 'auto' ? 'auto' : 'fixed';
+	const m = MODES[k] || { resolution: 1 / k };
+	if (k !== 1) bm.setResolution(m.resolution, m.stepsPerFrame);
+	const map = new Map(MAP_SIDE, MAP_SIDE, 90, wind, bm, new FluidWind(bm), new ConstantWind(90, wind));
 	map.physics_model_init();
 	return { bm, map };
 }
 
 const speedOf = (b) => Math.hypot(b.physics_model.m_linearVelocity.x, b.physics_model.m_linearVelocity.y);
+
+// Refined cells per boat level (mask cells, in each level's parent cells),
+// coarsest first, summed over boats.
+export function stackCells(bm) {
+	const out = [];
+	for (const top of bm.domains.filter(d => d.disk)) {
+		let d = top, i = 0;
+		while (d) {
+			let n = 0;
+			if (d.mask) for (let j = 0; j < d.mask.length; j++) n += d.mask[j] === 1;
+			out[i] = (out[i] || 0) + n;
+			d = d.domains[0]; i++;
+		}
+	}
+	return out;
+}
+
+// Farthest refined cell of each level from (wx, wy), in world units, for the
+// stack whose root window contains that point. Shows how far the wake reaches.
+export function stackReach(bm, wx, wy) {
+	const out = [];
+	for (const top of bm.domains.filter(d => d.disk)) {
+		let d = top, parent = bm, i = 0, any = false;
+		while (d) {
+			const cw = d.cx1 - d.cx0;
+			let far = 0;
+			for (let ly = 0; ly < d.cy1 - d.cy0; ly++) for (let lx = 0; lx < cw; lx++) {
+				if (d.mask && d.mask[lx + ly * cw] !== 1) continue;
+				const c = d.cx0 + lx + 0.5, r = d.cy0 + ly + 0.5;
+				const rx = parent === bm ? c : parent.fineToRootX(c);
+				const ry = parent === bm ? r : parent.fineToRootY(r);
+				const x = (rx - bm.width / 2) / bm.resolution, y = (ry - bm.height / 2) / bm.resolution;
+				far = Math.max(far, Math.hypot(x - wx, y - wy));
+			}
+			if (i === 0 && far > 80) break;
+			out[i] = far; any = true;
+			parent = d; d = d.domains[0]; i++;
+		}
+		if (any && out.length) return out;
+	}
+	return out;
+}
 
 // Scenario 0: one boat close-hauled on autopilot.
 export function scenario0(k, { frames = 600, amr = true, energy = true } = {}) {
@@ -77,18 +137,19 @@ export function scenario0(k, { frames = 600, amr = true, energy = true } = {}) {
 	return {
 		k, amr, depth, finestStep, twa: boat.twa, twaSpread: twaMax - twaMin, bs: speedOf(boat), bsAt500,
 		tws: tws / twsN, msPerFrame: ms / frames, msPerStep: steps ? ms / steps : 0, steps,
-		cells: bm.width * bm.height, ...st, capHits: bm.capHits, domains: bm.domains.length,
+		cells: bm.width * bm.height, stack: stackCells(bm), ...st, capHits: bm.capHits, domains: bm.domains.length,
 	};
 }
 
 // Fleet run: boats [x, y, heading], autopilot on at frame 1, optional
 // tack per boat at a frame. TWS of each boat over the last 100 frames.
 // kick[i] false turns boat i's sail push off (to isolate another boat's wake).
-export function fleet(k, boatsSpec, { frames = 300, kick = null, tacks = {} } = {}) {
+export function fleet(k, boatsSpec, { frames = 300, kick = null, tacks = {}, amr = true, timing = false } = {}) {
 	const { bm, map } = makeWorld(k);
 	const boats = boatsSpec.map(([x, y, h]) => new Boat(map, x, y, h));
 	const tws = boats.map(() => 0);
-	let n = 0, maxU = 0, bad = 0, minGap = Infinity;
+	let n = 0, maxU = 0, bad = 0, minGap = Infinity, fieldMs = 0, churn = 0, churnN = 0, prevStack = null;
+	const twsSeries = boats.map(() => []);
 	for (let f = 0; f < frames; f++) {
 		if (f === 1) boats.forEach(b => b.input_autopilot_enabled_toggle());
 		for (const [i, at] of Object.entries(tacks)) if (f === at) boats[i].input_autopilot_tack_toggle();
@@ -96,20 +157,28 @@ export function fleet(k, boatsSpec, { frames = 300, kick = null, tacks = {} } = 
 		boats.forEach((b, i) => {
 			b.physics_model_step();
 			if ((!kick || kick[i]) && b.mainsail_force) {
-				const eff = SAIL_LATTICE_COUPLING * bm.resolution * bm.resolution;
+				const eff = SAIL_LATTICE_COUPLING * bm.resolution * bm.resolution / (bm.velScale ?? 1);
 				for (const seg of b.getSailSegments()) bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * eff, seg.fy * eff);
 			}
 		});
-		if (bm.stepsDueThisFrame() > 0) trackBoats(bm, boats);
+		const t0 = now();
+		if (amr && bm.stepsDueThisFrame() > 0) trackBoats(bm, boats);
 		bm.advance_frame();
-		if (f >= frames - 100) { boats.forEach((b, i) => { tws[i] += b.wind_speed; }); n++; }
-		if (f % 25 === 24) {
+		if (timing && f >= 50) fieldMs += now() - t0;
+		if (f >= frames - 100) { boats.forEach((b, i) => { tws[i] += b.wind_speed; twsSeries[i].push(b.wind_speed); }); n++; }
+		if (f >= frames - 200) {
+			const st = stackCells(bm);
+			if (prevStack) { churn += st.reduce((a, v, j) => a + Math.abs(v - (prevStack[j] || 0)), 0); churnN++; }
+			prevStack = st;
+		}
+		if (!timing && f % 25 === 24) {
 			const st = fieldStats(bm);
 			maxU = Math.max(maxU, st.maxU); bad += st.bad;
 			minGap = Math.min(minGap, overlapGap(bm));
 		}
 	}
-	return { k, bm, boats, tws: tws.map(t => t / n), maxU, bad, overlapGap: minGap === Infinity ? 0 : -minGap };
+	const twsJitter = twsSeries.map(a => { let d = 0; for (let j = 1; j < a.length; j++) d = Math.max(d, Math.abs(a[j] - a[j - 1])); return d; });
+	return { k, bm, boats, tws: tws.map(t => t / n), twsJitter, churn: churnN ? churn / churnN : 0, stack: stackCells(bm), maxU, bad, msPerFrame: fieldMs / Math.max(1, frames - 50), overlapGap: minGap === Infinity ? 0 : -minGap };
 }
 
 // Largest population mismatch between coincident fluid nodes of two boats'
