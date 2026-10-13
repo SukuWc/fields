@@ -64,7 +64,7 @@ Last updated: 2026-10-13
 - [ ] Rule-stack labels (partial: [#12](https://github.com/SukuWc/fields/pull/12) shows the active rule and inhibited rules)
 
 ### 6. Closed beta polish
-- [ ] Performance (including profiling the render side)
+- [ ] Performance (including profiling the render side) (in progress, [#42](https://github.com/SukuWc/fields/pull/42): fix DOM node churn in `#info` readout)
 - [ ] Crash recovery
 - [ ] Spectator mode
 - [x] Hamburger settings menu on phones and touch screens: [#29](https://github.com/SukuWc/fields/pull/29)
