@@ -112,6 +112,27 @@ document.getElementById('mapSize').addEventListener('change', (e) => {
   if (v === 75) u.searchParams.delete('mapSize'); else u.searchParams.set('mapSize', String(v));
   location.href = u.toString();
 });
+// Refinement layout (#amrMode, ?amrMode=auto; ?amr=auto is accepted too).
+// "auto": only the finest boat disk is fixed and every coarser level is a
+// grading shell plus curl growth (domainTrack AUTO_SHELL). Restarts.
+{
+  const sel = document.getElementById('amrMode');
+  const q = new URLSearchParams(location.search);
+  if (q.get('amr') === 'auto') {
+    q.delete('amr'); q.set('amrMode', 'auto');
+    history.replaceState(history.state, '', location.pathname + '?' + q.toString() + location.hash);
+  }
+  sel.addEventListener('change', (e) => {
+    const mode = e.target.value === 'auto' ? 'auto' : 'fixed';
+    if ((bm.amrMode || 'fixed') === mode) return;
+    resetTracking(bm, getPlayers());
+    bm.amrMode = mode;
+    bm.setResolution(bm.resolution, bm.stepsPerFrame === bm.resolution ? undefined : bm.stepsPerFrame);
+    bm.setWindSpeed(map.wind_speed);
+    dataTextureMaterial.needsUpdate = true;
+    document.getElementById('scenario_restart').click();
+  });
+}
 // Before installUrlSettings so ?perf=1 turns the overlay on through its change listener.
 setupPerfOverlay(map, bm);
 // Before installUrlSettings: the device default must be the checkbox default.

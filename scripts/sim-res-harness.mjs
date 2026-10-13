@@ -53,9 +53,13 @@ export const MODES = {
 // Map side for every world made after this call (75 = main.js default).
 let MAP_SIDE = 75;
 export function setMapSize(n) { MAP_SIDE = n; }
+// Refinement layout for worlds made after this call: 'fixed' or 'auto'.
+let AMR_MODE = 'fixed';
+export function setAmrMode(m) { AMR_MODE = m; }
 
 export function makeWorld(k, wind = 15) {
 	const bm = new Boltzmann(MAP_SIDE, MAP_SIDE, 1, 90, wind, undefined, 1);
+	if (AMR_MODE === 'auto') bm.amrMode = 'auto';
 	const m = MODES[k] || { resolution: 1 / k };
 	if (k !== 1) bm.setResolution(m.resolution, m.stepsPerFrame);
 	const map = new Map(MAP_SIDE, MAP_SIDE, 90, wind, bm, new FluidWind(bm), new ConstantWind(90, wind));
@@ -64,6 +68,22 @@ export function makeWorld(k, wind = 15) {
 }
 
 const speedOf = (b) => Math.hypot(b.physics_model.m_linearVelocity.x, b.physics_model.m_linearVelocity.y);
+
+// Refined cells per boat level (mask cells, in each level's parent cells),
+// coarsest first, summed over boats.
+export function stackCells(bm) {
+	const out = [];
+	for (const top of bm.domains.filter(d => d.disk)) {
+		let d = top, i = 0;
+		while (d) {
+			let n = 0;
+			if (d.mask) for (let j = 0; j < d.mask.length; j++) n += d.mask[j] === 1;
+			out[i] = (out[i] || 0) + n;
+			d = d.domains[0]; i++;
+		}
+	}
+	return out;
+}
 
 // Scenario 0: one boat close-hauled on autopilot.
 export function scenario0(k, { frames = 600, amr = true, energy = true } = {}) {
@@ -88,7 +108,7 @@ export function scenario0(k, { frames = 600, amr = true, energy = true } = {}) {
 	return {
 		k, amr, depth, finestStep, twa: boat.twa, twaSpread: twaMax - twaMin, bs: speedOf(boat), bsAt500,
 		tws: tws / twsN, msPerFrame: ms / frames, msPerStep: steps ? ms / steps : 0, steps,
-		cells: bm.width * bm.height, ...st, capHits: bm.capHits, domains: bm.domains.length,
+		cells: bm.width * bm.height, stack: stackCells(bm), ...st, capHits: bm.capHits, domains: bm.domains.length,
 	};
 }
 
