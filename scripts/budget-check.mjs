@@ -21,8 +21,8 @@ const stats = (r, target) => {
 };
 for (const b of ['off', 'default']) {
 	H.setBudget(b === 'off' ? Infinity : 'default');
-	const r = H.fleet(k, H.FLEET8, { frames, series: true, timing: true });
-	out[`fleet8_${b}`] = stats(r, b === 'off' ? Infinity : out.target);
+	const r = H.fleet(k, H.FLEET4, { frames, series: true, timing: true });
+	out[`fleet4_${b}`] = stats(r, b === 'off' ? Infinity : out.target);
 	const s0 = H.scenario0(k);
 	out[`s0_${b}`] = { twa: s0.twa, bs: s0.bs };
 	const s1 = H.scenario1(k);

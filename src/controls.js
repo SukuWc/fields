@@ -699,17 +699,17 @@ scenarios[16].frames[1] = () => {
 // Three-boat test race (race-bot.js TEST_RACE_LAYOUT, dev mode): start
 // line → windward mark to port → finish, sailed by RaceBot on the existing
 // autopilot, with the live leaderboard. Dev mode: ?devmode=1&scenario_selector=17
-// Eight boats upwind: the refinement-budget case (domainTrack BUDGET_*).
-// ?scenario_selector=18. Same positions as FLEET8 in scripts/sim-res-harness.mjs.
-export const FLEET8 = [
-  [-14, -6], [-4, -6], [6, -6], [16, -6],
-  [-9, -14], [1, -14], [11, -14], [21, -14],
+// Four boats upwind: the refinement-budget case (domainTrack BUDGET_*).
+// ?scenario_selector=18. Same positions as FLEET4 in scripts/sim-res-harness.mjs.
+export const FLEET4 = [
+  [-10, -6], [0, -6],
+  [-5, -14], [5, -14],
 ];
 scenarios[18] = makeScenario(
-  "Fleet of eight upwind",
-  "Eight boats start on starboard close-hauled in two staggered rows, about 10 m apart, and sail upwind on autopilot. Each boat's wake falls on the boats behind it, and the refinement budget (?cellBudget=, cell updates per root step) keeps the total refinement bounded by raising the curl threshold when the fleet's wakes would exceed it. Arrow keys, Space and Enter are bound to the first boat."
+  "Fleet of four upwind",
+  "Four boats start on starboard close-hauled in two staggered rows, about 10 m apart, and sail upwind on autopilot. Each boat's wake falls on the boats behind it, and the refinement budget (?cellBudget=, cell updates per root step) keeps the total refinement bounded by raising the curl threshold when the fleet's wakes would exceed it. Arrow keys, Space and Enter are bound to the first boat."
 );
-scenarios[18].frames[0] = () => { for (const [x, y] of FLEET8) players.push(new Boat(_map, x, y, 5 * Math.PI / 4)); };
+scenarios[18].frames[0] = () => { for (const [x, y] of FLEET4) players.push(new Boat(_map, x, y, 5 * Math.PI / 4)); };
 scenarios[18].frames[1] = () => { for (const p of players) p.input_autopilot_enabled_toggle(); };
 scenarios[18].frames[2] = () => { autokeybind(players); };
 
