@@ -248,5 +248,5 @@ export function barrier(k, wind, { frames = 1500, amr = false } = {}) {
 		islands = Math.max(islands, bm.domains.length);
 	}
 	const end = fieldStats(bm);
-	return { k, wind, amr, diverge, worstU, worstDr, endU: end.maxU, endDr: end.maxDr, bad: end.bad, islands, msPerFrame: ms / frames, steps };
+	return { k, wind, amr, diverge, worstU, worstDr, endU: end.maxU, endDr: end.maxDr, bad: end.bad, islands, msPerFrame: ms / frames, steps, bm };
 }
