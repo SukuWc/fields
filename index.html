@@ -155,6 +155,9 @@
       #finish_results[hidden] { display: none; }
       #finish_results .finish-title { font-weight: 700; margin-bottom: 2px; }
       #finish_results .finish-row.pen { color: #ffd27a; }
+      #finish_results .finish-row.fin { color: #8dffb0; }
+      #finish_results .finish-row.me { font-weight: 700; }
+      #finish_results { max-height: 40vh; overflow-y: auto; }
       #start_hud.flash { background: rgba(255, 210, 122, 0.55); border-color: #ffd27a; }
       #start_hud .start-clock { font-size: 34px; font-weight: 700; line-height: 1.1; }
       #start_hud .start-signal { font-size: 14px; margin-top: 2px; }
@@ -334,6 +337,10 @@
       body.touch-on #sim_canvas {
         height: calc(100% - var(--touch-panel-h));
       }
+      body.touch-on #finish_results {
+        bottom: calc(var(--touch-panel-h) + 10px);
+        z-index: 160;
+      }
       body.touch-on #fps {
         bottom: calc(var(--touch-panel-h) + 10px);
       }
@@ -413,6 +420,24 @@
           line-height: 1.2;
           column-count: 2;
           column-gap: 10px;
+        }
+        /* Leaderboard on a phone with touch controls: the desktop
+           bottom-right spot is under the touch panel, so it sits just above
+           the panel on the right, compact, and the readout moves up. */
+        body.touch-on #finish_results {
+          right: calc(8px + env(safe-area-inset-right));
+          bottom: calc(var(--touch-panel-h) + 6px);
+          z-index: 160;
+          font-size: 10px;
+          line-height: 1.25;
+          padding: 3px 6px;
+          max-height: 22vh;
+        }
+        body.touch-on:has(#finish_results:not([hidden])) #info {
+          bottom: calc(var(--touch-panel-h) + 34px + 66px);
+        }
+        body.touch-on:has(#finish_results:not([hidden])) #perf_overlay_hud {
+          bottom: calc(var(--touch-panel-h) + 34px + 66px);
         }
         body.touch-on #perf_overlay_hud {
           font-size: 10px;
@@ -540,7 +565,7 @@
       }
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-Cy6CHT8v.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-CwrpPjvk.js"></script>
   </head>
   <body>
 
@@ -613,7 +638,7 @@
       <input id="windSpeed" autocomplete="off" type="number" min="0" max="40" step="1" value="15"></label>
       <br>
       <span class="setting-row setting-field">Select Scenario<br>
-      <input id="scenario_selector" autocomplete="off" type="number" min="0" max="16" value="0" style="width: 50px;" title="Scenario 6: Rule 13 tack. Scenario 7: leeward boat tacks into a Rule 10 collision. Scenario 8: Rule 15 overlap. Scenario 9: contact during Rule 15. Scenario 10: penalty turn, a tack and a gybe in a row (Q counter-clockwise, E clockwise autopilot circle). Scenario 11: anchored mark buoy, boat hits it. Scenario 12: anticlockwise triangle course, marks to port, next mark highlighted. Scenario 13: windward mark and leeward gate. Scenario 14: start sequence countdown, OCS individual recall, then windward mark and leeward gate. Scenario 15: Rule 18.2 mark-room, two boats overlapped at the leeward gate. Scenario 16: finish line and results list, unserved penalty becomes a time penalty. Use with Dev mode.">
+      <input id="scenario_selector" autocomplete="off" type="number" min="0" max="17" value="0" style="width: 50px;" title="Scenario 6: Rule 13 tack. Scenario 7: leeward boat tacks into a Rule 10 collision. Scenario 8: Rule 15 overlap. Scenario 9: contact during Rule 15. Scenario 10: penalty turn, a tack and a gybe in a row (Q counter-clockwise, E clockwise autopilot circle). Scenario 11: anchored mark buoy, boat hits it. Scenario 12: anticlockwise triangle course, marks to port, next mark highlighted. Scenario 13: windward mark and leeward gate. Scenario 14: start sequence countdown, OCS individual recall, then windward mark and leeward gate. Scenario 15: Rule 18.2 mark-room, two boats overlapped at the leeward gate. Scenario 16: finish line and results list, unserved penalty becomes a time penalty. Scenario 17: three-boat test race with the live leaderboard. Use with Dev mode.">
       <input id="scenario_restart" type="button" min="0" max="10" style="width: 50px;" value="Restart"></span>
     
       <div id="wind_info"></div>
