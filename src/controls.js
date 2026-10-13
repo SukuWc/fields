@@ -5,6 +5,7 @@ import { Course, Gate, TRIANGLE_COURSE_LAYOUT, WINDWARD_LEEWARD_LAYOUT, MARK_ROO
 import { StartLine, StartSequence, START_COURSE_LAYOUT } from './start.js';
 import { nameMarks, resetMarkTouches } from './mark-touch.js';
 import { FinishLine, RaceResults, FINISH_COURSE_LAYOUT, FINISH_UNSERVED_PENALTY_S } from './finish.js';
+import { setupTestRace } from './race-bot.js';
 import { chargePendingPenalty, PENALTY_MANEUVER_WINDOW_S, resetContacts } from './rules.js';
 import { range_map } from './utils.js';
 
@@ -19,6 +20,7 @@ let marks = [];
 let course = null;
 let startSequence = null;
 let raceResults = null;
+let raceBots = [];
 let physics_frame = 0;
 
 let _map, _getCamera, _bm;
@@ -144,6 +146,7 @@ function scenario_clear() {
   course = null;
   startSequence = null;
   raceResults = null;
+  raceBots = [];
   physics_frame = 0;
   resetContacts();
   resetMarkTouches();
@@ -170,7 +173,7 @@ function renderScenarioCard(scenario) {
     bodyEl.textContent = scenario.description || "";
   } else {
     titleEl.textContent = "No scenario";
-    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 16 each have a description.";
+    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 17 each have a description.";
   }
   card.classList.toggle("collapsed", scenarioCardCollapsed);
   if (toggle) {
@@ -693,6 +696,33 @@ scenarios[16].frames[1] = () => {
   _map.camera_zoom = 34;
 };
 
+// Three-boat test race (race-bot.js TEST_RACE_LAYOUT, dev mode): start
+// line → windward mark to port → finish, sailed by RaceBot on the existing
+// autopilot, with the live leaderboard. Dev mode: ?devmode=1&scenario_selector=17
+scenarios[17] = makeScenario(
+  "Three-boat test race with live leaderboard",
+  "Dev mode only (uniform wind). Three boats come in line astern on a port broad reach, head up just before the gun and start one after another, beat on port, tack once onto the starboard layline, round the windward mark to port, run down to the finish line and then park. Each boat is sailed by a small race script that only sets the existing autopilot's TWA target (close-hauled 50°, one tack at the layline, bear away after the mark, steer for the finish midpoint); if a boat is close ahead it pinches and waits to tack. The leaderboard (bottom right) ranks finished boats by the results, then racing boats by legs done and distance to finish: beat legs count max(upwind distance / cos 50°, straight distance), runs and reaches the straight distance. Rows show position, boat, leg (↑ beat, ↓ run, → reach), metres left on the leg and the gap to the leader in metres. Boat 0 also runs the script; steering her with the arrows, Space or Enter hands her to you and the script stops for her."
+);
+scenarios[17].frames[0] = () => {
+  const race = setupTestRace(_map);
+  players.push(...race.boats);
+  marks.push(...race.marks);
+  startSequence = race.seq;
+  course = race.course;
+  raceResults = race.results;
+  raceBots = race.bots;
+  nameMarks(course, startSequence);
+};
+scenarios[17].frames[1] = () => {
+  autokeybind(players);
+  const follow = document.getElementById('camera_follow');
+  if (follow && !follow.checked) {
+    follow.checked = true;
+    follow.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  _map.camera_zoom = 40;
+};
+
 export function setupControls(map, getCamera, bm) {
   _map = map;
   _getCamera = getCamera;
@@ -770,6 +800,10 @@ export function getMarks() {
 
 export function getCourse() {
   return course;
+}
+
+export function getRaceBots() {
+  return raceBots;
 }
 
 export function getRaceResults() {

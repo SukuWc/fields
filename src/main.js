@@ -6,10 +6,11 @@ import { trackBoats, resetTracking } from './domainTrack.js';
 import { Map } from './map.js';
 import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera, setFluidPlaneSize } from './renderer.js';
-import { setupControls, getPlayers, getMarks, getCourse, getStartSequence, getRaceResults, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
+import { setupControls, getPlayers, getMarks, getCourse, getStartSequence, getRaceResults, getRaceBots, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
 import { courseGuides, courseText, markRoomTarget } from './course.js';
-import { finishGuides, resultsHtml } from './finish.js';
+import { finishGuides } from './finish.js';
+import { Leaderboard, leaderboardHtml } from './leaderboard.js';
 import { startGuides, startHudHtml, startStatusText } from './start.js';
 import { recordMarkTouches, markTouchGuides } from './mark-touch.js';
 import { setupPerfOverlay, isPerfOverlayOn, recordFieldStep } from './perf-overlay.js';
@@ -103,6 +104,7 @@ const distInfoEl = document.getElementById('dist_info');
 // grants room nor eats it).
 const runner = new Runner(map.world, { speed: 1, fps: 30 });
 let rulesTime = 0;
+let leaderboard = null;
 
 runner.start((simDt) => {
   if (typeof simDt === 'number' && Number.isFinite(simDt) && simDt > 0) rulesTime += simDt;
@@ -234,14 +236,27 @@ runner.start((simDt) => {
   // (time since the gun, or since the scenario start without a sequence).
   const results = getRaceResults();
   const resultsEl = document.getElementById('finish_results');
+  const raceClock = startSeq ? startSeq.clock : (results ? results.relClock(rulesTime) : rulesTime);
   if (course && course.finish && results) {
     const boats = getPlayers();
-    const clock = startSeq ? startSeq.clock : results.relClock(rulesTime);
-    if (stepped) results.update(boats, clock);
-    guides.push(...finishGuides(course, boats[0] ? course.progressFor(boats[0]) : null, results, boats, clock, performance.now()));
+    if (stepped) results.update(boats, raceClock);
+    guides.push(...finishGuides(course, boats[0] ? course.progressFor(boats[0]) : null, results, boats, raceClock, performance.now()));
+  }
+  // Race bots (scenario 17): set each boat's autopilot target once per step.
+  const windFrom = map.wind_direction;
+  if (stepped) {
+    const boats = getPlayers();
+    for (const bot of getRaceBots()) bot.step(raceClock, windFrom, boats, !!results && results.isFinished(bot.boat), results ? results.entries.length : 1);
+  }
+  // Live leaderboard (leaderboard.js) for any course; it replaces the
+  // results panel (finished rows keep the results text).
+  if (course) {
+    if (!leaderboard || leaderboard.course !== course) leaderboard = new Leaderboard(course, { startSequence: startSeq, results });
+    leaderboard.results = results;
+    if (stepped) leaderboard.update(getPlayers(), raceClock, windFrom);
     if (resultsEl) {
       resultsEl.hidden = false;
-      resultsEl.innerHTML = resultsHtml(results);
+      resultsEl.innerHTML = leaderboardHtml(leaderboard, 0);
     }
   } else if (resultsEl && !resultsEl.hidden) {
     resultsEl.hidden = true;
