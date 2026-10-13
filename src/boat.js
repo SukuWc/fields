@@ -1,5 +1,6 @@
 import planck, { random } from 'planck-js/dist/planck-with-testbed';
 import { aeroCoefficients } from './utils.js';
+import { setInfo, appendInfo } from './info.js';
 import { resetPenaltyManeuvers, updatePenaltyManeuvers, updateTackingState } from './rules.js';
 
 // Lattice momentum per frame = sail reaction × SAIL_LATTICE_COUPLING.
@@ -202,8 +203,8 @@ export class Boat{
       body.applyForce(force, point, true);
     };
 
-    document.getElementById("info").innerHTML = "Autopilot" + this.autopilot_enabled + "<br>"
-    document.getElementById("info").innerHTML += "Heading Target" + this.autopilot_heading_target + "<br>"
+    setInfo("Autopilot" + this.autopilot_enabled + "<br>");
+    appendInfo("Heading Target" + this.autopilot_heading_target + "<br>");
     // calculate boat dynamics
 
 
@@ -271,7 +272,7 @@ export class Boat{
 
     this.forces.push({name: "centerboard", type: "arrow", vector: centerboard_f, point: centerboard_p})
 
-    document.getElementById("info").innerHTML += "q/d: "+ centerboard_AoA_degrees + "°<br>"; 
+    appendInfo("q/d: "+ centerboard_AoA_degrees + "°<br>");
   
 
 
@@ -395,7 +396,7 @@ export class Boat{
         error+=360
       }
 
-      document.getElementById("info").innerHTML += "error: "+ Math.floor(error) + "°<br>"; 
+      appendInfo("error: "+ Math.floor(error) + "°<br>");
 
       let comp_p = error * this.autopilot_compensator_p 
       let comp_i = this.autopilot_compensator_sum_error * this.autopilot_compensator_i 
@@ -451,10 +452,10 @@ export class Boat{
     applyFinite(rudder_f, rudder_p); 
     this.forces.push({name: "rudder", type: "arrow", vector: rudder_f, point: rudder_p})
 
-    document.getElementById("info").innerHTML += "TWA: "+Math.floor(twa) + "<br>";
-    document.getElementById("info").innerHTML += "TWS: "+Math.floor(this.wind_speed*10)/10 + "<br>";
-    document.getElementById("info").innerHTML += "AWA: "+Math.floor(awa) + "<br>";
-    document.getElementById("info").innerHTML += "AWS: "+Math.floor(aws*10)/10 + "<br>";
+    appendInfo("TWA: "+Math.floor(twa) + "<br>");
+    appendInfo("TWS: "+Math.floor(this.wind_speed*10)/10 + "<br>");
+    appendInfo("AWA: "+Math.floor(awa) + "<br>");
+    appendInfo("AWS: "+Math.floor(aws*10)/10 + "<br>");
 
 
     // Calculate boat speed and velocity made good
@@ -462,8 +463,8 @@ export class Boat{
     let bs = Math.sqrt(this.physics_model.m_linearVelocity.x*this.physics_model.m_linearVelocity.x + this.physics_model.m_linearVelocity.y*this.physics_model.m_linearVelocity.y)
     let vmg = Math.cos(twa/180*Math.PI)*bs
 
-    document.getElementById("info").innerHTML += "BS: "+ Math.floor( bs *10) /10 + "<br>"; 
-    document.getElementById("info").innerHTML += "VMG: "+ Math.floor( vmg *10) /10 + "<br>"; 
+    appendInfo("BS: "+ Math.floor( bs *10) /10 + "<br>");
+    appendInfo("VMG: "+ Math.floor( vmg *10) /10 + "<br>");
 
 
 
@@ -495,8 +496,8 @@ export class Boat{
     let sail_f_drag = {};
     let sail_f_lift = {};
 
-    document.getElementById("info").innerHTML += "Cd: "+ Math.floor( c_drag *10) /10 + "<br>"; 
-    document.getElementById("info").innerHTML += "Cl: "+ Math.floor( c_lift *10) /10 + "<br>"; 
+    appendInfo("Cd: "+ Math.floor( c_drag *10) /10 + "<br>");
+    appendInfo("Cl: "+ Math.floor( c_lift *10) /10 + "<br>");
     
     const sail_efficiency = 0.15/3 // was 0.35
 
@@ -526,7 +527,7 @@ export class Boat{
     this.mainsail_force = { x: mainsail_f.x, y: mainsail_f.y };
 
     
-    document.getElementById("info").innerHTML += "Power: "+ Math.floor( this.power *10) /10 + "<br>"; 
+    appendInfo("Power: "+ Math.floor( this.power *10) /10 + "<br>");
 
 
 
