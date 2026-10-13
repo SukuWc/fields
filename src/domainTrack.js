@@ -89,9 +89,12 @@ export const BUDGET_MAX_SCALE = 50;
 // One boat's floor (finest disk + shells, calm water) costs about 8.7k cell
 // updates per root step at Default and 17.7k on the 4-level stacks (x2 / 2f /
 // 2f34; the finest level steps 16× there). DEFAULT_CELL_UPDATE_TARGET per
-// 3-level stack is 120k: 8 floors (70k) plus ~70 % headroom for wakes, and one
-// or two boats (21k / 39k) never reach the 80 % band. It doubles per extra level.
-export const DEFAULT_CELL_UPDATE_TARGET = 120000;
+// 3-level stack is 50k, tuned for 4 boats: 4 floors (~37k) plus ~35 % headroom
+// for wakes (4 boats Default ≈ 44 ms/frame vs 61 unbudgeted; the floors alone
+// cost ~40 ms, so 33 ms is not reachable at 4 boats), and one or two boats
+// (21k / 39k) stay below the 0.9 band edge, so they are unchanged. It doubles
+// per extra level.
+export const DEFAULT_CELL_UPDATE_TARGET = 50000;
 export function defaultCellUpdateTarget(bm) {
 	const depth = amrParams(bm).levels.length;
 	return DEFAULT_CELL_UPDATE_TARGET * 2 ** Math.max(0, depth - 3);

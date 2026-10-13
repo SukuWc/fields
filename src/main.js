@@ -122,8 +122,8 @@ document.getElementById('mapSize').addEventListener('change', (e) => {
 bm.amrMode = 'auto';
 // Refinement budget: target cell updates per root step (domainTrack BUDGET_*).
 // ?cellBudget=N sets it, ?cellBudget=0 (or off) turns it off. The default
-// follows the grid ('default' = defaultCellUpdateTarget(bm): 120k on a 3-level
-// stack, 240k on x2 / 2f / 2f34, 480k on x4).
+// follows the grid ('default' = defaultCellUpdateTarget(bm): 50k on a 3-level
+// stack, 100k on x2 / 2f / 2f34, 200k on x4).
 {
   const raw = new URLSearchParams(location.search).get('cellBudget');
   const n = Number(raw);

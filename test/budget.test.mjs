@@ -17,7 +17,7 @@ const check = (name, cond, detail) => { if (!cond) failed++; console.log(`${cond
 	for (let i = 0; i < 1000; i++) r = D.updateBudgetScale(r, 100, T);
 	check('well under target the scale relaxes to exactly 1', r.scale === 1, r.scale);
 	const bm = H.makeWorld(1).bm;
-	check('default target 120k per 3-level stack (240k on 2f34)', D.defaultCellUpdateTarget(bm) === 120000 && D.defaultCellUpdateTarget(H.makeWorld('2f34').bm) === 240000);
+	check('default target 50k per 3-level stack (100k on 2f34)', D.defaultCellUpdateTarget(bm) === 50000 && D.defaultCellUpdateTarget(H.makeWorld('2f34').bm) === 100000);
 }
 
 // 2. Single boat under the default target: bit-identical to no budget.
@@ -29,25 +29,32 @@ const check = (name, cond, detail) => { if (!cond) failed++; console.log(`${cond
 		`${r.twa.toFixed(4)} / ${r.bs.toFixed(4)}`);
 }
 
-// 3. cellUpdates = root + Σ domain cells × 2^level; 8 boats stay under the default target.
+// 3. cellUpdates = root + Σ domain cells × 2^level; 4 boats (scenario 18) stay under the default target.
 {
 	H.setBudget('default');
-	const r = H.fleet(1, H.FLEET8, { frames: 400, series: true });
+	const r = H.fleet(1, H.FLEET4, { frames: 400, series: true });
 	const bm = r.bm;
 	check('cellUpdates() equals bm.cellLoad recorded by trackBoats', bm.cellUpdates() === bm.cellLoad && bm.cellLoad > 0, bm.cellLoad);
 	const tail = r.loadSeries.slice(300), T = D.defaultCellUpdateTarget(bm);
-	check('8 boats Default: load ≤ target after the start transient, scale > 1', Math.max(...tail) <= T && bm.curlScale > 1, `max ${Math.max(...tail)} / ${T} scale ${bm.curlScale.toFixed(2)}`);
-	check('8 boats: no NaN, all boats keep a refinement stack', !r.bad && r.stack && Object.keys(r.stack).length > 0);
+	check('4 boats Default, default target: load ≤ target after the start transient, scale > 1', Math.max(...tail) <= T && bm.curlScale > 1, `max ${Math.max(...tail)} / ${T} scale ${bm.curlScale.toFixed(2)}`);
+	check('4 boats: no NaN, all boats keep a refinement stack', !r.bad && r.stack && Object.keys(r.stack).length > 0);
 }
 
 // 4. Target below the floors: scale pins at max, floors (finest disks + shells) kept, load = floors.
 {
 	H.setBudget(2000);
-	const r = H.fleet(1, H.FLEET8.slice(0, 2), { frames: 300, series: true });
+	const r = H.fleet(1, H.FLEET4.slice(0, 2), { frames: 300, series: true });
 	H.setBudget(Infinity);
 	const calm = r.loadSeries.at(-1);
 	check('impossible target: scale pinned at max, load stays at the floors (>0 levels kept)',
 		r.bm.curlScale === D.BUDGET_MAX_SCALE && calm > 15000 && r.bm.domains?.length !== 0 && !r.bad, `scale ${r.bm.curlScale} load ${calm}`);
+}
+// 5. Two boats (scenario 1 shadow) at the default target: identical to no budget.
+{
+	H.setBudget(Infinity); const off = H.scenario1(1);
+	H.setBudget('default'); const on = H.scenario1(1);
+	H.setBudget(Infinity);
+	check('2 boats, default budget: shadow unchanged', on.tws0 === off.tws0 && on.tws1 === off.tws1, `${(on.tws0 - on.tws1).toFixed(4)}`);
 }
 if (failed) { console.error(`${failed} check(s) failed`); process.exit(1); }
 console.log('all budget checks passed');

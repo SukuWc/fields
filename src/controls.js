@@ -702,8 +702,8 @@ scenarios[16].frames[1] = () => {
 // Four boats upwind: the refinement-budget case (domainTrack BUDGET_*).
 // ?scenario_selector=18. Same positions as FLEET4 in scripts/sim-res-harness.mjs.
 export const FLEET4 = [
-  [-10, -6], [0, -6],
-  [-5, -14], [5, -14],
+  [14, -6], [24, -6],
+  [19, -14], [29, -14],
 ];
 scenarios[18] = makeScenario(
   "Fleet of four upwind",

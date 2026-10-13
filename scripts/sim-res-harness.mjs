@@ -63,7 +63,7 @@ export function amrMode() { return AMR_MODE; }
 let BUDGET = Infinity;
 export function setBudget(n) { BUDGET = n; }
 // Scenario 18 start positions (controls.js FLEET4), starboard close-hauled.
-export const FLEET4 = [[-10, -6], [0, -6], [-5, -14], [5, -14]]
+export const FLEET4 = [[14, -6], [24, -6], [19, -14], [29, -14]]
 	.map(([x, y]) => [x, y, 5 * Math.PI / 4]);
 export function setAmrMode(m) { AMR_MODE = m; }
 
