@@ -6,6 +6,7 @@ import { StartLine, StartSequence, START_COURSE_LAYOUT } from './start.js';
 import { nameMarks, resetMarkTouches } from './mark-touch.js';
 import { FinishLine, RaceResults, FINISH_COURSE_LAYOUT, FINISH_UNSERVED_PENALTY_S } from './finish.js';
 import { setupTestRace } from './race-bot.js';
+import { setupBoundaryTest } from './boundary-scenario.js';
 import { chargePendingPenalty, PENALTY_MANEUVER_WINDOW_S, resetContacts } from './rules.js';
 import { range_map } from './utils.js';
 
@@ -21,6 +22,9 @@ let course = null;
 let startSequence = null;
 let raceResults = null;
 let raceBots = [];
+// Scenario 18: virtual boundary (boundary.js) and its boat script.
+let boundary = null;
+let boundaryScript = null;
 let physics_frame = 0;
 
 let _map, _getCamera, _bm;
@@ -147,6 +151,8 @@ function scenario_clear() {
   startSequence = null;
   raceResults = null;
   raceBots = [];
+  boundary = null;
+  boundaryScript = null;
   physics_frame = 0;
   resetContacts();
   resetMarkTouches();
@@ -173,7 +179,7 @@ function renderScenarioCard(scenario) {
     bodyEl.textContent = scenario.description || "";
   } else {
     titleEl.textContent = "No scenario";
-    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 17 each have a description.";
+    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 18 each have a description.";
   }
   card.classList.toggle("collapsed", scenarioCardCollapsed);
   if (toggle) {
@@ -722,6 +728,36 @@ scenarios[17].frames[1] = () => {
   }
   _map.camera_zoom = 40;
 };
+
+// Two-boat virtual boundary test (boundary-scenario.js, dev mode). Only
+// this scenario has a boundary. Dev mode: ?devmode=1&scenario_selector=18
+scenarios[18] = makeScenario(
+  "Virtual boundary: room to tack away",
+  "Dev mode only (uniform wind). SailGP-style virtual boundaries run along both sides of the course (dashed red and white, 8 m inside the walls), each with a 20 m zone inside it (faint hatching). In the zone, the boat closer to the boundary is entitled to room to tack or gybe away from it, whatever Rules 10-13 say: the other boat must give that room. Boat 0 (yours) beats on port toward the east boundary; boat 1 is on starboard just astern and to leeward. Normally Rule 10 (port keeps clear) and then Rule 13 (a tacking boat keeps clear) bind boat 0, but she is closer to the boundary and in the zone, so 'Boundary room' decides and those rules are struck through; GETS / GIVES ROOM badges show who owes it. The entitlement ends once she has completed her tack (close-hauled on the new tack) or leaves the zone. Later boat 1 sails on across the west boundary: after 1 s outside she gets a pending 'Boundary: crossed' penalty (clear it with a tack and a gybe, or Q/E), then she tacks back in. Both boats run a small autopilot script; steering boat 0 with the arrows, Space or Enter hands her to you."
+);
+scenarios[18].frames[0] = () => {
+  const t = setupBoundaryTest(_map);
+  players.push(...t.boats);
+  boundary = t.boundary;
+  boundaryScript = t;
+};
+scenarios[18].frames[1] = () => {
+  autokeybind(players);
+  const follow = document.getElementById('camera_follow');
+  if (follow && !follow.checked) {
+    follow.checked = true;
+    follow.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  _map.camera_zoom = 34;
+};
+
+export function getBoundary() {
+  return boundary;
+}
+
+export function getBoundaryScript() {
+  return boundaryScript;
+}
 
 export function setupControls(map, getCamera, bm) {
   _map = map;

@@ -1026,6 +1026,74 @@ function evaluateRule18(ctx, state) {
   };
 }
 
+// Boundary room (game rule, SailGP style; boundary.js). ctx.boundary is the
+// scenario's Boundary or null. The boat closer to a side's boundary line,
+// once she is in that side's zone, is entitled to room to tack or gybe away
+// from it; the other boat gives that room whatever Section A says. Frozen
+// at the start (side, entitled boat, her tack); it freezes only once one
+// boat is BOUNDARY_TIE_M closer, so near-equal distances do not flip it.
+// Ends when she has completed a tack or gybe (her tack changed and the
+// Rule 13 window is closed) or is BOUNDARY_EXIT_HYST_M beyond the zone; it
+// then stays ended until neither boat is in that zone. Decisive (inhibits
+// the Section A rule, and Rule 15) only when Section A would make her keep
+// clear; otherwise shown as a supporting line. Near a mark Rule 18 (rank 2)
+// is below this (rank 3): boundary room wins if both apply.
+const BR_TIE_M = 1;
+const BR_EXIT_HYST_M = 1;
+function evaluateBoundaryRoom(ctx, state) {
+  const bd = ctx.boundary;
+  const A = ctx.boatA;
+  const B = ctx.boatB;
+  if (!bd) return null;
+  const reset = () => { for (const k of Object.keys(state)) delete state[k]; };
+  if (!state.frozen) {
+    const nA = bd.distanceOf(A);
+    const nB = bd.distanceOf(B);
+    const side = nA.dist <= nB.dist ? nA.side : nB.side;
+    const dA = bd.sideDistance(A, side);
+    const dB = bd.sideDistance(B, side);
+    const closer = dA <= dB ? A : B;
+    if (Math.min(dA, dB) > bd.zone) return null;
+    if (Math.abs(dA - dB) < BR_TIE_M) return null;
+    state.frozen = true;
+    state.side = side;
+    state.entitled = closer;
+    state.owes = closer === A ? B : A;
+    state.tack0 = windSample(ctx, closer).tack;
+    state.ended = false;
+  }
+  const side = state.side;
+  const ent = state.entitled;
+  if (state.ended) {
+    if (bd.sideDistance(A, side) > bd.zone + BR_EXIT_HYST_M && bd.sideDistance(B, side) > bd.zone + BR_EXIT_HYST_M) reset();
+    return null;
+  }
+  const tackNow = windSample(ctx, ent).tack;
+  if (bd.sideDistance(ent, side) > bd.zone + BR_EXIT_HYST_M || (tackNow && state.tack0 && tackNow !== state.tack0 && !isTacking(ent))) {
+    state.ended = true;
+    state.endedAt = ctx.simTime;
+    return null;
+  }
+  const secA = ctx.sectionA && ctx.sectionA.final;
+  const r15 = ctx.rule15;
+  const decisive = !secA || !!secA.bothGiveWay || secA.giveWay === ent || !!(r15 && r15.giveWay === ent);
+  const blockedIds = [];
+  if (decisive && secA) blockedIds.push(secA.id);
+  if (decisive && r15) blockedIds.push('15');
+  return {
+    id: 'BR',
+    rule: 'Boundary room',
+    applies: true,
+    rightOfWay: ent,
+    giveWay: state.owes,
+    decisive,
+    basis: side > 0 ? 'east boundary' : 'west boundary',
+    blockedId: blockedIds[0] || null,
+    blockedIds,
+    label: 'Boundary room',
+  };
+}
+
 // `rank` is the hierarchy: a higher rank can be the final rule while a lower
 // one stays applicable but inhibited. Section A shares rank 0. Registry order
 // is the tie-break inside a rank (earlier wins) and the order of `applicable`.
@@ -1078,6 +1146,17 @@ export const ruleRegistry = [
       return result.decisive && result.blockedId ? [result.blockedId] : [];
     },
     evaluate: evaluateRule18,
+  },
+  {
+    id: 'BR',
+    layer: 'sectionC',
+    rank: 3,
+    // Decisive only: Section A's rule (and Rule 15) do not decide fault
+    // while the boat nearer the boundary has room to tack or gybe away.
+    inhibits(result) {
+      return result.decisive ? (result.blockedIds || []) : [];
+    },
+    evaluate: evaluateBoundaryRoom,
   },
 ];
 
@@ -1316,9 +1395,9 @@ function ruleState(slot, id) {
 // overlay call (the headless checks) keeps the same memory as before. The
 // all-pairs step does not call this for pairs outside the gate; it drops
 // their state instead.
-function evaluatePair(boatA, boatB, getWind, clearance, simTime, slot, markFor) {
+function evaluatePair(boatA, boatB, getWind, clearance, simTime, slot, markFor, boundary) {
   const inRange = Number.isFinite(clearance) && clearance <= RULE10_INTEREST_RANGE_M;
-  const ctx = { boatA, boatB, getWind, clearance, simTime, sectionA: null, markFor };
+  const ctx = { boatA, boatB, getWind, clearance, simTime, sectionA: null, markFor, boundary: boundary || null };
   const outputs = inRange ? sectionAOutputs(ctx) : [];
   ctx.sectionA = resolveRuleOutputs(outputs);
   const rule15 = evaluateRule15(ctx, ruleState(slot, '15'));
@@ -1326,6 +1405,9 @@ function evaluatePair(boatA, boatB, getWind, clearance, simTime, slot, markFor) 
   if (inRange) {
     const rule18 = evaluateRule18(ctx, ruleState(slot, '18'));
     if (rule18) outputs.push(rule18);
+    ctx.rule15 = rule15 || null;
+    const br = evaluateBoundaryRoom(ctx, ruleState(slot, 'BR'));
+    if (br) outputs.push(br);
   }
   const resolution = resolveRuleOutputs(outputs);
   resolution.clearance = clearance;
@@ -1373,9 +1455,11 @@ export function pairRuleState(boatA, boatB, ruleId) {
 // Every unordered pair inside the 12 m gate. Pair state for a pair that is
 // outside the gate, or that names a boat not in `boats`, is deleted.
 // opts.markFor: Rule 18 mark provider (see the Rule 18 header).
+// opts.boundary: the scenario's Boundary (boundary.js) for boundary room.
 export function evaluateAllPairs(boats, getWind, simTime, opts) {
   const list = boats || [];
   const markFor = opts && typeof opts.markFor === 'function' ? opts.markFor : null;
+  const boundary = opts && opts.boundary ? opts.boundary : null;
   markRoomEntitled.clear();
   const live = new Set();
   for (let i = 0; i < list.length; i++) {
@@ -1394,8 +1478,9 @@ export function evaluateAllPairs(boats, getWind, simTime, opts) {
       if (!(Number.isFinite(clearance) && clearance <= RULE10_INTEREST_RANGE_M)) continue;
       const key = pairKey(boatA, boatB);
       seen.add(key);
-      const resolution = evaluatePair(boatA, boatB, getWind, clearance, simTime, pairSlot(key), markFor);
+      const resolution = evaluatePair(boatA, boatB, getWind, clearance, simTime, pairSlot(key), markFor, boundary);
       resolution.pairKey = key;
+      resolution.boundaryRoom = resolution.applicable.find((r) => r.id === 'BR') || null;
       resolution.markRoom = resolution.applicable.find((r) => r.id === '18') || null;
       if (resolution.markRoom) markRoomEntitled.add(resolution.markRoom.rightOfWay);
       resolutions.push(resolution);
@@ -1577,6 +1662,13 @@ export function recordContacts(resolutions, simTime, boats) {
           incident.reason = 'Rule 18.2: did not give mark-room';
           incident.label = 'Rule 18.2 · mark-room';
         }
+        // Boundary room decided it: the giving boat is at fault, the boat
+        // nearer the boundary is exonerated.
+        if (resolution.final.id === 'BR') {
+          incident.exonerated = [resolution.final.rightOfWay];
+          incident.reason = 'Boundary room: did not give room';
+          incident.label = 'Boundary room';
+        }
         incidents.push(incident);
         contactFlashes.push({ x: point.x, y: point.y, startedAtMs: now });
         chargePendingPenalty(resolution.faultBoat, incident);
@@ -1680,6 +1772,8 @@ export function penaltyRuleName(incident) {
   if (!incident) return 'penalty';
   if (incident.rule === '31' || incident.kind === 'mark') return 'Rule 31';
   if (incident.finalId === '18') return 'Rule 18.2';
+  if (incident.kind === 'boundary') return 'Boundary';
+  if (incident.finalId === 'BR') return 'Boundary room';
   if (incident.finalId) return 'Rule ' + incident.finalId;
   return incident.finalRule && incident.finalRule !== 'penalty' ? String(incident.finalRule) : 'penalty';
 }
@@ -1868,6 +1962,21 @@ export function penaltyAutopilotRemainingDeg(boat) {
 // Small labels while Rule 18.2 is live for a pair: "GETS MARK-ROOM" on the
 // entitled boat, "GIVES MARK-ROOM → boat n" on the other (n = index in
 // `boats`, as in the info panel).
+// GETS / GIVES BOUNDARY ROOM badges, like markRoomGuides.
+export function boundaryRoomGuides(resolutions, boats) {
+  const g = [];
+  const list = boats || [];
+  for (const r of resolutions || []) {
+    const m = r && r.boundaryRoom;
+    if (!m || !m.rightOfWay || !m.giveWay) continue;
+    const n = list.indexOf(m.rightOfWay);
+    const top = Math.max(m.rightOfWay.y, m.giveWay.y) + 3.3;
+    g.push({ type: 'label', badge: true, x: m.rightOfWay.x, y: top + 1.3, lines: [{ text: 'GETS BOUNDARY ROOM', role: 'cleared', id: 'br' }] });
+    g.push({ type: 'label', badge: true, x: m.giveWay.x, y: top, lines: [{ text: 'GIVES ROOM' + (n >= 0 ? ' → boat ' + n : ''), role: 'turn', id: 'br' }] });
+  }
+  return g;
+}
+
 export function markRoomGuides(resolutions, boats) {
   const g = [];
   const list = boats || [];
