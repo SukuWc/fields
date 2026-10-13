@@ -8,6 +8,7 @@ import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera, setFluidPlaneSize } from './renderer.js';
 import { setupControls, getPlayers, getMarks, getCourse, getStartSequence, getRaceResults, getRaceBots, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
+import { appendInfo, flushInfo } from './info.js';
 import { courseGuides, courseText, markRoomTarget } from './course.js';
 import { finishGuides } from './finish.js';
 import { Leaderboard, leaderboardHtml } from './leaderboard.js';
@@ -151,7 +152,6 @@ setupMobileMenu();
 let guides = [];
 startAnimation(map, () => guides);
 
-const infoEl = document.getElementById('info');
 const distInfoEl = document.getElementById('dist_info');
 
 // Physics loop. Rule 15's room window uses this clock, not wall time.
@@ -242,7 +242,7 @@ runner.start((simDt) => {
       }
     }
 
-    infoEl.innerHTML += "Phys Time: " + bm.t_delta + "<br>";
+    appendInfo("Phys Time: " + bm.t_delta + "<br>");
   });
 
   // Marks: anchor spring + damper once per world.step (planck clears forces
@@ -271,7 +271,7 @@ runner.start((simDt) => {
       startHud.innerHTML = startHudHtml(startSeq, boats[0]);
       startHud.classList.toggle('flash', startSeq.flashing);
     }
-    if (boats[0]) infoEl.innerHTML += 'Start: ' + startStatusText(startSeq, boats[0]) + '<br>';
+    if (boats[0]) appendInfo('Start: ' + startStatusText(startSeq, boats[0]) + '<br>');
   } else if (startHud && !startHud.hidden) {
     startHud.hidden = true;
   }
@@ -288,7 +288,7 @@ runner.start((simDt) => {
     if (boats[0]) {
       const progress = course.progressFor(boats[0]);
       guides.push(...courseGuides(course, progress, performance.now()));
-      infoEl.innerHTML += courseText(progress) + '<br>';
+      appendInfo(courseText(progress) + '<br>');
     }
   }
 
@@ -334,7 +334,7 @@ runner.start((simDt) => {
     const twa = from === null ? null : trueWindAngleDeg(racing[i].hull_angle, from);
     const onto = racing[i].tacking && racing[i].tackingOnto ? ' onto ' + racing[i].tackingOnto : '';
     const twaText = twa === null ? '?' : String(Math.round(twa));
-    infoEl.innerHTML += 'Boat ' + i + ' TWA ' + twaText + (racing[i].tacking ? ' tacking' + onto : '') + '<br>';
+    appendInfo('Boat ' + i + ' TWA ' + twaText + (racing[i].tacking ? ' tacking' + onto : '') + '<br>');
     const pending = pendingPenaltyCount(racing[i]);
     const steered = racing[i].penalty_turn;
     if (pending > 0 || steered) {
@@ -349,13 +349,13 @@ runner.start((simDt) => {
       if (reason) line += ' · ' + reason;
       if (maneuvers) line += ' · ' + maneuvers;
       else if (pending > 0) line += ' · needs tack + gybe';
-      infoEl.innerHTML += line + '<br>';
+      appendInfo(line + '<br>');
     } else if (penaltyJustCleared(racing[i])) {
       showPenaltyKeys = true;
-      infoEl.innerHTML += 'Boat ' + i + ' CLEARED<br>';
+      appendInfo('Boat ' + i + ' CLEARED<br>');
     }
   }
-  if (showPenaltyKeys) infoEl.innerHTML += 'Q CCW · E CW<br>';
+  if (showPenaltyKeys) appendInfo('Q CCW · E CW<br>');
   const getWind = (x, y) => map.get_wind(x, y);
   // Rule 18 asks the course which mark each boat is rounding.
   const markFor = course ? (boat) => markRoomTarget(course, boat) : null;
@@ -365,7 +365,7 @@ runner.start((simDt) => {
     if (!m) continue;
     const ie = racing.indexOf(m.rightOfWay);
     const io = racing.indexOf(m.giveWay);
-    infoEl.innerHTML += 'Rule 18.2: boat ' + io + ' gives mark-room to boat ' + ie + ' (' + m.basis + ' at the zone)' + (m.decisive ? ' · decides fault' : '') + '<br>';
+    appendInfo('Rule 18.2: boat ' + io + ' gives mark-room to boat ' + ie + ' (' + m.basis + ' at the zone)' + (m.decisive ? ' · decides fault' : '') + '<br>');
   }
   guides.push(...markRoomGuides(resolutions, racing));
   for (let i = 0; i < resolutions.length; i++) {
@@ -414,6 +414,7 @@ runner.start((simDt) => {
   }
 
   incrementPhysicsFrame();
+  flushInfo();
 
   if (!map.devMode && bm.step_ready) {
     dataTextureMaterial.needsUpdate = true;
