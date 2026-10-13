@@ -85,6 +85,32 @@ export function stackCells(bm) {
 	return out;
 }
 
+// Farthest refined cell of each level from (wx, wy), in world units, for the
+// stack whose root window contains that point. Shows how far the wake reaches.
+export function stackReach(bm, wx, wy) {
+	const out = [];
+	for (const top of bm.domains.filter(d => d.disk)) {
+		let d = top, parent = bm, i = 0, any = false;
+		while (d) {
+			const cw = d.cx1 - d.cx0;
+			let far = 0;
+			for (let ly = 0; ly < d.cy1 - d.cy0; ly++) for (let lx = 0; lx < cw; lx++) {
+				if (d.mask && d.mask[lx + ly * cw] !== 1) continue;
+				const c = d.cx0 + lx + 0.5, r = d.cy0 + ly + 0.5;
+				const rx = parent === bm ? c : parent.fineToRootX(c);
+				const ry = parent === bm ? r : parent.fineToRootY(r);
+				const x = (rx - bm.width / 2) / bm.resolution, y = (ry - bm.height / 2) / bm.resolution;
+				far = Math.max(far, Math.hypot(x - wx, y - wy));
+			}
+			if (i === 0 && far > 80) break;
+			out[i] = far; any = true;
+			parent = d; d = d.domains[0]; i++;
+		}
+		if (any && out.length) return out;
+	}
+	return out;
+}
+
 // Scenario 0: one boat close-hauled on autopilot.
 export function scenario0(k, { frames = 600, amr = true, energy = true } = {}) {
 	const { bm, map } = makeWorld(k);
@@ -119,7 +145,8 @@ export function fleet(k, boatsSpec, { frames = 300, kick = null, tacks = {}, amr
 	const { bm, map } = makeWorld(k);
 	const boats = boatsSpec.map(([x, y, h]) => new Boat(map, x, y, h));
 	const tws = boats.map(() => 0);
-	let n = 0, maxU = 0, bad = 0, minGap = Infinity, fieldMs = 0;
+	let n = 0, maxU = 0, bad = 0, minGap = Infinity, fieldMs = 0, churn = 0, churnN = 0, prevStack = null;
+	const twsSeries = boats.map(() => []);
 	for (let f = 0; f < frames; f++) {
 		if (f === 1) boats.forEach(b => b.input_autopilot_enabled_toggle());
 		for (const [i, at] of Object.entries(tacks)) if (f === at) boats[i].input_autopilot_tack_toggle();
@@ -135,14 +162,20 @@ export function fleet(k, boatsSpec, { frames = 300, kick = null, tacks = {}, amr
 		if (amr && bm.stepsDueThisFrame() > 0) trackBoats(bm, boats);
 		bm.advance_frame();
 		if (timing && f >= 50) fieldMs += now() - t0;
-		if (f >= frames - 100) { boats.forEach((b, i) => { tws[i] += b.wind_speed; }); n++; }
+		if (f >= frames - 100) { boats.forEach((b, i) => { tws[i] += b.wind_speed; twsSeries[i].push(b.wind_speed); }); n++; }
+		if (f >= frames - 200) {
+			const st = stackCells(bm);
+			if (prevStack) { churn += st.reduce((a, v, j) => a + Math.abs(v - (prevStack[j] || 0)), 0); churnN++; }
+			prevStack = st;
+		}
 		if (!timing && f % 25 === 24) {
 			const st = fieldStats(bm);
 			maxU = Math.max(maxU, st.maxU); bad += st.bad;
 			minGap = Math.min(minGap, overlapGap(bm));
 		}
 	}
-	return { k, bm, boats, tws: tws.map(t => t / n), maxU, bad, msPerFrame: fieldMs / Math.max(1, frames - 50), overlapGap: minGap === Infinity ? 0 : -minGap };
+	const twsJitter = twsSeries.map(a => { let d = 0; for (let j = 1; j < a.length; j++) d = Math.max(d, Math.abs(a[j] - a[j - 1])); return d; });
+	return { k, bm, boats, tws: tws.map(t => t / n), twsJitter, churn: churnN ? churn / churnN : 0, stack: stackCells(bm), maxU, bad, msPerFrame: fieldMs / Math.max(1, frames - 50), overlapGap: minGap === Infinity ? 0 : -minGap };
 }
 
 // Largest population mismatch between coincident fluid nodes of two boats'
