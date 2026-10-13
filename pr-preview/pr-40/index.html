@@ -540,7 +540,7 @@
       }
     </style>
   
-    <script type="module" crossorigin src="/fields/pr-preview/pr-40/assets/index-DMnP-bOz.js"></script>
+    <script type="module" crossorigin src="/fields/pr-preview/pr-40/assets/index-bvkWWFHt.js"></script>
   </head>
   <body>
 
@@ -585,6 +585,12 @@
         <option value="4">x4 coarser</option>
         <option value="2f">x2 fast wind (to ~29 kn)</option>
         <option value="2f34">x2 fast wind 1.2× (to ~35 kn)</option>
+      </select></label>
+      <br>
+      <label class="setting-row setting-field" title="Boat refinement layout. Fixed rings: every level has its own disk around the boat. Auto: only the finest 1/8 m disk is fixed; coarser levels are a 3-cell grading shell around it and grow from curl (the wake). Restarts. Also ?amrMode=auto">Refinement layout<br>
+      <select id="amrMode" autocomplete="off">
+        <option value="fixed" selected>Fixed rings</option>
+        <option value="auto">Auto (finest disk + curl)</option>
       </select></label>
       <br>
       <label class="setting-row setting-field" title="Map side in metres. 150 is twice as wide (4× the area). Changing it reloads the page. Also ?mapSize=150">Map size<br>
