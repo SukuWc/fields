@@ -16,6 +16,22 @@ function check(name, cond, detail) {
 	return ok;
 }
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
+
+// Sections 1–8 measure the fixed rings (Default pinned to main). The app and
+// the harness default to ?amrMode=auto; section 0 and 9 cover that.
+{
+	const fs = await import('node:fs');
+	const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+	const sel = html.match(/<select id="amrMode"[^>]*>([\s\S]*?)<\/select>/);
+	const selected = sel && (sel[1].match(/<option value="(\w+)" selected>/) || [])[1];
+	const mainJs = fs.readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+	check('app default refinement layout is auto (dropdown + main.js); fixed stays selectable',
+		selected === 'auto' && /<option value="fixed">/.test(sel[1]) && /bm\.amrMode = 'auto';/.test(mainJs) && H.amrMode() === 'auto',
+		`selected=${selected} harness=${H.amrMode()}`);
+	const eng = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
+	check('Boltzmann engine alone still defaults to the fixed rings', (eng.amrMode ?? 'fixed') === 'fixed' && !amrParams(eng).auto);
+}
+H.setAmrMode('fixed');
 const KS = [1, 2, 4];
 
 function lattice(k, wind = 15) {
@@ -182,7 +198,7 @@ for (const k of KS) {
 	check(`x${k} scenario 0 boat sits in a ${2 + Math.log2(k) + 1}-level stack with 1/8-unit cells`,
 		r.depth === 3 + Math.log2(k) && r.finestStep === 0.125, `depth=${r.depth} finest=${r.finestStep}`);
 }
-check('Default scenario 0 matches main (twa −49.40, bs 2.131)',
+check('Default scenario 0 with ?amrMode=fixed matches main (twa −49.40, bs 2.131)',
 	near(s0[1].twa, -49.4023, 0.01) && near(s0[1].bs, 2.1314, 0.002), `twa=${s0[1].twa.toFixed(4)} bs=${s0[1].bs.toFixed(4)}`);
 // With the outer rings the boat keeps Default's fine levels, so refinement
 // costs about what it does at Default. Coarse settings must not be slower.
@@ -314,6 +330,8 @@ for (const k of [2, 4]) {
 	}
 	const s0 = H.scenario0(1);
 	const wk = H.wakeShadow(1, INWAKE);
+	check('auto (app default) Default scenario 0 pinned: twa −49.43, bs 2.129',
+		near(s0.twa, -49.428, 0.01) && near(s0.bs, 2.129, 0.002), `twa=${s0.twa.toFixed(4)} bs=${s0.bs.toFixed(4)}`);
 	H.setAmrMode('fixed');
 	check('auto Default scenario 0 close-hauled and the in-wake shadow is at least the fixed one',
 		s0.twa < -45 && s0.twa > -54 && s0.bs > 1.9 && s0.bs < 2.4 && wk.shadow > 0.4 && wk.overlapGap < 1e-12,

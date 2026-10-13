@@ -112,15 +112,21 @@ document.getElementById('mapSize').addEventListener('change', (e) => {
   if (v === 75) u.searchParams.delete('mapSize'); else u.searchParams.set('mapSize', String(v));
   location.href = u.toString();
 });
-// Refinement layout (#amrMode, ?amrMode=auto; ?amr=auto is accepted too).
-// "auto": only the finest boat disk is fixed and every coarser level is a
-// grading shell plus curl growth (domainTrack AUTO_SHELL). Restarts.
+// Refinement layout (#amrMode). The app default is "auto": only the finest
+// boat disk is fixed and every coarser level is a grading shell plus curl
+// growth (domainTrack AUTO_SHELL). ?amrMode=fixed (or ?amr=fixed) selects the
+// fixed rings; ?amr=auto is accepted too. The Boltzmann engine itself still
+// defaults to fixed (headless checks). Changing it restarts the scenario.
+bm.amrMode = 'auto';
 {
   const sel = document.getElementById('amrMode');
   const q = new URLSearchParams(location.search);
-  if (q.get('amr') === 'auto') {
-    q.delete('amr'); q.set('amrMode', 'auto');
-    history.replaceState(history.state, '', location.pathname + '?' + q.toString() + location.hash);
+  const legacy = q.get('amr');
+  if (legacy === 'auto' || legacy === 'fixed') {
+    q.delete('amr');
+    if (legacy === 'fixed') q.set('amrMode', 'fixed');
+    const qs = q.toString();
+    history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
   }
   sel.addEventListener('change', (e) => {
     const mode = e.target.value === 'auto' ? 'auto' : 'fixed';

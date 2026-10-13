@@ -54,12 +54,15 @@ export const MODES = {
 let MAP_SIDE = 75;
 export function setMapSize(n) { MAP_SIDE = n; }
 // Refinement layout for worlds made after this call: 'fixed' or 'auto'.
-let AMR_MODE = 'fixed';
+// 'auto' mirrors the app default (main.js); the Boltzmann engine alone stays
+// fixed, so tests that pin main parity call setAmrMode('fixed').
+let AMR_MODE = 'auto';
+export function amrMode() { return AMR_MODE; }
 export function setAmrMode(m) { AMR_MODE = m; }
 
 export function makeWorld(k, wind = 15) {
 	const bm = new Boltzmann(MAP_SIDE, MAP_SIDE, 1, 90, wind, undefined, 1);
-	if (AMR_MODE === 'auto') bm.amrMode = 'auto';
+	bm.amrMode = AMR_MODE === 'auto' ? 'auto' : 'fixed';
 	const m = MODES[k] || { resolution: 1 / k };
 	if (k !== 1) bm.setResolution(m.resolution, m.stepsPerFrame);
 	const map = new Map(MAP_SIDE, MAP_SIDE, 90, wind, bm, new FluidWind(bm), new ConstantWind(90, wind));
