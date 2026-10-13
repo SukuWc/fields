@@ -120,6 +120,16 @@ document.getElementById('mapSize').addEventListener('change', (e) => {
 // fixed rings; ?amr=auto is accepted too. The Boltzmann engine defaults to
 // auto as well; this line keeps the app explicit. Changing it restarts.
 bm.amrMode = 'auto';
+// Refinement budget: target cell updates per root step (domainTrack BUDGET_*).
+// ?cellBudget=N sets it, ?cellBudget=0 (or off) turns it off. The default
+// follows the grid ('default' = defaultCellUpdateTarget(bm): 120k on a 3-level
+// stack, 240k on x2 / 2f / 2f34, 480k on x4).
+{
+  const raw = new URLSearchParams(location.search).get('cellBudget');
+  const n = Number(raw);
+  bm.cellUpdateTarget = raw === null ? 'default'
+    : (raw === 'off' || n === 0) ? Infinity : (n > 0 ? n : 'default');
+}
 {
   const sel = document.getElementById('amrMode');
   const q = new URLSearchParams(location.search);

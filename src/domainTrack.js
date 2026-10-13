@@ -63,6 +63,56 @@ export const DISK3_RADIUS = 8; // level-2 fine cells (2 coarse)
 export const CURL_DX = 1;
 export const CURL_TAU_ON = 0.02;
 export const CURL_TAU_OFF = 0.01;
+
+// Refinement budget. bm.cellUpdateTarget is a target for cell updates per
+// root step: Σ over every grid of its stepped cells × substeps (root 1, level
+// n 2^n), see Boltzmann.cellUpdates(). Load is not wall time, so a shared
+// CPU does not move it. Above BUDGET_HIGH × target the curl thresholds
+// τ_on / τ_off (boat levels and field islands alike) are multiplied by a
+// scale that rises in proportion to the excess; below BUDGET_LOW it relaxes
+// back toward 1. Between them it holds (hysteresis). The scale moves at most
+// a few % per call and the τ_on/τ_off band and holds are unchanged, so masks
+// still change one layer at a time: no flicker. Floors (finest disk + shells)
+// are never trimmed, so the target is a soft one that the floors may exceed.
+export const BUDGET_HIGH = 0.9;
+export const BUDGET_LOW = 0.8;
+// Per root step: the ratio is smoothed (EMA weight BUDGET_SMOOTH) and the
+// scale moves by BUDGET_GAIN × the distance outside the band, at most
+// BUDGET_MAX_STEP (2 %) per step. Masks answer over the hold plus one layer
+// per step, so a faster controller winds up and overshoots.
+export const BUDGET_SMOOTH = 0.1;
+export const BUDGET_GAIN = 0.1;
+export const BUDGET_MAX_STEP = 0.02;
+export const BUDGET_MAX_SCALE = 50;
+// Default target for the app (main.js sets bm.cellUpdateTarget = 'default';
+// ?cellBudget=N overrides). The engine default is Infinity (no budget).
+// One boat's floor (finest disk + shells, calm water) costs about 8.7k cell
+// updates per root step at Default and 17.7k on the 4-level stacks (x2 / 2f /
+// 2f34; the finest level steps 16× there). DEFAULT_CELL_UPDATE_TARGET per
+// 3-level stack is 120k: 8 floors (70k) plus ~70 % headroom for wakes, and one
+// or two boats (21k / 39k) never reach the 80 % band. It doubles per extra level.
+export const DEFAULT_CELL_UPDATE_TARGET = 120000;
+export function defaultCellUpdateTarget(bm) {
+	const depth = amrParams(bm).levels.length;
+	return DEFAULT_CELL_UPDATE_TARGET * 2 ** Math.max(0, depth - 3);
+}
+
+// Curl threshold multiplier for the tracking call in progress.
+let tauScale = 1;
+const tauOnNow = () => (tauScale === 1 ? CURL_TAU_ON : CURL_TAU_ON * tauScale);
+const tauOffNow = () => (tauScale === 1 ? CURL_TAU_OFF : CURL_TAU_OFF * tauScale);
+
+// One controller update. state = { scale, ratio } (ratio is the smoothed
+// load / target). Returns the new state.
+export function updateBudgetScale(state, load, target) {
+	if (!(target > 0) || !Number.isFinite(target)) return { scale: 1, ratio: 0 };
+	const raw = load / target;
+	const ratio = state && state.ratio > 0 ? state.ratio + BUDGET_SMOOTH * (raw - state.ratio) : raw;
+	let scale = state && state.scale > 1 ? state.scale : 1;
+	if (ratio > BUDGET_HIGH) scale *= 1 + Math.min(BUDGET_MAX_STEP, BUDGET_GAIN * (ratio - BUDGET_HIGH));
+	else if (ratio < BUDGET_LOW) scale *= 1 - Math.min(BUDGET_MAX_STEP, BUDGET_GAIN * (BUDGET_LOW - ratio));
+	return { scale: Math.max(1, Math.min(BUDGET_MAX_SCALE, scale)), ratio };
+}
 export const CURL_HOLD = 6;
 export const MASK_CELL_CAP = 400;
 export const MASK2_CELL_CAP = 320;
@@ -640,6 +690,8 @@ function installSensorMask(domain, centerX, centerY, radius, cap, curlNorm, para
 		allow,
 		cap,
 		hold: params ? params.hold : undefined,
+		tauOn: tauOnNow(),
+		tauOff: tauOffNow(),
 		seedMin: params ? params.seedMin : undefined,
 	});
 	domain._curlAbove = stepped.above;
@@ -764,10 +816,10 @@ function updateFieldHolds(bm, boats) {
 			}
 			const cell = bm.cells[i];
 			const norm = normalizedCurl(cell ? cell.curl : 0, U, P.curlDx);
-			if (norm > CURL_TAU_ON) {
+			if (norm > tauOnNow()) {
 				if (fieldAbove[i] < P.hold) fieldAbove[i]++;
 				fieldBelow[i] = 0;
-			} else if (norm < CURL_TAU_OFF) {
+			} else if (norm < tauOffNow()) {
 				if (fieldBelow[i] < P.hold) fieldBelow[i]++;
 				fieldAbove[i] = 0;
 			} else {
@@ -893,7 +945,7 @@ function fieldCentroid(bm, domain) {
 			const cell = bm.cells[cx + cy * bm.width];
 			const norm = normalizedCurl(cell ? cell.curl : 0, U, curlDx);
 			const on = domain.mask && domain.mask[lx + ly * cw] === 1;
-			if (norm <= CURL_TAU_ON && !on) continue;
+			if (norm <= tauOnNow() && !on) continue;
 			sx += cx + 0.5;
 			sy += cy + 0.5;
 			n++;
@@ -928,6 +980,8 @@ function installFieldMask(bm, domain, boats) {
 		allow,
 		cap: P.fieldCap,
 		hold: P.hold,
+		tauOn: tauOnNow(),
+		tauOff: tauOffNow(),
 		seedMin: P.seedMin,
 	});
 	domain._curlAbove = stepped.above;
@@ -982,6 +1036,7 @@ function trackFieldDomains(bm, boats) {
 // later siblings, so a same-level overlap still lets the later boat write.
 // Field islands follow the boats and do not own a disk floor.
 export function trackBoats(bm, players) {
+	tauScale = bm.curlScale > 1 ? bm.curlScale : 1;
 	const live = [];
 	let shifted = false;
 	for (const player of players) {
@@ -999,6 +1054,15 @@ export function trackBoats(bm, players) {
 		bm.domains = next;
 		bm._rebuildInteriorCells();
 	}
+	tauScale = 1;
+	// Budget controller: measure this step's work, move the scale for the next.
+	const target = bm.cellUpdateTarget === 'default' ? defaultCellUpdateTarget(bm) : bm.cellUpdateTarget;
+	if (target > 0 && Number.isFinite(target) && typeof bm.cellUpdates === 'function') {
+		bm.cellLoad = bm.cellUpdates();
+		const st = updateBudgetScale({ scale: bm.curlScale, ratio: bm.cellLoadRatio }, bm.cellLoad, target);
+		bm.curlScale = st.scale;
+		bm.cellLoadRatio = st.ratio;
+	} else { bm.curlScale = 1; bm.cellLoadRatio = 0; }
 }
 
 // Forget every window and field-island hold for this lattice. A resolution

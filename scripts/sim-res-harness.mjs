@@ -58,11 +58,19 @@ export function setMapSize(n) { MAP_SIDE = n; }
 // setAmrMode('fixed').
 let AMR_MODE = 'auto';
 export function amrMode() { return AMR_MODE; }
+// Cell-update budget for worlds made after this call (Infinity = off, the
+// engine default; 'default' = the app's per-grid target).
+let BUDGET = Infinity;
+export function setBudget(n) { BUDGET = n; }
+// Scenario 18 start positions (controls.js FLEET8), starboard close-hauled.
+export const FLEET8 = [[-14, -6], [-4, -6], [6, -6], [16, -6], [-9, -14], [1, -14], [11, -14], [21, -14]]
+	.map(([x, y]) => [x, y, 5 * Math.PI / 4]);
 export function setAmrMode(m) { AMR_MODE = m; }
 
 export function makeWorld(k, wind = 15) {
 	const bm = new Boltzmann(MAP_SIDE, MAP_SIDE, 1, 90, wind, undefined, 1);
 	bm.amrMode = AMR_MODE === 'auto' ? 'auto' : 'fixed';
+	bm.cellUpdateTarget = BUDGET;
 	const m = MODES[k] || { resolution: 1 / k };
 	if (k !== 1) bm.setResolution(m.resolution, m.stepsPerFrame);
 	const map = new Map(MAP_SIDE, MAP_SIDE, 90, wind, bm, new FluidWind(bm), new ConstantWind(90, wind));
@@ -144,12 +152,14 @@ export function scenario0(k, { frames = 600, amr = true, energy = true } = {}) {
 // Fleet run: boats [x, y, heading], autopilot on at frame 1, optional
 // tack per boat at a frame. TWS of each boat over the last 100 frames.
 // kick[i] false turns boat i's sail push off (to isolate another boat's wake).
-export function fleet(k, boatsSpec, { frames = 300, kick = null, tacks = {}, amr = true, timing = false } = {}) {
+export function fleet(k, boatsSpec, { frames = 300, kick = null, tacks = {}, amr = true, timing = false, series = false } = {}) {
+	const opts_series = series;
 	const { bm, map } = makeWorld(k);
 	const boats = boatsSpec.map(([x, y, h]) => new Boat(map, x, y, h));
 	const tws = boats.map(() => 0);
 	let n = 0, maxU = 0, bad = 0, minGap = Infinity, fieldMs = 0, churn = 0, churnN = 0, prevStack = null;
 	const twsSeries = boats.map(() => []);
+	const loadSeries = [], scaleSeries = [];
 	for (let f = 0; f < frames; f++) {
 		if (f === 1) boats.forEach(b => b.input_autopilot_enabled_toggle());
 		for (const [i, at] of Object.entries(tacks)) if (f === at) boats[i].input_autopilot_tack_toggle();
@@ -165,6 +175,7 @@ export function fleet(k, boatsSpec, { frames = 300, kick = null, tacks = {}, amr
 		if (amr && bm.stepsDueThisFrame() > 0) trackBoats(bm, boats);
 		bm.advance_frame();
 		if (timing && f >= 50) fieldMs += now() - t0;
+		if (opts_series) { loadSeries.push(bm.cellUpdates()); scaleSeries.push(bm.curlScale); }
 		if (f >= frames - 100) { boats.forEach((b, i) => { tws[i] += b.wind_speed; twsSeries[i].push(b.wind_speed); }); n++; }
 		if (f >= frames - 200) {
 			const st = stackCells(bm);
@@ -177,8 +188,9 @@ export function fleet(k, boatsSpec, { frames = 300, kick = null, tacks = {}, amr
 			minGap = Math.min(minGap, overlapGap(bm));
 		}
 	}
+	const extra = { loadSeries, scaleSeries };
 	const twsJitter = twsSeries.map(a => { let d = 0; for (let j = 1; j < a.length; j++) d = Math.max(d, Math.abs(a[j] - a[j - 1])); return d; });
-	return { k, bm, boats, tws: tws.map(t => t / n), twsJitter, churn: churnN ? churn / churnN : 0, stack: stackCells(bm), maxU, bad, msPerFrame: fieldMs / Math.max(1, frames - 50), overlapGap: minGap === Infinity ? 0 : -minGap };
+	return { ...extra, k, bm, boats, tws: tws.map(t => t / n), twsJitter, churn: churnN ? churn / churnN : 0, stack: stackCells(bm), maxU, bad, msPerFrame: fieldMs / Math.max(1, frames - 50), overlapGap: minGap === Infinity ? 0 : -minGap };
 }
 
 // Largest population mismatch between coincident fluid nodes of two boats'
