@@ -491,7 +491,9 @@ function resizeRenderer() {
 }
 
 export function initRenderer(map, planeMat) {
-  camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 85);
+  // Far plane: 85 covered zoom 70 on the 75 m map; bigger maps zoom out
+  // further (map-size.js cameraLimits), so it follows the zoom limit.
+  camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, Math.max(85, (map.camera_zoom_max || 70) + 15));
   camera.position.z = 60;
   camera.position.y = 20;
   scene = new THREE.Scene();

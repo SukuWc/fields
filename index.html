@@ -617,10 +617,11 @@
         <option value="fixed">Fixed rings</option>
       </select></label>
       <br>
-      <label class="setting-row setting-field" title="Map side in metres. 150 is twice as wide (4× the area). Changing it reloads the page. Also ?mapSize=150">Map size<br>
-      <select id="mapSize" autocomplete="off">
-        <option value="75" selected>75 m</option>
-        <option value="150">150 m</option>
+      <label class="setting-row setting-field" title="Map width × length in metres; the length runs along the wind. Each size has its own default simulation resolution (50 × 100 and 100 × 200: Default, 200 × 400: x4 coarser) so the field cost stays near the old 75 m map. Course scenarios 12-17 need 100 × 200 and pick it if a smaller size is set. Changing it reloads the page. Also ?map_size=100x200">Map size<br>
+      <select id="map_size" autocomplete="off">
+        <option value="50x100">50 × 100 m</option>
+        <option value="100x200" selected>100 × 200 m</option>
+        <option value="200x400">200 × 400 m</option>
       </select></label>
       <br>
       <label class="setting-row"><input id="boat_energy" autocomplete="off" type="checkbox" checked>Boat energy</label>

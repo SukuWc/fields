@@ -72,7 +72,8 @@ export class Map{
 		// Bottom horizontal
 		ground.createFixture(pl.Edge(Vec2(-this.width/2+2, -this.height/2+2), Vec2(this.width/2-2, -this.height/2+2)), wallFD);
 
-		// init world entities
+		// init world entities. Two stray circles at fixed world positions
+		// (near the map centre on every map size; scenarios are laid out round them).
 		this.world.createDynamicBody(Vec2(0.0, 14.5)).createFixture(Circle(0.5), 10.0);
 		this.world.createDynamicBody(Vec2(0.0, 20.0)).createFixture(Circle(5.0), 10.0);
 		
@@ -131,7 +132,9 @@ export class Map{
 	
 	input_camera_zoom_relative(e){
 	
-		this.camera_zoom += e;
+		// Steps grow with the distance above 30 so zooming out over a
+		// 400 m map takes a few presses; at zoom ≤ 30 a step is unchanged.
+		this.camera_zoom += e * Math.max(1, (this.camera_zoom - 15) / 15);
 	
 		if (this.camera_zoom>this.camera_zoom_max) {this.camera_zoom = this.camera_zoom_max}
 		if (this.camera_zoom<this.camera_zoom_min) {this.camera_zoom = this.camera_zoom_min}
