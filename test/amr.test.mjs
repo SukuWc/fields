@@ -350,6 +350,11 @@ function enclosedHole(domain) {
 	map.physics_model_init();
 	const boat = new Boat(map, 10, -9, 5 * Math.PI / 4);
 	let bmMs = 0;
+	// Disk floors of the engine's layout (auto by default: 4.25 / 2.75 / 2 world
+	// units, i.e. 4.25 / 5.5 / 8 parent cells; fixed rings 8 / 8 / 8). In auto
+	// the coarser floors also hold the grading shell, which only adds cells.
+	const { amrParams } = await import('../src/domainTrack.js');
+	const FLOOR_R = amrParams(bm).levels.map(l => l.radius);
 	let diskOff = 0;
 	const N = 600;
 	let bsAt500 = 0;
@@ -422,7 +427,7 @@ function enclosedHole(domain) {
 		const boatCy = bm.height / 2 + boat.y;
 		const floor = buildClosedDiskMask(
 			level1.cx0, level1.cy0, level1.cx1, level1.cy1,
-			boatCx, boatCy, DISK_RADIUS, null,
+			boatCx, boatCy, FLOOR_R[0], null,
 		);
 		const world = new Set();
 		const floorWorld = new Set();
@@ -471,8 +476,8 @@ function enclosedHole(domain) {
 		}
 		const level2 = level1.domains[0];
 		const level3 = level2 && level2.domains[0];
-		const cov2 = coverage(level2, DISK2_RADIUS);
-		const cov3 = coverage(level3, DISK3_RADIUS);
+		const cov2 = coverage(level2, FLOOR_R[1]);
+		const cov3 = coverage(level3, FLOOR_R[2]);
 		if (!cov2) floorMissing2++;
 		else {
 			floorMissing2 += cov2.missing;

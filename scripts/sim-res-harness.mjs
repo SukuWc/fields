@@ -54,8 +54,8 @@ export const MODES = {
 let MAP_SIDE = 75;
 export function setMapSize(n) { MAP_SIDE = n; }
 // Refinement layout for worlds made after this call: 'fixed' or 'auto'.
-// 'auto' mirrors the app default (main.js); the Boltzmann engine alone stays
-// fixed, so tests that pin main parity call setAmrMode('fixed').
+// 'auto' is the app and engine default; tests that pin main parity call
+// setAmrMode('fixed').
 let AMR_MODE = 'auto';
 export function amrMode() { return AMR_MODE; }
 export function setAmrMode(m) { AMR_MODE = m; }

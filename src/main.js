@@ -115,8 +115,8 @@ document.getElementById('mapSize').addEventListener('change', (e) => {
 // Refinement layout (#amrMode). The app default is "auto": only the finest
 // boat disk is fixed and every coarser level is a grading shell plus curl
 // growth (domainTrack AUTO_SHELL). ?amrMode=fixed (or ?amr=fixed) selects the
-// fixed rings; ?amr=auto is accepted too. The Boltzmann engine itself still
-// defaults to fixed (headless checks). Changing it restarts the scenario.
+// fixed rings; ?amr=auto is accepted too. The Boltzmann engine defaults to
+// auto as well; this line keeps the app explicit. Changing it restarts.
 bm.amrMode = 'auto';
 {
   const sel = document.getElementById('amrMode');

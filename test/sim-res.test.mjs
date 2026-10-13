@@ -17,8 +17,8 @@ function check(name, cond, detail) {
 }
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
 
-// Sections 1–8 measure the fixed rings (Default pinned to main). The app and
-// the harness default to ?amrMode=auto; section 0 and 9 cover that.
+// Sections 1–8 measure the fixed rings (Default pinned to main; one main-parity
+// check). The app, the harness and the engine default to auto; sections 0 and 9 cover that.
 {
 	const fs = await import('node:fs');
 	const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
@@ -29,7 +29,10 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol;
 		selected === 'auto' && /<option value="fixed">/.test(sel[1]) && /bm\.amrMode = 'auto';/.test(mainJs) && H.amrMode() === 'auto',
 		`selected=${selected} harness=${H.amrMode()}`);
 	const eng = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
-	check('Boltzmann engine alone still defaults to the fixed rings', (eng.amrMode ?? 'fixed') === 'fixed' && !amrParams(eng).auto);
+	const engFixed = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
+	engFixed.amrMode = 'fixed';
+	check('Boltzmann engine defaults to auto; amrMode = fixed still selects the rings',
+		eng.amrMode === 'auto' && amrParams(eng).auto && !amrParams(engFixed).auto && amrParams(engFixed).levels[0].worldRadius === 8);
 }
 H.setAmrMode('fixed');
 const KS = [1, 2, 4];

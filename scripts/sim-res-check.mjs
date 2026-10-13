@@ -3,6 +3,9 @@
 // node --import ./test/register.mjs scripts/sim-res-check.mjs
 import '../test/dom-stub.mjs';
 const H = await import('./sim-res-harness.mjs');
+// Measures the default layout (amrMode auto); pass --fixed for the fixed rings.
+if (process.argv.includes('--fixed')) H.setAmrMode('fixed');
+console.log(`amrMode: ${H.amrMode()}`);
 const rows = [];
 for (const amr of [true, false]) {
 	for (const k of [1, 2, 4]) {

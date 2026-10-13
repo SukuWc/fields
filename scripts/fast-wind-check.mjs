@@ -3,6 +3,9 @@
 // node --import ./test/register.mjs scripts/fast-wind-check.mjs
 import '../test/dom-stub.mjs';
 const H = await import('./sim-res-harness.mjs');
+// Measures the default layout (amrMode auto); pass --fixed for the fixed rings.
+if (process.argv.includes('--fixed')) H.setAmrMode('fixed');
+console.log(`amrMode: ${H.amrMode()}`);
 const ONE = [[10, -9, 5 * Math.PI / 4]];
 const TWO = [[12, -6, 5 * Math.PI / 4], [15, -11.5, 5 * Math.PI / 4]];
 const rows = [];

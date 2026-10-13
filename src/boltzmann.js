@@ -2008,6 +2008,9 @@ export class Boltzmann {
 		// Coarser root grids (setResolution) keep this lattice ν and the lattice
 		// inlet speed U. See setResolution for what that means physically.
 		this.baseNu = 0.025;
+		// Boat refinement layout read by domainTrack.amrParams: 'auto' (finest
+		// disk + grading shells + curl, the default) or 'fixed' (per-level rings).
+		this.amrMode = 'auto';
 		this.nu = this.baseNu;
 
 		this._build(resolution);
