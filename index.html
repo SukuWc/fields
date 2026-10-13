@@ -337,6 +337,10 @@
       body.touch-on #sim_canvas {
         height: calc(100% - var(--touch-panel-h));
       }
+      body.touch-on #finish_results {
+        bottom: calc(var(--touch-panel-h) + 10px);
+        z-index: 160;
+      }
       body.touch-on #fps {
         bottom: calc(var(--touch-panel-h) + 10px);
       }
@@ -416,6 +420,24 @@
           line-height: 1.2;
           column-count: 2;
           column-gap: 10px;
+        }
+        /* Leaderboard on a phone with touch controls: the desktop
+           bottom-right spot is under the touch panel, so it sits just above
+           the panel on the right, compact, and the readout moves up. */
+        body.touch-on #finish_results {
+          right: calc(8px + env(safe-area-inset-right));
+          bottom: calc(var(--touch-panel-h) + 6px);
+          z-index: 160;
+          font-size: 10px;
+          line-height: 1.25;
+          padding: 3px 6px;
+          max-height: 22vh;
+        }
+        body.touch-on:has(#finish_results:not([hidden])) #info {
+          bottom: calc(var(--touch-panel-h) + 34px + 66px);
+        }
+        body.touch-on:has(#finish_results:not([hidden])) #perf_overlay_hud {
+          bottom: calc(var(--touch-panel-h) + 34px + 66px);
         }
         body.touch-on #perf_overlay_hud {
           font-size: 10px;
