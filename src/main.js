@@ -74,7 +74,7 @@ planeMat.needsUpdate = true;
 // Core simulation instances
 // Root cell: the size's default simRes (map-size.js) unless ?simRes is set.
 const _simResKey = _query.get('simRes') || MAP_SIZES[mapSizeKey].simRes;
-const _rootRes = { '1': 1, '2': 0.5, '4': 0.25, '2f': 0.5, '2f34': 0.5 }[_simResKey] || 1;
+const _rootRes = { '1': 1, '2': 0.5, '4': 0.25, '2f': 0.5, '2f34': 0.5, '4f': 0.25 }[_simResKey] || 1;
 const bm = new Boltzmann(map_w, map_h, _rootRes, wind_angle, wind_speed,
   new FieldPainter(dataTextureMaterial, texture_oversampling, domPlotOptions()));
 const fluidWind = new FluidWind(bm);
@@ -106,6 +106,9 @@ setupControls(map, getCamera, bm);
 export const SIM_RES_MODES = {
   '1': { resolution: 1 }, '2': { resolution: 0.5 }, '4': { resolution: 0.25 },
   '2f': { resolution: 0.5, stepsPerFrame: 1 }, '2f34': { resolution: 0.5, stepsPerFrame: 1.2 },
+  // App default: 4 m root cell stepped once per 30 Hz tick (velScale 4, x4
+  // ring layout, 5 levels down to 1/8 m, matchedNu floored like 2f).
+  '4f': { resolution: 0.25, stepsPerFrame: 1 },
 };
 document.getElementById('simRes').addEventListener('change', (e) => {
   const mode = SIM_RES_MODES[e.target.value] || SIM_RES_MODES['1'];
@@ -218,6 +221,16 @@ setupTouchControls();
 // simRes default follows the map size (map-size.js). Set before
 // installUrlSettings so that is the default it compares against.
 document.getElementById('simRes').value = MAP_SIZES[mapSizeKey].simRes;
+// The constructor only took the root resolution; apply the mode's explicit
+// stepsPerFrame (fast-wind defaults such as '4f') before anything runs.
+{
+  const m = SIM_RES_MODES[_simResKey];
+  if (m && (m.stepsPerFrame ?? m.resolution) !== bm.stepsPerFrame) {
+    bm.setResolution(m.resolution, m.stepsPerFrame);
+    bm.setWindSpeed(map.wind_speed);
+    setFluidPlaneSize(bm.latticeWorldWidth, bm.latticeWorldHeight);
+  }
+}
 installUrlSettings();
 // After installUrlSettings: show the size in use (a clamp or a legacy
 // ?mapSize) and write it to the URL; equal to mapSizeKey, so no reload.
