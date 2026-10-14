@@ -24,3 +24,23 @@ export function flushInfo() {
   el.innerHTML = html;
   written = html;
 }
+
+// Boat readout lines from Boat.telemetry (boat.js), in the order and format
+// the boat used to write them itself. A key the step did not reach is skipped.
+export function boatTelemetryHtml(t) {
+  let h = '';
+  if ('autopilot' in t) h += 'Autopilot' + t.autopilot + '<br>';
+  if ('headingTarget' in t) h += 'Heading Target' + t.headingTarget + '<br>';
+  if ('qd' in t) h += 'q/d: ' + t.qd + '°<br>';
+  if ('error' in t) h += 'error: ' + Math.floor(t.error) + '°<br>';
+  if ('twa' in t) h += 'TWA: ' + Math.floor(t.twa) + '<br>';
+  if ('tws' in t) h += 'TWS: ' + Math.floor(t.tws * 10) / 10 + '<br>';
+  if ('awa' in t) h += 'AWA: ' + Math.floor(t.awa) + '<br>';
+  if ('aws' in t) h += 'AWS: ' + Math.floor(t.aws * 10) / 10 + '<br>';
+  if ('bs' in t) h += 'BS: ' + Math.floor(t.bs * 10) / 10 + '<br>';
+  if ('vmg' in t) h += 'VMG: ' + Math.floor(t.vmg * 10) / 10 + '<br>';
+  if ('cd' in t) h += 'Cd: ' + Math.floor(t.cd * 10) / 10 + '<br>';
+  if ('cl' in t) h += 'Cl: ' + Math.floor(t.cl * 10) / 10 + '<br>';
+  if ('power' in t) h += 'Power: ' + Math.floor(t.power * 10) / 10 + '<br>';
+  return h;
+}

@@ -14,6 +14,7 @@ globalThis.window = globalThis;
 globalThis.addEventListener = globalThis.addEventListener || (() => {});
 
 const { Boltzmann, unionMaskBorderLines, buildClosedDiskMask, fineIndex } = await import('../src/boltzmann.js');
+const { FieldPainter } = await import('../src/fieldPainter.js');
 const { SAIL_LATTICE_COUPLING } = await import('../src/boat.js');
 const {
 	trackBoats, DISK_RADIUS, DISK2_RADIUS, DISK3_RADIUS,
@@ -1375,7 +1376,7 @@ function maskShare(a, b) {
 	const side = 24 * os;
 	const data = new Uint8Array(side * side * 4);
 	const texture = { image: { data } };
-	const bm = new Boltzmann(24, 24, 1, 90, 15, texture, os);
+	const bm = new Boltzmann(24, 24, 1, 90, 15, new FieldPainter(texture, os));
 	bm.addDomain(4, 4, 20, 20);
 	const l1 = bm.domains[0];
 	l1.setDisk(12, 12, 6);

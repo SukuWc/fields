@@ -2,13 +2,14 @@ import * as THREE from 'three';
 import { FixedStepLoop } from './loop.js';
 
 import { Boltzmann, unionMaskBorderLines } from './boltzmann.js';
+import { FieldPainter, domPlotOptions } from './fieldPainter.js';
 import { trackBoats, resetTracking } from './domainTrack.js';
 import { Map } from './map.js';
 import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera, setFluidPlaneSize } from './renderer.js';
 import { setupControls, getPlayers, getMarks, getCourse, getStartSequence, getRaceResults, getRaceBots, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
-import { setInfo, appendInfo, flushInfo } from './info.js';
+import { setInfo, appendInfo, flushInfo, boatTelemetryHtml } from './info.js';
 import { courseGuides, courseText, markRoomTarget } from './course.js';
 import { finishGuides } from './finish.js';
 import { Leaderboard, leaderboardHtml } from './leaderboard.js';
@@ -74,7 +75,8 @@ planeMat.needsUpdate = true;
 // Root cell: the size's default simRes (map-size.js) unless ?simRes is set.
 const _simResKey = _query.get('simRes') || MAP_SIZES[mapSizeKey].simRes;
 const _rootRes = { '1': 1, '2': 0.5, '4': 0.25, '2f': 0.5, '2f34': 0.5 }[_simResKey] || 1;
-const bm = new Boltzmann(map_w, map_h, _rootRes, wind_angle, wind_speed, dataTextureMaterial, texture_oversampling);
+const bm = new Boltzmann(map_w, map_h, _rootRes, wind_angle, wind_speed,
+  new FieldPainter(dataTextureMaterial, texture_oversampling, domPlotOptions()));
 const fluidWind = new FluidWind(bm);
 const constantWind = new ConstantWind(wind_angle, wind_speed);
 // Domains are created dynamically in the physics loop as players spawn.
@@ -229,6 +231,16 @@ mapSizeLive = true;
 if (mapSizeClamped) console.info(`map_size ${_askedMapSize} is too small for scenario ${_scenarioParam}; using ${mapSizeKey}`);
 setupMobileMenu();
 
+// Sim options the loop reads, mirrored from the settings checkboxes so the
+// simulation pass never touches the DOM. Kept current by change listeners
+// (url-settings dispatches change events, so query values land here too).
+const simOptions = { amr: true, boatEnergy: true };
+for (const [key, id] of [['amr', 'amr'], ['boatEnergy', 'boat_energy']]) {
+  const el = document.getElementById(id);
+  simOptions[key] = el.checked;
+  el.addEventListener('change', () => { simOptions[key] = el.checked; });
+}
+
 let currentGuides = [];
 startAnimation(map, () => currentGuides);
 
@@ -327,9 +339,10 @@ function simPass(simDt, present) {
     });
 
     player.physics_model_step();
+    if (player.telemetry) setInfo(boatTelemetryHtml(player.telemetry));
     guides.push(...player.graphics_model_render());
 
-    if (!map.devMode && document.getElementById('boat_energy').checked) {
+    if (!map.devMode && simOptions.boatEnergy) {
       const eff = sailEfficiency();
       for (const seg of player.getSailSegments()) {
         map.bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1,
@@ -483,11 +496,11 @@ function simPass(simDt, present) {
   // be rounded into a domain corner.
   // Tracking reads curl, which only changes on a lattice step. On a coarse
   // setting (one step every 2nd / 4th frame) it runs on the stepping frames.
-  if (!map.devMode && document.getElementById('amr').checked && bm.stepsDueThisFrame() > 0) trackBoats(bm, getPlayers());
+  if (!map.devMode && simOptions.amr && bm.stepsDueThisFrame() > 0) trackBoats(bm, getPlayers());
 
   // AMR off: a restart that removed a boat would keep drawing a ring.
   // AMR on: trackBoats already installed exactly the live boats, in player order.
-  if (!map.devMode && !document.getElementById('amr').checked && bm.domains.length > getPlayers().length) {
+  if (!map.devMode && !simOptions.amr && bm.domains.length > getPlayers().length) {
     bm.domains.length = getPlayers().length;
     bm._rebuildInteriorCells();
   }
