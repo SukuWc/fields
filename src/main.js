@@ -19,16 +19,21 @@ import { setupMobileMenu } from './mobile-menu.js';
 import { setupTouchControls } from './touch-controls.js';
 
 import { SAIL_LATTICE_COUPLING } from './boat.js';
+import { MAP_SIZES, DEFAULT_MAP_SIZE, mapSizeFromQuery, fitMapSize, scenarioFits, cameraLimits } from './map-size.js';
 
 import { beginRule15Step, contactGuides, evaluateAllPairs, penaltyAutopilotRemainingDeg, penaltyGuides, penaltyJustCleared, penaltyManeuverText, penaltyManeuverView, pendingPenaltyCount, pendingPenaltyReason, recordContacts, markRoomGuides, trueWindAngleDeg } from './rules.js';
 
 
-// Map side in metres. ?mapSize=150 doubles both sides (4× the area); the
-// #mapSize select reloads the page with that param. Default 75.
-const MAP_SIZES = [75, 150];
-const _mapSizeParam = Number(new URLSearchParams(location.search).get('mapSize'));
-const map_w = MAP_SIZES.includes(_mapSizeParam) ? _mapSizeParam : 75;
-const map_h = map_w;
+// Map size (src/map-size.js): width × length in metres, length along the
+// wind (Y). ?map_size=100x200 or the #map_size select; changing it reloads.
+// A scenario that does not fit the asked size gets the smallest that does.
+const _query = new URLSearchParams(location.search);
+const _askedMapSize = mapSizeFromQuery(location.search);
+const _scenarioParam = Number(_query.get('scenario_selector')) || 0;
+const mapSizeKey = fitMapSize(_scenarioParam, _askedMapSize);
+const mapSizeClamped = mapSizeKey !== _askedMapSize;
+const map_w = MAP_SIZES[mapSizeKey].w;
+const map_h = MAP_SIZES[mapSizeKey].h;
 // UI wind, and the uniform wind used while dev mode is on.
 // Angle is where the wind comes from: 0 = from +X, 90 = from +Y (blows toward −Y).
 // Speed is true-wind speed (the value boats report as TWS).
@@ -66,19 +71,22 @@ const planeMat = new THREE.MeshBasicMaterial({ map: dataTextureMaterial });
 planeMat.needsUpdate = true;
 
 // Core simulation instances
-const bm = new Boltzmann(map_w, map_h, bm_resolution, wind_angle, wind_speed, dataTextureMaterial, texture_oversampling);
+// Root cell: the size's default simRes (map-size.js) unless ?simRes is set.
+const _simResKey = _query.get('simRes') || MAP_SIZES[mapSizeKey].simRes;
+const _rootRes = { '1': 1, '2': 0.5, '4': 0.25, '2f': 0.5, '2f34': 0.5 }[_simResKey] || 1;
+const bm = new Boltzmann(map_w, map_h, _rootRes, wind_angle, wind_speed, dataTextureMaterial, texture_oversampling);
 const fluidWind = new FluidWind(bm);
 const constantWind = new ConstantWind(wind_angle, wind_speed);
 // Domains are created dynamically in the physics loop as players spawn.
 const map = new Map(map_w, map_h, wind_angle, wind_speed, bm, fluidWind, constantWind);
 map.physics_model_init();
-if (map_w !== 75) {
-  // Camera pan limits: ±30 on the 75 m map, the same 7.5 m margin on larger ones.
-  const lim = (map_w - 15) / 2;
-  map.camera_position_x_max = lim; map.camera_position_y_max = lim;
-  map.camera_position_x_min = -lim; map.camera_position_y_min = -lim;
-  // Zoom out far enough to see most of the map; the camera far plane is 85.
-  map.camera_zoom_max = 80;
+{
+  // Pan limits keep the 7.5 m margin of the 75 m map (±30); the zoom-out
+  // limit shows the whole length (map-size.js cameraLimits).
+  const lim = cameraLimits(map_w, map_h);
+  map.camera_position_x_max = lim.xMax; map.camera_position_x_min = -lim.xMax;
+  map.camera_position_y_max = lim.yMax; map.camera_position_y_min = -lim.yMax;
+  map.camera_zoom_max = lim.zoomMax;
 }
 
 // Renderer and controls — must init renderer before controls (controls needs getCamera).
@@ -108,12 +116,37 @@ document.getElementById('simRes').addEventListener('change', (e) => {
   dataTextureMaterial.needsUpdate = true;
   document.getElementById('scenario_restart').click();
 });
-document.getElementById('mapSize').addEventListener('change', (e) => {
-  const v = Number(e.target.value);
-  if (v === map_w || !MAP_SIZES.includes(v)) return;
+// Map size select. The select default (markup) is DEFAULT_MAP_SIZE so the
+// URL only carries map_size when it differs. A new size reloads the page and
+// drops ?simRes so the new size's default root cell applies.
+const mapSizeSel = document.getElementById('map_size');
+if (MAP_SIZES[mapSizeKey].legacy) {
+  const opt = document.createElement('option');
+  opt.value = mapSizeKey; opt.textContent = MAP_SIZES[mapSizeKey].label;
+  mapSizeSel.appendChild(opt);
+}
+function reloadWithMapSize(key, extra) {
   const u = new URL(location.href);
-  if (v === 75) u.searchParams.delete('mapSize'); else u.searchParams.set('mapSize', String(v));
+  u.searchParams.delete('mapSize');
+  u.searchParams.delete('simRes');
+  if (key === DEFAULT_MAP_SIZE) u.searchParams.delete('map_size'); else u.searchParams.set('map_size', key);
+  for (const [k, v] of Object.entries(extra || {})) u.searchParams.set(k, v);
   location.href = u.toString();
+}
+// installUrlSettings writes ?map_size into the select at load (it may be a
+// size this scenario was clamped up from); only later edits reload.
+let mapSizeLive = false;
+mapSizeSel.addEventListener('change', (e) => {
+  const v = e.target.value;
+  if (!mapSizeLive || v === mapSizeKey || !MAP_SIZES[v]) return;
+  reloadWithMapSize(v);
+});
+// A scenario picked in the app that does not fit this map reloads on the
+// smallest size that fits (course scenarios 12-17 need 100 × 200).
+document.getElementById('scenario_selector').addEventListener('change', (e) => {
+  const n = Number(e.target.value) || 0;
+  if (scenarioFits(n, mapSizeKey)) return;
+  reloadWithMapSize(fitMapSize(n, mapSizeKey), { scenario_selector: String(n) });
 });
 // Refinement layout (#amrMode). The app default is "auto": only the finest
 // boat disk is fixed and every coarser level is a grading shell plus curl
@@ -180,7 +213,20 @@ bm.amrMode = 'auto';
 setupPerfOverlay(map, bm);
 // Before installUrlSettings: the device default must be the checkbox default.
 setupTouchControls();
+// simRes default follows the map size (map-size.js). Set before
+// installUrlSettings so that is the default it compares against.
+document.getElementById('simRes').value = MAP_SIZES[mapSizeKey].simRes;
 installUrlSettings();
+// After installUrlSettings: show the size in use (a clamp or a legacy
+// ?mapSize) and write it to the URL; equal to mapSizeKey, so no reload.
+if (mapSizeSel.value !== mapSizeKey || _query.has('mapSize')) {
+  const u = new URLSearchParams(location.search);
+  if (u.has('mapSize')) { u.delete('mapSize'); history.replaceState(history.state, '', location.pathname + (u.toString() ? '?' + u : '') + location.hash); }
+  mapSizeSel.value = mapSizeKey;
+  mapSizeSel.dispatchEvent(new Event('change', { bubbles: true }));
+}
+mapSizeLive = true;
+if (mapSizeClamped) console.info(`map_size ${_askedMapSize} is too small for scenario ${_scenarioParam}; using ${mapSizeKey}`);
 setupMobileMenu();
 
 let guides = [];
