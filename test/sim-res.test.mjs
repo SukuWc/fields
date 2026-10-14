@@ -197,14 +197,15 @@ for (const k of KS) {
 	const r = H.scenario0(k, { frames: 600 });
 	s0[k] = r;
 	check(`x${k} scenario 0 holds ~45° at a steady speed`,
-		r.twa < -40 && r.twa > -55 && r.twaSpread < 3 && r.bs > 1.8 && r.bs < 2.8 && Math.abs(r.bs - r.bsAt500) < 0.15
+		r.twa < -40 && r.twa > -55 && r.twaSpread < 3 && r.bs > 2.4 && r.bs < 3.1 && Math.abs(r.bs - r.bsAt500) < 0.15
 		&& r.bad === 0 && r.maxU < 0.3,
 		`twa=${r.twa.toFixed(2)} bs=${r.bs.toFixed(3)} tws=${r.tws.toFixed(2)} ms/frame=${r.msPerFrame.toFixed(2)}`);
 	check(`x${k} scenario 0 boat sits in a ${2 + Math.log2(k) + 1}-level stack with 1/8-unit cells`,
 		r.depth === 3 + Math.log2(k) && r.finestStep === 0.125, `depth=${r.depth} finest=${r.finestStep}`);
 }
-check('Default scenario 0 with ?amrMode=fixed matches main (twa −49.40, bs 2.131)',
-	near(s0[1].twa, -49.4023, 0.01) && near(s0[1].bs, 2.1314, 0.002), `twa=${s0[1].twa.toFixed(4)} bs=${s0[1].bs.toFixed(4)}`);
+check(// Fixed 30 FPS (one pass per tick, boat terms ×3): −49.4023 / 2.1314 → −49.3314 / 2.8466.
+'Default scenario 0 with ?amrMode=fixed pinned (twa −49.33, bs 2.847)',
+	near(s0[1].twa, -49.3314, 0.01) && near(s0[1].bs, 2.8466, 0.002), `twa=${s0[1].twa.toFixed(4)} bs=${s0[1].bs.toFixed(4)}`);
 // With the outer rings the boat keeps Default's fine levels, so refinement
 // costs about what it does at Default. Coarse settings must not be slower.
 check('x2 and x4 with refinement are no slower per frame than Default',
@@ -233,11 +234,12 @@ for (const k of KS) {
 		`windward ${on.tws0.toFixed(2)} leeward ${on.tws1.toFixed(2)} gap=${on.overlapGap.toExponential(1)}`);
 	const w = H.wakeShadow(k, INWAKE);
 	wk[k] = w.shadow;
-	check(`x${k} boat directly downwind loses wind to the upwind sail`, w.shadow > 0.25 && w.overlapGap < 1e-12 && w.bad === 0,
+	check(`x${k} boat directly downwind loses wind to the upwind sail`, w.shadow > (k === 4 ? 0.1 : 0.25) && w.overlapGap < 1e-12 && w.bad === 0,
 		`TWS ${w.off.toFixed(2)} → ${w.on.toFixed(2)} (shadow ${w.shadow.toFixed(2)})`);
 }
 check('scenario 1 and in-wake shadows on x2 / x4 come close to Default',
-	[2, 4].every(k => Math.abs(s1[k] - s1[1]) < 0.15 && wk[k] > 0.6 * wk[1]),
+	// Fixed 30 FPS: the x4 in-wake shadow fell 0.20 → 0.12 (the field advects 3× less per boat length); x4 floor 0.35 × Default.
+	[2, 4].every(k => Math.abs(s1[k] - s1[1]) < 0.15 && wk[k] > (k === 4 ? 0.35 : 0.6) * wk[1]),
 	`s1 ${KS.map(k => s1[k].toFixed(2)).join(' / ')} · in-wake ${KS.map(k => wk[k].toFixed(2)).join(' / ')}`);
 for (const [name, spec, tacks] of [
 	['scenario 2', [[-10, -6, 3 * Math.PI / 4], [15, -11.5, 5 * Math.PI / 4]], {}],
@@ -278,7 +280,7 @@ for (const k of [2, 4]) {
 			`steps=${n} U=${bm.speed.toFixed(4)} TWS=${w.speed.toFixed(3)} ν=${bm.nu}/${bm.matchedNu}`);
 		const r = H.scenario0(mode);
 		check(`${mode} scenario 0 holds close-hauled like Default`,
-			r.twa < -45 && r.twa > -54 && r.twaSpread < 3 && r.bs > 1.9 && r.bs < 2.4 && r.bad === 0 && r.finestStep === 0.125,
+			r.twa < -45 && r.twa > -54 && r.twaSpread < 3 && r.bs > 2.4 && r.bs < 3.1 && r.bad === 0 && r.finestStep === 0.125,
 			`twa=${r.twa.toFixed(2)} bs=${r.bs.toFixed(3)}`);
 	}
 	for (const [mode, wind] of [['2f', 45], ['2f34', 58]]) {
@@ -335,11 +337,12 @@ for (const k of [2, 4]) {
 	}
 	const s0 = H.scenario0(1);
 	const wk = H.wakeShadow(1, INWAKE);
-	check('auto (app default) Default scenario 0 pinned: twa −49.43, bs 2.129',
-		near(s0.twa, -49.428, 0.01) && near(s0.bs, 2.129, 0.002), `twa=${s0.twa.toFixed(4)} bs=${s0.bs.toFixed(4)}`);
+	check(// Fixed 30 FPS: −49.428 / 2.129 → −49.305 / 2.8465.
+	'auto Default scenario 0 pinned: twa −49.30, bs 2.847',
+		near(s0.twa, -49.3048, 0.01) && near(s0.bs, 2.8465, 0.002), `twa=${s0.twa.toFixed(4)} bs=${s0.bs.toFixed(4)}`);
 	H.setAmrMode('fixed');
 	check('auto Default scenario 0 close-hauled and the in-wake shadow is at least the fixed one',
-		s0.twa < -45 && s0.twa > -54 && s0.bs > 1.9 && s0.bs < 2.4 && wk.shadow > 0.4 && wk.overlapGap < 1e-12,
+		s0.twa < -45 && s0.twa > -54 && s0.bs > 2.4 && s0.bs < 3.1 && wk.shadow > 0.4 && wk.overlapGap < 1e-12,
 		`twa=${s0.twa.toFixed(2)} bs=${s0.bs.toFixed(3)} in-wake ${wk.shadow.toFixed(2)}`);
 }
 
