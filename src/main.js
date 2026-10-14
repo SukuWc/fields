@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Runner } from 'planck-renderer';
+import { FixedStepLoop } from './loop.js';
 
 import { Boltzmann, unionMaskBorderLines } from './boltzmann.js';
 import { trackBoats, resetTracking } from './domainTrack.js';
@@ -8,7 +8,7 @@ import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera, setFluidPlaneSize } from './renderer.js';
 import { setupControls, getPlayers, getMarks, getCourse, getStartSequence, getRaceResults, getRaceBots, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
-import { appendInfo, flushInfo } from './info.js';
+import { setInfo, appendInfo, flushInfo } from './info.js';
 import { courseGuides, courseText, markRoomTarget } from './course.js';
 import { finishGuides } from './finish.js';
 import { Leaderboard, leaderboardHtml } from './leaderboard.js';
@@ -229,24 +229,39 @@ mapSizeLive = true;
 if (mapSizeClamped) console.info(`map_size ${_askedMapSize} is too small for scenario ${_scenarioParam}; using ${mapSizeKey}`);
 setupMobileMenu();
 
-let guides = [];
-startAnimation(map, () => guides);
+let currentGuides = [];
+startAnimation(map, () => currentGuides);
 
 const distInfoEl = document.getElementById('dist_info');
 
-// Physics loop. Rule 15's room window uses this clock, not wall time.
-// Runner.step is 1/30 s and is passed in only when world.step actually ran.
-// The same callback also fires once per animation frame with no argument;
-// that redraw must not move the clock (a pause, or a slow frame, neither
-// grants room nor eats it).
-const runner = new Runner(map.world, { speed: 1, fps: 30 });
+// Physics loop (loop.js). The world steps in fixed 1/30 s ticks of wall
+// time, independent of the display's frame rate. Rule 15's room window uses
+// the sim clock (rulesTime), not wall time.
+//
+// Each tick runs SIM_PASSES_PER_TICK passes of simPass: the first one right
+// after world.step with simDt (clocks, marks, start/course/finish, bots), the
+// rest without. Boat forces, keys, scenario frames and lattice steps are
+// applied on every pass. The old planck-renderer Runner also ran this callback
+// after every world.step plus once per animation frame, so on a 60 Hz display
+// a step got three passes; the default of 3 keeps the boats, the scenario
+// scripts and the fluid at the speed they had on a 60 Hz screen. On a 120 Hz
+// screen the Runner gave five passes per step (everything ran 5/3 faster), and
+// on a slow machine fewer; now it is three everywhere. ?simPasses=1..5
+// overrides this (1 = one pass per world step).
+// Guides, HUD and readout DOM writes happen only on the last pass of a tick.
+const SIM_PASSES_PER_TICK = (() => {
+  const n = Number(new URLSearchParams(location.search).get('simPasses'));
+  return Number.isInteger(n) && n >= 1 && n <= 5 ? n : 3;
+})();
+const loop = new FixedStepLoop(map.world, { tickHz: 30, maxCatchUp: 4 });
 let rulesTime = 0;
 let leaderboard = null;
 
-runner.start((simDt) => {
+function simPass(simDt, present) {
   if (typeof simDt === 'number' && Number.isFinite(simDt) && simDt > 0) rulesTime += simDt;
+  setInfo('');
   beginRule15Step(rulesTime);
-  guides = [];
+  const guides = [];
 
   // Smooth circle per boat disk. A field island has a mask and no disk, so
   // only its staircase is drawn. The light staircase is the union of every
@@ -307,7 +322,7 @@ runner.start((simDt) => {
         const dx = player.x - player2.x;
         const dy = player.y - player2.y;
         sumOfPlayerDistances += Math.sqrt(dx * dx + dy * dy);
-        distInfoEl.innerHTML = "Dist: " + Math.floor(sumOfPlayerDistances * 100) / 100 + "<br>";
+        if (present) distInfoEl.innerHTML = "Dist: " + Math.floor(sumOfPlayerDistances * 100) / 100 + "<br>";
       }
     });
 
@@ -346,7 +361,7 @@ runner.start((simDt) => {
       startSeq.update(boats);
     }
     guides.push(...startGuides(startSeq, boats[0], performance.now()));
-    if (startHud) {
+    if (startHud && present) {
       startHud.hidden = false;
       startHud.innerHTML = startHudHtml(startSeq, boats[0]);
       startHud.classList.toggle('flash', startSeq.flashing);
@@ -395,7 +410,7 @@ runner.start((simDt) => {
     if (!leaderboard || leaderboard.course !== course) leaderboard = new Leaderboard(course, { startSequence: startSeq, results });
     leaderboard.results = results;
     if (stepped) leaderboard.update(getPlayers(), raceClock, windFrom);
-    if (resultsEl) {
+    if (resultsEl && present) {
       resultsEl.hidden = false;
       resultsEl.innerHTML = leaderboardHtml(leaderboard, 0);
     }
@@ -476,7 +491,7 @@ runner.start((simDt) => {
     bm.domains.length = getPlayers().length;
     bm._rebuildInteriorCells();
   }
-  if (!map.devMode) pushRefinementGuides(bm.domains);
+  if (!map.devMode && present) pushRefinementGuides(bm.domains);
 
   if (map.devMode) {
     const wind = map.get_wind(0, 0);
@@ -494,11 +509,19 @@ runner.start((simDt) => {
   }
 
   incrementPhysicsFrame();
-  flushInfo();
+  if (present) {
+    flushInfo();
+    currentGuides = guides;
+  }
 
   if (!map.devMode && bm.step_ready) {
     dataTextureMaterial.needsUpdate = true;
     bm.step_ready = false;
   }
+}
 
-}, () => {});
+loop.start((dt) => {
+  for (let i = 0; i < SIM_PASSES_PER_TICK; i++) {
+    simPass(i === 0 ? dt : undefined, i === SIM_PASSES_PER_TICK - 1);
+  }
+});

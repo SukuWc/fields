@@ -115,10 +115,9 @@
 // Rules 10–13.
 //
 // Time. The window lasts RULE15_ROOM_S (1 s) of simulation time, then the
-// blocked rule shows on its own. Simulation time is the sum of Planck
-// Runner steps (1/30 s each, the `fps: 30` passed to world.step). The
-// runner also redraws once per animation frame without stepping; those
-// calls do not advance the clock. Pausing stops the runner, so the clock
+// blocked rule shows on its own. Simulation time is the sum of fixed
+// world steps (1/30 s each, see loop.js). The extra sim passes in a tick
+// (main.js SIM_PASSES_PER_TICK) do not advance the clock. Pausing stops the runner, so the clock
 // stops. The label's bar starts full and shrinks with the time that is left.
 //
 // While the window is open the label reads "Rule 15 (blocks Rule 10)" (or
@@ -195,7 +194,7 @@ export const CLOSE_HAULED_TWA_DEG = 40;
 export const RULE15_RANGE_M = 2 * BOAT_LENGTH_M;
 // How long the new right-of-way boat must give room, in simulation seconds.
 export const RULE15_ROOM_S = 1;
-// Planck Runner is constructed with fps: 30, and world.step receives 1/30.
+// The fixed-step loop (loop.js) ticks at 30 Hz, and world.step receives 1/30.
 // Rule 15 advances only when a step actually runs, not on wall-clock time.
 export const SIM_STEP_S = 1 / 30;
 
