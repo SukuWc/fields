@@ -2011,6 +2011,12 @@ export class Boltzmann {
 		// Boat refinement layout read by domainTrack.amrParams: 'auto' (finest
 		// disk + grading shells + curl, the default) or 'fixed' (per-level rings).
 		this.amrMode = 'auto';
+		// Refinement budget (domainTrack): target cell updates per root step,
+		// Infinity = off. curlScale is the controller's τ multiplier.
+		this.cellUpdateTarget = Infinity;
+		this.curlScale = 1;
+		this.cellLoad = 0;
+		this.cellLoadRatio = 0;
 		this.nu = this.baseNu;
 
 		this._build(resolution);
@@ -2154,6 +2160,20 @@ export class Boltzmann {
 		this.forceApplies = 0;
 		this.step_ready = true;
 		this.paintTexture();
+	}
+
+	// Work per root step: stepped cells × substeps, summed over the root and
+	// every refinement grid (level n steps 2^n times per root step).
+	cellUpdates() {
+		let n = this.streamCells ? this.streamCells.length : 0;
+		const walk = (doms, sub) => {
+			for (const d of doms) {
+				n += (d.streamCells ? d.streamCells.length : 0) * sub;
+				if (d.domains && d.domains.length) walk(d.domains, sub * 2);
+			}
+		};
+		walk(this.domains, 2);
+		return n;
 	}
 
 	// UI wind (TWS units) → lattice inlet U on the current grid.

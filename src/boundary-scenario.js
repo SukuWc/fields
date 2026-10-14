@@ -1,4 +1,4 @@
-// Scenario 18: two-boat boundary test (dev mode). A short script per boat
+// Scenario 19: two-boat boundary test (dev mode). A short script per boat
 // sets the existing autopilot TWA target (boat.autopilot_heading_target =
 // −TWA, positive TWA = port tack) like race-bot.js, so the run is
 // reproducible. Steering boat 0 by hand stops her script.

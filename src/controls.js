@@ -22,7 +22,7 @@ let course = null;
 let startSequence = null;
 let raceResults = null;
 let raceBots = [];
-// Scenario 18: virtual boundary (boundary.js) and its boat script.
+// Scenario 19: virtual boundary (boundary.js) and its boat script.
 let boundary = null;
 let boundaryScript = null;
 let physics_frame = 0;
@@ -179,7 +179,7 @@ function renderScenarioCard(scenario) {
     bodyEl.textContent = scenario.description || "";
   } else {
     titleEl.textContent = "No scenario";
-    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 18 each have a description.";
+    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 19 each have a description.";
   }
   card.classList.toggle("collapsed", scenarioCardCollapsed);
   if (toggle) {
@@ -705,6 +705,20 @@ scenarios[16].frames[1] = () => {
 // Three-boat test race (race-bot.js TEST_RACE_LAYOUT, dev mode): start
 // line → windward mark to port → finish, sailed by RaceBot on the existing
 // autopilot, with the live leaderboard. Dev mode: ?devmode=1&scenario_selector=17
+// Four boats upwind: the refinement-budget case (domainTrack BUDGET_*).
+// ?scenario_selector=18. Same positions as FLEET4 in scripts/sim-res-harness.mjs.
+export const FLEET4 = [
+  [14, -6], [24, -6],
+  [19, -14], [29, -14],
+];
+scenarios[18] = makeScenario(
+  "Fleet of four upwind",
+  "Four boats start on starboard close-hauled in two staggered rows, about 10 m apart, and sail upwind on autopilot. Each boat's wake falls on the boats behind it, and the refinement budget (?cellBudget=, cell updates per root step) keeps the total refinement bounded by raising the curl threshold when the fleet's wakes would exceed it. Arrow keys, Space and Enter are bound to the first boat."
+);
+scenarios[18].frames[0] = () => { for (const [x, y] of FLEET4) players.push(new Boat(_map, x, y, 5 * Math.PI / 4)); };
+scenarios[18].frames[1] = () => { for (const p of players) p.input_autopilot_enabled_toggle(); };
+scenarios[18].frames[2] = () => { autokeybind(players); };
+
 scenarios[17] = makeScenario(
   "Three-boat test race with live leaderboard",
   "Dev mode only (uniform wind). Three boats come in line astern on a port broad reach, head up just before the gun and start one after another, beat on port, tack once onto the starboard layline, round the windward mark to port, run down to the finish line and then park. Each boat is sailed by a small race script that only sets the existing autopilot's TWA target (close-hauled 50°, one tack at the layline, bear away after the mark, steer for the finish midpoint); if a boat is close ahead it pinches and waits to tack. The leaderboard (bottom right) ranks finished boats by the results, then racing boats by legs done and distance to finish: beat legs count max(upwind distance / cos 50°, straight distance), runs and reaches the straight distance. Rows show position, boat, leg (↑ beat, ↓ run, → reach), metres left on the leg and the gap to the leader in metres. Boat 0 also runs the script; steering her with the arrows, Space or Enter hands her to you and the script stops for her."
@@ -730,18 +744,18 @@ scenarios[17].frames[1] = () => {
 };
 
 // Two-boat virtual boundary test (boundary-scenario.js, dev mode). Only
-// this scenario has a boundary. Dev mode: ?devmode=1&scenario_selector=18
-scenarios[18] = makeScenario(
+// this scenario has a boundary. Dev mode: ?devmode=1&scenario_selector=19
+scenarios[19] = makeScenario(
   "Virtual boundary: room to tack away",
   "Dev mode only (uniform wind). SailGP-style virtual boundaries run along both sides of the course (dashed red and white, 8 m inside the walls), each with a 20 m zone inside it (faint hatching). In the zone, the boat closer to the boundary is entitled to room to tack or gybe away from it, whatever Rules 10-13 say: the other boat must give that room. Boat 0 (yours) beats on port toward the east boundary; boat 1 is on starboard just astern and to leeward. Normally Rule 10 (port keeps clear) and then Rule 13 (a tacking boat keeps clear) bind boat 0, but she is closer to the boundary and in the zone, so 'Boundary room' decides and those rules are struck through; GETS / GIVES ROOM badges show who owes it. The entitlement ends once she has completed her tack (close-hauled on the new tack) or leaves the zone. Later boat 1 sails on across the west boundary: after 1 s outside she gets a pending 'Boundary: crossed' penalty (clear it with a tack and a gybe, or Q/E), then she tacks back in. Both boats run a small autopilot script; steering boat 0 with the arrows, Space or Enter hands her to you."
 );
-scenarios[18].frames[0] = () => {
+scenarios[19].frames[0] = () => {
   const t = setupBoundaryTest(_map);
   players.push(...t.boats);
   boundary = t.boundary;
   boundaryScript = t;
 };
-scenarios[18].frames[1] = () => {
+scenarios[19].frames[1] = () => {
   autokeybind(players);
   const follow = document.getElementById('camera_follow');
   if (follow && !follow.checked) {

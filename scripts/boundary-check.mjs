@@ -1,5 +1,5 @@
 // Headless checks for the virtual boundary (src/boundary.js), boundary room
-// (rules.js 'BR') and scenario 18 (src/boundary-scenario.js).
+// (rules.js 'BR') and scenario 19 (src/boundary-scenario.js).
 // Run: node --import ./test/register.mjs scripts/boundary-check.mjs
 import '../test/dom-stub.mjs';
 
@@ -40,7 +40,7 @@ const ids = (res) => res.applicable.map((a) => (a.inhibited ? "~" : "") + a.id).
   assert(b100.guides().length > 100, "overlay: dashed line, zone edge, hatching");
 }
 
-// --- Boundary room in the scenario 18 start position (closer boat entitled) ---
+// --- Boundary room in the scenario 19 start position (closer boat entitled) ---
 {
   reset();
   const m = freshMap();
@@ -146,7 +146,7 @@ const ids = (res) => res.applicable.map((a) => (a.inhibited ? "~" : "") + a.id).
   assert(R.penaltyRuleName(bd.crossings[0]) === "Boundary", "penalty named Boundary");
 }
 
-// --- Scenario 18 headless run ---
+// --- Scenario 19 headless run ---
 {
   reset();
   const m = freshMap();
@@ -170,7 +170,7 @@ const ids = (res) => res.applicable.map((a) => (a.inhibited ? "~" : "") + a.id).
     }
   }
   console.log(`     boundary room until ${maxBrT.toFixed(1)} s, min clearance ${minClear.toFixed(1)} m, crossings ${t.boundary.crossings.map((c) => "boat " + t.boats.indexOf(c.faultBoat) + " @" + c.time.toFixed(1) + " s").join(", ")}`);
-  assert(brSeen && struck10 && struck13, "scenario 18: Boundary room final, Rule 10 and then Rule 13 struck through");
+  assert(brSeen && struck10 && struck13, "scenario 19: Boundary room final, Rule 10 and then Rule 13 struck through");
   assert(brOnTack && brEndedInRange, "entitlement holds through the tack and ends after it (pair still in range)");
   assert(R.getIncidents().length === 0, "no contact");
   assert(t.boundary.crossings.length === 1 && t.boundary.crossings[0].faultBoat === s, "boat 1 crosses the west boundary once: one penalty");
