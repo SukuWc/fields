@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-10-13
+Last updated: 2026-10-14
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -22,8 +22,9 @@ Last updated: 2026-10-13
 - [ ] Faster coarse-to-fine ghost injection: decompose each coarse cell once, reuse scratch buffers, read populations by index (about 77% of the step after [#9](https://github.com/SukuWc/fields/pull/9), which took scenario 0 from about 4.5 ms to about 18 ms per step) (partial: [#32](https://github.com/SukuWc/fields/pull/32) caches coarse-cell decomposition once per inject pass; still open: reuse scratch buffers, read populations by index)
 - [ ] Fluid steps fit the 16 ms frame budget again (about 36 ms per frame now at 2 steps per frame)
 - [x] Simulation resolution setting (Default / x2 / x4 coarser) for cheaper fluid steps: [#36](https://github.com/SukuWc/fields/pull/36)
-- [ ] Experimental fast-wind grid modes (2 m cell every frame / 1.2×) and 150 m map (in progress, [#40](https://github.com/SukuWc/fields/pull/40))
-- [ ] Refinement budget: cell updates per root step (curl-threshold controller, `?cellBudget`, 8-boat scenario) (in progress, [#43](https://github.com/SukuWc/fields/pull/43))
+- [x] Experimental fast-wind grid modes (2 m cell every frame / 1.2×) and 150 m map: [#40](https://github.com/SukuWc/fields/pull/40)
+- [ ] Refinement budget: cell updates per root step (curl-threshold controller, `?cellBudget`, 4-boat scenario) (in progress, [#43](https://github.com/SukuWc/fields/pull/43))
+- [ ] Configurable map size (50×100, 100×200, 200×400 m) (in progress, [#44](https://github.com/SukuWc/fields/pull/44))
 - [x] Perf overlay: cells per level and field step time: [#26](https://github.com/SukuWc/fields/pull/26)
 - [ ] Run `npm test` in CI
 
@@ -39,7 +40,7 @@ Last updated: 2026-10-13
 - [ ] Reconnect
 
 ### 4. Core race loop
-- [ ] Course: start line, marks, finish, boundary (partial: [#27](https://github.com/SukuWc/fields/pull/27) adds anchored mark buoy physics and scenario 11; [#28](https://github.com/SukuWc/fields/pull/28) adds anticlockwise triangle course progress, mark rounding, and scenario 12; [#31](https://github.com/SukuWc/fields/pull/31) adds gate marks and windward-leeward scenario 13; [#33](https://github.com/SukuWc/fields/pull/33) adds start line, RRS 26 start sequence, and scenario 14; [#38](https://github.com/SukuWc/fields/pull/38) adds the finish line and scenario 16; still open: boundary)
+- [ ] Course: start line, marks, finish, boundary (partial: [#27](https://github.com/SukuWc/fields/pull/27) adds anchored mark buoy physics and scenario 11; [#28](https://github.com/SukuWc/fields/pull/28) adds anticlockwise triangle course progress, mark rounding, and scenario 12; [#31](https://github.com/SukuWc/fields/pull/31) adds gate marks and windward-leeward scenario 13; [#33](https://github.com/SukuWc/fields/pull/33) adds start line, RRS 26 start sequence, and scenario 14; [#38](https://github.com/SukuWc/fields/pull/38) adds the finish line and scenario 16; [#45](https://github.com/SukuWc/fields/pull/45) adds SailGP-style virtual boundaries, boundary room, crossing penalty, and scenario 18, stacked on [#44](https://github.com/SukuWc/fields/pull/44); still open: wider course use of the boundary)
 - [x] Finish times and results list: [#38](https://github.com/SukuWc/fields/pull/38)
 - [x] Live leaderboard (distance only) and three-boat test race, scenario 17: [#39](https://github.com/SukuWc/fields/pull/39)
 - [ ] Equal boats
