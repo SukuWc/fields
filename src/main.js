@@ -449,14 +449,14 @@ runner.start((simDt) => {
     guides.push(...boundary.guides());
     for (let i = 0; i < racing.length; i++) {
       const d = boundary.distanceOf(racing[i]);
-      infoEl.innerHTML += 'Boat ' + i + ' boundary ' + (d.side > 0 ? 'east' : 'west') + ' ' + d.dist.toFixed(1) + ' m' + (d.dist < 0 ? ' OUTSIDE' : d.dist <= boundary.zone ? ' (zone)' : '') + '<br>';
+      appendInfo('Boat ' + i + ' boundary ' + (d.side > 0 ? 'east' : 'west') + ' ' + d.dist.toFixed(1) + ' m' + (d.dist < 0 ? ' OUTSIDE' : d.dist <= boundary.zone ? ' (zone)' : '') + '<br>');
     }
   }
   const resolutions = evaluateAllPairs(racing, getWind, rulesTime, { markFor, boundary });
   for (const r of resolutions) {
     const b = r.boundaryRoom;
     if (!b) continue;
-    infoEl.innerHTML += 'Boundary room: boat ' + racing.indexOf(b.giveWay) + ' gives boat ' + racing.indexOf(b.rightOfWay) + ' room to tack or gybe away (' + b.basis + ')' + (b.decisive ? ' · decides fault' : '') + '<br>';
+    appendInfo('Boundary room: boat ' + racing.indexOf(b.giveWay) + ' gives boat ' + racing.indexOf(b.rightOfWay) + ' room to tack or gybe away (' + b.basis + ')' + (b.decisive ? ' · decides fault' : '') + '<br>');
   }
   guides.push(...boundaryRoomGuides(resolutions, racing));
   for (const r of resolutions) {

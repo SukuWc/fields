@@ -40,7 +40,25 @@ const ids = (res) => res.applicable.map((a) => (a.inhibited ? "~" : "") + a.id).
   assert(b100.guides().length > 100, "overlay: dashed line, zone edge, hatching");
 }
 
-// --- Boundary room in the scenario 19 start position (closer boat entitled) ---
+// Runs scenario 19 headlessly; onStep(res, tm) may return true to stop.
+function runScenario(seconds, onStep) {
+  reset();
+  const m = freshMap();
+  const t = S.setupBoundaryTest(m);
+  let tm = 0;
+  for (let i = 0; i < seconds * 30; i++) {
+    for (const b of t.boats) b.physics_model_step();
+    m.world.step(DT); tm += DT;
+    t.step(tm); t.boundary.update(t.boats, tm);
+    R.beginRule15Step(tm);
+    const res = R.evaluateAllPairs(t.boats, getWindOf(m), tm, { boundary: t.boundary });
+    R.recordContacts(res, tm, t.boats);
+    if (onStep && onStep(res, tm, t, m)) break;
+  }
+  return { t, m, tm };
+}
+
+// --- Scenario 19 start: same tack, overlapped, outside the zone ---
 {
   reset();
   const m = freshMap();
@@ -48,20 +66,10 @@ const ids = (res) => res.applicable.map((a) => (a.inhibited ? "~" : "") + a.id).
   const [p, s] = t.boats;
   for (const b of t.boats) b.physics_model_step();
   m.world.step(DT);
-  const without = R.evaluateAllPairs(t.boats, getWindOf(m), 0, {});
-  assert(without.length === 1 && without[0].final.id === "10" && without[0].final.giveWay === p, "no boundary: Rule 10, port boat 0 keeps clear");
-  assert(!without[0].applicable.some((a) => a.id === "BR"), "no boundary: no boundary room");
-  reset();
-  const res = R.evaluateAllPairs(t.boats, getWindOf(m), 0, { boundary: t.boundary });
-  const r = res[0];
-  assert(t.boundary.sideDistance(p, 1) + 1 < t.boundary.sideDistance(s, 1), "boat 0 is closer to the east boundary");
-  assert(r.final.id === "BR" && r.final.rightOfWay === p && r.final.giveWay === s && r.faultBoat === s, "Boundary room final: boat 0 entitled, boat 1 gives room (fault side)");
-  assert(r.applicable.find((a) => a.id === "10").inhibited && r.applicable.find((a) => a.id === "10").inhibitedBy === "BR", `Rule 10 struck through by boundary room (${ids(r)})`);
-  assert(r.boundaryRoom && r.boundaryRoom.decisive, "resolution.boundaryRoom set, decisive");
-  const lines = r.guides.find((g) => g.type === "label").lines;
-  assert(lines.some((l) => l.text === "Boundary room" && l.role === "final") && lines.some((l) => l.id === "10" && l.role === "inhibited"), "label stack: Boundary room bold, Rule 10 struck");
-  const badges = R.boundaryRoomGuides(res, t.boats).map((g) => g.lines[0].text);
-  assert(badges.includes("GETS BOUNDARY ROOM") && badges.includes("GIVES ROOM → boat 0"), "GETS / GIVES ROOM badges");
+  const r = R.evaluateAllPairs(t.boats, getWindOf(m), 0, { boundary: t.boundary })[0];
+  assert(r.final.id === "11" && r.final.rightOfWay === p && r.final.giveWay === s, "start: both on port, Rule 11, boat 1 windward keeps clear");
+  assert(!r.applicable.some((a) => a.id === "BR"), "start: both outside the 20 m zone, no boundary room yet");
+  assert(t.boundary.sideDistance(p, 1) + 1 < t.boundary.sideDistance(s, 1), "boat 0 (leeward) is closer to the east boundary");
 }
 
 // --- Freeze, hysteresis and ending (fake boundary distances) ---
@@ -101,19 +109,15 @@ const ids = (res) => res.applicable.map((a) => (a.inhibited ? "~" : "") + a.id).
 
 // --- Contact while boundary room is final: giving boat at fault ---
 {
-  reset();
-  const m = freshMap();
-  const t = S.setupBoundaryTest(m);
+  // Run until boat 0 tacks under boundary room, then shove boat 1 onto her.
+  const { t, m, tm } = runScenario(20, (res) => res[0] && res[0].final && res[0].final.id === "BR");
   const [p, s] = t.boats;
-  for (const b of t.boats) b.physics_model_step();
-  m.world.step(DT);
-  // Freeze with boat 0 entitled, then move boat 1 onto her (touching).
-  R.evaluateAllPairs(t.boats, getWindOf(m), 0, { boundary: t.boundary });
+  assert(R.getIncidents().length === 0, "no contact before the shove");
   s.physics_model.setPosition({ x: p.x - 1.2, y: p.y - 0.6 });
   s.physics_model.setAngle(p.physics_model.getAngle());
   for (const b of t.boats) b.physics_model_step();
-  const res = R.evaluateAllPairs(t.boats, getWindOf(m), DT, { boundary: t.boundary });
-  R.recordContacts(res, DT, t.boats);
+  const res = R.evaluateAllPairs(t.boats, getWindOf(m), tm + DT, { boundary: t.boundary });
+  R.recordContacts(res, tm + DT, t.boats);
   const inc = R.getIncidents();
   assert(res[0].clearance <= 0.05, `boats touching (clearance ${res[0].clearance.toFixed(2)} m)`);
   assert(inc.length === 1 && inc[0].finalId === "BR" && inc[0].faultBoat === s && inc[0].exonerated[0] === p, "contact: fault on the giving boat, entitled boat exonerated");
@@ -146,34 +150,35 @@ const ids = (res) => res.applicable.map((a) => (a.inhibited ? "~" : "") + a.id).
   assert(R.penaltyRuleName(bd.crossings[0]) === "Boundary", "penalty named Boundary");
 }
 
-// --- Scenario 19 headless run ---
+// --- Scenario 19 headless run: room to tack away from the boundary ---
 {
-  reset();
-  const m = freshMap();
-  const t = S.setupBoundaryTest(m);
-  const [p, s] = t.boats;
-  let tm = 0, brSeen = false, struck10 = false, struck13 = false, brEndedInRange = false, brOnTack = false, minClear = Infinity, maxBrT = 0;
-  for (let i = 0; i < 70 * 30; i++) {
-    for (const b of t.boats) b.physics_model_step();
-    m.world.step(DT); tm += DT;
-    t.step(tm); t.boundary.update(t.boats, tm);
-    R.beginRule15Step(tm);
-    const res = R.evaluateAllPairs(t.boats, getWindOf(m), tm, { boundary: t.boundary });
-    R.recordContacts(res, tm, t.boats);
-    for (const r of res) {
-      minClear = Math.min(minClear, r.clearance);
-      const br = r.final && r.final.id === "BR";
-      if (br) { brSeen = true; maxBrT = tm; if (p.tacking) brOnTack = true; }
-      if (br && r.applicable.some((a) => a.id === "10" && a.inhibited)) struck10 = true;
-      if (br && r.applicable.some((a) => a.id === "13" && a.inhibited)) struck13 = true;
-      if (!r.boundaryRoom && brSeen && tm < 10) brEndedInRange = true;
+  let brApplies = null, brFinal = null, struck13 = false, labelOk = false, badgesOk = false, minClear = Infinity, ended = false;
+  let b1TackedFirst = false, giveWayOk = true;
+  const { t } = runScenario(20, (res, tm, tt) => {
+    const [p, s] = tt.boats;
+    const r = res[0];
+    if (!r) return;
+    minClear = Math.min(minClear, r.clearance);
+    const br = r.applicable.find((a) => a.id === "BR");
+    if (br && brApplies === null) brApplies = tm;
+    if (br && (br.rightOfWay !== p || br.giveWay !== s)) giveWayOk = false;
+    if (r.final && r.final.id === "BR") {
+      if (brFinal === null) { brFinal = tm; b1TackedFirst = tt.bots[1].phase >= 1 && tt.bots[1].tackedAt < tt.bots[0].tackedAt; }
+      if (p.tacking && r.applicable.some((a) => a.id === "13" && a.inhibited && a.inhibitedBy === "BR")) struck13 = true;
+      const lines = (r.guides.find((g) => g.type === "label") || { lines: [] }).lines;
+      if (lines.some((l) => l.text === "Boundary room" && l.role === "final") && lines.some((l) => l.id === "13" && l.role === "inhibited")) labelOk = true;
+      const badges = R.boundaryRoomGuides(res, tt.boats).map((g) => g.lines[0].text);
+      if (badges.includes("GETS BOUNDARY ROOM") && badges.includes("GIVES ROOM → boat 0")) badgesOk = true;
     }
-  }
-  console.log(`     boundary room until ${maxBrT.toFixed(1)} s, min clearance ${minClear.toFixed(1)} m, crossings ${t.boundary.crossings.map((c) => "boat " + t.boats.indexOf(c.faultBoat) + " @" + c.time.toFixed(1) + " s").join(", ")}`);
-  assert(brSeen && struck10 && struck13, "scenario 19: Boundary room final, Rule 10 and then Rule 13 struck through");
-  assert(brOnTack && brEndedInRange, "entitlement holds through the tack and ends after it (pair still in range)");
-  assert(R.getIncidents().length === 0, "no contact");
-  assert(t.boundary.crossings.length === 1 && t.boundary.crossings[0].faultBoat === s, "boat 1 crosses the west boundary once: one penalty");
-  assert(t.bots[0].phase >= 2 && t.bots[1].phase >= 1, "scripts ran both phases");
+    if (brFinal !== null && !r.applicable.some((a) => a.id === "BR")) ended = true;
+  });
+  console.log(`     BR applies from ${brApplies?.toFixed(1)} s, decides from ${brFinal?.toFixed(1)} s, min clearance ${minClear.toFixed(1)} m`);
+  assert(brApplies !== null && giveWayOk, "boat 0 (inside) gets boundary room, boat 1 owes it");
+  assert(b1TackedFirst, "boat 1 gives room: she tacks away before boat 0 tacks");
+  assert(struck13, "while boat 0 tacks, Boundary room is final and Rule 13 is struck through");
+  assert(labelOk && badgesOk, "label stack: Boundary room bold, Rule 13 struck; GETS / GIVES ROOM badges");
+  assert(ended, "entitlement ends once boat 0 has completed her tack");
+  assert(R.getIncidents().length === 0 && minClear > 2, "no contact, boats stay clear");
+  assert(t.boundary.crossings.length === 0, "nobody crosses the boundary");
 }
 console.log("boundary-check: all passed");

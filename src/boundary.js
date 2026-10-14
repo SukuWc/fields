@@ -1,4 +1,4 @@
-// Virtual course boundary (SailGP style), enabled per scenario (only 18).
+// Virtual course boundary (SailGP style), enabled per scenario (only 19).
 //
 // Two boundary lines run along the side edges of the map, parallel to the
 // wind axis (Y), `inset` metres inside the walls. The walls stay the hard
