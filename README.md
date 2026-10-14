@@ -27,6 +27,7 @@ Last updated: 2026-10-14
 - [x] Configurable map size (50×100, 100×200, 200×400 m): [#44](https://github.com/SukuWc/fields/pull/44)
 - [x] Perf overlay: cells per level and field step time: [#26](https://github.com/SukuWc/fields/pull/26)
 - [ ] Fixed-step sim loop so simulation speed no longer depends on the display refresh rate (replaces the `planck-renderer` Runner; sim/client split, phase 1) (in progress, [#46](https://github.com/SukuWc/fields/pull/46))
+- [ ] Sim modules without DOM: FieldPainter, simOptions, boat telemetry (sim/client split, phase 2) (in progress, [#47](https://github.com/SukuWc/fields/pull/47))
 - [ ] Run `npm test` in CI
 
 ### 2. Wind and boat feel
