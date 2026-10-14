@@ -21,7 +21,7 @@ export const BOUNDARY_TEST_LAYOUT = {
   // zone 20 m, walls ±48).
   mapWidth: 100,
   boats: [
-    { x: -14, y: -24, twa: -50 }, // boat 0: starboard, leeward / inside
+    { x: -14, y: -21, twa: -50 }, // boat 0: starboard, leeward / inside
     { x: -7.5, y: -21, twa: -50 }, // boat 1: starboard, windward / outside
   ],
   speed: 2.6,
