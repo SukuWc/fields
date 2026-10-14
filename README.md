@@ -23,7 +23,7 @@ Last updated: 2026-10-14
 - [ ] Fluid steps fit the 16 ms frame budget again (about 36 ms per frame now at 2 steps per frame)
 - [x] Simulation resolution setting (Default / x2 / x4 coarser) for cheaper fluid steps: [#36](https://github.com/SukuWc/fields/pull/36)
 - [x] Experimental fast-wind grid modes (2 m cell every frame / 1.2×) and 150 m map: [#40](https://github.com/SukuWc/fields/pull/40)
-- [ ] Refinement budget: cell updates per root step (curl-threshold controller, `?cellBudget`, 4-boat scenario) (in progress, [#43](https://github.com/SukuWc/fields/pull/43))
+- [x] Refinement budget: cell updates per root step (curl-threshold controller, `?cellBudget`, 4-boat scenario): [#43](https://github.com/SukuWc/fields/pull/43)
 - [ ] Configurable map size (50×100, 100×200, 200×400 m) (in progress, [#44](https://github.com/SukuWc/fields/pull/44))
 - [x] Perf overlay: cells per level and field step time: [#26](https://github.com/SukuWc/fields/pull/26)
 - [ ] Run `npm test` in CI
