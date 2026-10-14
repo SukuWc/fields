@@ -263,7 +263,7 @@ const distInfoEl = document.getElementById('dist_info');
 // Guides, HUD and readout DOM writes happen only on the last pass of a tick.
 const SIM_PASSES_PER_TICK = (() => {
   const n = Number(new URLSearchParams(location.search).get('simPasses'));
-  return Number.isInteger(n) && n >= 1 && n <= 5 ? n : 3;
+  return Number.isInteger(n) && n >= 1 && n <= 5 ? n : 1;
 })();
 const loop = new FixedStepLoop(map.world, { tickHz: 30, maxCatchUp: 4 });
 let rulesTime = 0;

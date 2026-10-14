@@ -836,10 +836,17 @@ export function processKeys() {
   });
 }
 
+// Scenario frame indexes count the old 90 Hz passes (3 per 30 Hz tick), so
+// the scripts keep their timing: one tick runs indexes f .. f+2 and
+// incrementPhysicsFrame advances by SCENARIO_FRAMES_PER_TICK.
+export const SCENARIO_FRAMES_PER_TICK = 3;
 export function executeScenarioFrame() {
-  if (scenario_descriptor !== undefined && scenario_descriptor[physics_frame] !== undefined) {
-    console.log("Frame ", physics_frame);
-    scenario_descriptor[physics_frame]();
+  if (scenario_descriptor === undefined) return;
+  for (let f = physics_frame; f < physics_frame + SCENARIO_FRAMES_PER_TICK; f++) {
+    if (scenario_descriptor[f] !== undefined) {
+      console.log("Frame ", f);
+      scenario_descriptor[f]();
+    }
   }
 }
 
@@ -848,5 +855,5 @@ export function getPhysicsFrame() {
 }
 
 export function incrementPhysicsFrame() {
-  physics_frame++;
+  physics_frame += SCENARIO_FRAMES_PER_TICK;
 }

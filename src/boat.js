@@ -40,6 +40,28 @@ let pl = planck, Vec2 = pl.Vec2;
 // scripts/penalty-turn-check.mjs for under ~1.5° of overshoot at 1–2.2 m/s.
 // The circle does not clear anything itself: its tack and gybe do, through
 // updatePenaltyManeuvers, so one circle clears exactly one penalty.
+// One sim pass per 30 Hz tick (main.js). The boat model was tuned when every
+// world step got LEGACY_PASSES_PER_TICK = 3 passes: forces from all three
+// passes summed in planck's force accumulator, impulses landed three times,
+// and per-pass blends and rates ran three times. These constants convert each
+// per-pass term to one pass per tick with the same per-second behaviour.
+export const LEGACY_PASSES_PER_TICK = 3;
+const N = LEGACY_PASSES_PER_TICK;
+// Per-pass exponential blend a, applied N times: 1 - (1 - a)^N.
+const blendN = (a) => 1 - Math.pow(1 - a, N);
+export const WIND_SMOOTH_ALPHA = blendN(0.2);          // 0.488
+export const PENALTY_RUDDER_BLEND = blendN(0.45);      // 0.834
+export const AUTOPILOT_RUDDER_BLEND = blendN(0.1);     // 0.271 (was /10 per pass)
+// Old D term: only the first of the three passes saw the heading change
+// (the hull angle moves only at world.step), and its kick went through three
+// /10 lags (0.1·0.9² = 0.081 of it reached the rudder in the tick). One pass
+// with blend 0.271 needs D × 0.081 / 0.271 for the same rudder response.
+export const AUTOPILOT_KD = 100 * (0.1 * 0.81) / AUTOPILOT_RUDDER_BLEND; // 29.9
+export const AUTOPILOT_KP = 2;
+export const AUTOPILOT_SUM_DECAY = Math.pow(0.85, N);
+// Forces (applyForce accumulates until world.step) and impulses per tick.
+export const FORCE_PASSES = N;
+
 export const PENALTY_TURN_RUDDER_MAX = 50;
 export const PENALTY_TURN_KP = 1.2;
 export const PENALTY_TURN_KD = 1.6;
@@ -200,7 +222,7 @@ export class Boat{
       if (!force || !point) return;
       if (!Number.isFinite(force.x) || !Number.isFinite(force.y)) return;
       if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
-      body.applyForce(force, point, true);
+      body.applyForce({ x: force.x * FORCE_PASSES, y: force.y * FORCE_PASSES }, point, true);
     };
 
     // Readout data for this step (info.js boatTelemetryHtml formats it).
@@ -217,7 +239,7 @@ export class Boat{
 
     
     const wind_raw = this.map.get_wind(this.x, this.y);
-    const alpha = 0.2;
+    const alpha = WIND_SMOOTH_ALPHA;
     // A single non-finite sample used to latch the smoother (NaN + finite = NaN)
     // and every later force stayed NaN. Keep the last finite wind instead.
     if (wind_raw && Number.isFinite(wind_raw.vx) && Number.isFinite(wind_raw.vy)) {
@@ -314,13 +336,13 @@ export class Boat{
     // fake motor
 
     if (this.motor_input === 1) {
-      var f = this.physics_model.getWorldVector(Vec2(0.0, -0.3));
+      var f = this.physics_model.getWorldVector(Vec2(0.0, -0.3 * FORCE_PASSES));
       var p = this.physics_model.getWorldPoint(Vec2(0.0, 2.0));
       this.physics_model.applyLinearImpulse(f, p, true);
     }  
     
     if (this.motor_input === -1) {
-      var f = this.physics_model.getWorldVector(Vec2(0.0, 0.3));
+      var f = this.physics_model.getWorldVector(Vec2(0.0, 0.3 * FORCE_PASSES));
       var p = this.physics_model.getWorldPoint(Vec2(0.0, 2.0));
       this.physics_model.applyLinearImpulse(f, p, true);
     }
@@ -329,7 +351,7 @@ export class Boat{
     // around), give the same forward shove the motor key uses so the turn
     // can finish. It does not run while she already has way on.
     if (this.penalty_turn && d < 0.6) {
-      const shove = this.physics_model.getWorldVector(Vec2(0.0, -0.35));
+      const shove = this.physics_model.getWorldVector(Vec2(0.0, -0.35 * FORCE_PASSES));
       const shoveAt = this.physics_model.getWorldPoint(Vec2(0.0, 2.0));
       this.physics_model.applyLinearImpulse(shove, shoveAt, true);
     }
@@ -350,22 +372,20 @@ export class Boat{
     if (this.penalty_turn) {
       this.autopilot_enabled = false;
       const target = this._penaltyTurnRudder(angle, d);
-      this.rudder_angle += (target - this.rudder_angle) * 0.45;
+      this.rudder_angle += (target - this.rudder_angle) * PENALTY_RUDDER_BLEND;
     } else if (this.rudder_input === -1) {
 
-      if (this.rudder_angle<this.rudder_angle_max){
-        this.rudder_angle +=rudder_turn_rate
-      }
-
-      
-      pumpfactor = 1.5* (this.rudder_angle-this.rudder_angle_last)*(this.rudder_angle-this.rudder_angle_last)*(this.rudder_angle-this.rudder_angle_last)
+      // N passes of +rate, each stopping once past the max.
+      for (let i = 0; i < N && this.rudder_angle < this.rudder_angle_max; i++) this.rudder_angle += rudder_turn_rate;
+      // The pump term was per pass (cube of a one-pass step), summed over N
+      // passes by FORCE_PASSES: use the per-pass step here.
+      const stepPerPass = (this.rudder_angle - this.rudder_angle_last) / N;
+      pumpfactor = 1.5 * stepPerPass * stepPerPass * stepPerPass
     } else if (this.rudder_input === 1) {
       
-      if (this.rudder_angle>-this.rudder_angle_max){
-        this.rudder_angle -=rudder_turn_rate
-      }
-
-      pumpfactor = 1.5* (this.rudder_angle-this.rudder_angle_last)*(this.rudder_angle-this.rudder_angle_last)*(this.rudder_angle-this.rudder_angle_last)
+      for (let i = 0; i < N && this.rudder_angle > -this.rudder_angle_max; i++) this.rudder_angle -= rudder_turn_rate;
+      const stepPerPass = (this.rudder_angle - this.rudder_angle_last) / N;
+      pumpfactor = 1.5 * stepPerPass * stepPerPass * stepPerPass
     }
     else{
 
@@ -377,20 +397,20 @@ export class Boat{
         dmod = -1
       }
 
-      this.rudder_angle = this.rudder_angle*(0.98-dmod/80)
+      this.rudder_angle = this.rudder_angle * Math.pow(0.98 - dmod / 80, N)
 
     }
     
     if (this.autopilot_enabled){
 
-      this.autopilot_compensator_p = 2 // 0.5
+      this.autopilot_compensator_p = AUTOPILOT_KP // 0.5
       this.autopilot_compensator_i = 0 // 0
-      this.autopilot_compensator_d = 100 //  20
+      this.autopilot_compensator_d = AUTOPILOT_KD // 100 at 3 passes/tick
 
       let error = -(this.autopilot_heading_target - (-this.twa))
 
-      this.autopilot_compensator_sum_error *=0.85
-      this.autopilot_compensator_sum_error += error;
+      // N passes of ×0.85 then +error (same error each pass within a tick).
+      this.autopilot_compensator_sum_error = this.autopilot_compensator_sum_error * AUTOPILOT_SUM_DECAY + error * (1 + 0.85 + 0.85 * 0.85);
 
       if (error>180) {
         error-=360
@@ -416,7 +436,7 @@ export class Boat{
         this.rudder_angle_target = -this.rudder_angle_max/2;
       }
 
-      this.rudder_angle += (this.rudder_angle_target - this.rudder_angle)/10
+      this.rudder_angle += (this.rudder_angle_target - this.rudder_angle) * AUTOPILOT_RUDDER_BLEND
 
 
       this.autopilot_compensator_last_error = error;
