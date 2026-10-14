@@ -1,14 +1,15 @@
 // Old (3 passes per world step) vs new (1 pass per tick) headless comparison.
 // node --import <root>/test/register.mjs cmp30.mjs <root> <passes> <what>
-const [root, P0, what] = process.argv.slice(2); const P = +P0;
-await import(root + '/test/dom-stub.mjs'); // usage: node --import <root>/test/register.mjs scripts/fixed30-compare.mjs <root> <passes 3=old,1=new> s0|s0nokick|shadow|fleet4|penalty
+// usage: node --import <root>/test/register.mjs scripts/fixed30-compare.mjs <root> <passes 3=old,1=new> s0|s0nokick|shadow|fleet4|penalty [simRes k]
+const [root, P0, what, K0] = process.argv.slice(2); const P = +P0; const K = K0 ? (isNaN(+K0) ? K0 : +K0) : 1;
+await import(root + '/test/dom-stub.mjs');
 const { Boltzmann } = await import(root + '/src/boltzmann.js');
 const { trackBoats } = await import(root + '/src/domainTrack.js');
 const { SAIL_LATTICE_COUPLING, Boat } = await import(root + '/src/boat.js');
 const { Map } = await import(root + '/src/map.js');
 const H = await import(root + '/scripts/sim-res-harness.mjs');
 const now = () => performance.now();
-function world() { const { bm, map } = H.makeWorld(1); return { bm, map }; }
+function world() { const { bm, map } = H.makeWorld(K); return { bm, map }; }
 // One 30 Hz tick: world.step, then P passes of boats + sail kicks + field.
 function tick(map, bm, boats, kick) {
   map.world.step(1 / 30);
