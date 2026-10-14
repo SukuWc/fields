@@ -85,6 +85,9 @@
         font-family: 'Courier New', Courier, monospace;
         background-color: rgba(50,50,50,0.5);
       }
+      #budget_controls, #budget_controls_br { display: none; }
+      body:has(#perf:checked) #budget_controls { display: inline-block; }
+      body:has(#perf:checked) #budget_controls_br { display: inline; }
       #perf_overlay_hud {
         display: none;
         position: absolute;
@@ -633,6 +636,8 @@
       <br>
       <label class="setting-row"><input id="perf" autocomplete="off" type="checkbox" title="Cells per refinement level and field step time. Also ?perf=1">Perf overlay</label>
       <br>
+      <span id="budget_controls" class="setting-row" title="Refinement budget: target cell updates per root step. Tuning raises the curl threshold (×scale) when the load nears the target. Also ?cellBudgetTune=0 / ?cellBudget=N"><label><input id="cellBudgetTune" autocomplete="off" type="checkbox" checked>Threshold tuning</label> <input id="cellBudget" autocomplete="off" type="number" min="1000" step="5000" style="width: 70px;" placeholder="default">cells/step</span>
+      <br id="budget_controls_br">
       <label class="setting-row"><input id="touch" autocomplete="off" type="checkbox" title="Boat 1 touch buttons at the bottom of the screen. On by default on phones and touch screens. Also ?touch=1 / ?touch=0">Touch controls</label>
       <br>
       <span class="setting-row setting-buttons"><input id="camera_zoom_in" type="button" value="+"><input id="camera_zoom_out" type="button" value="-">Zoom</span>

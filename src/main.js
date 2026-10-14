@@ -124,11 +124,35 @@ bm.amrMode = 'auto';
 // ?cellBudget=N sets it, ?cellBudget=0 (or off) turns it off. The default
 // follows the grid ('default' = defaultCellUpdateTarget(bm): 50k on a 3-level
 // stack, 100k on x2 / 2f / 2f34, 200k on x4).
+// Live controls (shown with the Perf overlay, synced by installUrlSettings):
+// #cellBudgetTune (checkbox, default on; off = no budget, scale 1) and
+// #cellBudget (number; empty = the grid default). The legacy ?cellBudget=0 /
+// ?cellBudget=off is rewritten to ?cellBudgetTune=0 before the URL is applied.
 {
-  const raw = new URLSearchParams(location.search).get('cellBudget');
-  const n = Number(raw);
-  bm.cellUpdateTarget = raw === null ? 'default'
-    : (raw === 'off' || n === 0) ? Infinity : (n > 0 ? n : 'default');
+  const q = new URLSearchParams(location.search);
+  const raw = q.get('cellBudget');
+  if (raw !== null && (raw.trim().toLowerCase() === 'off' || Number(raw) === 0)) {
+    q.delete('cellBudget');
+    q.set('cellBudgetTune', '0');
+    const qs = q.toString();
+    history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+  }
+  const tune = document.getElementById('cellBudgetTune');
+  const num = document.getElementById('cellBudget');
+  const apply = () => {
+    const n = Number(String(num.value).trim());
+    if (!tune.checked) {
+      bm.cellUpdateTarget = Infinity;
+      bm.curlScale = 1;
+      bm.cellLoadRatio = 0;
+    } else {
+      bm.cellUpdateTarget = num.value.trim() !== '' && Number.isFinite(n) && n > 0 ? n : 'default';
+    }
+  };
+  tune.addEventListener('change', apply);
+  num.addEventListener('change', apply);
+  num.addEventListener('input', apply);
+  apply();
 }
 {
   const sel = document.getElementById('amrMode');
