@@ -7,7 +7,7 @@ import { trackBoats, resetTracking } from './domainTrack.js';
 import { Map } from './map.js';
 import { FluidWind, ConstantWind, windArrowSegments } from './wind.js';
 import { initRenderer, startAnimation, getCamera, setFluidPlaneSize } from './renderer.js';
-import { setupControls, getPlayers, getMarks, getCourse, getStartSequence, getRaceResults, getRaceBots, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
+import { setupControls, getPlayers, getMarks, getCourse, getStartSequence, getRaceResults, getRaceBots, getBoundary, getBoundaryScript, incrementPhysicsFrame, processKeys, executeScenarioFrame } from './controls.js';
 import { installUrlSettings } from './url-settings.js';
 import { setInfo, appendInfo, flushInfo, boatTelemetryHtml } from './info.js';
 import { courseGuides, courseText, markRoomTarget } from './course.js';
@@ -22,7 +22,7 @@ import { setupTouchControls } from './touch-controls.js';
 import { SAIL_LATTICE_COUPLING } from './boat.js';
 import { MAP_SIZES, DEFAULT_MAP_SIZE, mapSizeFromQuery, fitMapSize, scenarioFits, cameraLimits } from './map-size.js';
 
-import { beginRule15Step, contactGuides, evaluateAllPairs, penaltyAutopilotRemainingDeg, penaltyGuides, penaltyJustCleared, penaltyManeuverText, penaltyManeuverView, pendingPenaltyCount, pendingPenaltyReason, recordContacts, markRoomGuides, trueWindAngleDeg } from './rules.js';
+import { beginRule15Step, contactGuides, evaluateAllPairs, penaltyAutopilotRemainingDeg, penaltyGuides, penaltyJustCleared, penaltyManeuverText, penaltyManeuverView, pendingPenaltyCount, pendingPenaltyReason, recordContacts, markRoomGuides, boundaryRoomGuides, trueWindAngleDeg } from './rules.js';
 
 
 // Map size (src/map-size.js): width × length in metres, length along the
@@ -467,7 +467,26 @@ function simPass(simDt, present) {
   const getWind = (x, y) => map.get_wind(x, y);
   // Rule 18 asks the course which mark each boat is rounding.
   const markFor = course ? (boat) => markRoomTarget(course, boat) : null;
-  const resolutions = evaluateAllPairs(racing, getWind, rulesTime, { markFor });
+  // Virtual boundary (scenario 19 only): its script, crossing penalties,
+  // overlay, and boundary room in the pair rules.
+  const boundary = getBoundary();
+  if (boundary) {
+    const script = getBoundaryScript();
+    if (stepped && script) script.step(rulesTime);
+    if (stepped) boundary.update(racing, rulesTime);
+    guides.push(...boundary.guides());
+    for (let i = 0; i < racing.length; i++) {
+      const d = boundary.distanceOf(racing[i]);
+      appendInfo('Boat ' + i + ' boundary ' + (d.side > 0 ? 'east' : 'west') + ' ' + d.dist.toFixed(1) + ' m' + (d.dist < 0 ? ' OUTSIDE' : d.dist <= boundary.zone ? ' (zone)' : '') + '<br>');
+    }
+  }
+  const resolutions = evaluateAllPairs(racing, getWind, rulesTime, { markFor, boundary });
+  for (const r of resolutions) {
+    const b = r.boundaryRoom;
+    if (!b) continue;
+    appendInfo('Boundary room: boat ' + racing.indexOf(b.giveWay) + ' gives boat ' + racing.indexOf(b.rightOfWay) + ' room to tack or gybe away (' + b.basis + ')' + (b.decisive ? ' · decides fault' : '') + '<br>');
+  }
+  guides.push(...boundaryRoomGuides(resolutions, racing));
   for (const r of resolutions) {
     const m = r.markRoom;
     if (!m) continue;
