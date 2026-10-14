@@ -8,6 +8,8 @@
 // window, and the text is rebuilt a few times per second. Cell counts read
 // array lengths on the domain tree, so they cost O(number of grids).
 
+import { CURL_TAU_ON, CURL_TAU_OFF, defaultCellUpdateTarget } from './domainTrack.js';
+
 const WINDOW_FRAMES = 30;
 const REFRESH_MS = 250;
 
@@ -69,6 +71,21 @@ function pad(s, n) {
   return s.length >= n ? s : ' '.repeat(n - s.length) + s;
 }
 
+// Refinement budget readout: tuning state, scale, effective curl threshold,
+// cell updates per root step against the target.
+export function budgetLines(bm, updates) {
+  const t = bm.cellUpdateTarget === 'default' ? defaultCellUpdateTarget(bm) : bm.cellUpdateTarget;
+  const on = Number.isFinite(t);
+  const s = on && bm.curlScale > 1 ? bm.curlScale : 1;
+  const num = typeof document !== 'undefined' && document.getElementById('cellBudget');
+  if (num) num.placeholder = String(defaultCellUpdateTarget(bm));
+  return [
+    'budget ' + (on ? 'on' : 'off') + '  x' + s.toFixed(2),
+    'curl tau ' + (CURL_TAU_ON * s).toFixed(4) + ' / ' + (CURL_TAU_OFF * s).toFixed(4),
+    'load ' + fmt(updates) + ' / ' + (on ? fmt(Math.round(t)) + ' (' + Math.round(100 * updates / t) + '%)' : 'none'),
+  ];
+}
+
 function render() {
   const levels = countCellsByLevel(_bm);
   let total = 0;
@@ -84,6 +101,7 @@ function render() {
   }
   lines.push('total ' + pad(fmt(total), 7) + ' cells');
   lines.push('upd/step ' + pad(fmt(updates), 7));
+  lines.push(...budgetLines(_bm, updates));
 
   let ms = 0;
   let steps = 0;
