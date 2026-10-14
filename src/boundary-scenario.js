@@ -3,16 +3,14 @@
 // = −TWA, positive TWA = port tack) like race-bot.js, so the run is
 // reproducible. Steering boat 0 by hand stops her script.
 //
-// Both boats beat on port toward the east boundary, overlapped about one
-// boat length apart abeam: boat 0 to leeward (inside, closer to the line),
-// boat 1 to windward (outside). Boat 0 reaches the zone first and closer, so
-// she is entitled to room to tack away from the boundary ('Boundary room',
-// rules.js 'BR'). Without the boundary, Rule 13 would make boat 0 keep clear
-// while she tacks into boat 1's water and she would be stuck heading for the
-// line; with it, boat 1 must give room: she tacks first (ROOM_TACK_M from the
-// line, measured on boat 0), then boat 0 tacks TACK_GAP_M from the line.
-// Rule 13 is struck through in the label stack while boat 0 tacks.
-// Afterwards both beat on starboard and tack TACK_GAP_M before any line.
+// Both boats beat on starboard toward the west boundary, overlapped: boat 0
+// to leeward (inside, closer to the line), boat 1 to windward (outside). In
+// the zone boat 0 is entitled to room to tack away ('Boundary room', rules.js
+// 'BR'). She tacks onto port TACK_GAP_M from the line; boat 1 holds starboard
+// and does not give room, so they collide. Rule 13 (while tacking) and
+// Rule 10 (port/starboard, after the tack) would put boat 0 at fault, but
+// Boundary room overrides both: boat 1 gets the penalty, boat 0 is
+// exonerated. Boat 1 tacks away once she has been penalised.
 
 import { Boat } from './boat.js';
 import { Boundary } from './boundary.js';
@@ -23,12 +21,12 @@ export const BOUNDARY_TEST_LAYOUT = {
   // zone 20 m, walls ±48).
   mapWidth: 100,
   boats: [
-    { x: 14, y: -24, twa: 50 },   // boat 0: port, leeward / inside
-    { x: 10, y: -20, twa: 50 },   // boat 1: port, windward / outside
+    { x: -14, y: -24, twa: -50 }, // boat 0: starboard, leeward / inside
+    { x: -7.5, y: -21, twa: -50 }, // boat 1: starboard, windward / outside
   ],
   speed: 2.6,
-  roomTackM: 10,      // boat 1 tacks to give room when boat 0 is this close
-  tackGapM: 6,        // boat 0 tacks this far from the east line
+  tackGapM: 6,        // boat 0 tacks this far from the west line
+  lateTackM: 3,       // boat 1 only tacks this close (late, after the contact)
 };
 
 // Boat heading (rad, boat.js convention: direction (sin h, −cos h)) for a
@@ -88,16 +86,17 @@ export function setupBoundaryTest(map) {
     if (boundary.sideDistance(bot.boat, side) <= L.tackGapM && !bot.boat.tacking) bot.set(port ? -50 : 50);
   }
   function step(simTime) {
-    const d0 = boundary.sideDistance(b0.boat, 1);
-    // Boat 1 (outside): gives room by tacking first.
-    if (!b1.checkUser()) {
-      if (b1.phase === 0 && d0 <= L.roomTackM) { b1.set(-50); b1.phase = 1; b1.tackedAt = simTime; }
-      else if (b1.phase >= 1) keepInside(b1);
-    }
-    // Boat 0 (inside): tacks away from the boundary once she has room.
+    const d0 = boundary.sideDistance(b0.boat, -1);
+    // Boat 0 (inside): tacks away from the boundary onto port.
     if (!b0.checkUser()) {
-      if (b0.phase === 0 && d0 <= L.tackGapM) { b0.set(-50); b0.phase = 1; b0.tackedAt = simTime; }
+      if (b0.phase === 0 && d0 <= L.tackGapM) { b0.set(50); b0.phase = 1; b0.tackedAt = simTime; }
       else if (b0.phase >= 1) keepInside(b0);
+    }
+    // Boat 1 (outside): holds starboard, no room given; tacks away once the
+    // line is close (keepInside).
+    if (!b1.checkUser()) {
+      if (b1.phase === 0 && boundary.sideDistance(b1.boat, -1) <= L.lateTackM) { b1.set(50); b1.phase = 1; }
+      else if (b1.phase >= 1) keepInside(b1);
     }
   }
   return { boats, bots, boundary, step };

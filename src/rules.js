@@ -1040,6 +1040,11 @@ function evaluateRule18(ctx, state) {
 // is below this (rank 3): boundary room wins if both apply.
 const BR_TIE_M = 1;
 const BR_EXIT_HYST_M = 1;
+// After the entitled boat completes her tack or gybe away, the room still
+// covers sailing clear: it lasts until the pair is more than BR_CLEAR_M apart
+// or BR_AFTER_TACK_S has passed, whichever comes first.
+export const BR_CLEAR_M = 8;
+export const BR_AFTER_TACK_S = 3;
 function evaluateBoundaryRoom(ctx, state) {
   const bd = ctx.boundary;
   const A = ctx.boatA;
@@ -1069,7 +1074,11 @@ function evaluateBoundaryRoom(ctx, state) {
     return null;
   }
   const tackNow = windSample(ctx, ent).tack;
-  if (bd.sideDistance(ent, side) > bd.zone + BR_EXIT_HYST_M || (tackNow && state.tack0 && tackNow !== state.tack0 && !isTacking(ent))) {
+  const tackDone = !!(tackNow && state.tack0 && tackNow !== state.tack0 && !isTacking(ent));
+  if (tackDone && state.doneAt === undefined) state.doneAt = ctx.simTime ?? 0;
+  if (!tackDone) delete state.doneAt;
+  const afterTackOver = tackDone && (!(ctx.clearance <= BR_CLEAR_M) || (ctx.simTime ?? 0) - state.doneAt >= BR_AFTER_TACK_S);
+  if (bd.sideDistance(ent, side) > bd.zone + BR_EXIT_HYST_M || afterTackOver) {
     state.ended = true;
     state.endedAt = ctx.simTime;
     return null;
