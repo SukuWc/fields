@@ -1,9 +1,6 @@
 
-var plotSelect = document.getElementById('plotSelect');
-var contrastSlider = document.getElementById('contrastSlider');
-
-
-var rafCheck = document.getElementById('rafCheck');
+// No DOM here: plot type and contrast come from the client's FieldPainter
+// (fieldPainter.js), which owns the texture.
 
 // Eq. 2: D2Q9 lattice weights — w_0=4/9 (rest), w_j=1/9 (axis-aligned), w_k=1/36 (diagonal)
 // c_s^2 = 1/3 (lattice speed of sound squared)
@@ -175,7 +172,7 @@ class SimulationCell {
 	}
 
 	calculate_color(plot_type, contrast) {
-		// Returns {red, green, blue} — caller handles positioning and colorSquare.
+		// Returns {red, green, blue}; FieldPainter handles positioning (colorSquare).
 		if (this.barrier) return {red: 0, green: 0, blue: 0};
 		if (plot_type === 0) return get_color(Math.round(nColors * ((this.rho-1)*6*contrast + 0.5)));
 		if (plot_type === 1) return get_color(Math.round(nColors * (this.ux*2*contrast + 0.5)));
@@ -460,7 +457,7 @@ function stripNeqAcc(acc) {
 
 // Overlap roles for fine nodes. Edge and corner are the mask-boundary ghosts
 // the existing 1D / 2D cubic writes; fluid nodes are the ones the fine step advances.
-const ROLE_FLUID = 1;
+export const ROLE_FLUID = 1;
 const ROLE_EDGE = 2;
 const ROLE_CORNER = 3;
 
@@ -1309,24 +1306,7 @@ export class RefinementDomain {
 		this.interiorCells = this.streamCells;
 	}
 
-	// Paint fine cells onto the shared texture, then recursively paint child domains on top.
-	// Uses cx0_root + (fi-1)*dx for position and dx for size — works at any refinement depth.
-	// Nodes outside the disk are left to the parent paint, so the staircase shows.
-	paintTexture(boltzmann, plot_type, contrast) {
-		for (let fj = 1; fj < this.height - 1; fj++) {
-			for (let fi = 1; fi < this.width - 1; fi++) {
-				if (this._role && this._role[fi + fj * this.width] !== ROLE_FLUID) continue;
-				const cell = this.cells[fi + fj * this.width];
-				const color = cell.calculate_color(plot_type, contrast);
-				const cx = this.fineToRootX(fi);
-				const cy = this.fineToRootY(fj);
-				boltzmann.colorSquare(cx, cy, this.dx, color.red, color.green, color.blue);
-			}
-		}
-		for (const child of this.domains) {
-			child.paintTexture(boltzmann, plot_type, contrast);
-		}
-	}
+	// Painting the field (fine cells over coarse ones) lives in fieldPainter.js.
 
 	// Parent-cell coordinate → root coarse coordinate, one axis at a time.
 	// The two origins differ once a nested window is not square in world space
@@ -1956,15 +1936,12 @@ function syncPair(ea, eb) {
 
 export class Boltzmann {
 
-	constructor(width, height, resolution, direction, speed, texture, oversampling) {
+	// painter: optional client-side FieldPainter (fieldPainter.js). The engine
+	// calls painter.resize(this) after a rebuild and painter.paint(this) after
+	// each lattice step; without one (Node, server, tests) nothing is painted.
+	constructor(width, height, resolution, direction, speed, painter) {
 
-		// Texels per finest cell stay at one: the boat stack reaches 1/8 world
-		// unit on every resolution (extra outer rings on coarse grids), so the
-		// texels per root cell grow with the root cell (8, 16, 32).
-		this.baseOversampling = oversampling;
-		this.oversampling = oversampling;
-
-		this.texture = texture;
+		this.painter = painter;
 		// Fine-grid kicks that the 0.32 speed cap scaled down, and the kicks it saw.
 		this.capHits = 0;
 		this.forceApplies = 0;
@@ -2066,7 +2043,6 @@ export class Boltzmann {
 		// 2.4× Default's viscosity. x2 / x4 (steps = resolution) are untouched.
 		if (this.stepsPerFrame > resolution) this.matchedNu = Math.max(this.matchedNu, FAST_MATCHED_NU_FLOOR);
 		this.nu = Math.max(this.matchedNu, Math.min(this.baseNu ?? 0.025, ROOT_NU_FLOOR));
-		if (this.baseOversampling) this.oversampling = Math.round(this.baseOversampling / Math.min(1, resolution));
 		this._stepAcc = 0;
 
 		// A map side that is not a whole number of coarse cells (75 at x2 = 37.5)
@@ -2125,7 +2101,7 @@ export class Boltzmann {
 			}
 		}
 
-		this._resizeTexture();
+		if (this.painter) this.painter.resize(this);
 
 		this.running = false;
 
@@ -2180,23 +2156,6 @@ export class Boltzmann {
 	setWindSpeed(uiWind) {
 		this.uiSpeed = uiWind / 100;
 		this.speed = this.velScale === 1 ? this.uiSpeed : this.uiSpeed / this.velScale;
-	}
-
-	// Texture side is oversampling × lattice cells. A different lattice size
-	// needs a new pixel buffer; dispose drops the GPU copy so three.js
-	// reallocates it at the new size on the next upload.
-	_resizeTexture() {
-		const tex = this.texture;
-		if (!tex || !tex.image || !this.oversampling) return;
-		const w = this.width * this.oversampling;
-		const h = this.height * this.oversampling;
-		if (tex.image.width === w && tex.image.height === h) return;
-		// A buffer of the right size with no recorded dimensions (a test stub,
-		// or the initial texture) is kept as is.
-		if (tex.image.width === undefined && tex.image.data && tex.image.data.length === w * h * 4) return;
-		tex.image = { data: new Uint8Array(w * h * 4), width: w, height: h };
-		if (typeof tex.dispose === 'function') tex.dispose();
-		tex.needsUpdate = true;
 	}
 
 	// Lattice steps the next advance_frame call will run.
@@ -2622,50 +2581,9 @@ export class Boltzmann {
 		return {x: vx/4, y: vy/4};
 	}
 
+	// Hand the field to the client painter, if there is one.
 	paintTexture() {
-		if (this.texture === undefined) return;
-
-		// Fast-wind grids hold a lower lattice u for the same wind; scale the
-		// plot so a given wind paints the same colour on every setting.
-		let contrast = Math.pow(1.2, Number(contrastSlider.value));
-		if (this.velScale !== undefined && this.velScale !== 1) contrast *= this.velScale;
-		const plotType = plotSelect.selectedIndex;
-
-		// Paint coarse grid
-		for (var y = 0; y < this.height; y++) {
-			for (var x = 0; x < this.width; x++) {
-				const cell  = this.cells[x + y * this.width];
-				const color = cell.calculate_color(plotType, contrast);
-				this.colorSquare(x, y, 1, color.red, color.green, color.blue);
-			}
-		}
-
-		// Paint fine domains on top (overwrite coarse cells in each domain's region)
-		for (let d = 0; d < this.domains.length; d++) {
-			this.domains[d].paintTexture(this, plotType, contrast);
-		}
-	}
-
-	// Color a grid square in the image data array, one pixel at a time (rgb each in range 0 to 255):
-	colorSquare(x, y, size, r, g, b) {
-
-		if (this.texture === undefined) return;
-
-		const pixels_to_fill = this.oversampling * size;
-		const _x_base = Math.round(x * this.oversampling);
-		const _y_base = Math.round(y * this.oversampling);
-		const rowWidth = this.width * this.oversampling;
-		const data = this.texture.image.data;
-
-		for (var i = 0; i < pixels_to_fill; i++) {
-			for (var j = 0; j < pixels_to_fill; j++) {
-				var ind = ((_x_base + i) + (_y_base + j) * rowWidth) * 4;
-				data[ind]   = r;
-				data[ind+1] = g;
-				data[ind+2] = b;
-				data[ind+3] = 255;
-			}
-		}
+		if (this.painter) this.painter.paint(this);
 	}
 
 	// Compute the curl of the macroscopic velocity field for plotting:
@@ -2685,15 +2603,3 @@ export class Boltzmann {
 		walk(this.domains);
 	}
 }
-
-// Mysterious gymnastics that are apparently useful for better cross-browser animation timing:
-window.requestAnimFrame = (function(callback) {
-	return 	window.requestAnimationFrame ||
-		window.webkitRequestAnimationFrame ||
-		window.mozRequestAnimationFrame ||
-		window.oRequestAnimationFrame ||
-		window.msRequestAnimationFrame ||
-		function(callback) {
-			window.setTimeout(callback, 1);		// second parameter is time in ms
-		};
-})();

@@ -7,6 +7,7 @@ const H = await import('../scripts/sim-res-harness.mjs');
 const { Boltzmann, amrParams } = H;
 const { SAIL_LATTICE_COUPLING } = await import('../src/boat.js');
 const D = await import('../src/domainTrack.js');
+const { FieldPainter } = await import('../src/fieldPainter.js');
 
 let failed = 0;
 function check(name, cond, detail) {
@@ -111,11 +112,12 @@ for (const k of KS) {
 		check(`x${k} curl is normalised by world spacing`, p.curlDx === k && p.maxShift === k);
 	}
 	const tex = { image: { data: new Uint8Array(75 * 8 * 75 * 8 * 4), width: 600, height: 600 } };
-	const bm = new Boltzmann(75, 75, 1, 90, 15, tex, 8);
-	const sizes = [bm.oversampling];
-	bm.setResolution(0.5); sizes.push(bm.oversampling, tex.image.width);
-	bm.setResolution(0.25); sizes.push(bm.oversampling, tex.image.width);
-	bm.setResolution(1); sizes.push(bm.oversampling, tex.image.width);
+	const painter = new FieldPainter(tex, 8);
+	const bm = new Boltzmann(75, 75, 1, 90, 15, painter);
+	const sizes = [painter.oversampling];
+	bm.setResolution(0.5); sizes.push(painter.oversampling, tex.image.width);
+	bm.setResolution(0.25); sizes.push(painter.oversampling, tex.image.width);
+	bm.setResolution(1); sizes.push(painter.oversampling, tex.image.width);
 	check('texture keeps one texel per 1/8-unit cell (oversampling 8 / 16 / 32)',
 		sizes.join() === [8, 16, 608, 32, 608, 8, 600].join(), sizes.join());
 }

@@ -1,4 +1,4 @@
-import planck, { random } from 'planck-js/dist/planck-with-testbed';
+import planck from 'planck-js';
 import { World, Circle } from 'planck-js'
 import { meanAngleDeg } from './utils.js';
 import { FluidWind, ConstantWind } from './wind.js';

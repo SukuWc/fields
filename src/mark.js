@@ -1,4 +1,4 @@
-import planck from 'planck-js/dist/planck-with-testbed';
+import planck from 'planck-js';
 
 let pl = planck, Vec2 = pl.Vec2;
 
