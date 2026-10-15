@@ -49,12 +49,15 @@ for (const k of [...SIZES, "75x75"]) {
 }
 
 // --- Lattice dims at each size's default root cell ---
-const RES = { "1": 1, "2": 0.5, "4": 0.25 };
+const RES = { "1": 1, "2": 0.5, "4": 0.25, "2f": 0.5, "2f34": 0.5, "4f": 0.25 };
 for (const k of SIZES) {
   const { w, h, simRes } = MS.MAP_SIZES[k];
   const bm = new Boltzmann(w, h, RES[simRes], 90, 15, undefined, 8);
-  assert(bm.width === Math.round(w * RES[simRes]) && bm.height === Math.round(h * RES[simRes]) && bm.latticeWorldWidth === w && bm.latticeWorldHeight === h,
-    `${k}: root grid ${bm.width}×${bm.height} (${bm.cellSize} m cells, ${bm.width * bm.height} cells) covers ${w}×${h} m`);
+  // The root grid is whole cells: with 4 m cells the 50 m width rounds up
+  // to 13 cells (52 m), so the lattice may overhang the map by < 1 cell.
+  const cell = 1 / RES[simRes];
+  assert(bm.width === Math.ceil(w * RES[simRes] - 1e-9) && bm.height === Math.ceil(h * RES[simRes] - 1e-9) && bm.latticeWorldWidth >= w && bm.latticeWorldWidth < w + cell && bm.latticeWorldHeight >= h && bm.latticeWorldHeight < h + cell,
+    `${k}: root grid ${bm.width}×${bm.height} (${bm.cellSize} m cells, ${bm.width * bm.height} cells) covers ${w}×${h} m (lattice ${bm.latticeWorldWidth}×${bm.latticeWorldHeight} m)`);
   assert(bm.width * bm.height <= 20000, `${k}: root grid stays ≤ 20k cells`);
   bm.stopSimulation?.();
 }
