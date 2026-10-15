@@ -4,17 +4,19 @@
 // reproducible. Steering boat 0 by hand stops her script.
 //
 // Both boats beat on starboard toward the west boundary, overlapped: boat 0
-// to leeward (inside, closer to the line), boat 1 to windward (outside). In
+// level at y = -21 with boat 1 6.5 m clear astern (Rule 12 at the start); boat 0
+// is inside (closer to the line), boat 1 outside. In
 // the zone boat 0 is entitled to room to tack away ('Boundary room', rules.js
 // 'BR'). She tacks onto port TACK_GAP_M from the line; boat 1 holds starboard
 // and does not give room, so they collide. Rule 13 (while tacking) and
 // Rule 10 (port/starboard, after the tack) would put boat 0 at fault, but
 // Boundary room overrides both: boat 1 gets the penalty, boat 0 is
-// exonerated. Boat 1 tacks away once she has been penalised.
+// exonerated. Boat 1 then tacks onto port and bears away to a beam reach,
+// the boats separate, boundary room ends and nobody crosses the line.
 
 import { Boat } from './boat.js';
 import { Boundary } from './boundary.js';
-import { trueWindAngleDeg } from './rules.js';
+import { trueWindAngleDeg, pendingPenaltyCount } from './rules.js';
 
 export const BOUNDARY_TEST_LAYOUT = {
   // Map width the layout is built for (default 100 × 200: line x = ±40,
@@ -26,7 +28,11 @@ export const BOUNDARY_TEST_LAYOUT = {
   ],
   speed: 2.6,
   tackGapM: 6,        // boat 0 tacks this far from the west line
-  lateTackM: 3,       // boat 1 only tacks this close (late, after the contact)
+  lateTackM: 3,       // boat 1 tacks this close to the line at the latest
+  approachTwa: -53,  // boat 1 approach: starboard, 3° lower than she starts, so
+                      // she reaches boat 0 while boat 0 is still tacking
+  clearTwa: 90,       // boat 1 once penalised: tack onto port and bear away to a
+                      // beam reach so the boats separate
 };
 
 // Boat heading (rad, boat.js convention: direction (sin h, −cos h)) for a
@@ -92,10 +98,14 @@ export function setupBoundaryTest(map) {
       if (b0.phase === 0 && d0 <= L.tackGapM) { b0.set(50); b0.phase = 1; b0.tackedAt = simTime; }
       else if (b0.phase >= 1) keepInside(b0);
     }
-    // Boat 1 (outside): holds starboard, no room given; tacks away once the
-    // line is close (keepInside).
+    // Boat 1 (outside): holds starboard (TWA approachTwa), no room given.
+    // Once the contact penalises her she tacks onto port and bears away
+    // (TWA clearTwa) to separate; failing that she tacks lateTackM from the
+    // line. Then keepInside.
     if (!b1.checkUser()) {
-      if (b1.phase === 0 && boundary.sideDistance(b1.boat, -1) <= L.lateTackM) { b1.set(50); b1.phase = 1; }
+      if (b1.phase === 0 && b1.target !== -L.approachTwa) b1.set(L.approachTwa);
+      if (b1.phase === 0 && pendingPenaltyCount(b1.boat) >= 1) { b1.set(L.clearTwa); b1.phase = 1; b1.clearedAt = simTime; }
+      else if (b1.phase === 0 && boundary.sideDistance(b1.boat, -1) <= L.lateTackM) { b1.set(50); b1.phase = 1; }
       else if (b1.phase >= 1) keepInside(b1);
     }
   }

@@ -58,7 +58,9 @@ function runScenario(seconds, onStep) {
   return { t, m, tm };
 }
 
-// --- Scenario 19 start: both on starboard, overlapped, outside the zone ---
+// --- Scenario 19 start: both on starboard, boat 0 clear ahead, outside the zone ---
+// Both start at y = -21, so boat 1 is clear astern of boat 0 (not overlapped):
+// Rule 12 applies, not Rule 11.
 {
   reset();
   const m = freshMap();
@@ -67,7 +69,7 @@ function runScenario(seconds, onStep) {
   for (const b of t.boats) b.physics_model_step();
   m.world.step(DT);
   const r = R.evaluateAllPairs(t.boats, getWindOf(m), 0, { boundary: t.boundary })[0];
-  assert(r.final.id === "11" && r.final.rightOfWay === p && r.final.giveWay === s, "start: both on starboard, Rule 11, boat 1 windward keeps clear");
+  assert(r.final.id === "12" && r.final.rightOfWay === p && r.final.giveWay === s, "start: both on starboard, Rule 12, boat 1 clear astern keeps clear");
   assert(!r.applicable.some((a) => a.id === "BR"), "start: both outside the 20 m zone, no boundary room yet");
   assert(t.boundary.sideDistance(p, -1) + 1 < t.boundary.sideDistance(s, -1), "boat 0 (leeward) is closer to the west boundary");
 }
