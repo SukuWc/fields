@@ -208,6 +208,8 @@ function autokeybind(players) {
     // flip the other, and a repeat of the same key does not restart the turn.
     key_bind_list.push({type: "KEYDOWN", activation_key: 81, prohibition_key: 69, object: players[0], input_handler: players[0].input_penalty_turn_ccw.name});
     key_bind_list.push({type: "KEYDOWN", activation_key: 69, prohibition_key: 81, object: players[0], input_handler: players[0].input_penalty_turn_cw.name});
+    // X: depower toggle (D is boat 2's rudder).
+    key_bind_list.push({type: "KEYDOWN", activation_key: 88, prohibition_key: -1, object: players[0], input_handler: players[0].input_depower_toggle.name});
   }
 
   if (players[1] !== undefined) {
