@@ -33,6 +33,7 @@ Last updated: 2026-10-15
 - [x] Sim class: scenarios, race state, commands, snapshot (sim/client split, phase 3b): [#53](https://github.com/SukuWc/fields/pull/53)
 - [x] SimHost interface + LocalHost (sim/client split, phase 4a): [#56](https://github.com/SukuWc/fields/pull/56)
 - [x] Web Worker sim host by default (`?worker=0` for main thread) with transferred field buffers (sim/client split, phase 4b): [#57](https://github.com/SukuWc/fields/pull/57)
+- [x] True- and apparent-wind chevrons sit upwind of the boat with tips pointing downwind (fixes a regression that pointed them upwind): [#59](https://github.com/SukuWc/fields/pull/59)
 - [ ] Run `npm test` in CI
 
 ### 2. Wind and boat feel
