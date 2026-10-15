@@ -82,6 +82,8 @@ function autokeybind(players) {
     // flip the other, and a repeat of the same key does not restart the turn.
     K(81, 69, { type: "penaltyTurn", boat: 0, dir: "ccw" });
     K(69, 81, { type: "penaltyTurn", boat: 0, dir: "cw" });
+    // X: depower toggle (D is boat 2's rudder).
+    K(88, -1, { type: "depower", boat: 0 });
   }
   if (players[1] !== undefined) {
     P(65, 68, { type: "helm", boat: 1, dir: -1 });

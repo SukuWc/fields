@@ -41,6 +41,7 @@ export const SIM_RES_MODES = {
 //   { type: 'autopilot', boat }        toggle
 //   { type: 'tack', boat }             autopilot tack toggle
 //   { type: 'penaltyTurn', boat, dir: 'ccw' | 'cw' }
+//   { type: 'depower', boat }          depower toggle (sails eased, luffing)
 // Admin commands (sim.command()):
 //   { type: 'restart', scenario }      clear and load scenario N
 //   { type: 'wind', angle?, speed? }   UI wind (from-angle °, TWS)
@@ -55,6 +56,7 @@ const BOAT_ACTIONS = {
   autopilot: (b) => b.input_autopilot_enabled_toggle(),
   tack: (b) => b.input_autopilot_tack_toggle(),
   penaltyTurn: (b, c) => (c.dir === 'cw' ? b.input_penalty_turn_cw() : b.input_penalty_turn_ccw()),
+  depower: (b) => b.input_depower_toggle(),
 };
 
 export class Sim {

@@ -29,11 +29,15 @@ Last updated: 2026-10-15
 - [x] Fixed-step sim loop so simulation speed no longer depends on the display refresh rate (replaces the `planck-renderer` Runner; sim/client split, phase 1): [#46](https://github.com/SukuWc/fields/pull/46)
 - [x] Sim modules without DOM: FieldPainter, simOptions, boat telemetry (sim/client split, phase 2): [#47](https://github.com/SukuWc/fields/pull/47)
 - [x] Fixed 30 FPS: one sim pass per 30 Hz tick, render capped at 30 fps, per-pass boat terms converted, and a 4 m fast-wind default grid (`simRes=4f`): [#48](https://github.com/SukuWc/fields/pull/48)
+- [ ] Rules state per simulation (sim/client split, phase 3a) (in progress, [#52](https://github.com/SukuWc/fields/pull/52))
+- [ ] Sim class: scenarios, race state, commands, snapshot (sim/client split, phase 3b) (in progress, [#53](https://github.com/SukuWc/fields/pull/53))
 - [ ] Run `npm test` in CI
 
 ### 2. Wind and boat feel
 - [x] Fluid sim on, stable from wind 5 through 25 with the sail wake on the fine grid: [#9](https://github.com/SukuWc/fields/pull/9)
 - [ ] Per-boat wind shadow / dirty air (partial: [#9](https://github.com/SukuWc/fields/pull/9) gives each boat a sail wake, so a downwind boat reads slower true wind)
+- [x] Depower toggle (X / touch): sails eased out and luffing with a 0.5 s ramp: [#51](https://github.com/SukuWc/fields/pull/51)
+- [ ] Sail flapping animation for luffing sails (visual only) (in progress, [#54](https://github.com/SukuWc/fields/pull/54))
 - [ ] Strategy tuning
 
 ### 3. Multiplayer open water
