@@ -25,9 +25,10 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol;
 	const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 	const sel = html.match(/<select id="amrMode"[^>]*>([\s\S]*?)<\/select>/);
 	const selected = sel && (sel[1].match(/<option value="(\w+)" selected>/) || [])[1];
-	const mainJs = fs.readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
-	check('app default refinement layout is auto (dropdown + main.js); fixed stays selectable',
-		selected === 'auto' && /<option value="fixed">/.test(sel[1]) && /bm\.amrMode = 'auto';/.test(mainJs) && H.amrMode() === 'auto',
+	// The app's host (host.js SimCore) sends the 'auto' amrMode command at startup.
+	const hostJs = fs.readFileSync(new URL('../src/host.js', import.meta.url), 'utf8');
+	check('app default refinement layout is auto (dropdown + host.js); fixed stays selectable',
+		selected === 'auto' && /<option value="fixed">/.test(sel[1]) && /type: 'amrMode', mode: 'auto'/.test(hostJs) && H.amrMode() === 'auto',
 		`selected=${selected} harness=${H.amrMode()}`);
 	const eng = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
 	const engFixed = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
