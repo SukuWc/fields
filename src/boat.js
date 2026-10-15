@@ -738,10 +738,13 @@ export class Boat{
     // wind indicator
 
     
-    // wind_direction is where the wind comes from (atan2(vy, vx) + 180).
-    // The tick points downwind, along the flow (vx, vy), which is also the
-    // direction sail drag pushes the boat.
-    let wind_angle = Math.atan2(this.wind_vy_smooth, this.wind_vx_smooth)
+    // Chevron geometry: the apex is at r = 3 from the boat and the wings open
+    // out to r = 5, so the visible TIP points back TOWARD the boat, opposite
+    // to wind_angle. wind_angle is therefore the side the wind comes FROM:
+    // the chevron sits upwind of the boat and its tip points downwind, along
+    // the flow (vx, vy). (19357ab used the flow angle here, which put the
+    // chevron downwind with its tip pointing upwind.)
+    let wind_angle = Math.atan2(this.wind_vy_smooth, this.wind_vx_smooth) + Math.PI
 
     graphics.push({ color: 0x554477, type: "guide", role: "tw",
       x1: this.x + Math.cos(wind_angle)*3,
@@ -771,13 +774,11 @@ export class Boat{
       y2: this.y + Math.sin(wind_angle)*5 + Math.sin(wind_angle+Math.PI/2)*0.5
     })
 
-    // Apparent wind. awa is measured from the bow to where the apparent wind
-    // comes FROM (aw_vector = boat velocity + true-wind "from" vector), so
-    // awa + hull - 90° is the "from" direction. Since 19357ab the true-wind
-    // tick above points downwind, so add 180° and point this one downwind too
-    // (the apparent flow over the sail). Without it the two ticks pointed
-    // nearly opposite each other.
-    wind_angle = (this.awa)/180*Math.PI + this.hull_angle + Math.PI/2
+    // Apparent wind: awa + hull - 90° is where the apparent wind comes FROM
+    // (aw_vector = boat velocity + true "from" vector). Same chevron
+    // convention as above: it sits on that side and its tip points downwind,
+    // along the apparent flow.
+    wind_angle = (this.awa)/180*Math.PI + this.hull_angle - Math.PI/2
 
     graphics.push({ color: 0x550077, type: "guide", role: "aw",
       x1: this.x + Math.cos(wind_angle)*3,
