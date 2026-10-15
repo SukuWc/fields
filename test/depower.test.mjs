@@ -77,12 +77,12 @@ check('scenario 0 never toggled: unchanged (twa −49.3048 / bs 2.8465)', Math.a
 		let pw = 0, n = 0;
 		loop(450, t => { if (t === depowerAt) b.input_depower_toggle(); if (t >= 390) { pw += b.power; n++; } });
 		b.graphics_model_render();
-		return { bs: spd(b), power: pw / n, twa: b.twa, flap: b.sailFlap, depower: b.depower };
+		return { bs: spd(b), power: pw / n, twa: b.twa, awa: b.awa, flap: b.sailFlap, jibFlap: b.jibFlap, depower: b.depower };
 	};
 	const off = run(-1), on = run(300);
-	check('downwind (autopilot settles at TWA ~160°, boom at its limit): depower leaves speed and force within 2 %, no flap',
+	check('downwind (autopilot settles at TWA ~160°, boom at its limit): depower leaves speed and force within 2 %, main does not flap (jib may, in the main\'s shadow)',
 		on.depower === 1 && Math.abs(on.bs / off.bs - 1) < 0.02 && Math.abs(on.power / off.power - 1) < 0.02 && on.flap === 0,
-		`TWA ${off.twa.toFixed(1)} / ${on.twa.toFixed(1)}, bs ${off.bs.toFixed(3)} → ${on.bs.toFixed(3)}, power ${off.power.toFixed(2)} → ${on.power.toFixed(2)}, flap ${on.flap}`);
+		`TWA ${off.twa.toFixed(1)} / ${on.twa.toFixed(1)}, bs ${off.bs.toFixed(3)} → ${on.bs.toFixed(3)}, power ${off.power.toFixed(2)} → ${on.power.toFixed(2)}, main flap ${on.flap}, jib flap ${on.jibFlap.toFixed(2)} (AWA ${on.awa.toFixed(0)}°)`);
 }
 if (failed) { console.error(`${failed} check(s) failed`); process.exit(1); }
 console.log('all depower checks passed');
