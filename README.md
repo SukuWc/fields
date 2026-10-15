@@ -31,8 +31,8 @@ Last updated: 2026-10-15
 - [x] Fixed 30 FPS: one sim pass per 30 Hz tick, render capped at 30 fps, per-pass boat terms converted, and a 4 m fast-wind default grid (`simRes=4f`): [#48](https://github.com/SukuWc/fields/pull/48)
 - [x] Rules state per simulation (sim/client split, phase 3a): [#52](https://github.com/SukuWc/fields/pull/52)
 - [x] Sim class: scenarios, race state, commands, snapshot (sim/client split, phase 3b): [#53](https://github.com/SukuWc/fields/pull/53)
-- [ ] SimHost interface + LocalHost (sim/client split, phase 4a) (in progress, [#56](https://github.com/SukuWc/fields/pull/56))
-- [ ] Optional Web Worker sim host (`?worker=1`) with transferred field buffers (sim/client split, phase 4b) (in progress, [#57](https://github.com/SukuWc/fields/pull/57))
+- [x] SimHost interface + LocalHost (sim/client split, phase 4a): [#56](https://github.com/SukuWc/fields/pull/56)
+- [x] Web Worker sim host by default (`?worker=0` for main thread) with transferred field buffers (sim/client split, phase 4b): [#57](https://github.com/SukuWc/fields/pull/57)
 - [ ] Run `npm test` in CI
 
 ### 2. Wind and boat feel
@@ -84,6 +84,7 @@ Last updated: 2026-10-15
 - [ ] Accessibility
 - [ ] Telemetry export
 - [x] Sail flapping animation for luffing sails (visual only): [#54](https://github.com/SukuWc/fields/pull/54)
+- [x] Jib downwind shadow flap only while eased (× depower ramp, visual only): [#58](https://github.com/SukuWc/fields/pull/58)
 
 ### Other
 - [x] SailZone logo: [#14](https://github.com/SukuWc/fields/pull/14)
