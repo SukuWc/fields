@@ -829,10 +829,11 @@ export class Boat{
     const flapPhase = 2 * Math.PI * SAIL_FLAP_HZ * this._flapTick / 30;
     this.sailFlap = flapScale;
     // Jib: its own AoA, or collapsed in the main's shadow when running
-    // (|AWA| from SAIL_FLAP_JIB_SHADOW_AWA_DEG, full by +20°). Visual only.
+    // (|AWA| from SAIL_FLAP_JIB_SHADOW_AWA_DEG, full by +20°), the latter only
+    // while eased: scaled by the depower ramp. Visual only.
     const jibAoaLuff = Number.isFinite(this._jibAoaDeg) ? Math.max(0, 1 - this._jibAoaDeg / SAIL_FLAP_AOA_DEG) : 0;
     const shadow = Number.isFinite(this.awa) ? Math.max(0, Math.min(1, (Math.abs(this.awa) - SAIL_FLAP_JIB_SHADOW_AWA_DEG) / 20)) : 0;
-    this.jibFlap = Math.max(jibAoaLuff, shadow) * Math.min(1, (this._aws || 0) / SAIL_FLAP_AWS_REF);
+    this.jibFlap = Math.max(jibAoaLuff, shadow * (this.depower || 0)) * Math.min(1, (this._aws || 0) / SAIL_FLAP_AWS_REF);
 
     // rendering the mainsail
 
