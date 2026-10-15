@@ -34,6 +34,13 @@ check(`ramp ≈ ${DEPOWER_RAMP_S} s, sail power changes smoothly`, rampTicks >= 
 check('autopilot keeps it depowered, HUD flag set', boat.depowered && boat.depower === 1 && boat.autopilot_enabled && boat.telemetry.depowered === true);
 check('depowered: lift ~0 (power is flapping drag only)', boat.power < 0.25 * power0, `power ${power0.toFixed(2)} → ${boat.power.toFixed(2)}`);
 check('depowered: still steers (autopilot keeps her within 15° of close-hauled at ~0.2 m/s)', Math.abs(boat.twa - twa0) < 15, `twa ${twa0.toFixed(1)} → ${boat.twa.toFixed(1)}`);
+{
+	// Sail flapping is visual: the render adds ripple segments, physics state is untouched.
+	const before = JSON.stringify([boat.physics_model.getPosition(), boat.physics_model.getLinearVelocity(), boat.rudder_angle, boat.depower]);
+	const g = boat.graphics_model_render().filter(x => x.type === 'sail');
+	const after = JSON.stringify([boat.physics_model.getPosition(), boat.physics_model.getLinearVelocity(), boat.rudder_angle, boat.depower]);
+	check('depowered sails flap (ripple segments), render leaves physics alone', g.length > 6 && boat.sailFlap > 0 && before === after, `${g.length} sail segments, flap ${boat.sailFlap.toFixed(2)}`);
+}
 boat.input_depower_toggle();
 // 250 ticks: long enough to recover, short of the map edge (scenario 0 heads for the wall).
 for (let t = 0; t < 250; t++) tick();
