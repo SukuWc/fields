@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 let camera, scene, renderer, fluidPlane;
 let _planeBase = null;
-let _map, _getGuides;
+let _getScene;
 let _view;
 
 const fpsEl = document.getElementById('fps');
@@ -53,67 +53,30 @@ const labelTextureCache = new Map();
 const contactPool = [];
 let contactTexture = null;
 
-function createFixtureLine(fixture, body) {
-  const type = fixture.getType();
-  const shape = fixture.getShape();
-
-  let pointCount;
-  if      (type === 'circle')  pointCount = 37; // 36 steps + close
-  else if (type === 'edge')    pointCount = 2;
-  else if (type === 'polygon') pointCount = shape.m_vertices.length + 1; // +1 to close
-  else return null;
-
-  const colorByType = { circle: 0x00ff00, edge: 0xff0000, polygon: 0x0000ff };
+// Body outlines come from the host as plain data (present.js bodyOutlines):
+// { id, kind, stroke, pts: [x0, y0, x1, y1, ...] } in world coordinates.
+function createFixtureLine(body) {
+  const pointCount = body.pts.length / 2;
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pointCount * 3), 3));
-  // A body can pick its own outline (marks set body.render.stroke).
-  const stroke = body.render && typeof body.render.stroke === 'number' ? body.render.stroke : colorByType[type];
-  const material = markOverlay(new THREE.LineBasicMaterial({ color: stroke }));
+  const material = markOverlay(new THREE.LineBasicMaterial({ color: body.stroke }));
   const line = new THREE.Line(geometry, material);
   line.renderOrder = ORDER_HULL;
   line.frustumCulled = false;
 
-  updateFixtureLine(line, fixture, body);
+  updateFixtureLine(line, body);
   return line;
 }
 
-function updateFixtureLine(line, fixture, body) {
-  const type = fixture.getType();
-  const shape = fixture.getShape();
+function updateFixtureLine(line, body) {
   const pos = line.geometry.attributes.position.array;
-
-  if (type === 'circle') {
-    const radius = shape.m_radius;
-    const bodyPos = body.getPosition();
-    for (let i = 0; i < 36; i++) {
-      const angle = i * 10 / 180 * Math.PI;
-      pos[i * 3]     = radius * Math.cos(angle) + bodyPos.x;
-      pos[i * 3 + 1] = radius * Math.sin(angle) + bodyPos.y;
-      pos[i * 3 + 2] = 0;
-    }
-    pos[108] = pos[0]; pos[109] = pos[1]; pos[110] = 0; // close loop
-
-  } else if (type === 'edge') {
-    const v1 = shape.m_vertex1;
-    const v2 = shape.m_vertex2;
-    pos[0] = v1.x + body.m_xf.p.x; pos[1] = v1.y + body.m_xf.p.y; pos[2] = 0;
-    pos[3] = v2.x + body.m_xf.p.x; pos[4] = v2.y + body.m_xf.p.y; pos[5] = 0;
-
-  } else if (type === 'polygon') {
-    const vertices = shape.m_vertices;
-    const n = vertices.length;
-    const angle = body.getAngle() + Math.PI;
-    const com = body.getLocalCenter();
-    const cx = fixture.m_body.c_position.c.x;
-    const cy = fixture.m_body.c_position.c.y;
-    for (let i = 0; i <= n; i++) {
-      const v = vertices[i % n];
-      pos[i * 3]     = (v.x + com.x) * Math.cos(angle) + (v.y - com.y) * Math.sin(angle) + cx;
-      pos[i * 3 + 1] = (v.x + com.x) * Math.sin(angle) - (v.y - com.y) * Math.cos(angle) + cy;
-      pos[i * 3 + 2] = 0;
-    }
+  const pts = body.pts;
+  const n = Math.min(pts.length / 2, pos.length / 3);
+  for (let i = 0; i < n; i++) {
+    pos[i * 3] = pts[i * 2];
+    pos[i * 3 + 1] = pts[i * 2 + 1];
+    pos[i * 3 + 2] = 0;
   }
-
   line.geometry.attributes.position.needsUpdate = true;
 }
 
@@ -491,7 +454,8 @@ function resizeRenderer() {
   renderer.setSize(width, height, false);
 }
 
-export function initRenderer(map, planeMat, view) {
+// size: { width, height } of the map in world units.
+export function initRenderer(size, planeMat, view) {
   // Far plane: 85 covered zoom 70 on the 75 m map; bigger maps zoom out
   // further (map-size.js cameraLimits), so it follows the zoom limit.
   camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, Math.max(85, (view.camera_zoom_max || 70) + 15));
@@ -504,8 +468,8 @@ export function initRenderer(map, planeMat, view) {
   planeMat.transparent = false;
   planeMat.depthTest = true;
   planeMat.depthWrite = true;
-  fluidPlane = new THREE.Mesh(new THREE.PlaneGeometry(map.width, map.height), planeMat);
-  _planeBase = { w: map.width, h: map.height };
+  fluidPlane = new THREE.Mesh(new THREE.PlaneGeometry(size.width, size.height), planeMat);
+  _planeBase = { w: size.width, h: size.height };
   fluidPlane.position.z = -0.01;
   fluidPlane.renderOrder = 0;
   scene.add(fluidPlane);
@@ -533,11 +497,10 @@ export function getCamera() {
   return camera;
 }
 
-export function startAnimation(map, view, getGuides) {
-  _map = map;
+// getScene(): { bodies, guides, devMode } from the host (main.js).
+export function startAnimation(view, getScene) {
   _view = view;
-  _getGuides = getGuides;
-  if (fluidPlane) fluidPlane.visible = !map.devMode;
+  _getScene = getScene;
   renderer.setAnimationLoop(animation);
 }
 
@@ -559,42 +522,35 @@ function animation(t) {
   camera.position.x = _view.camera_position_x;
   camera.position.y = _view.camera_position_y;
   camera.position.z = _view.camera_zoom;
-  if (fluidPlane) fluidPlane.visible = !_map.devMode;
+  const sceneData = _getScene();
+  if (fluidPlane) fluidPlane.visible = !sceneData.devMode;
 
   // Update persistent fixture lines — create/remove only when fixture set changes
   const seenFixtures = new Set();
-
-  for (let body = _map.world.getBodyList(); body; body = body.getNext()) {
-    for (let fixture = body.getFixtureList(); fixture; fixture = fixture.getNext()) {
-      if (body.render && body.render.hidden) continue;
-      if (fixture.getType() === 'chain') continue;
-
-      seenFixtures.add(fixture);
-
-      if (!fixtureLines.has(fixture)) {
-        const line = createFixtureLine(fixture, body);
-        if (line) {
-          fixtureLines.set(fixture, line);
-          scene.add(line);
-        }
-      } else {
-        updateFixtureLine(fixtureLines.get(fixture), fixture, body);
-      }
+  for (const body of sceneData.bodies) {
+    seenFixtures.add(body.id);
+    const line = fixtureLines.get(body.id);
+    if (!line) {
+      const created = createFixtureLine(body);
+      fixtureLines.set(body.id, created);
+      scene.add(created);
+    } else {
+      updateFixtureLine(line, body);
     }
   }
 
-  for (const [fixture, line] of fixtureLines) {
-    if (!seenFixtures.has(fixture)) {
+  for (const [id, line] of fixtureLines) {
+    if (!seenFixtures.has(id)) {
       scene.remove(line);
       line.geometry.dispose();
       line.material.dispose();
-      fixtureLines.delete(fixture);
+      fixtureLines.delete(id);
     }
   }
 
   // Update guide pool — reuse existing lines, hide extras.
   // Rule segments also get a filled stroke (WebGL lines stay 1px). Labels are HTML.
-  const guides = _getGuides();
+  const guides = sceneData.guides;
   let poolIdx = 0;
   let ruleIdx = 0;
   let abeamIdx = 0;

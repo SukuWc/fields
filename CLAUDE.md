@@ -22,7 +22,9 @@ This is an interactive web sailing simulator combining 2D fluid dynamics with 3D
 ### System Overview
 
 ```
-src/main.js           — Client entry: constants, texture setup, settings listeners, fixed-step loop (loop.js), readout/HUD/guides from each Sim step
+src/main.js           — Client entry: constants, texture setup, settings listeners, fixed-step loop (loop.js); talks to the sim only through a SimHost, applies each frame's readout/HUD/guides
+src/host.js           — SimHost interface; SimCore (Map + Boltzmann + Sim + painter, plain-data frames) and LocalHost (main thread)
+src/present.js        — Host-side presentation: readout/HUD strings and guides (presentStep), body outlines, perf counters, all plain data
 src/sim.js            — Sim: the whole simulation without DOM/three (boats, marks, course, start, finish, bots, boundary, per-Sim rules state, scenarios); step(simDt, held), command(cmd), snapshot(), events
 src/scenarios.js      — Scenario scripts: buildScenarios(sim) (title, description, frames[] in 90 Hz units)
 src/view.js           — Client View: camera position/zoom/follow + show_forces / show_fields (was in map.js)
@@ -45,7 +47,7 @@ src/map.js            — Planck.js world container, wind queries, dev mode
 
 ### Simulation Loop
 
-`loop.js` `FixedStepLoop` ticks at 30 Hz: `world.step(1/30)`, then in `main.js`: camera follow (`view.update()`), `sim.step(dt, heldCommands)`, then `present(rec)` (readout, HUD, guides). `Sim.step` (sim.js), in order:
+`loop.js` `FixedStepLoop` ticks at 30 Hz: `world.step(1/30)`, then in `main.js`: camera follow (`view.update()` on the last frame's `boat0`), `host.tick({ dt, held, present, view })`; the host does `world.step`, `sim.step` and `presentStep` and hands back a plain frame (readout, HUD, guides, body outlines), which main.js applies. `Sim.step` (sim.js), in order:
 1. scenario frames f..f+2 (`SCENARIO_FRAMES_PER_TICK` = 3)
 2. held boat commands (helm, heading target) from `controls.js` `heldCommands()`
 3. `boat.physics_model_step()` per boat + boat→fluid energy
@@ -58,8 +60,9 @@ In dev mode the loop still runs scenarios, keys, boats, and the camera, but it d
 
 ### Module responsibilities
 
-- **`sim.js`** (`Sim`) owns: `players[]`, `marks[]`, `course`, `startSequence`, `raceResults`, `raceBots`, `boundary`, `leaderboard`, `rulesTime`, the scenario frame counter and its own rules state (`rules.js` `createRulesState()`; `sim.activate()` / `useRulesState` makes it the one rules.js and mark-touch.js read). Commands: boat `helm`, `headingTarget`, `autopilot`, `tack`, `penaltyTurn`; admin `restart`, `wind`, `devMode`, `barrier`, `options`, `simRes`, `amrMode`. Events (`sim.on`, `drainEvents`): `view` (scenario camera hints), `bindControls`, `cleared`. `snapshot()` is plain JSON data. No DOM or three.js: `test/no-dom.test.mjs` runs every scenario headless.
-- **`main.js`** (client) owns: `dataTextureMaterial`, `bm`, `map`, `sim`, `view`, the loop, `currentGuides`. Passes a `() => guides` getter to `renderer.js`.
+- **`sim.js`** (`Sim`) owns: `players[]`, `marks[]`, `course`, `startSequence`, `raceResults`, `raceBots`, `boundary`, `leaderboard`, `rulesTime`, the scenario frame counter and its own rules state (`rules.js` `createRulesState()`; `sim.activate()` / `useRulesState` makes it the one rules.js and mark-touch.js read). Commands: boat `helm`, `headingTarget`, `autopilot`, `tack`, `penaltyTurn`; admin `restart`, `wind`, `devMode`, `barrier`, `options`, `simRes`, `amrMode`, `cellBudget` (`{ tune, target }`). Events (`sim.on`, `drainEvents`): `view` (scenario camera hints), `bindControls`, `cleared`. `snapshot()` is plain JSON data. No DOM or three.js: `test/no-dom.test.mjs` runs every scenario headless.
+- **`host.js`** (`SimCore`, `LocalHost`) owns `bm`, `map`, `sim`, the field painter and plot options. The client sees only `host.info`, frames (`onFrame`), events (`on`; `bindControls` carries `boats`), `command()` results (`restart` → scenario card, `simRes`/`amrMode` → `{ rebuilt, lattice }`), `query()` (field velocity / wind at a point) and perf stats. `test/host.test.mjs` checks LocalHost against a bare Sim and that everything crossing is structured-cloneable.
+- **`main.js`** (client) owns: `dataTextureMaterial`, `view`, the loop (time only), `currentGuides`. Passes a `() => ({ bodies, guides, devMode })` getter to `renderer.js`; the renderer no longer walks the planck world.
 - **`renderer.js`** owns: `camera`, `scene`, `renderer`, `polygons[]`, `arrows[]`. `initRenderer(map, planeMat, view)` must be called before `setupControls` (controls needs `getCamera`).
 - **`controls.js`** owns: `key_bind_list` (key → command), `key_state`, the scenario card. Scenario definitions are in `scenarios.js`.
 
