@@ -4,6 +4,7 @@ import { FixedStepLoop } from './loop.js';
 import { initRenderer, startAnimation, getCamera, setFluidPlaneSize } from './renderer.js';
 import { setupControls, heldCommands } from './controls.js';
 import { LocalHost } from './host.js';
+import { WorkerHost, hostChoice } from './worker-host.js';
 import { View } from './view.js';
 import { installUrlSettings } from './url-settings.js';
 import { setInfo, flushInfo } from './info.js';
@@ -51,250 +52,290 @@ planeMat.needsUpdate = true;
 // client modules only send it commands and draw the plain frames it returns.
 // Root cell: the size's default simRes (map-size.js) unless ?simRes is set.
 const _simResKey = _query.get('simRes') || MAP_SIZES[mapSizeKey].simRes;
-const host = new LocalHost({
+// The Sim runs in a Web Worker (worker-host.js) by default; ?worker=0 keeps
+// it on the main thread (LocalHost). Without Worker support, or if the
+// worker cannot be built or fails to start, the app falls back to LocalHost.
+// ?workerQueue=N caps ticks waiting on the worker (0 = none).
+const _hostOpts = {
   mapW: map_w, mapH: map_h, windAngle: wind_angle, windSpeed: wind_speed,
   simRes: _simResKey, texture: dataTextureMaterial, oversampling: texture_oversampling,
-});
+};
+// Only non-default values stay in the URL: a redundant ?worker=1 is dropped.
+const _hostChoice = hostChoice(location.search, typeof Worker === 'function');
+if (_hostChoice.dropParam) {
+  const q = new URLSearchParams(location.search);
+  q.delete('worker');
+  const qs = q.toString();
+  history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+}
+const _wantWorker = _hostChoice.worker;
+const _workerQueue = Number(_query.get('workerQueue'));
+function makeLocalHost() { return new LocalHost(_hostOpts); }
+let host = null;
+if (_wantWorker) {
+  try {
+    host = new WorkerHost(_hostOpts, dataTextureMaterial, { maxInFlight: Number.isInteger(_workerQueue) && _workerQueue >= 0 && _query.has('workerQueue') ? _workerQueue : 4 });
+  } catch (e) {
+    console.warn('sim worker unavailable, running on the main thread', e);
+    host = null;
+  }
+}
+if (!host) host = makeLocalHost();
+if (typeof window !== 'undefined') window.__simHost = host;
 // Command whose result the caller acts on: synchronous on the main-thread
 // host (as the old direct sim calls were), else when the host answers.
 function hostCommand(c, then) {
   if (host.commandSync) { const r = host.commandSync(c); if (then) then(r); return; }
   host.command(c).then((r) => { if (then) then(r); });
 }
-// Camera and drawing toggles (view.js), client side.
-const view = new View();
-{
-  // Pan limits keep the 7.5 m margin of the 75 m map (±30); the zoom-out
-  // limit shows the whole length (map-size.js cameraLimits).
-  const lim = cameraLimits(map_w, map_h);
-  view.camera_position_x_max = lim.xMax; view.camera_position_x_min = -lim.xMax;
-  view.camera_position_y_max = lim.yMax; view.camera_position_y_min = -lim.yMax;
-  view.camera_zoom_max = lim.zoomMax;
-}
-// Renderer and controls — must init renderer before controls (controls needs getCamera).
-// The barrier listener has to exist before URL settings dispatch change events.
-initRenderer({ width: map_w, height: map_h }, planeMat, view);
-document.getElementById('barrier').addEventListener('change', e => host.command({ type: 'barrier', on: e.target.checked }));
-setFluidPlaneSize(host.info.lattice.w, host.info.lattice.h);
-// Field plot options (#plotSelect, #contrastSlider) go to the host's painter.
-{
-  const plotSelect = document.getElementById('plotSelect');
-  const contrastSlider = document.getElementById('contrastSlider');
-  const sendPlot = () => host.command({ type: 'plot', plotType: plotSelect.selectedIndex, contrastExp: Number(contrastSlider.value) });
-  plotSelect.addEventListener('change', sendPlot);
-  contrastSlider.addEventListener('input', sendPlot);
-  contrastSlider.addEventListener('change', sendPlot);
-  sendPlot();
-}
-setupControls(host, view, getCamera);
-// Simulation resolution (#simRes, ?simRes=2 / 4). Rebuilds the root lattice
-// in place (every module keeps the same bm), drops the refinement windows,
-// resizes the field plane, and restarts the scenario like the Restart button.
-// Before installUrlSettings so a query value goes through this listener.
-// Fast-wind options ("2f", "2f34") use the x2 root cell but step it every
-// frame (or 1.2× per frame): stepsPerFrame is explicit, see Boltzmann._build.
-// SIM_RES_MODES lives in sim.js.
-document.getElementById('simRes').addEventListener('change', (e) => {
-  hostCommand({ type: 'simRes', mode: e.target.value }, (r) => {
-    if (!r.rebuilt) return;
-    setFluidPlaneSize(r.lattice.w, r.lattice.h);
-    dataTextureMaterial.needsUpdate = true;
-    document.getElementById('scenario_restart').click();
-  });
+// The client starts once the host has its info: at once on the main thread,
+// after the worker's first message. A worker that errors before that is
+// dropped for a LocalHost (the client has not attached to it yet).
+if (host.kind === 'local') startClient();
+else host.ready.then(startClient, (e) => {
+  console.warn('sim worker failed to start, running on the main thread', e && (e.message || e));
+  if (host.terminate) host.terminate();
+  host = makeLocalHost();
+  window.__simHost = host;
+  startClient();
 });
-// Map size select. The select default (markup) is DEFAULT_MAP_SIZE so the
-// URL only carries map_size when it differs. A new size reloads the page and
-// drops ?simRes so the new size's default root cell applies.
-const mapSizeSel = document.getElementById('map_size');
-if (MAP_SIZES[mapSizeKey].legacy) {
-  const opt = document.createElement('option');
-  opt.value = mapSizeKey; opt.textContent = MAP_SIZES[mapSizeKey].label;
-  mapSizeSel.appendChild(opt);
-}
-function reloadWithMapSize(key, extra) {
-  const u = new URL(location.href);
-  u.searchParams.delete('mapSize');
-  u.searchParams.delete('simRes');
-  if (key === DEFAULT_MAP_SIZE) u.searchParams.delete('map_size'); else u.searchParams.set('map_size', key);
-  for (const [k, v] of Object.entries(extra || {})) u.searchParams.set(k, v);
-  location.href = u.toString();
-}
-// installUrlSettings writes ?map_size into the select at load (it may be a
-// size this scenario was clamped up from); only later edits reload.
-let mapSizeLive = false;
-mapSizeSel.addEventListener('change', (e) => {
-  const v = e.target.value;
-  if (!mapSizeLive || v === mapSizeKey || !MAP_SIZES[v]) return;
-  reloadWithMapSize(v);
-});
-// A scenario picked in the app that does not fit this map reloads on the
-// smallest size that fits (course scenarios 12-17 need 100 × 200).
-document.getElementById('scenario_selector').addEventListener('change', (e) => {
-  const n = Number(e.target.value) || 0;
-  if (scenarioFits(n, mapSizeKey)) return;
-  reloadWithMapSize(fitMapSize(n, mapSizeKey), { scenario_selector: String(n) });
-});
-// Refinement layout (#amrMode). The app default is "auto": only the finest
-// boat disk is fixed and every coarser level is a grading shell plus curl
-// growth (domainTrack AUTO_SHELL). ?amrMode=fixed (or ?amr=fixed) selects the
-// fixed rings; ?amr=auto is accepted too. The Boltzmann engine defaults to
-// auto as well; SimCore sends the 'auto' command. Changing it restarts.
-// Refinement budget: target cell updates per root step (domainTrack BUDGET_*).
-// ?cellBudget=N sets it, ?cellBudget=0 (or off) turns it off. The default
-// follows the grid ('default' = defaultCellUpdateTarget(bm): 50k on a 3-level
-// stack, 100k on x2 / 2f / 2f34, 200k on x4).
-// Live controls (shown with the Perf overlay, synced by installUrlSettings):
-// #cellBudgetTune (checkbox, default on; off = no budget, scale 1) and
-// #cellBudget (number; empty = the grid default). The legacy ?cellBudget=0 /
-// ?cellBudget=off is rewritten to ?cellBudgetTune=0 before the URL is applied.
-{
-  const q = new URLSearchParams(location.search);
-  const raw = q.get('cellBudget');
-  if (raw !== null && (raw.trim().toLowerCase() === 'off' || Number(raw) === 0)) {
-    q.delete('cellBudget');
-    q.set('cellBudgetTune', '0');
-    const qs = q.toString();
-    history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+
+function startClient() {
+  // Camera and drawing toggles (view.js), client side.
+  const view = new View();
+  {
+    // Pan limits keep the 7.5 m margin of the 75 m map (±30); the zoom-out
+    // limit shows the whole length (map-size.js cameraLimits).
+    const lim = cameraLimits(map_w, map_h);
+    view.camera_position_x_max = lim.xMax; view.camera_position_x_min = -lim.xMax;
+    view.camera_position_y_max = lim.yMax; view.camera_position_y_min = -lim.yMax;
+    view.camera_zoom_max = lim.zoomMax;
   }
-  const tune = document.getElementById('cellBudgetTune');
-  const num = document.getElementById('cellBudget');
-  const apply = () => {
-    const n = Number(String(num.value).trim());
-    host.command({ type: 'cellBudget', tune: tune.checked, target: num.value.trim() !== '' && Number.isFinite(n) && n > 0 ? n : null });
-  };
-  tune.addEventListener('change', apply);
-  num.addEventListener('change', apply);
-  num.addEventListener('input', apply);
-  apply();
-}
-{
-  const sel = document.getElementById('amrMode');
-  const q = new URLSearchParams(location.search);
-  const legacy = q.get('amr');
-  if (legacy === 'auto' || legacy === 'fixed') {
-    q.delete('amr');
-    if (legacy === 'fixed') q.set('amrMode', 'fixed');
-    const qs = q.toString();
-    history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+  // Renderer and controls — must init renderer before controls (controls needs getCamera).
+  // The barrier listener has to exist before URL settings dispatch change events.
+  initRenderer({ width: map_w, height: map_h }, planeMat, view);
+  document.getElementById('barrier').addEventListener('change', e => host.command({ type: 'barrier', on: e.target.checked }));
+  setFluidPlaneSize(host.info.lattice.w, host.info.lattice.h);
+  // Field plot options (#plotSelect, #contrastSlider) go to the host's painter.
+  {
+    const plotSelect = document.getElementById('plotSelect');
+    const contrastSlider = document.getElementById('contrastSlider');
+    const sendPlot = () => host.command({ type: 'plot', plotType: plotSelect.selectedIndex, contrastExp: Number(contrastSlider.value) });
+    plotSelect.addEventListener('change', sendPlot);
+    contrastSlider.addEventListener('input', sendPlot);
+    contrastSlider.addEventListener('change', sendPlot);
+    sendPlot();
   }
-  sel.addEventListener('change', (e) => {
-    hostCommand({ type: 'amrMode', mode: e.target.value }, (r) => {
+  setupControls(host, view, getCamera);
+  // Simulation resolution (#simRes, ?simRes=2 / 4). Rebuilds the root lattice
+  // in place (every module keeps the same bm), drops the refinement windows,
+  // resizes the field plane, and restarts the scenario like the Restart button.
+  // Before installUrlSettings so a query value goes through this listener.
+  // Fast-wind options ("2f", "2f34") use the x2 root cell but step it every
+  // frame (or 1.2× per frame): stepsPerFrame is explicit, see Boltzmann._build.
+  // SIM_RES_MODES lives in sim.js.
+  document.getElementById('simRes').addEventListener('change', (e) => {
+    hostCommand({ type: 'simRes', mode: e.target.value }, (r) => {
       if (!r.rebuilt) return;
+      setFluidPlaneSize(r.lattice.w, r.lattice.h);
       dataTextureMaterial.needsUpdate = true;
       document.getElementById('scenario_restart').click();
     });
   });
-}
-// Before installUrlSettings so ?perf=1 turns the overlay on through its change listener.
-// Counters: live from the main-thread host, else the latest frame's.
-let lastFrame = null;
-setupPerfOverlay(() => (host.perfStats ? host.perfStats() : lastFrame && lastFrame.perf) || null);
-document.getElementById('perf').addEventListener('change', (e) => host.setPerf(e.target.checked));
-// Before installUrlSettings: the device default must be the checkbox default.
-setupTouchControls();
-// simRes default follows the map size (map-size.js). Set before
-// installUrlSettings so that is the default it compares against.
-document.getElementById('simRes').value = MAP_SIZES[mapSizeKey].simRes;
-// The mode's explicit stepsPerFrame (fast-wind defaults such as '4f') was
-// applied by the host at startup (SimCore, a 'simRes' command).
-installUrlSettings();
-// After installUrlSettings: show the size in use (a clamp or a legacy
-// ?mapSize) and write it to the URL; equal to mapSizeKey, so no reload.
-if (mapSizeSel.value !== mapSizeKey || _query.has('mapSize')) {
-  const u = new URLSearchParams(location.search);
-  if (u.has('mapSize')) { u.delete('mapSize'); history.replaceState(history.state, '', location.pathname + (u.toString() ? '?' + u : '') + location.hash); }
-  mapSizeSel.value = mapSizeKey;
-  mapSizeSel.dispatchEvent(new Event('change', { bubbles: true }));
-}
-mapSizeLive = true;
-if (mapSizeClamped) console.info(`map_size ${_askedMapSize} is too small for scenario ${_scenarioParam}; using ${mapSizeKey}`);
-setupMobileMenu();
-
-// Sim options the loop reads, mirrored from the settings checkboxes so the
-// simulation pass never touches the DOM. Kept current by change listeners
-// (url-settings dispatches change events, so query values land here too).
-for (const [key, id] of [['amr', 'amr'], ['boatEnergy', 'boat_energy']]) {
-  const el = document.getElementById(id);
-  host.command({ type: 'options', [key]: el.checked });
-  el.addEventListener('change', () => { host.command({ type: 'options', [key]: el.checked }); });
-}
-
-let currentGuides = [];
-let devMode = false;
-// Bodies: read at render time from the main-thread host (as the renderer
-// read the world), else the latest frame's.
-let frameBodies = [];
-startAnimation(view, () => ({
-  bodies: host.bodies ? host.bodies() : frameBodies,
-  guides: currentGuides,
-  devMode,
-}));
-
-const distInfoEl = document.getElementById('dist_info');
-const startHud = document.getElementById('start_hud');
-const resultsEl = document.getElementById('finish_results');
-
-// The host steps the world; the loop only keeps time.
-const loop = new FixedStepLoop({ step() {} }, { tickHz: 30, maxCatchUp: 4 });
-
-// Readout and HUD from a frame's presentation (present.js presentStep).
-function applyHud(hud) {
-  if (hud.dist !== null) distInfoEl.innerHTML = hud.dist;
-  setInfo(hud.info);
-  if (hud.startHud) {
-    if (startHud) {
-      startHud.hidden = false;
-      startHud.innerHTML = hud.startHud.html;
-      startHud.classList.toggle('flash', hud.startHud.flash);
+  // Map size select. The select default (markup) is DEFAULT_MAP_SIZE so the
+  // URL only carries map_size when it differs. A new size reloads the page and
+  // drops ?simRes so the new size's default root cell applies.
+  const mapSizeSel = document.getElementById('map_size');
+  if (MAP_SIZES[mapSizeKey].legacy) {
+    const opt = document.createElement('option');
+    opt.value = mapSizeKey; opt.textContent = MAP_SIZES[mapSizeKey].label;
+    mapSizeSel.appendChild(opt);
+  }
+  function reloadWithMapSize(key, extra) {
+    const u = new URL(location.href);
+    u.searchParams.delete('mapSize');
+    u.searchParams.delete('simRes');
+    if (key === DEFAULT_MAP_SIZE) u.searchParams.delete('map_size'); else u.searchParams.set('map_size', key);
+    for (const [k, v] of Object.entries(extra || {})) u.searchParams.set(k, v);
+    location.href = u.toString();
+  }
+  // installUrlSettings writes ?map_size into the select at load (it may be a
+  // size this scenario was clamped up from); only later edits reload.
+  let mapSizeLive = false;
+  mapSizeSel.addEventListener('change', (e) => {
+    const v = e.target.value;
+    if (!mapSizeLive || v === mapSizeKey || !MAP_SIZES[v]) return;
+    reloadWithMapSize(v);
+  });
+  // A scenario picked in the app that does not fit this map reloads on the
+  // smallest size that fits (course scenarios 12-17 need 100 × 200).
+  document.getElementById('scenario_selector').addEventListener('change', (e) => {
+    const n = Number(e.target.value) || 0;
+    if (scenarioFits(n, mapSizeKey)) return;
+    reloadWithMapSize(fitMapSize(n, mapSizeKey), { scenario_selector: String(n) });
+  });
+  // Refinement layout (#amrMode). The app default is "auto": only the finest
+  // boat disk is fixed and every coarser level is a grading shell plus curl
+  // growth (domainTrack AUTO_SHELL). ?amrMode=fixed (or ?amr=fixed) selects the
+  // fixed rings; ?amr=auto is accepted too. The Boltzmann engine defaults to
+  // auto as well; SimCore sends the 'auto' command. Changing it restarts.
+  // Refinement budget: target cell updates per root step (domainTrack BUDGET_*).
+  // ?cellBudget=N sets it, ?cellBudget=0 (or off) turns it off. The default
+  // follows the grid ('default' = defaultCellUpdateTarget(bm): 50k on a 3-level
+  // stack, 100k on x2 / 2f / 2f34, 200k on x4).
+  // Live controls (shown with the Perf overlay, synced by installUrlSettings):
+  // #cellBudgetTune (checkbox, default on; off = no budget, scale 1) and
+  // #cellBudget (number; empty = the grid default). The legacy ?cellBudget=0 /
+  // ?cellBudget=off is rewritten to ?cellBudgetTune=0 before the URL is applied.
+  {
+    const q = new URLSearchParams(location.search);
+    const raw = q.get('cellBudget');
+    if (raw !== null && (raw.trim().toLowerCase() === 'off' || Number(raw) === 0)) {
+      q.delete('cellBudget');
+      q.set('cellBudgetTune', '0');
+      const qs = q.toString();
+      history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
     }
-  } else if (startHud && !startHud.hidden) {
-    startHud.hidden = true;
+    const tune = document.getElementById('cellBudgetTune');
+    const num = document.getElementById('cellBudget');
+    const apply = () => {
+      const n = Number(String(num.value).trim());
+      host.command({ type: 'cellBudget', tune: tune.checked, target: num.value.trim() !== '' && Number.isFinite(n) && n > 0 ? n : null });
+    };
+    tune.addEventListener('change', apply);
+    num.addEventListener('change', apply);
+    num.addEventListener('input', apply);
+    apply();
   }
-  if (hud.results !== null) {
-    if (resultsEl) {
-      resultsEl.hidden = false;
-      resultsEl.innerHTML = hud.results;
+  {
+    const sel = document.getElementById('amrMode');
+    const q = new URLSearchParams(location.search);
+    const legacy = q.get('amr');
+    if (legacy === 'auto' || legacy === 'fixed') {
+      q.delete('amr');
+      if (legacy === 'fixed') q.set('amrMode', 'fixed');
+      const qs = q.toString();
+      history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
     }
-  } else if (resultsEl && !resultsEl.hidden) {
-    resultsEl.hidden = true;
-  }
-  flushInfo();
-}
-
-// Camera follow target: boat 0 as of the last step (the old code read
-// sim.players[0], whose position a step sets). Cleared with the scenario.
-let followTarget;
-host.on((ev) => { if (ev.type === 'cleared') followTarget = undefined; });
-host.onFrame((frame) => {
-  lastFrame = frame;
-  devMode = frame.devMode;
-  followTarget = frame.boat0 || undefined;
-  if (frame.fieldSteps > 0 && isPerfOverlayOn()) recordFieldStep(frame.fieldMs);
-  if (frame.hud) {
-    applyHud(frame.hud);
-    currentGuides = frame.guides;
-    if (frame.bodies) frameBodies = frame.bodies;
-  }
-  if (frame.fieldReady) dataTextureMaterial.needsUpdate = true;
-});
-
-// One 30 Hz tick: camera follow, sim step(s), then the readout. Each tick runs
-// SIM_PASSES_PER_TICK sim steps (the first with simDt); ?simPasses=1..5.
-const SIM_PASSES_PER_TICK = (() => {
-  const n = Number(new URLSearchParams(location.search).get('simPasses'));
-  return Number.isInteger(n) && n >= 1 && n <= 5 ? n : 1;
-})();
-
-loop.start((dt) => {
-  for (let i = 0; i < SIM_PASSES_PER_TICK; i++) {
-    view.set_camera_follow_target(followTarget);
-    view.update();
-    host.tick({
-      dt: i === 0 ? dt : undefined,
-      // The main-thread host reads held keys after the scenario frames.
-      held: host.kind === 'local' ? heldCommands : heldCommands(),
-      present: i === SIM_PASSES_PER_TICK - 1,
-      view,
+    sel.addEventListener('change', (e) => {
+      hostCommand({ type: 'amrMode', mode: e.target.value }, (r) => {
+        if (!r.rebuilt) return;
+        dataTextureMaterial.needsUpdate = true;
+        document.getElementById('scenario_restart').click();
+      });
     });
   }
-});
+  // Before installUrlSettings so ?perf=1 turns the overlay on through its change listener.
+  // Counters: live from the main-thread host, else the latest frame's.
+  let lastFrame = null;
+  setupPerfOverlay(() => (host.perfStats ? host.perfStats() : lastFrame && lastFrame.perf) || null);
+  document.getElementById('perf').addEventListener('change', (e) => host.setPerf(e.target.checked));
+  // Before installUrlSettings: the device default must be the checkbox default.
+  setupTouchControls();
+  // simRes default follows the map size (map-size.js). Set before
+  // installUrlSettings so that is the default it compares against.
+  document.getElementById('simRes').value = MAP_SIZES[mapSizeKey].simRes;
+  // The mode's explicit stepsPerFrame (fast-wind defaults such as '4f') was
+  // applied by the host at startup (SimCore, a 'simRes' command).
+  installUrlSettings();
+  // After installUrlSettings: show the size in use (a clamp or a legacy
+  // ?mapSize) and write it to the URL; equal to mapSizeKey, so no reload.
+  if (mapSizeSel.value !== mapSizeKey || _query.has('mapSize')) {
+    const u = new URLSearchParams(location.search);
+    if (u.has('mapSize')) { u.delete('mapSize'); history.replaceState(history.state, '', location.pathname + (u.toString() ? '?' + u : '') + location.hash); }
+    mapSizeSel.value = mapSizeKey;
+    mapSizeSel.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  mapSizeLive = true;
+  if (mapSizeClamped) console.info(`map_size ${_askedMapSize} is too small for scenario ${_scenarioParam}; using ${mapSizeKey}`);
+  setupMobileMenu();
+
+  // Sim options the loop reads, mirrored from the settings checkboxes so the
+  // simulation pass never touches the DOM. Kept current by change listeners
+  // (url-settings dispatches change events, so query values land here too).
+  for (const [key, id] of [['amr', 'amr'], ['boatEnergy', 'boat_energy']]) {
+    const el = document.getElementById(id);
+    host.command({ type: 'options', [key]: el.checked });
+    el.addEventListener('change', () => { host.command({ type: 'options', [key]: el.checked }); });
+  }
+
+  let currentGuides = [];
+  let devMode = false;
+  // Bodies: read at render time from the main-thread host (as the renderer
+  // read the world), else the latest frame's.
+  let frameBodies = [];
+  startAnimation(view, () => ({
+    bodies: host.bodies ? host.bodies() : frameBodies,
+    guides: currentGuides,
+    devMode,
+  }));
+
+  const distInfoEl = document.getElementById('dist_info');
+  const startHud = document.getElementById('start_hud');
+  const resultsEl = document.getElementById('finish_results');
+
+  // The host steps the world; the loop only keeps time.
+  const loop = new FixedStepLoop({ step() {} }, { tickHz: 30, maxCatchUp: 4 });
+
+  // Readout and HUD from a frame's presentation (present.js presentStep).
+  function applyHud(hud) {
+    if (hud.dist !== null) distInfoEl.innerHTML = hud.dist;
+    setInfo(hud.info);
+    if (hud.startHud) {
+      if (startHud) {
+        startHud.hidden = false;
+        startHud.innerHTML = hud.startHud.html;
+        startHud.classList.toggle('flash', hud.startHud.flash);
+      }
+    } else if (startHud && !startHud.hidden) {
+      startHud.hidden = true;
+    }
+    if (hud.results !== null) {
+      if (resultsEl) {
+        resultsEl.hidden = false;
+        resultsEl.innerHTML = hud.results;
+      }
+    } else if (resultsEl && !resultsEl.hidden) {
+      resultsEl.hidden = true;
+    }
+    flushInfo();
+  }
+
+  // Camera follow target: boat 0 as of the last step (the old code read
+  // sim.players[0], whose position a step sets). Cleared with the scenario.
+  let followTarget;
+  host.on((ev) => { if (ev.type === 'cleared') followTarget = undefined; });
+  host.onFrame((frame) => {
+    lastFrame = frame;
+    devMode = frame.devMode;
+    followTarget = frame.boat0 || undefined;
+    if (frame.fieldSteps > 0 && isPerfOverlayOn()) recordFieldStep(frame.fieldMs);
+    if (frame.hud) {
+      applyHud(frame.hud);
+      currentGuides = frame.guides;
+      if (frame.bodies) frameBodies = frame.bodies;
+    }
+    if (frame.fieldReady) dataTextureMaterial.needsUpdate = true;
+  });
+
+  // One 30 Hz tick: camera follow, sim step(s), then the readout. Each tick runs
+  // SIM_PASSES_PER_TICK sim steps (the first with simDt); ?simPasses=1..5.
+  const SIM_PASSES_PER_TICK = (() => {
+    const n = Number(new URLSearchParams(location.search).get('simPasses'));
+    return Number.isInteger(n) && n >= 1 && n <= 5 ? n : 1;
+  })();
+
+  loop.start((dt) => {
+    for (let i = 0; i < SIM_PASSES_PER_TICK; i++) {
+      view.set_camera_follow_target(followTarget);
+      view.update();
+      host.tick({
+        dt: i === 0 ? dt : undefined,
+        // The main-thread host reads held keys after the scenario frames.
+        held: host.kind === 'local' ? heldCommands : heldCommands(),
+        present: i === SIM_PASSES_PER_TICK - 1,
+        view,
+      });
+    }
+  });
+}
