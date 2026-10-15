@@ -30,7 +30,7 @@ Last updated: 2026-10-15
 - [x] Sim modules without DOM: FieldPainter, simOptions, boat telemetry (sim/client split, phase 2): [#47](https://github.com/SukuWc/fields/pull/47)
 - [x] Fixed 30 FPS: one sim pass per 30 Hz tick, render capped at 30 fps, per-pass boat terms converted, and a 4 m fast-wind default grid (`simRes=4f`): [#48](https://github.com/SukuWc/fields/pull/48)
 - [x] Rules state per simulation (sim/client split, phase 3a): [#52](https://github.com/SukuWc/fields/pull/52)
-- [ ] Sim class: scenarios, race state, commands, snapshot (sim/client split, phase 3b) (in progress, [#53](https://github.com/SukuWc/fields/pull/53))
+- [x] Sim class: scenarios, race state, commands, snapshot (sim/client split, phase 3b): [#53](https://github.com/SukuWc/fields/pull/53)
 - [ ] Run `npm test` in CI
 
 ### 2. Wind and boat feel
