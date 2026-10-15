@@ -62,6 +62,18 @@ export const AUTOPILOT_SUM_DECAY = Math.pow(0.85, N);
 // Forces (applyForce accumulates until world.step) and impulses per tick.
 export const FORCE_PASSES = N;
 
+// Depower toggle (X key, touch "Depower"): the sails are eased fully out and
+// luff. `depower` ramps 0 → 1 (or back) over DEPOWER_RAMP_S so the forces do
+// not jump. At 1 the lift is zero and the drag is the flapping drag (the
+// table value at 0° angle of attack, DEPOWER_LUFF_CD); between, both blend
+// linearly. The booms swing from the trimmed angle to lie along the apparent
+// wind (limited by the boom max). The sail's push on the lattice is built
+// from mainsail_force, so it gets the reduced force. The autopilot never
+// changes it.
+export const DEPOWER_RAMP_S = 0.5;
+export const DEPOWER_LUFF_CD = 0.15;
+const DEPOWER_STEP = (1 / 30) / DEPOWER_RAMP_S;
+
 export const PENALTY_TURN_RUDDER_MAX = 50;
 export const PENALTY_TURN_KP = 1.2;
 export const PENALTY_TURN_KD = 1.6;
@@ -141,6 +153,8 @@ export class Boat{
     this.power_direction = 0;
 
     this.autopilot_enabled = false;
+    this.depowered = false;
+    this.depower = 0;
     this.penalty_turn = null;
     this.autopilot_heading_target = 0;
     this.autopilot_heading_input = 0;
@@ -230,6 +244,10 @@ export class Boat{
     const tel = this.telemetry = {};
     tel.autopilot = this.autopilot_enabled;
     tel.headingTarget = this.autopilot_heading_target;
+    if (this.depowered || this.depower > 0) tel.depowered = this.depowered;
+    // One tick per pass: ramp toward the toggle state.
+    if (this.depowered) this.depower = Math.min(1, this.depower + DEPOWER_STEP);
+    else this.depower = Math.max(0, this.depower - DEPOWER_STEP);
     // calculate boat dynamics
 
 
@@ -515,6 +533,15 @@ export class Boat{
     );
     let c_drag = aero.drag;
     let c_lift = aero.lift;
+    if (this.depower > 0) {
+      const k = this.depower;
+      c_lift *= 1 - k;
+      c_drag += (DEPOWER_LUFF_CD - c_drag) * k;
+      // Drawn eased out: the booms swing to lie along the apparent wind.
+      const ease = (trim, max) => trim + (Math.max(-max, Math.min(max, this.awa)) - trim) * k;
+      this.mainsail_boom_angle = ease(this.mainsail_boom_angle, this.mainsail_boom_angle_max);
+      this.jib_boom_angle = ease(this.jib_boom_angle, this.jib_boom_angle_max);
+    }
 
     let sail_f_drag = {};
     let sail_f_lift = {};
@@ -973,6 +1000,10 @@ export class Boat{
 
   input_penalty_turn_cw(){
     this._startPenaltyTurn(-1)
+  }
+
+  input_depower_toggle(){
+    this.depowered = !this.depowered;
   }
 
   input_penalty_turn_ccw(){

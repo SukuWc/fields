@@ -29,6 +29,7 @@ export function flushInfo() {
 // the boat used to write them itself. A key the step did not reach is skipped.
 export function boatTelemetryHtml(t) {
   let h = '';
+  if (t.depowered) h += '<b>DEPOWERED</b><br>';
   if ('autopilot' in t) h += 'Autopilot' + t.autopilot + '<br>';
   if ('headingTarget' in t) h += 'Heading Target' + t.headingTarget + '<br>';
   if ('qd' in t) h += 'q/d: ' + t.qd + '°<br>';
