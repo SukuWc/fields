@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "vite",
-    "test": "node --import ./test/register.mjs test/no-dom.test.mjs && node --import ./test/register.mjs test/loop.test.mjs && node --import ./test/register.mjs test/amr.test.mjs && node --import ./test/register.mjs test/curl-mask.test.mjs && node --import ./test/register.mjs test/edge-transition.test.mjs && node --import ./test/register.mjs test/wind-stability.test.mjs && node --import ./test/register.mjs test/sim-res.test.mjs && node --import ./test/register.mjs test/budget.test.mjs && node --import ./test/register.mjs test/depower.test.mjs && node --import ./test/register.mjs test/host.test.mjs && node --import ./test/register.mjs test/worker.test.mjs",
+    "test": "node --import ./test/register.mjs test/no-dom.test.mjs && node --import ./test/register.mjs test/loop.test.mjs && node --import ./test/register.mjs test/amr.test.mjs && node --import ./test/register.mjs test/curl-mask.test.mjs && node --import ./test/register.mjs test/edge-transition.test.mjs && node --import ./test/register.mjs test/wind-stability.test.mjs && node --import ./test/register.mjs test/sim-res.test.mjs && node --import ./test/register.mjs test/budget.test.mjs && node --import ./test/register.mjs test/depower.test.mjs && node --import ./test/register.mjs test/awa-arrow.test.mjs && node --import ./test/register.mjs test/host.test.mjs && node --import ./test/register.mjs test/worker.test.mjs",
     "build": "vite build"
   },
   "repository": {
