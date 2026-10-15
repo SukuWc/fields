@@ -62,30 +62,28 @@ export const AUTOPILOT_SUM_DECAY = Math.pow(0.85, N);
 // Forces (applyForce accumulates until world.step) and impulses per tick.
 export const FORCE_PASSES = N;
 
-// Depower toggle (X key, touch "Depower"): the sails are eased fully out and
-// luff. `depower` ramps 0 → 1 (or back) over DEPOWER_RAMP_S so the forces do
-// not jump. At 1 the lift is zero and the drag is the flapping drag (the
-// table value at 0° angle of attack, DEPOWER_LUFF_CD); between, both blend
-// linearly. The booms swing from the trimmed angle to lie along the apparent
-// wind (limited by the boom max). The sail's push on the lattice is built
-// from mainsail_force, so it gets the reduced force. The autopilot never
-// changes it.
+// Depower toggle (X key, touch "Depower"): the sheets are eased fully. The
+// boom angle ramps (0 → 1 over DEPOWER_RAMP_S) from trim toward lying along
+// the apparent wind, limited by the boom max; lift and drag then come from
+// the real angle of attack via the tables (upwind: AoA → 0, the sail luffs;
+// dead downwind the boom is already at its limit, nothing changes). The
+// lattice push uses mainsail_force. The autopilot never changes it.
 export const DEPOWER_RAMP_S = 0.5;
-export const DEPOWER_LUFF_CD = 0.15;
 const DEPOWER_STEP = (1 / 30) / DEPOWER_RAMP_S;
 
 // Sail flapping (visual only). A luffing sail is drawn with a travelling
 // sine ripple: zero at the luff and leech, amplitude SAIL_FLAP_AMP_M (main) /
 // SAIL_FLAP_JIB_AMP_M (jib) × luff amount × min(1, AWS / SAIL_FLAP_AWS_REF),
-// at SAIL_FLAP_HZ. The luff amount is the depower ramp, or the main's angle
-// of attack under SAIL_FLAP_AOA_DEG (in irons / sheeted too far out). The
+// at SAIL_FLAP_HZ. The luff amount is 1 − AoA / SAIL_FLAP_AOA_DEG from the
+// main's actual angle of attack (1 at AoA 0, none from 12°), whatever the
+// cause (depowered, in irons, eased too far). The
 // phase counts graphics_model_render calls (one per 30 Hz tick), so the
 // animation is deterministic. Nothing here feeds back into the physics.
 export const SAIL_FLAP_HZ = 3;
 export const SAIL_FLAP_AMP_M = 0.12;
 export const SAIL_FLAP_JIB_AMP_M = 0.08;
 export const SAIL_FLAP_AWS_REF = 15;
-export const SAIL_FLAP_AOA_DEG = 10;
+export const SAIL_FLAP_AOA_DEG = 12;
 const SAIL_FLAP_POINTS = 9;
 
 // Sail polyline p[0..3] → segments. amp 0 draws the original three segments.
@@ -561,6 +559,17 @@ export class Boat{
     if (this.mainsail_boom_angle<-this.mainsail_boom_angle_max) this.mainsail_boom_angle = -this.mainsail_boom_angle_max;
 
 
+    // Depower eases the sheets: the booms swing from trim toward lying along
+    // the apparent wind, limited by the boom max. Forces come from the
+    // resulting angle of attack through the lift/drag tables, so dead
+    // downwind (boom already at its limit) nothing changes.
+    if (this.depower > 0) {
+      const k = this.depower;
+      const ease = (trim, max) => trim + (Math.max(-max, Math.min(max, this.awa)) - trim) * k;
+      this.mainsail_boom_angle = ease(this.mainsail_boom_angle, this.mainsail_boom_angle_max);
+      this.jib_boom_angle = ease(this.jib_boom_angle, this.jib_boom_angle_max);
+    }
+
     const aero = aeroCoefficients(
       Math.abs(this.mainsail_boom_angle - this.awa),
       this.aero_lift_lookup,
@@ -572,15 +581,6 @@ export class Boat{
     // Visual only (sail flapping): angle of attack and AWS of this step.
     this._sailAoaDeg = Math.abs(this.mainsail_boom_angle - this.awa);
     this._aws = aws;
-    if (this.depower > 0) {
-      const k = this.depower;
-      c_lift *= 1 - k;
-      c_drag += (DEPOWER_LUFF_CD - c_drag) * k;
-      // Drawn eased out: the booms swing to lie along the apparent wind.
-      const ease = (trim, max) => trim + (Math.max(-max, Math.min(max, this.awa)) - trim) * k;
-      this.mainsail_boom_angle = ease(this.mainsail_boom_angle, this.mainsail_boom_angle_max);
-      this.jib_boom_angle = ease(this.jib_boom_angle, this.jib_boom_angle_max);
-    }
 
     let sail_f_drag = {};
     let sail_f_lift = {};
@@ -821,7 +821,7 @@ export class Boat{
     // Sail flapping (visual): luff amount, amplitude scale and tick phase.
     this._flapTick = (this._flapTick || 0) + 1;
     const aoaLuff = Number.isFinite(this._sailAoaDeg) ? Math.max(0, 1 - this._sailAoaDeg / SAIL_FLAP_AOA_DEG) : 0;
-    const luff = Math.max(this.depower || 0, aoaLuff);
+    const luff = aoaLuff;
     const flapScale = luff * Math.min(1, (this._aws || 0) / SAIL_FLAP_AWS_REF);
     const flapPhase = 2 * Math.PI * SAIL_FLAP_HZ * this._flapTick / 30;
     this.sailFlap = flapScale;
