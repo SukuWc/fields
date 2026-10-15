@@ -1,0 +1,363 @@
+// The simulation, without DOM or three.js: the planck world and lattice (via
+// Map / Boltzmann), the boats, marks, course, start, finish, bots, boundary,
+// the rules state, and the scenario scripts. The client (main.js,
+// controls.js, renderer.js) drives it with step() and command(), listens to
+// its events, and reads its state or snapshot() to draw.
+//
+// One step() is one 30 Hz tick, run right after world.step(dt) (loop.js).
+// The order of work inside a step is the order of the old main.js simPass.
+import { SAIL_LATTICE_COUPLING } from './boat.js';
+import { trackBoats, resetTracking } from './domainTrack.js';
+import { Leaderboard } from './leaderboard.js';
+import { resetMarkTouches, recordMarkTouches } from './mark-touch.js';
+import {
+  beginRule15Step, createRulesState, evaluateAllPairs, penaltyAutopilotRemainingDeg,
+  penaltyJustCleared, penaltyManeuverText, penaltyManeuverView, pendingPenaltyCount,
+  pendingPenaltyReason, recordContacts, resetContacts, trueWindAngleDeg, useRulesState,
+} from './rules.js';
+import { markRoomTarget } from './course.js';
+import { buildScenarios } from './scenarios.js';
+
+// Scenario frame indexes count the old 90 Hz passes (3 per 30 Hz tick), so
+// the scripts keep their timing: one tick runs indexes f .. f+2 and the
+// counter advances by SCENARIO_FRAMES_PER_TICK.
+export const SCENARIO_FRAMES_PER_TICK = 3;
+
+// Simulation resolution modes (#simRes / ?simRes). Fast-wind options ("2f",
+// "2f34", "4f") use a coarse root cell but step it every frame (or 1.2× per
+// frame): stepsPerFrame is explicit, see Boltzmann._build.
+export const SIM_RES_MODES = {
+  '1': { resolution: 1 }, '2': { resolution: 0.5 }, '4': { resolution: 0.25 },
+  '2f': { resolution: 0.5, stepsPerFrame: 1 }, '2f34': { resolution: 0.5, stepsPerFrame: 1.2 },
+  // App default: 4 m root cell stepped once per 30 Hz tick (velScale 4, x4
+  // ring layout, 5 levels down to 1/8 m, matchedNu floored like 2f).
+  '4f': { resolution: 0.25, stepsPerFrame: 1 },
+};
+
+// Boat input commands, applied with sim.command() (one-shot) or passed to
+// step() (held: rudder and heading-target keys, applied once per tick).
+//   { type: 'helm', boat, dir: -1 (left) | +1 (right) }        held
+//   { type: 'headingTarget', boat, dir: +1 (increase) | -1 }    held
+//   { type: 'autopilot', boat }        toggle
+//   { type: 'tack', boat }             autopilot tack toggle
+//   { type: 'penaltyTurn', boat, dir: 'ccw' | 'cw' }
+//   { type: 'depower', boat }          depower toggle (sails eased, luffing)
+// Admin commands (sim.command()):
+//   { type: 'restart', scenario }      clear and load scenario N
+//   { type: 'wind', angle?, speed? }   UI wind (from-angle °, TWS)
+//   { type: 'devMode', on }            uniform wind, lattice frozen
+//   { type: 'barrier', on }
+//   { type: 'options', amr?, boatEnergy? }
+//   { type: 'simRes', mode }           SIM_RES_MODES key; returns true if the lattice was rebuilt
+//   { type: 'amrMode', mode }          'auto' | 'fixed'; returns true if the lattice was rebuilt
+const BOAT_ACTIONS = {
+  helm: (b, c) => (c.dir < 0 ? b.input_rudder_left() : b.input_rudder_right()),
+  headingTarget: (b, c) => (c.dir > 0 ? b.input_autopilot_heading_increase() : b.input_autopilot_heading_decrease()),
+  autopilot: (b) => b.input_autopilot_enabled_toggle(),
+  tack: (b) => b.input_autopilot_tack_toggle(),
+  penaltyTurn: (b, c) => (c.dir === 'cw' ? b.input_penalty_turn_cw() : b.input_penalty_turn_ccw()),
+  depower: (b) => b.input_depower_toggle(),
+};
+
+export class Sim {
+  // map: Map (map.js) with physics_model_init() done; bm: its Boltzmann.
+  constructor(map, { amr = true, boatEnergy = true } = {}) {
+    this.map = map;
+    this.bm = map.bm;
+    this.options = { amr, boatEnergy };
+    this.rules = createRulesState();
+    this.scenarios = buildScenarios(this);
+    this.scenarioIndex = null;
+    this.rulesTime = 0;
+    this.leaderboard = null;
+    this.ticks = 0;
+    this._listeners = [];
+    this.events = [];
+    this.last = null;
+    this._reset();
+  }
+
+  _reset() {
+    this.descriptor = {};
+    this.players = [];
+    // Race marks (buoys). Not boats: the rules engine only sees players.
+    this.marks = [];
+    // Active course (ordered marks + per-boat rounding progress), or null.
+    this.course = null;
+    this.startSequence = null;
+    this.raceResults = null;
+    this.raceBots = [];
+    // Scenario 19: virtual boundary (boundary.js) and its boat script.
+    this.boundary = null;
+    this.boundaryScript = null;
+    this.frame = 0;
+  }
+
+  // Events go to listeners synchronously (in-process client) and are kept in
+  // this.events until drainEvents() (a remote client, tests).
+  // { type: 'view', follow?, zoom? }   camera hint from a scenario script
+  // { type: 'bindControls' }           the scenario hands boats 0/1 to the keys
+  // { type: 'cleared' }                scenario cleared: drop key bindings
+  on(fn) { this._listeners.push(fn); }
+  emit(ev) {
+    this.events.push(ev);
+    for (const fn of this._listeners) fn(ev);
+  }
+  drainEvents() { const e = this.events; this.events = []; return e; }
+
+  // Make this Sim's rules state the one rules.js / mark-touch.js read.
+  activate() { useRulesState(this.rules); return this; }
+
+  clear() {
+    this.activate();
+    for (const p of this.players) p.physics_model_deinit();
+    for (const m of this.marks) m.physics_model_deinit();
+    this._reset();
+    resetContacts();
+    resetMarkTouches();
+    this.emit({ type: 'cleared' });
+  }
+
+  loadScenario(index) {
+    this.clear();
+    const scenario = this.scenarios[index];
+    this.scenarioIndex = Number(index);
+    this.descriptor = scenario && scenario.frames ? scenario.frames : {};
+    return scenario;
+  }
+
+  _boatCommand(c) {
+    const boat = this.players[c.boat];
+    const act = BOAT_ACTIONS[c.type];
+    if (boat && act) act(boat, c);
+  }
+
+  command(c) {
+    if (!c) return undefined;
+    if (BOAT_ACTIONS[c.type]) { this.activate(); this._boatCommand(c); return undefined; }
+    const map = this.map, bm = this.bm;
+    switch (c.type) {
+      case 'restart': return this.loadScenario(c.scenario);
+      case 'wind':
+        if (Number.isFinite(c.angle)) {
+          map.wind_direction = c.angle;
+          bm.direction = c.angle + 180;
+          map.constantWind.setAngle(c.angle);
+        }
+        if (Number.isFinite(c.speed)) {
+          map.wind_speed = c.speed;
+          if (bm.setWindSpeed) bm.setWindSpeed(c.speed); else bm.speed = c.speed / 100;
+          map.constantWind.setSpeed(c.speed);
+        }
+        return undefined;
+      case 'devMode': map.setDevMode(c.on); return undefined;
+      case 'barrier': bm.setBarriers(c.on); return undefined;
+      case 'options':
+        if ('amr' in c) this.options.amr = !!c.amr;
+        if ('boatEnergy' in c) this.options.boatEnergy = !!c.boatEnergy;
+        return undefined;
+      case 'simRes': {
+        const mode = SIM_RES_MODES[c.mode] || SIM_RES_MODES['1'];
+        const steps = mode.stepsPerFrame ?? mode.resolution;
+        if (mode.resolution === bm.resolution && steps === bm.stepsPerFrame) return false;
+        resetTracking(bm, this.players);
+        bm.setResolution(mode.resolution, mode.stepsPerFrame);
+        bm.setWindSpeed(map.wind_speed);
+        return true;
+      }
+      case 'amrMode': {
+        const mode = c.mode === 'auto' ? 'auto' : 'fixed';
+        if ((bm.amrMode || 'fixed') === mode) return false;
+        resetTracking(bm, this.players);
+        bm.amrMode = mode;
+        bm.setResolution(bm.resolution, bm.stepsPerFrame === bm.resolution ? undefined : bm.stepsPerFrame);
+        bm.setWindSpeed(map.wind_speed);
+        return true;
+      }
+      default: return undefined;
+    }
+  }
+
+  // Sail reaction → lattice momentum. See SAIL_LATTICE_COUPLING. A root cell
+  // holds cellSize² world units of fluid (ρ and lattice u keep their physical
+  // scale at every resolution, see Boltzmann.setResolution), so the same
+  // physical momentum per frame is SAIL_LATTICE_COUPLING × resolution² in
+  // lattice units. On a fast-wind grid lattice velocity is velScale × smaller
+  // per unit of physical wind: divide by it.
+  sailEfficiency() {
+    const bm = this.bm;
+    const e = SAIL_LATTICE_COUPLING * bm.resolution * bm.resolution;
+    return bm.velScale === undefined || bm.velScale === 1 ? e : e / bm.velScale;
+  }
+
+  // One tick. simDt: the world.step just taken (1/30 s), or undefined for an
+  // extra pass (?simPasses). held: array of held boat commands, or a function
+  // returning one; it is read after this tick's scenario frames, where the old
+  // loop read the keys. Returns a record of what the step saw, for the client
+  // readout (Sim.last).
+  step(simDt, held) {
+    this.activate();
+    const map = this.map, bm = this.bm;
+    const stepped = typeof simDt === 'number' && Number.isFinite(simDt) && simDt > 0;
+    if (stepped) this.rulesTime += simDt;
+    const rulesTime = this.rulesTime;
+    beginRule15Step(rulesTime);
+
+    const rec = { stepped, simDt, rulesTime, distSum: null, telemetryIndex: -1, physTimes: [], boats: [], resolutions: [], fieldSteps: 0 };
+
+    // Scenario frames f .. f+2 of this tick.
+    for (let f = this.frame; f < this.frame + SCENARIO_FRAMES_PER_TICK; f++) {
+      if (this.descriptor[f] !== undefined) {
+        console.log("Frame ", f);
+        this.descriptor[f]();
+      }
+    }
+    const inputs = typeof held === 'function' ? held() : held;
+    if (inputs) for (const c of inputs) this._boatCommand(c);
+
+    const players = this.players;
+    // Sum of pairwise distances, before the boats step (the old #dist_info).
+    let sum = 0;
+    for (let i = 0; i < players.length; i++) {
+      for (let j = i + 1; j < players.length; j++) {
+        const dx = players[i].x - players[j].x;
+        const dy = players[i].y - players[j].y;
+        sum += Math.sqrt(dx * dx + dy * dy);
+        rec.distSum = sum;
+      }
+    }
+
+    // Boats: forces, telemetry, sail energy into the lattice.
+    players.forEach((player, index) => {
+      player.physics_model_step();
+      if (player.telemetry) rec.telemetryIndex = index;
+      if (!map.devMode && this.options.boatEnergy) {
+        const eff = this.sailEfficiency();
+        for (const seg of player.getSailSegments()) {
+          bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * eff, seg.fy * eff);
+        }
+      }
+      rec.physTimes.push(bm.t_delta);
+    });
+
+    // Marks: anchor spring + damper once per world.step (planck clears
+    // forces after each step).
+    if (stepped) for (const mark of this.marks) mark.physics_model_step();
+
+    // Start sequence: the clock runs on sim time; each boat's OCS / start
+    // state is evaluated once per world step, before course progress.
+    const startSeq = this.startSequence;
+    if (startSeq && stepped) {
+      startSeq.step(simDt);
+      startSeq.update(players);
+    }
+    // Course: each boat's rounding counters advance once per world step.
+    const course = this.course;
+    if (course) {
+      for (const boat of players) {
+        const progress = course.progressFor(boat);
+        if (stepped) progress.update(boat.x, boat.y);
+      }
+    }
+    // Finish: bow crossings by boats with a complete course, on the race
+    // clock (time since the gun, or since the scenario start).
+    const results = this.raceResults;
+    const raceClock = startSeq ? startSeq.clock : (results ? results.relClock(rulesTime) : rulesTime);
+    rec.raceClock = raceClock;
+    if (course && course.finish && results && stepped) results.update(players, raceClock);
+    // Race bots (scenario 17): autopilot targets once per step.
+    const windFrom = map.wind_direction;
+    if (stepped) {
+      for (const bot of this.raceBots) bot.step(raceClock, windFrom, players, !!results && results.isFinished(bot.boat), results ? results.entries.length : 1);
+    }
+    // Live leaderboard for any course.
+    if (course) {
+      if (!this.leaderboard || this.leaderboard.course !== course) this.leaderboard = new Leaderboard(course, { startSequence: startSeq, results });
+      this.leaderboard.results = results;
+      if (stepped) this.leaderboard.update(players, raceClock, windFrom);
+    }
+
+    // Per-boat rules readout, read before this step's contacts are recorded
+    // (as the old readout did).
+    for (let i = 0; i < players.length; i++) {
+      const b = players[i];
+      const sample = map.get_wind(b.x, b.y);
+      const from = sample && Number.isFinite(sample.direction) ? sample.direction : null;
+      const pending = pendingPenaltyCount(b);
+      const steered = b.penalty_turn;
+      rec.boats.push({
+        twa: from === null ? null : trueWindAngleDeg(b.hull_angle, from),
+        tacking: !!b.tacking,
+        tackingOnto: b.tacking && b.tackingOnto ? b.tackingOnto : null,
+        pending,
+        justCleared: penaltyJustCleared(b),
+        penaltyTurn: steered ? { dir: steered.dir, remainingDeg: penaltyAutopilotRemainingDeg(b) } : null,
+        reason: pending > 0 ? pendingPenaltyReason(b) : null,
+        maneuvers: pending > 0 ? penaltyManeuverText(penaltyManeuverView(b)) : null,
+      });
+    }
+
+    const getWind = (x, y) => map.get_wind(x, y);
+    // Rule 18 asks the course which mark each boat is rounding.
+    const markFor = course ? (boat) => markRoomTarget(course, boat) : null;
+    // Virtual boundary (scenario 19 only): its script and crossing penalties.
+    const boundary = this.boundary;
+    if (boundary) {
+      if (stepped && this.boundaryScript) this.boundaryScript.step(rulesTime);
+      if (stepped) boundary.update(players, rulesTime);
+    }
+    rec.resolutions = evaluateAllPairs(players, getWind, rulesTime, { markFor, boundary });
+    recordContacts(rec.resolutions, rulesTime, players);
+    // Rule 31: boat-versus-mark touches. Racing from the preparatory signal
+    // when there is a start sequence, else always.
+    recordMarkTouches(players, this.marks, { simTime: rulesTime, racing: !startSeq || startSeq.racing });
+
+    // Refinement windows follow the boats (and curl islands). Tracking reads
+    // curl, which only changes on a lattice step, so it runs on stepping
+    // frames. Dev mode leaves the lattice frozen.
+    if (!map.devMode && this.options.amr && bm.stepsDueThisFrame() > 0) trackBoats(bm, players);
+    // AMR off: a restart that removed a boat would keep drawing a ring.
+    if (!map.devMode && !this.options.amr && bm.domains.length > players.length) {
+      bm.domains.length = players.length;
+      bm._rebuildInteriorCells();
+    }
+    if (!map.devMode) rec.fieldSteps = bm.advance_frame();
+
+    this.frame += SCENARIO_FRAMES_PER_TICK;
+    if (stepped) this.ticks++;
+    this.last = rec;
+    return rec;
+  }
+
+  // Plain-data state for a remote client, tests and replays (no planck or
+  // engine objects).
+  snapshot() {
+    this.activate();
+    const map = this.map;
+    const r = (v) => (Number.isFinite(v) ? v : null);
+    return {
+      tick: this.ticks,
+      scenario: this.scenarioIndex,
+      scenarioFrame: this.frame,
+      rulesTime: this.rulesTime,
+      devMode: map.devMode,
+      wind: { from: map.wind_direction, speed: map.wind_speed },
+      boats: this.players.map((b, i) => {
+        const v = b.physics_model.getLinearVelocity();
+        return {
+          x: r(b.x), y: r(b.y), heading: r(b.physics_model.getAngle()),
+          vx: r(v.x), vy: r(v.y),
+          autopilot: !!b.autopilot_enabled, headingTarget: b.autopilot_heading_target,
+          telemetry: b.telemetry ? { ...b.telemetry } : null,
+          rules: this.last && this.last.boats[i] ? { ...this.last.boats[i] } : null,
+          pendingPenalties: pendingPenaltyCount(b),
+        };
+      }),
+      marks: this.marks.map((m) => ({ x: r(m.x), y: r(m.y), name: m.markName || null })),
+      race: {
+        start: this.startSequence ? { clock: this.startSequence.clock, racing: !!this.startSequence.racing } : null,
+        leaderboard: this.leaderboard ? this.leaderboard.toData() : null,
+      },
+    };
+  }
+}
