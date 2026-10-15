@@ -539,7 +539,21 @@ export function startAnimation(map, getGuides) {
   renderer.setAnimationLoop(animation);
 }
 
-function animation() {
+// Rendering is capped at RENDER_FPS (the sim tick rate): frames from
+// setAnimationLoop that arrive early are skipped. renderStats counts drawn
+// frames for the headless 30 fps check.
+export const RENDER_FPS = 30;
+export const renderStats = { frames: 0 };
+if (typeof window !== 'undefined') window.__renderStats = renderStats;
+let _nextRenderT = 0;
+
+function animation(t) {
+  const period = 1000 / RENDER_FPS;
+  if (typeof t === 'number') {
+    if (t + 1 < _nextRenderT) return;
+    _nextRenderT = Math.max(_nextRenderT + period, t - period);
+  }
+  renderStats.frames++;
   camera.position.x = _map.camera_position_x;
   camera.position.y = _map.camera_position_y;
   camera.position.z = _map.camera_zoom;

@@ -24,8 +24,9 @@ const check = (name, cond, detail) => { if (!cond) failed++; console.log(`${cond
 {
 	H.setBudget('default');
 	const r = H.scenario0(1);
-	check('1 boat, default budget: unchanged (twa −49.4282 / bs 2.1290)',
-		Math.abs(r.twa + 49.4282) < 1e-4 && Math.abs(r.bs - 2.1290) < 1e-4,
+	check(// Fixed 30 FPS: −49.4282 / 2.1290 → −49.3048 / 2.8465.
+	'1 boat, default budget: unchanged (twa −49.3048 / bs 2.8465)',
+		Math.abs(r.twa + 49.3048) < 1e-4 && Math.abs(r.bs - 2.8465) < 1e-4,
 		`${r.twa.toFixed(4)} / ${r.bs.toFixed(4)}`);
 }
 
