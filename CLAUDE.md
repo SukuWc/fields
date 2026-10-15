@@ -24,6 +24,7 @@ This is an interactive web sailing simulator combining 2D fluid dynamics with 3D
 ```
 src/main.js           — Client entry: constants, texture setup, settings listeners, fixed-step loop (loop.js); talks to the sim only through a SimHost, applies each frame's readout/HUD/guides
 src/host.js           — SimHost interface; SimCore (Map + Boltzmann + Sim + painter, plain-data frames) and LocalHost (main thread)
+src/worker-host.js    — WorkerHost (?worker=1, ?workerQueue=N cap, 0 = never drop): same SimHost API, SimCore in src/sim.worker.js; field RGBA buffer transferred per lattice step and recycled (no SharedArrayBuffer: Pages has no COOP/COEP)
 src/present.js        — Host-side presentation: readout/HUD strings and guides (presentStep), body outlines, perf counters, all plain data
 src/sim.js            — Sim: the whole simulation without DOM/three (boats, marks, course, start, finish, bots, boundary, per-Sim rules state, scenarios); step(simDt, held), command(cmd), snapshot(), events
 src/scenarios.js      — Scenario scripts: buildScenarios(sim) (title, description, frames[] in 90 Hz units)
