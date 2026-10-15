@@ -4,7 +4,7 @@ import { FixedStepLoop } from './loop.js';
 import { initRenderer, startAnimation, getCamera, setFluidPlaneSize } from './renderer.js';
 import { setupControls, heldCommands } from './controls.js';
 import { LocalHost } from './host.js';
-import { WorkerHost } from './worker-host.js';
+import { WorkerHost, hostChoice } from './worker-host.js';
 import { View } from './view.js';
 import { installUrlSettings } from './url-settings.js';
 import { setInfo, flushInfo } from './info.js';
@@ -52,17 +52,35 @@ planeMat.needsUpdate = true;
 // client modules only send it commands and draw the plain frames it returns.
 // Root cell: the size's default simRes (map-size.js) unless ?simRes is set.
 const _simResKey = _query.get('simRes') || MAP_SIZES[mapSizeKey].simRes;
-// ?worker=1: the Sim runs in a Web Worker (worker-host.js); the default is
-// the main thread. ?workerQueue=N caps ticks waiting on the worker (0 = none).
+// The Sim runs in a Web Worker (worker-host.js) by default; ?worker=0 keeps
+// it on the main thread (LocalHost). Without Worker support, or if the
+// worker cannot be built or fails to start, the app falls back to LocalHost.
+// ?workerQueue=N caps ticks waiting on the worker (0 = none).
 const _hostOpts = {
   mapW: map_w, mapH: map_h, windAngle: wind_angle, windSpeed: wind_speed,
   simRes: _simResKey, texture: dataTextureMaterial, oversampling: texture_oversampling,
 };
-const _useWorker = _query.get('worker') === '1' && typeof Worker === 'function';
+// Only non-default values stay in the URL: a redundant ?worker=1 is dropped.
+const _hostChoice = hostChoice(location.search, typeof Worker === 'function');
+if (_hostChoice.dropParam) {
+  const q = new URLSearchParams(location.search);
+  q.delete('worker');
+  const qs = q.toString();
+  history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+}
+const _wantWorker = _hostChoice.worker;
 const _workerQueue = Number(_query.get('workerQueue'));
-const host = _useWorker
-  ? new WorkerHost(_hostOpts, dataTextureMaterial, { maxInFlight: Number.isInteger(_workerQueue) && _workerQueue >= 0 && _query.has('workerQueue') ? _workerQueue : 4 })
-  : new LocalHost(_hostOpts);
+function makeLocalHost() { return new LocalHost(_hostOpts); }
+let host = null;
+if (_wantWorker) {
+  try {
+    host = new WorkerHost(_hostOpts, dataTextureMaterial, { maxInFlight: Number.isInteger(_workerQueue) && _workerQueue >= 0 && _query.has('workerQueue') ? _workerQueue : 4 });
+  } catch (e) {
+    console.warn('sim worker unavailable, running on the main thread', e);
+    host = null;
+  }
+}
+if (!host) host = makeLocalHost();
 if (typeof window !== 'undefined') window.__simHost = host;
 // Command whose result the caller acts on: synchronous on the main-thread
 // host (as the old direct sim calls were), else when the host answers.
@@ -71,9 +89,16 @@ function hostCommand(c, then) {
   host.command(c).then((r) => { if (then) then(r); });
 }
 // The client starts once the host has its info: at once on the main thread,
-// after the worker's first message with ?worker=1.
+// after the worker's first message. A worker that errors before that is
+// dropped for a LocalHost (the client has not attached to it yet).
 if (host.kind === 'local') startClient();
-else host.ready.then(startClient, (e) => console.error('sim worker failed to start', e));
+else host.ready.then(startClient, (e) => {
+  console.warn('sim worker failed to start, running on the main thread', e && (e.message || e));
+  if (host.terminate) host.terminate();
+  host = makeLocalHost();
+  window.__simHost = host;
+  startClient();
+});
 
 function startClient() {
   // Camera and drawing toggles (view.js), client side.

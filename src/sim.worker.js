@@ -1,4 +1,4 @@
-// Web Worker side of WorkerHost (worker-host.js, ?worker=1): runs a SimCore
+// Web Worker side of WorkerHost (worker-host.js, the default host): runs a SimCore
 // (host.js) off the main thread and answers the client in plain messages.
 //
 // Client → worker

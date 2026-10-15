@@ -1,4 +1,4 @@
-// WorkerHost (?worker=1): the SimHost interface (host.js) with the SimCore in
+// WorkerHost (the default; ?worker=0 = LocalHost): the SimHost interface (host.js) with the SimCore in
 // a Web Worker (sim.worker.js). Same calls as LocalHost, but everything is
 // asynchronous: frames arrive by message a little after the tick that asked
 // for them, and held keys are read when the tick is sent.
@@ -105,6 +105,17 @@ export class WorkerHost {
     return true;
   }
 
+  terminate() { this.worker.terminate(); }
+
   // Resolves once every sent tick has come back (tests).
   idle() { return this.inFlight === 0 ? Promise.resolve() : new Promise((r) => this._idle.push(r)); }
+}
+
+// Host choice from the query string: the worker unless ?worker=0, and only
+// where Worker exists. Returns { worker, dropParam } (dropParam: the URL
+// carries the default ?worker=1, which should not stay there).
+export function hostChoice(search, hasWorker) {
+  const q = new URLSearchParams(search);
+  const v = q.get('worker');
+  return { worker: v !== '0' && !!hasWorker, dropParam: v === '1' };
 }

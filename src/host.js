@@ -5,7 +5,7 @@
 // texture), and Sim events. It never holds Sim, Map, planck or Boltzmann
 // objects, so the same client runs against
 //   LocalHost   (this file): the Sim on the main thread, frames synchronous;
-//   WorkerHost  (worker-host.js, ?worker=1): the Sim in a Web Worker;
+//   WorkerHost  (worker-host.js, the default; ?worker=0 = LocalHost): the Sim in a Web Worker;
 //   RemoteHost  (phase 5): a server over a socket.
 //
 // SimHost interface (every host):

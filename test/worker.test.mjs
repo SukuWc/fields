@@ -2,6 +2,7 @@
 // worker's frames match a LocalHost step for step, everything it posts is
 // structured-cloneable, and field buffers are handed over and recycled.
 import { LocalHost } from '../src/host.js';
+import { hostChoice } from '../src/worker-host.js';
 
 let failed = 0;
 const check = (name, ok, extra = '') => { console.log((ok ? 'PASS  ' : 'FAIL  ') + name + (extra ? '  ' + extra : '')); if (!ok) failed++; };
@@ -47,5 +48,10 @@ check('query answers by id', q && Number.isFinite(q.m.r.x));
 send({ type: 'command', id: 3, c: { type: 'simRes', mode: '2' } });
 const r = msgs.find((x) => x.m.type === 'result' && x.m.id === 3);
 check('simRes command result is plain { rebuilt, lattice }', r && r.m.r.rebuilt === true && r.m.r.lattice.w >= 100);
+const hc = (q, w = true) => JSON.stringify(hostChoice(q, w));
+check('host choice: worker by default', hc('') === '{"worker":true,"dropParam":false}');
+check('host choice: ?worker=0 forces main thread', hc('?worker=0') === '{"worker":false,"dropParam":false}');
+check('host choice: ?worker=1 is the default and is dropped from the URL', hc('?worker=1&scenario_selector=3') === '{"worker":true,"dropParam":true}');
+check('host choice: no Worker support falls back to main thread', hc('', false) === '{"worker":false,"dropParam":false}');
 if (failed) { console.log(failed + ' FAILED'); process.exit(1); }
 console.log('all worker checks passed');
