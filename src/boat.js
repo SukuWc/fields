@@ -632,7 +632,7 @@ export class Boat{
     resetPenaltyManeuvers(this);
   }
   
-  graphics_model_render(){
+  graphics_model_render(view){
 
     let graphics = []
 
@@ -848,7 +848,7 @@ export class Boat{
     })
 
     
-    if (this.map.show_fields){
+    if (view && view.show_fields){
 
       const wind_indicator_size = 10
       for(let i = -wind_indicator_size; i<wind_indicator_size; i++ ){

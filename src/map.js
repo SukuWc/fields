@@ -27,25 +27,7 @@ export class Map{
 		this.wind_direction = direction;  
 		this.wind_speed = speed;
 	
-		this.show_forces = false;
-		this.show_fields = false;
-	
-		this.camera_follow_target = undefined;
-		this.camera_follow = false;
-		this.camera_zoom = 30;
-		this.camera_zoom_max = 70;
-		this.camera_zoom_min = 10;
-		
-		this.camera_position_x = 0;
-		this.camera_position_y = 0;
-	
-		this.camera_position_x_max = 30;
-		this.camera_position_x_min = -30;
-	
-		this.camera_position_y_max = 30;
-		this.camera_position_y_min = -30;
-	
-
+		// Camera and view flags live in the client's View (view.js).
 	}
 	
 	physics_model_init(){
@@ -96,61 +78,4 @@ export class Map{
 		this.devMode = !!enabled
 		this.wind = this.devMode ? this.constantWind : this.fluidWind
 	}
-	
-	set_camera_follow_target(obj){
-	
-		this.camera_follow_target = obj;
-	}
-	
-	physics_model_step(){
-		if (this.camera_follow === true && this.camera_follow_target !== undefined){
-	
-		this.camera_position_x = this.camera_follow_target.x
-		this.camera_position_y = this.camera_follow_target.y
-	
-		if (this.camera_position_x>this.camera_position_x_max) {this.camera_position_x = this.camera_position_x_max}
-		if (this.camera_position_y>this.camera_position_y_max) {this.camera_position_y = this.camera_position_y_max}
-		if (this.camera_position_x<this.camera_position_x_min) {this.camera_position_x = this.camera_position_x_min}
-		if (this.camera_position_y<this.camera_position_y_min) {this.camera_position_y = this.camera_position_y_min}
-	
-		}
-	}
-	
-	input_show_fields(e){
-		this.show_fields = e;
-	}
-	
-	input_show_forces(e){
-		this.show_forces = e;
-	}
-	
-	input_camera_follow(e){
-	
-		this.camera_follow = e;
-	
-	}  
-	
-	input_camera_zoom_relative(e){
-	
-		// Steps grow with the distance above 30 so zooming out over a
-		// 400 m map takes a few presses; at zoom ≤ 30 a step is unchanged.
-		this.camera_zoom += e * Math.max(1, (this.camera_zoom - 15) / 15);
-	
-		if (this.camera_zoom>this.camera_zoom_max) {this.camera_zoom = this.camera_zoom_max}
-		if (this.camera_zoom<this.camera_zoom_min) {this.camera_zoom = this.camera_zoom_min}
-	
-	}
-	
-	input_camera_move_relative(dx, dy){
-	
-		this.camera_position_x += dx
-		this.camera_position_y += dy
-	
-		if (this.camera_position_x>this.camera_position_x_max) {this.camera_position_x = this.camera_position_x_max}
-		if (this.camera_position_y>this.camera_position_y_max) {this.camera_position_y = this.camera_position_y_max}
-		if (this.camera_position_x<this.camera_position_x_min) {this.camera_position_x = this.camera_position_x_min}
-		if (this.camera_position_y<this.camera_position_y_min) {this.camera_position_y = this.camera_position_y_min}
-	
-	}
-	
 }

@@ -62,7 +62,7 @@ export function amrMode() { return AMR_MODE; }
 // engine default; 'default' = the app's per-grid target).
 let BUDGET = Infinity;
 export function setBudget(n) { BUDGET = n; }
-// Scenario 18 start positions (controls.js FLEET4), starboard close-hauled.
+// Scenario 18 start positions (scenarios.js FLEET4), starboard close-hauled.
 export const FLEET4 = [[14, -6], [24, -6], [19, -14], [29, -14]]
 	.map(([x, y]) => [x, y, 5 * Math.PI / 4]);
 export function setAmrMode(m) { AMR_MODE = m; }

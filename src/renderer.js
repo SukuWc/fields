@@ -3,6 +3,7 @@ import * as THREE from 'three';
 let camera, scene, renderer, fluidPlane;
 let _planeBase = null;
 let _map, _getGuides;
+let _view;
 
 const fpsEl = document.getElementById('fps');
 let fpsLastTime = performance.now();
@@ -490,10 +491,10 @@ function resizeRenderer() {
   renderer.setSize(width, height, false);
 }
 
-export function initRenderer(map, planeMat) {
+export function initRenderer(map, planeMat, view) {
   // Far plane: 85 covered zoom 70 on the 75 m map; bigger maps zoom out
   // further (map-size.js cameraLimits), so it follows the zoom limit.
-  camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, Math.max(85, (map.camera_zoom_max || 70) + 15));
+  camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, Math.max(85, (view.camera_zoom_max || 70) + 15));
   camera.position.z = 60;
   camera.position.y = 20;
   scene = new THREE.Scene();
@@ -532,8 +533,9 @@ export function getCamera() {
   return camera;
 }
 
-export function startAnimation(map, getGuides) {
+export function startAnimation(map, view, getGuides) {
   _map = map;
+  _view = view;
   _getGuides = getGuides;
   if (fluidPlane) fluidPlane.visible = !map.devMode;
   renderer.setAnimationLoop(animation);
@@ -554,9 +556,9 @@ function animation(t) {
     _nextRenderT = Math.max(_nextRenderT + period, t - period);
   }
   renderStats.frames++;
-  camera.position.x = _map.camera_position_x;
-  camera.position.y = _map.camera_position_y;
-  camera.position.z = _map.camera_zoom;
+  camera.position.x = _view.camera_position_x;
+  camera.position.y = _view.camera_position_y;
+  camera.position.z = _view.camera_zoom;
   if (fluidPlane) fluidPlane.visible = !_map.devMode;
 
   // Update persistent fixture lines — create/remove only when fixture set changes
@@ -613,7 +615,7 @@ function animation(t) {
       continue;
     }
     if (r.type === 'rule') updateRuleRibbon(ruleRibbon(ruleIdx++), r);
-    if (_map.show_forces === false && r.type === 'force') continue;
+    if (_view.show_forces === false && r.type === 'force') continue;
 
     if (poolIdx >= guidePool.length) {
       const geo = new THREE.BufferGeometry();
