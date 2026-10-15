@@ -29,7 +29,7 @@
 // reason text: course marks "mark n", gate marks "gate n", start-line ends
 // "RC" and "pin"; anything else is "mark".
 
-import { chargePendingPenalty, hullVerticesWorld, isMarkRoomEntitled } from './rules.js';
+import { activeRulesState, chargePendingPenalty, hullVerticesWorld, isMarkRoomEntitled } from './rules.js';
 import { isGate } from './course.js';
 
 export const MARK_TOUCH_M = 0.02;
@@ -37,20 +37,21 @@ export const MARK_TOUCH_REARM_M = 0.25;
 export const MARK_TOUCH_FLASH_MS = 1000;
 export const MARK_TOUCH_COLOR = 0xff3b30;
 
-const latch = new Map(); // boat -> Map(mark -> true)
-const touches = [];
-const flashes = []; // { mark, startedAtMs }
+// Touch state is per simulation: it lives in the active rules state
+// (rules.js createRulesState().markTouch).
+const T = () => activeRulesState().markTouch;
+
 
 export function resetMarkTouches() {
-  latch.clear();
-  touches.length = 0;
-  flashes.length = 0;
+  T().latch.clear();
+  T().touches.length = 0;
+  T().flashes.length = 0;
 }
 
 // Every rule 31 touch recorded so far: { time, rule: '31', boat, mark,
 // markName, reason, x, y }.
 export function getMarkTouches() {
-  return touches;
+  return T().touches;
 }
 
 export function nameMarks(course, seq) {
@@ -128,15 +129,15 @@ export function recordMarkTouches(boats, marks, opts = {}) {
   const charged = [];
   for (const boat of boats || []) {
     if (!boat) continue;
-    let m = latch.get(boat);
-    if (!m) { m = new Map(); latch.set(boat, m); }
+    let m = T().latch.get(boat);
+    if (!m) { m = new Map(); T().latch.set(boat, m); }
     for (const mark of marks || []) {
       const gap = hullMarkClearance(boat, mark);
       const touching = gap <= MARK_TOUCH_M || planckTouching(boat, mark);
       const latched = m.get(mark) === true;
       if (touching && !latched) {
         m.set(mark, true);
-        flashes.push({ mark, startedAtMs: now });
+        T().flashes.push({ mark, startedAtMs: now });
         if (racing) {
           const c = markCentre(mark);
           const name = mark.markName || 'mark';
@@ -157,9 +158,9 @@ export function recordMarkTouches(boats, marks, opts = {}) {
           if (exonerate(boat)) {
             t.exonerated = true;
             t.reason += ' (exonerated, rule 21: mark-room)';
-            touches.push(t);
+            T().touches.push(t);
           } else {
-            touches.push(t);
+            T().touches.push(t);
             chargePendingPenalty(boat, t);
             charged.push(t);
           }
@@ -176,10 +177,10 @@ export function recordMarkTouches(boats, marks, opts = {}) {
 export function markTouchGuides(nowMs) {
   const now = typeof nowMs === 'number' ? nowMs : performance.now();
   const g = [];
-  for (let i = flashes.length - 1; i >= 0; i--) {
-    const f = flashes[i];
+  for (let i = T().flashes.length - 1; i >= 0; i--) {
+    const f = T().flashes[i];
     const age = now - f.startedAtMs;
-    if (age > MARK_TOUCH_FLASH_MS || age < 0) { flashes.splice(i, 1); continue; }
+    if (age > MARK_TOUCH_FLASH_MS || age < 0) { T().flashes.splice(i, 1); continue; }
     const c = markCentre(f.mark);
     const r = (f.mark.radius || 0.5) + 0.25;
     const opacity = 1 - 0.6 * (age / MARK_TOUCH_FLASH_MS);

@@ -717,20 +717,51 @@ function obligationOverlay(obligation) {
   ];
 }
 
-// Identity for pair memory. Live boats are keyed in a WeakMap. A what-if
-// snapshot carries the same number on `id` plus `_ruleHull`, and does not
-// keep the boat object alive.
-const boatIds = new WeakMap();
-let nextBoatId = 1;
-const pairMemory = new Map();
+// Per-simulation rules state. Every container the rules engine keeps between
+// steps lives here, so two Sim instances (sim.js) never share pair memory,
+// contacts or penalties. The functions below read the active state R; a Sim
+// makes its own state active with useRulesState() before it steps or is read.
+export function createRulesState() {
+  return {
+    // Identity for pair memory. Live boats are keyed in a WeakMap. A what-if
+    // snapshot carries the same number on `id` plus `_ruleHull`, and does not
+    // keep the boat object alive.
+    boatIds: new WeakMap(),
+    nextBoatId: 1,
+    pairMemory: new Map(),
+    markRoomEntitled: new Set(),
+    contactLatch: new Map(),
+    incidents: [],
+    contactFlashes: [],
+    pendingPenalties: new Map(),
+    penaltyManeuvers: new Map(),
+    // Boats that have finished (finish.js). chargePendingPenalty ignores them.
+    finishedBoats: new Set(),
+    penaltyCleared: [],
+    // Rule 31 mark touches (mark-touch.js): boat -> Map(mark -> true), the
+    // recorded touches, and the red flashes { mark, startedAtMs }.
+    markTouch: { latch: new Map(), touches: [], flashes: [] },
+  };
+}
+let R = createRulesState();
+// Make `state` the active rules state; returns the previous one.
+export function useRulesState(state) {
+  const prev = R;
+  R = state;
+  return prev;
+}
+export function activeRulesState() {
+  return R;
+}
+
 
 function boatId(boat) {
   if (!boat) return 0;
   if (Number.isInteger(boat.id) && Array.isArray(boat._ruleHull)) return boat.id;
-  let id = boatIds.get(boat);
+  let id = R.boatIds.get(boat);
   if (!id) {
-    id = nextBoatId++;
-    boatIds.set(boat, id);
+    id = R.nextBoatId++;
+    R.boatIds.set(boat, id);
   }
   return id;
 }
@@ -933,12 +964,11 @@ function hullDistanceTo(boat, p) {
   return d;
 }
 
-const markRoomEntitled = new Set();
 
 // True while `boat` holds a live Rule 18.2 entitlement in some pair (updated
 // by evaluateAllPairs). mark-touch.js exonerates her rule 31 touches then.
 export function isMarkRoomEntitled(boat) {
-  return markRoomEntitled.has(boat);
+  return R.markRoomEntitled.has(boat);
 }
 
 // Rule 18 for one pair; state is the pair's '18' slot. See the header.
@@ -1380,10 +1410,10 @@ function guidesFor(resolution) {
 }
 
 function pairSlot(key) {
-  let slot = pairMemory.get(key);
+  let slot = R.pairMemory.get(key);
   if (!slot) {
     slot = { states: {} };
-    pairMemory.set(key, slot);
+    R.pairMemory.set(key, slot);
   }
   if (!slot.states) slot.states = {};
   return slot;
@@ -1435,27 +1465,27 @@ function rule15Clock(slot) {
 // leaving). Called once per rules update, before the pair loop.
 export function beginRule15Step(simTime) {
   if (typeof simTime !== 'number' || !Number.isFinite(simTime)) return;
-  for (const [key, slot] of pairMemory) {
+  for (const [key, slot] of R.pairMemory) {
     const seenAt = rule15Clock(slot);
     if (seenAt === null) continue;
-    if (simTime - seenAt > SIM_STEP_S + 1e-4) pairMemory.delete(key);
+    if (simTime - seenAt > SIM_STEP_S + 1e-4) R.pairMemory.delete(key);
   }
 }
 
 export function resetRule15Memory() {
-  pairMemory.clear();
+  R.pairMemory.clear();
 }
 
 // How many pairs still hold state. Headless checks use this for leaks.
 export function pairStateCount() {
-  return pairMemory.size;
+  return R.pairMemory.size;
 }
 
 // The evaluator state object for one pair, or null when that pair has none.
 // Reading it does not create a slot.
 export function pairRuleState(boatA, boatB, ruleId) {
   if (!boatA || !boatB) return null;
-  const slot = pairMemory.get(pairKey(boatA, boatB));
+  const slot = R.pairMemory.get(pairKey(boatA, boatB));
   if (!slot || !slot.states) return null;
   return slot.states[ruleId] || null;
 }
@@ -1468,7 +1498,7 @@ export function evaluateAllPairs(boats, getWind, simTime, opts) {
   const list = boats || [];
   const markFor = opts && typeof opts.markFor === 'function' ? opts.markFor : null;
   const boundary = opts && opts.boundary ? opts.boundary : null;
-  markRoomEntitled.clear();
+  R.markRoomEntitled.clear();
   const live = new Set();
   for (let i = 0; i < list.length; i++) {
     if (list[i]) live.add(boatId(list[i]));
@@ -1490,16 +1520,16 @@ export function evaluateAllPairs(boats, getWind, simTime, opts) {
       resolution.pairKey = key;
       resolution.boundaryRoom = resolution.applicable.find((r) => r.id === 'BR') || null;
       resolution.markRoom = resolution.applicable.find((r) => r.id === '18') || null;
-      if (resolution.markRoom) markRoomEntitled.add(resolution.markRoom.rightOfWay);
+      if (resolution.markRoom) R.markRoomEntitled.add(resolution.markRoom.rightOfWay);
       resolutions.push(resolution);
     }
   }
 
-  for (const [key] of pairMemory) {
+  for (const [key] of R.pairMemory) {
     const parts = key.split(':');
     const ia = Number(parts[0]);
     const ib = Number(parts[1]);
-    if (!live.has(ia) || !live.has(ib) || !seen.has(key)) pairMemory.delete(key);
+    if (!live.has(ia) || !live.has(ib) || !seen.has(key)) R.pairMemory.delete(key);
   }
   return resolutions;
 }
@@ -1527,9 +1557,6 @@ const CONTACT_TOUCH_M = 0.02;
 const CONTACT_REARM_M = 0.25;
 const CONTACT_FLASH_MS = 700;
 
-const contactLatch = new Map();
-const incidents = [];
-const contactFlashes = [];
 
 function segmentHit(a, b, c, d) {
   const den = (a.x - b.x) * (c.y - d.y) - (a.y - b.y) * (c.x - d.x);
@@ -1611,22 +1638,22 @@ function boatsTouching(boatA, boatB, clearance) {
 }
 
 export function getIncidents() {
-  return incidents;
+  return R.incidents;
 }
 
 export function resetContacts() {
-  contactLatch.clear();
-  incidents.length = 0;
-  contactFlashes.length = 0;
-  pendingPenalties.clear();
-  penaltyManeuvers.clear();
-  penaltyCleared.length = 0;
-  finishedBoats.clear();
+  R.contactLatch.clear();
+  R.incidents.length = 0;
+  R.contactFlashes.length = 0;
+  R.pendingPenalties.clear();
+  R.penaltyManeuvers.clear();
+  R.penaltyCleared.length = 0;
+  R.finishedBoats.clear();
 }
 
 function pruneContactVisuals(boats, now) {
-  for (let i = contactFlashes.length - 1; i >= 0; i--) {
-    if (now - contactFlashes[i].startedAtMs > CONTACT_FLASH_MS) contactFlashes.splice(i, 1);
+  for (let i = R.contactFlashes.length - 1; i >= 0; i--) {
+    if (now - R.contactFlashes[i].startedAtMs > CONTACT_FLASH_MS) R.contactFlashes.splice(i, 1);
   }
 }
 
@@ -1645,9 +1672,9 @@ export function recordContacts(resolutions, simTime, boats) {
     seen.add(resolution.pairKey);
     const point = boatsTouching(resolution.boatA, resolution.boatB, resolution.clearance);
     const touching = !!point;
-    const latched = contactLatch.get(resolution.pairKey) === true;
+    const latched = R.contactLatch.get(resolution.pairKey) === true;
     if (touching && !latched) {
-      contactLatch.set(resolution.pairKey, true);
+      R.contactLatch.set(resolution.pairKey, true);
       if (resolution.faultBoat && resolution.final) {
         const inhibited = [];
         const blocked = resolution.inhibited || [];
@@ -1677,29 +1704,29 @@ export function recordContacts(resolutions, simTime, boats) {
           incident.reason = 'Boundary room: did not give room';
           incident.label = 'Boundary room';
         }
-        incidents.push(incident);
-        contactFlashes.push({ x: point.x, y: point.y, startedAtMs: now });
+        R.incidents.push(incident);
+        R.contactFlashes.push({ x: point.x, y: point.y, startedAtMs: now });
         chargePendingPenalty(resolution.faultBoat, incident);
       }
     } else if (!touching && resolution.clearance > CONTACT_REARM_M) {
-      contactLatch.set(resolution.pairKey, false);
+      R.contactLatch.set(resolution.pairKey, false);
     } else if (touching) {
-      contactLatch.set(resolution.pairKey, true);
+      R.contactLatch.set(resolution.pairKey, true);
     }
   }
   const stale = [];
-  for (const key of contactLatch.keys()) {
+  for (const key of R.contactLatch.keys()) {
     if (!seen.has(key)) stale.push(key);
   }
-  for (let i = 0; i < stale.length; i++) contactLatch.delete(stale[i]);
+  for (let i = 0; i < stale.length; i++) R.contactLatch.delete(stale[i]);
   pruneContactVisuals(boats, now);
 }
 
 export function contactGuides(nowMs) {
   const now = typeof nowMs === 'number' ? nowMs : performance.now();
   const guides = [];
-  for (let i = 0; i < contactFlashes.length; i++) {
-    const flash = contactFlashes[i];
+  for (let i = 0; i < R.contactFlashes.length; i++) {
+    const flash = R.contactFlashes[i];
     const age = now - flash.startedAtMs;
     if (age < 0 || age > CONTACT_FLASH_MS) continue;
     const t = age / CONTACT_FLASH_MS;
@@ -1753,26 +1780,20 @@ export const PENALTY_MANEUVER_HYST_DEG = 10;
 export const PENALTY_CLEARED_MS = 2200;
 const PENALTY_RING_R = 3.15;
 
-const pendingPenalties = new Map();
-const penaltyManeuvers = new Map();
-// Boats that have finished (finish.js). chargePendingPenalty ignores them:
-// penalties incurred after finishing do not apply.
-const finishedBoats = new Set();
-
 // Mark a boat finished and hand back her unserved pending penalties (oldest
 // first, each { time, incident }); her queue is emptied, so the FAULT badge
 // goes and finish.js converts them (time penalty or DSQ).
 export function finishBoatPenalties(boat) {
   if (!boat) return [];
-  finishedBoats.add(boat);
-  const queue = pendingPenalties.get(boat) || [];
-  pendingPenalties.delete(boat);
-  penaltyManeuvers.delete(boat);
+  R.finishedBoats.add(boat);
+  const queue = R.pendingPenalties.get(boat) || [];
+  R.pendingPenalties.delete(boat);
+  R.penaltyManeuvers.delete(boat);
   return queue.slice();
 }
 
 export function hasFinished(boat) {
-  return finishedBoats.has(boat);
+  return R.finishedBoats.has(boat);
 }
 
 // Short rule name of a penalty incident: 'Rule 31', 'Rule 18.2', 'Rule 10'.
@@ -1785,15 +1806,14 @@ export function penaltyRuleName(incident) {
   if (incident.finalId) return 'Rule ' + incident.finalId;
   return incident.finalRule && incident.finalRule !== 'penalty' ? String(incident.finalRule) : 'penalty';
 }
-const penaltyCleared = [];
 
 function maneuverTracker(boat) {
-  let tracker = penaltyManeuvers.get(boat);
+  let tracker = R.penaltyManeuvers.get(boat);
   if (!tracker) {
     // side: settled TWA sign (0 until the first settled sample).
     // first: the candidate { kind: 'tack' | 'gybe', dir: +1 CCW | −1 CW, age }.
     tracker = { side: 0, lastTwa: 0, first: null };
-    penaltyManeuvers.set(boat, tracker);
+    R.penaltyManeuvers.set(boat, tracker);
   }
   return tracker;
 }
@@ -1833,7 +1853,7 @@ function maneuverView(tracker) {
 // { first: 'tack' | 'gybe' | null, dir, remainingS }. `first` is the
 // candidate waiting for the other maneuver.
 export function penaltyManeuverView(boat) {
-  return maneuverView(penaltyManeuvers.get(boat));
+  return maneuverView(R.penaltyManeuvers.get(boat));
 }
 
 // "Tack ✓ · Gybe … 7.2s", or null when no candidate is waiting.
@@ -1845,22 +1865,22 @@ export function penaltyManeuverText(view) {
 }
 
 export function pendingPenaltyCount(boat) {
-  const queue = pendingPenalties.get(boat);
+  const queue = R.pendingPenalties.get(boat);
   return queue ? queue.length : 0;
 }
 
 // Oldest first. Each entry is { time, incident }.
 export function pendingPenaltiesOf(boat) {
-  const queue = pendingPenalties.get(boat);
+  const queue = R.pendingPenalties.get(boat);
   return queue ? queue.slice() : [];
 }
 
 function clearOldestPending(boat, now) {
-  const queue = pendingPenalties.get(boat);
+  const queue = R.pendingPenalties.get(boat);
   if (!queue || !queue.length) return null;
   const cleared = queue.shift();
-  if (!queue.length) pendingPenalties.delete(boat);
-  penaltyCleared.push({ boat, startedAtMs: now });
+  if (!queue.length) R.pendingPenalties.delete(boat);
+  R.penaltyCleared.push({ boat, startedAtMs: now });
   return cleared;
 }
 
@@ -1869,12 +1889,12 @@ function clearOldestPending(boat, now) {
 export function chargePendingPenalty(boat, incident) {
   if (!boat || !incident) return;
   // A finished boat is no longer racing (finish.js): nothing more accrues.
-  if (finishedBoats.has(boat)) return;
-  let queue = pendingPenalties.get(boat);
+  if (R.finishedBoats.has(boat)) return;
+  let queue = R.pendingPenalties.get(boat);
   const wasEmpty = !queue || queue.length === 0;
   if (!queue) {
     queue = [];
-    pendingPenalties.set(boat, queue);
+    R.pendingPenalties.set(boat, queue);
   }
   queue.push({ time: incident.time, incident });
   if (wasEmpty) resetPenaltyManeuvers(boat);
@@ -2006,14 +2026,14 @@ export function markRoomGuides(resolutions, boats) {
 // one (mark touches: "FAULT · Rule 31 · touched mark 2").
 export function faultBadgeText(boat, count = pendingPenaltyCount(boat)) {
   const base = count > 1 ? 'FAULT x' + count : 'FAULT';
-  const queue = pendingPenalties.get(boat);
+  const queue = R.pendingPenalties.get(boat);
   const oldest = queue && queue[0] && queue[0].incident;
   return oldest && oldest.label ? base + ' · ' + oldest.label : base;
 }
 
 // Reason of the oldest pending penalty ("Rule 31: touched mark 2"), or null.
 export function pendingPenaltyReason(boat) {
-  const queue = pendingPenalties.get(boat);
+  const queue = R.pendingPenalties.get(boat);
   const oldest = queue && queue[0] && queue[0].incident;
   return oldest && oldest.reason ? oldest.reason : null;
 }
@@ -2077,11 +2097,11 @@ export function penaltyGuides(boats, nowMs) {
     });
   }
 
-  for (let i = penaltyCleared.length - 1; i >= 0; i--) {
-    const flash = penaltyCleared[i];
+  for (let i = R.penaltyCleared.length - 1; i >= 0; i--) {
+    const flash = R.penaltyCleared[i];
     const age = now - flash.startedAtMs;
     if (age < 0 || age > PENALTY_CLEARED_MS || !live.has(flash.boat)) {
-      penaltyCleared.splice(i, 1);
+      R.penaltyCleared.splice(i, 1);
       continue;
     }
     const boat = flash.boat;
@@ -2101,8 +2121,8 @@ export function penaltyGuides(boats, nowMs) {
 export function penaltyJustCleared(boat, nowMs) {
   if (!boat) return false;
   const now = typeof nowMs === 'number' ? nowMs : performance.now();
-  for (let i = 0; i < penaltyCleared.length; i++) {
-    const flash = penaltyCleared[i];
+  for (let i = 0; i < R.penaltyCleared.length; i++) {
+    const flash = R.penaltyCleared[i];
     if (flash.boat !== boat) continue;
     const age = now - flash.startedAtMs;
     if (age >= 0 && age <= PENALTY_CLEARED_MS) return true;
