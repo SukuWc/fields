@@ -32,6 +32,7 @@ Last updated: 2026-10-15
 - [x] Rules state per simulation (sim/client split, phase 3a): [#52](https://github.com/SukuWc/fields/pull/52)
 - [x] Sim class: scenarios, race state, commands, snapshot (sim/client split, phase 3b): [#53](https://github.com/SukuWc/fields/pull/53)
 - [ ] SimHost interface + LocalHost (sim/client split, phase 4a) (in progress, [#56](https://github.com/SukuWc/fields/pull/56))
+- [ ] Optional Web Worker sim host (`?worker=1`) with transferred field buffers (sim/client split, phase 4b) (in progress, [#57](https://github.com/SukuWc/fields/pull/57))
 - [ ] Run `npm test` in CI
 
 ### 2. Wind and boat feel
