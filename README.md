@@ -37,7 +37,6 @@ Last updated: 2026-10-15
 - [x] Fluid sim on, stable from wind 5 through 25 with the sail wake on the fine grid: [#9](https://github.com/SukuWc/fields/pull/9)
 - [ ] Per-boat wind shadow / dirty air (partial: [#9](https://github.com/SukuWc/fields/pull/9) gives each boat a sail wake, so a downwind boat reads slower true wind)
 - [x] Depower toggle (X / touch): sails eased out and luffing with a 0.5 s ramp: [#51](https://github.com/SukuWc/fields/pull/51)
-- [ ] Sail flapping animation for luffing sails (visual only) (in progress, [#54](https://github.com/SukuWc/fields/pull/54))
 - [ ] Strategy tuning
 
 ### 3. Multiplayer open water
@@ -82,6 +81,7 @@ Last updated: 2026-10-15
 - [x] Touch controls panel 30% shorter (35% of the screen): [#37](https://github.com/SukuWc/fields/pull/37)
 - [ ] Accessibility
 - [ ] Telemetry export
+- [ ] Sail flapping animation for luffing sails (visual only) (in progress, [#54](https://github.com/SukuWc/fields/pull/54))
 
 ### Other
 - [x] SailZone logo: [#14](https://github.com/SukuWc/fields/pull/14)
