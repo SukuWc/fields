@@ -1,9 +1,14 @@
 // Client input and settings UI: keyboard and touch keys become Sim commands
 // (sim.js), the settings panel sends admin commands, scenario view hints move
 // the camera (view.js), and the scenario card shows the Sim's scenario text.
+// Everything goes through the SimHost (host.js); no Sim objects here.
 import * as THREE from 'three';
 
-let _sim, _view, _getCamera;
+let _host, _view, _getCamera;
+// Client copies of what this module last told the host (dev mode, UI wind),
+// for the dev-mode banner.
+let _devMode = false;
+const _wind = { angle: 90, speed: 15 };
 
 // Key bindings for the current scenario: [{ type: "PRESSED" | "KEYDOWN",
 // activation_key, prohibition_key, command }]. PRESSED bindings are held keys
@@ -22,7 +27,7 @@ function typingInControl(e) {
 function fireKeydown(match) {
   key_bind_list.forEach(bind => {
     if (bind.type === "KEYDOWN" && match(bind) && (key_state[bind.prohibition_key] === false || key_state[bind.prohibition_key] === undefined)) {
-      _sim.command(bind.command);
+      _host.command(bind.command);
     }
   });
 }
@@ -66,12 +71,12 @@ export function heldCommands() {
 }
 
 // Boat 0: arrows steer / heading target, Space autopilot, Enter tack, Q / E
-// penalty circles. Boat 1: A / D, W / S, Ctrl, Shift.
-function autokeybind(players) {
+// penalty circles. Boat 1: A / D, W / S, Ctrl, Shift. boats: player count.
+function autokeybind(boats) {
   key_bind_list = [];
   const P = (key, not, command) => key_bind_list.push({ type: "PRESSED", activation_key: key, prohibition_key: not, command });
   const K = (key, not, command) => key_bind_list.push({ type: "KEYDOWN", activation_key: key, prohibition_key: not, command });
-  if (players[0] !== undefined) {
+  if (boats > 0) {
     P(37, 39, { type: "helm", boat: 0, dir: -1 });
     P(39, 37, { type: "helm", boat: 0, dir: +1 });
     P(40, 38, { type: "headingTarget", boat: 0, dir: +1 });
@@ -85,7 +90,7 @@ function autokeybind(players) {
     // X: depower toggle (D is boat 2's rudder).
     K(88, -1, { type: "depower", boat: 0 });
   }
-  if (players[1] !== undefined) {
+  if (boats > 1) {
     P(65, 68, { type: "helm", boat: 1, dir: -1 });
     P(68, 65, { type: "helm", boat: 1, dir: +1 });
     P(83, 87, { type: "headingTarget", boat: 1, dir: +1 });
@@ -98,7 +103,7 @@ function autokeybind(players) {
 // Sim events: key bindings and scenario camera hints, applied synchronously
 // during the step that emits them (as the old in-script DOM calls were).
 function onSimEvent(ev) {
-  if (ev.type === "bindControls") autokeybind(_sim.players);
+  if (ev.type === "bindControls") autokeybind(ev.boats);
   else if (ev.type === "cleared") key_bind_list = [];
   else if (ev.type === "view") {
     if (ev.follow) {
@@ -113,10 +118,11 @@ function onSimEvent(ev) {
 }
 
 function mouse_monitor(e) {
-  if (_sim.map.devMode) {
-    const w = _sim.map.get_wind(0, 0);
-    document.getElementById("wind_info").innerHTML =
-      "Speed: " + Math.floor(w.speed * 10) / 10 + "<br>Direction: " + Math.floor(w.direction * 10) / 10;
+  if (_devMode) {
+    _host.query({ type: "wind", x: 0, y: 0 }).then((w) => {
+      document.getElementById("wind_info").innerHTML =
+        "Speed: " + Math.floor(w.speed * 10) / 10 + "<br>Direction: " + Math.floor(w.direction * 10) / 10;
+    });
     return;
   }
 
@@ -138,25 +144,23 @@ function mouse_monitor(e) {
   const distance = -camera.position.z / vec.z;
   pos.copy(camera.position).add(vec.multiplyScalar(distance));
 
-  const vx = _sim.bm.get_field_velocity(pos.x, pos.y).x;
-  const vy = _sim.bm.get_field_velocity(pos.x, pos.y).y;
-  const wdir = Math.atan2(vy, vx) / Math.PI * 180;
-  const wspe = Math.sqrt(vx * vx + vy * vy);
-
-  document.getElementById("wind_info").innerHTML = "Speed: " + Math.floor(wspe * 1000) / 10 + "<br>Direction: " + Math.floor(wdir * 10) / 10;
+  _host.query({ type: "fieldVelocity", x: pos.x, y: pos.y }).then(({ x: vx, y: vy }) => {
+    const wdir = Math.atan2(vy, vx) / Math.PI * 180;
+    const wspe = Math.sqrt(vx * vx + vy * vy);
+    document.getElementById("wind_info").innerHTML = "Speed: " + Math.floor(wspe * 1000) / 10 + "<br>Direction: " + Math.floor(wdir * 10) / 10;
+  });
 }
 
 const DEV_MODE_FLUID_CONTROLS = ["amr", "barrier", "boat_energy", "plotSelect", "contrastSlider", "mirrorSlider"];
 
 function syncDevModeUi() {
-  const on = _sim.map.devMode;
+  const on = _devMode;
   const banner = document.getElementById("devmode_banner");
   banner.style.display = on ? "block" : "none";
-  const wind = _sim.map.constantWind;
-  const fromDeg = wind.angleDeg;
+  const fromDeg = _wind.angle;
   const toDeg = (fromDeg + 180) % 360;
   document.getElementById("dev_wind_label").textContent =
-    "from " + fromDeg + "° to " + toDeg + "° @ " + wind.speed;
+    "from " + fromDeg + "° to " + toDeg + "° @ " + _wind.speed;
   // CSS rotation is clockwise; world +Y is up. Point the arrow downwind ("to").
   document.getElementById("dev_wind_arrow").style.transform = "rotate(" + (-toDeg) + "deg)";
   for (const id of DEV_MODE_FLUID_CONTROLS) {
@@ -167,14 +171,16 @@ function syncDevModeUi() {
 function applyWindAngle() {
   const angle = parseInt(document.getElementById("windAngle").value, 10);
   if (!Number.isFinite(angle)) return;
-  _sim.command({ type: "wind", angle });
+  _wind.angle = angle;
+  _host.command({ type: "wind", angle });
   syncDevModeUi();
 }
 
 function applyWindSpeed() {
   const speed = parseFloat(document.getElementById("windSpeed").value);
   if (!Number.isFinite(speed)) return;
-  _sim.command({ type: "wind", speed });
+  _wind.speed = speed;
+  _host.command({ type: "wind", speed });
   syncDevModeUi();
 }
 
@@ -205,15 +211,18 @@ function renderScenarioCard(scenario) {
 }
 
 function scenario_start(index) {
-  const scenario = _sim.command({ type: "restart", scenario: index });
-  renderScenarioCard(scenario);
+  _host.command({ type: "restart", scenario: index }).then(renderScenarioCard);
 }
 
-export function setupControls(sim, view, getCamera) {
-  _sim = sim;
+// host: a SimHost (host.js) whose info is ready.
+export function setupControls(host, view, getCamera) {
+  _host = host;
   _view = view;
   _getCamera = getCamera;
-  sim.on(onSimEvent);
+  host.on(onSimEvent);
+  const info = host.info;
+  _wind.angle = info.wind.from;
+  _wind.speed = info.wind.speed;
 
   document.onkeydown = checkKeyPress;
   document.onkeyup = checkKeyRelease;
@@ -222,16 +231,18 @@ export function setupControls(sim, view, getCamera) {
   document.getElementById("show_forces").checked = false;
   document.getElementById("show_field").checked = false;
 
-  document.getElementById("windAngle").value = sim.map.wind_direction;
-  document.getElementById("windSpeed").value = sim.map.wind_speed;
+  document.getElementById("windAngle").value = info.wind.from;
+  document.getElementById("windSpeed").value = info.wind.speed;
   // Query-string settings, including ?devmode=1, are applied by installUrlSettings
   // after these listeners exist. Leave the checkbox at its default so that
   // default can be captured; the change listener below turns dev mode on.
-  sim.command({ type: "devMode", on: false });
+  _devMode = false;
+  host.command({ type: "devMode", on: false });
   syncDevModeUi();
 
   document.getElementById("devmode").addEventListener("change", () => {
-    sim.command({ type: "devMode", on: document.getElementById("devmode").checked });
+    _devMode = document.getElementById("devmode").checked;
+    host.command({ type: "devMode", on: _devMode });
     syncDevModeUi();
   });
 
@@ -243,7 +254,7 @@ export function setupControls(sim, view, getCamera) {
     scenarioCardCollapsed = !scenarioCardCollapsed;
     const selector = document.getElementById("scenario_selector");
     const index = selector ? parseInt(selector.value, 10) : 0;
-    renderScenarioCard(sim.scenarios[index]);
+    renderScenarioCard(info.scenarios[index]);
   });
 
   document.getElementById("scenario_selector").addEventListener("change", () => {

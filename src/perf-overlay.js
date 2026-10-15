@@ -8,13 +8,14 @@
 // window, and the text is rebuilt a few times per second. Cell counts read
 // array lengths on the domain tree, so they cost O(number of grids).
 
-import { CURL_TAU_ON, CURL_TAU_OFF, defaultCellUpdateTarget } from './domainTrack.js';
+import { CURL_TAU_ON, CURL_TAU_OFF } from './domainTrack.js';
 
 const WINDOW_FRAMES = 30;
 const REFRESH_MS = 250;
 
-let _bm = null;
-let _map = null;
+// Counters come from the host (present.js perfStats), so the overlay never
+// reads the lattice itself.
+let _getStats = null;
 let el = null;
 let enabled = false;
 let rafId = 0;
@@ -41,27 +42,6 @@ export function recordFieldStep(ms) {
   lastStepMs = ms;
 }
 
-// Active (collided and streamed) cells per level. Level 0 is the root grid
-// minus the nodes a level-1 grid covers deeply; each finer level counts the
-// same way inside its parent. Sibling grids on one level are summed.
-export function countCellsByLevel(bm) {
-  const levels = [{ cells: bm.streamCells ? bm.streamCells.length : 0, grids: 1 }];
-  let current = bm.domains || [];
-  let depth = 1;
-  while (current.length) {
-    const next = [];
-    let cells = 0;
-    for (const d of current) {
-      cells += d.streamCells ? d.streamCells.length : 0;
-      if (d.domains && d.domains.length) next.push(...d.domains);
-    }
-    levels[depth] = { cells, grids: current.length };
-    current = next;
-    depth++;
-  }
-  return levels;
-}
-
 function fmt(n) {
   return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
@@ -72,13 +52,13 @@ function pad(s, n) {
 }
 
 // Refinement budget readout: tuning state, scale, effective curl threshold,
-// cell updates per root step against the target.
-export function budgetLines(bm, updates) {
-  const t = bm.cellUpdateTarget === 'default' ? defaultCellUpdateTarget(bm) : bm.cellUpdateTarget;
+// cell updates per root step against the target. st: present.js perfStats.
+export function budgetLines(st, updates) {
+  const t = st.target;
   const on = Number.isFinite(t);
-  const s = on && bm.curlScale > 1 ? bm.curlScale : 1;
+  const s = on && st.curlScale > 1 ? st.curlScale : 1;
   const num = typeof document !== 'undefined' && document.getElementById('cellBudget');
-  if (num) num.placeholder = String(defaultCellUpdateTarget(bm));
+  if (num) num.placeholder = String(st.defaultTarget);
   return [
     'budget ' + (on ? 'on' : 'off') + '  x' + s.toFixed(2),
     'curl tau ' + (CURL_TAU_ON * s).toFixed(4) + ' / ' + (CURL_TAU_OFF * s).toFixed(4),
@@ -87,7 +67,9 @@ export function budgetLines(bm, updates) {
 }
 
 function render() {
-  const levels = countCellsByLevel(_bm);
+  const st = _getStats();
+  if (!st) return;
+  const levels = st.levels;
   let total = 0;
   let updates = 0;
   const lines = ['PERF'];
@@ -101,7 +83,7 @@ function render() {
   }
   lines.push('total ' + pad(fmt(total), 7) + ' cells');
   lines.push('upd/step ' + pad(fmt(updates), 7));
-  lines.push(...budgetLines(_bm, updates));
+  lines.push(...budgetLines(st, updates));
 
   let ms = 0;
   let steps = 0;
@@ -109,7 +91,7 @@ function render() {
     ms += frameMs[i];
     steps += frameSteps[i];
   }
-  if (_map && _map.devMode) {
+  if (st.devMode) {
     lines.push('field paused (dev mode)');
   } else if (ringFill === 0 || steps === 0) {
     lines.push('field  -- ms/step');
@@ -155,9 +137,9 @@ function setEnabled(on) {
   }
 }
 
-export function setupPerfOverlay(map, bm) {
-  _map = map;
-  _bm = bm;
+// getStats(): the latest perfStats from the host, or null before the first.
+export function setupPerfOverlay(getStats) {
+  _getStats = getStats;
   el = document.getElementById('perf_overlay_hud');
   const box = document.getElementById('perf');
   if (!el || !box) return;

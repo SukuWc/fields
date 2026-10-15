@@ -50,6 +50,9 @@ export const SIM_RES_MODES = {
 //   { type: 'options', amr?, boatEnergy? }
 //   { type: 'simRes', mode }           SIM_RES_MODES key; returns true if the lattice was rebuilt
 //   { type: 'amrMode', mode }          'auto' | 'fixed'; returns true if the lattice was rebuilt
+//   { type: 'cellBudget', tune, target? }  refinement budget: tune false = off (no
+//                                      budget, scale 1); target a positive number, else
+//                                      the grid default (domainTrack defaultCellUpdateTarget)
 const BOAT_ACTIONS = {
   helm: (b, c) => (c.dir < 0 ? b.input_rudder_left() : b.input_rudder_right()),
   headingTarget: (b, c) => (c.dir > 0 ? b.input_autopilot_heading_increase() : b.input_autopilot_heading_decrease()),
@@ -174,6 +177,15 @@ export class Sim {
         bm.setWindSpeed(map.wind_speed);
         return true;
       }
+      case 'cellBudget':
+        if (!c.tune) {
+          bm.cellUpdateTarget = Infinity;
+          bm.curlScale = 1;
+          bm.cellLoadRatio = 0;
+        } else {
+          bm.cellUpdateTarget = Number.isFinite(c.target) && c.target > 0 ? c.target : 'default';
+        }
+        return undefined;
       default: return undefined;
     }
   }
