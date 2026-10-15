@@ -83,7 +83,7 @@ Last updated: 2026-10-15
 - [x] Touch controls panel 30% shorter (35% of the screen): [#37](https://github.com/SukuWc/fields/pull/37)
 - [ ] Accessibility
 - [ ] Telemetry export
-- [ ] Sail flapping animation for luffing sails (visual only) (in progress, [#54](https://github.com/SukuWc/fields/pull/54))
+- [x] Sail flapping animation for luffing sails (visual only): [#54](https://github.com/SukuWc/fields/pull/54)
 
 ### Other
 - [x] SailZone logo: [#14](https://github.com/SukuWc/fields/pull/14)
