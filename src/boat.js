@@ -743,58 +743,64 @@ export class Boat{
     // direction sail drag pushes the boat.
     let wind_angle = Math.atan2(this.wind_vy_smooth, this.wind_vx_smooth)
 
-    graphics.push({ color: 0x554477, type: "guide",
+    graphics.push({ color: 0x554477, type: "guide", role: "tw",
       x1: this.x + Math.cos(wind_angle)*3,
       y1: this.y + Math.sin(wind_angle)*3,
       x2: this.x + Math.cos(wind_angle)*5 + Math.cos(wind_angle+Math.PI/2)*0.5,
       y2: this.y + Math.sin(wind_angle)*5 + Math.sin(wind_angle+Math.PI/2)*0.5
     })
 
-    graphics.push({ color: 0x554477, type: "guide",
+    graphics.push({ color: 0x554477, type: "guide", role: "tw",
       x1: this.x + Math.cos(wind_angle)*3,
       y1: this.y + Math.sin(wind_angle)*3,
       x2: this.x + Math.cos(wind_angle)*5 - Math.cos(wind_angle+Math.PI/2)*0.5,
       y2: this.y + Math.sin(wind_angle)*5 - Math.sin(wind_angle+Math.PI/2)*0.5
     })
 
-    graphics.push({ color: 0x554477, type: "guide",
+    graphics.push({ color: 0x554477, type: "guide", role: "tw",
       x1: this.x + Math.cos(wind_angle)*4.75,
       y1: this.y + Math.sin(wind_angle)*4.75,
       x2: this.x + Math.cos(wind_angle)*5 - Math.cos(wind_angle+Math.PI/2)*0.5,
       y2: this.y + Math.sin(wind_angle)*5 - Math.sin(wind_angle+Math.PI/2)*0.5
     })    
     
-    graphics.push({ color: 0x554477, type: "guide",
+    graphics.push({ color: 0x554477, type: "guide", role: "tw",
       x1: this.x + Math.cos(wind_angle)*4.75,
       y1: this.y + Math.sin(wind_angle)*4.75,
       x2: this.x + Math.cos(wind_angle)*5 + Math.cos(wind_angle+Math.PI/2)*0.5,
       y2: this.y + Math.sin(wind_angle)*5 + Math.sin(wind_angle+Math.PI/2)*0.5
     })
 
-    wind_angle = (this.awa)/180*Math.PI + this.hull_angle - Math.PI/2
+    // Apparent wind. awa is measured from the bow to where the apparent wind
+    // comes FROM (aw_vector = boat velocity + true-wind "from" vector), so
+    // awa + hull - 90° is the "from" direction. Since 19357ab the true-wind
+    // tick above points downwind, so add 180° and point this one downwind too
+    // (the apparent flow over the sail). Without it the two ticks pointed
+    // nearly opposite each other.
+    wind_angle = (this.awa)/180*Math.PI + this.hull_angle + Math.PI/2
 
-    graphics.push({ color: 0x550077, type: "guide",
+    graphics.push({ color: 0x550077, type: "guide", role: "aw",
       x1: this.x + Math.cos(wind_angle)*3,
       y1: this.y + Math.sin(wind_angle)*3,
       x2: this.x + Math.cos(wind_angle)*5 + Math.cos(wind_angle+Math.PI/2)*0.5,
       y2: this.y + Math.sin(wind_angle)*5 + Math.sin(wind_angle+Math.PI/2)*0.5
     })
 
-    graphics.push({ color: 0x550077, type: "guide",
+    graphics.push({ color: 0x550077, type: "guide", role: "aw",
       x1: this.x + Math.cos(wind_angle)*3,
       y1: this.y + Math.sin(wind_angle)*3,
       x2: this.x + Math.cos(wind_angle)*5 - Math.cos(wind_angle+Math.PI/2)*0.5,
       y2: this.y + Math.sin(wind_angle)*5 - Math.sin(wind_angle+Math.PI/2)*0.5
     })
 
-    graphics.push({ color: 0x550077, type: "guide",
+    graphics.push({ color: 0x550077, type: "guide", role: "aw",
       x1: this.x + Math.cos(wind_angle)*4.75,
       y1: this.y + Math.sin(wind_angle)*4.75,
       x2: this.x + Math.cos(wind_angle)*5 - Math.cos(wind_angle+Math.PI/2)*0.5,
       y2: this.y + Math.sin(wind_angle)*5 - Math.sin(wind_angle+Math.PI/2)*0.5
     })    
     
-    graphics.push({ color: 0x550077, type: "guide",
+    graphics.push({ color: 0x550077, type: "guide", role: "aw",
       x1: this.x + Math.cos(wind_angle)*4.75,
       y1: this.y + Math.sin(wind_angle)*4.75,
       x2: this.x + Math.cos(wind_angle)*5 + Math.cos(wind_angle+Math.PI/2)*0.5,
