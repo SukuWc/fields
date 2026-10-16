@@ -44,7 +44,7 @@ Last updated: 2026-10-16
 - [ ] Strategy tuning
 
 ### 3. Multiplayer open water
-- [ ] Shared world and shared wind (in progress: [#61](https://github.com/SukuWc/fields/pull/61) lets each client join a server room with its own named boat, steer only that boat, and have it removed on leave or disconnect; stacked on [#60](https://github.com/SukuWc/fields/pull/60))
+- [x] Shared world and shared wind: [#60](https://github.com/SukuWc/fields/pull/60) (server rooms + streamed wind); [#61](https://github.com/SukuWc/fields/pull/61) (Join with my boat: each client owns a named boat, steers only that boat, removed on leave or disconnect)
 - [ ] Soft physical collisions (bump and slow)
 - [ ] Server-authoritative collisions
 - [ ] Reconnect
