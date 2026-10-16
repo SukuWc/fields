@@ -1,0 +1,1 @@
+{ "private": true, "type": "module", "description": "Sim server sources; dependencies and scripts live in the root package.json (no npm workspaces)" }

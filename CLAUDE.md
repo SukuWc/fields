@@ -25,6 +25,10 @@ This is an interactive web sailing simulator combining 2D fluid dynamics with 3D
 src/main.js           — Client entry: constants, texture setup, settings listeners, fixed-step loop (loop.js); talks to the sim only through a SimHost, applies each frame's readout/HUD/guides
 src/host.js           — SimHost interface; SimCore (Map + Boltzmann + Sim + painter, plain-data frames) and LocalHost (main thread)
 src/worker-host.js    — WorkerHost (default host; ?worker=0 forces the main-thread LocalHost, which is also the automatic fallback when Worker is missing or fails to start; ?workerQueue=N cap, 0 = never drop): same SimHost API, SimCore in src/sim.worker.js; field RGBA buffer transferred per lattice step and recycled (no SharedArrayBuffer: Pages has no COOP/COEP)
+src/remote-host.js    — RemoteHost (?host=remote&server=ws://…, or VITE_SIM_HOST=remote): SimHost over a WebSocket to apps/server; server-clock mode (input messages) or lockstep (tick messages); binary field messages
+src/host-choice.js    — host selection from the query + VITE_SIM_HOST / VITE_SIM_SERVER_URL; drops params equal to the build default
+src/host-protocol.js  — message helpers shared by sim.worker.js and apps/server
+apps/server/          — Node ws server (index.js, room.js): one SimCore per ?room=, 30 Hz authoritative, reduced field at 2 Hz; `npm run server`, see apps/server/README.md
 src/present.js        — Host-side presentation: readout/HUD strings and guides (presentStep), body outlines, perf counters, all plain data
 src/sim.js            — Sim: the whole simulation without DOM/three (boats, marks, course, start, finish, bots, boundary, per-Sim rules state, scenarios); step(simDt, held), command(cmd), snapshot(), events
 src/scenarios.js      — Scenario scripts: buildScenarios(sim) (title, description, frames[] in 90 Hz units)
