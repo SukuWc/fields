@@ -17,6 +17,7 @@ import {
 } from './rules.js';
 import { markRoomTarget } from './course.js';
 import { buildScenarios } from './scenarios.js';
+import { Boat } from './boat.js';
 
 // Scenario frame indexes count the old 90 Hz passes (3 per 30 Hz tick), so
 // the scripts keep their timing: one tick runs indexes f .. f+2 and the
@@ -42,6 +43,11 @@ export const SIM_RES_MODES = {
 //   { type: 'tack', boat }             autopilot tack toggle
 //   { type: 'penaltyTurn', boat, dir: 'ccw' | 'cw' }
 //   { type: 'depower', boat }          depower toggle (sails eased, luffing)
+// A boat command may name a spawned boat by id ({ boatId }) instead of an
+// index ({ boat }); the server uses that for boats a client owns.
+//   { type: 'spawnBoat', name?, color? }  add a boat at a free spawn point, on
+//                                      autopilot; returns { id, index, x, y }
+//   { type: 'removeBoat', id }         remove a spawned boat; returns true if found
 // Admin commands (sim.command()):
 //   { type: 'restart', scenario }      clear and load scenario N
 //   { type: 'wind', angle?, speed? }   UI wind (from-angle °, TWS)
@@ -53,7 +59,7 @@ export const SIM_RES_MODES = {
 //   { type: 'cellBudget', tune, target? }  refinement budget: tune false = off (no
 //                                      budget, scale 1); target a positive number, else
 //                                      the grid default (domainTrack defaultCellUpdateTarget)
-const BOAT_ACTIONS = {
+export const BOAT_ACTIONS = {
   helm: (b, c) => (c.dir < 0 ? b.input_rudder_left() : b.input_rudder_right()),
   headingTarget: (b, c) => (c.dir > 0 ? b.input_autopilot_heading_increase() : b.input_autopilot_heading_decrease()),
   autopilot: (b) => b.input_autopilot_enabled_toggle(),
@@ -75,6 +81,7 @@ export class Sim {
     this.leaderboard = null;
     this.ticks = 0;
     this._listeners = [];
+    this._nextSpawn = 1;
     this.events = [];
     this.last = null;
     this._reset();
@@ -130,7 +137,7 @@ export class Sim {
   }
 
   _boatCommand(c) {
-    const boat = this.players[c.boat];
+    const boat = c.boatId != null ? this.players.find((p) => p.spawnId === c.boatId) : this.players[c.boat];
     const act = BOAT_ACTIONS[c.type];
     if (boat && act) act(boat, c);
   }
@@ -141,6 +148,8 @@ export class Sim {
     const map = this.map, bm = this.bm;
     switch (c.type) {
       case 'restart': return this.loadScenario(c.scenario);
+      case 'spawnBoat': return this.spawnBoat(c);
+      case 'removeBoat': return this.removeBoat(c.id);
       case 'wind':
         if (Number.isFinite(c.angle)) {
           map.wind_direction = c.angle;
@@ -188,6 +197,60 @@ export class Sim {
         return undefined;
       default: return undefined;
     }
+  }
+
+  // Free spawn point: below the start line when there is one (pre-start
+  // side), else around boat 0 (or the map centre). Candidates step out in
+  // SPAWN_STEP_M rings; the first that is SPAWN_CLEAR_M from every boat and
+  // mark and SPAWN_MARGIN_M inside the walls wins.
+  spawnPoint() {
+    const STEP = 8, CLEAR = 9, MARGIN = 8;
+    const map = this.map;
+    let base = { x: 0, y: 0 };
+    const seq = this.startSequence;
+    if (seq && seq.line) {
+      const m = seq.line.mid;
+      base = { x: m.x - seq.line.nx * 12, y: m.y - seq.line.ny * 12 };
+    } else if (this.players[0]) {
+      base = { x: this.players[0].x, y: this.players[0].y };
+    }
+    const others = [...this.players, ...this.marks];
+    const free = (x, y) => Math.abs(x) <= map.width / 2 - MARGIN && Math.abs(y) <= map.height / 2 - MARGIN
+      && others.every((o) => Math.hypot(o.x - x, o.y - y) >= CLEAR);
+    for (let ring = 0; ring < 12; ring++) {
+      const n = ring === 0 ? 1 : ring * 8;
+      for (let i = 0; i < n; i++) {
+        const a = ring === 0 ? 0 : (i / n) * 2 * Math.PI;
+        // Along the line first (east, then west), then behind it.
+        const x = base.x + Math.cos(a) * ring * STEP, y = base.y - Math.abs(Math.sin(a)) * ring * STEP;
+        if (free(x, y)) return { x, y };
+      }
+    }
+    return base;
+  }
+
+  spawnBoat({ name, color } = {}) {
+    this.activate();
+    const p = this.spawnPoint();
+    const boat = new Boat(this.map, p.x, p.y, 5 * Math.PI / 4);
+    boat.spawnId = 'b' + this._nextSpawn++;
+    boat.spawnName = typeof name === 'string' && name.trim() ? name.trim().slice(0, 24) : boat.spawnId;
+    if (Number.isFinite(color)) {
+      boat.spawnColor = color;
+      boat.physics_model.render = { ...(boat.physics_model.render || {}), stroke: color };
+    }
+    boat.input_autopilot_enabled_toggle();
+    this.players.push(boat);
+    return { id: boat.spawnId, index: this.players.length - 1, x: p.x, y: p.y, name: boat.spawnName };
+  }
+
+  removeBoat(id) {
+    const i = this.players.findIndex((b) => b.spawnId === id);
+    if (i < 0) return false;
+    this.activate();
+    this.players[i].physics_model_deinit();
+    this.players.splice(i, 1);
+    return true;
   }
 
   // Sail reaction → lattice momentum. See SAIL_LATTICE_COUPLING. A root cell

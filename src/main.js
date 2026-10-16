@@ -7,6 +7,7 @@ import { LocalHost } from './host.js';
 import { WorkerHost } from './worker-host.js';
 import { RemoteHost } from './remote-host.js';
 import { hostChoice } from './host-choice.js';
+import { setupOwnBoat } from './own-boat.js';
 import { View } from './view.js';
 import { installUrlSettings } from './url-settings.js';
 import { setInfo, flushInfo } from './info.js';
@@ -313,11 +314,15 @@ function startClient() {
   // Camera follow target: boat 0 as of the last step (the old code read
   // sim.players[0], whose position a step sets). Cleared with the scenario.
   let followTarget;
+  let ownBoatId = null;
+  setupOwnBoat(host, (ids) => { ownBoatId = ids[0] || null; });
   host.on((ev) => { if (ev.type === 'cleared') followTarget = undefined; });
   host.onFrame((frame) => {
     lastFrame = frame;
     devMode = frame.devMode;
-    followTarget = frame.boat0 || undefined;
+    // In a remote room with an own boat, follow that one.
+  const mine = ownBoatId && frame.spawned ? frame.spawned.find((b) => b.id === ownBoatId) : null;
+  followTarget = mine || (ownBoatId ? undefined : frame.boat0) || undefined;
     if (frame.fieldSteps > 0 && isPerfOverlayOn()) recordFieldStep(frame.fieldMs);
     if (frame.hud) {
       applyHud(frame.hud);

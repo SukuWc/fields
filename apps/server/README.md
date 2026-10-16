@@ -41,3 +41,14 @@ Params equal to the build default are removed from the URL. If the server can't 
 - **Authority:** the server's clock is authoritative. All clients' held keys are merged, and every client controls boats 0/1 (no boat assignment yet). Any client's restart or settings change applies to the whole room. Each page restarts its URL's scenario when it connects.
 - **No npm workspaces:** the server sources live in `apps/server` (with a tiny `package.json` that only sets `"type": "module"`). `ws` and `esbuild` are root dependencies, and `npm run build:server` bundles everything, including planck, into one file. Splitting into `packages/sim-core`, `apps/web` and `apps/server` would move every `src/` import, the Vite config and the test paths, for no runtime gain yet. Revisit when the server gets its own deploy (Docker).
 - **CPU:** one 4f room with a single boat costs ~30 ms per tick on the dev box, which is right at the 33 ms budget. Heavier scenarios (two-boat rule scenarios) drop below 30 Hz. The fixed step drops time it can't catch up (max 4 ticks per wake). This answers plan Q2 for now: a room per core, or a coarser server grid.
+
+## Player boats
+
+In a remote room, the settings panel (the ☰ menu on phones) shows a name field and **Join with my boat**. The server spawns a boat for that connection (`spawnBoat` → `{ id, index, x, y, name }`). It goes below the start line when there is one, otherwise around boat 0, at least 9 m from every boat and mark, and starts on autopilot. That connection owns the boat:
+- its keys, touch buttons and boat commands drive only its own boat (`{ boat: 0 }` is remapped to `{ boatId }`);
+- the camera follows it;
+- it has a name badge and a hull colour picked from the name.
+
+**Leave** (`removeBoat`, own boats only) or closing the page removes the boat. A client that hasn't joined still drives scenario boats 0/1 as before.
+
+Room-wide: a scenario restart or a settings change from any client applies to everyone, and a restart removes every player boat (clients get `ownBoats: []` and can join again). The readout panel shows the scenario's telemetry boat, not necessarily your own.

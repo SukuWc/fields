@@ -72,6 +72,10 @@ export function heldCommands() {
 
 // Boat 0: arrows steer / heading target, Space autopilot, Enter tack, Q / E
 // penalty circles. Boat 1: A / D, W / S, Ctrl, Shift. boats: player count.
+// Own-boat play (own-boat.js): the keys drive "boat 0", which the server maps
+// to this client's boat.
+export function bindKeysForBoats(boats) { autokeybind(boats); }
+
 function autokeybind(boats) {
   key_bind_list = [];
   const P = (key, not, command) => key_bind_list.push({ type: "PRESSED", activation_key: key, prohibition_key: not, command });

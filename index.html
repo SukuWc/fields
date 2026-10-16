@@ -600,6 +600,12 @@
     <button id="settings_toggle" type="button" aria-controls="settings" aria-expanded="false" aria-label="Settings">☰</button>
     <div id="settings_backdrop" hidden></div>
     <div id="settings">
+      <div id="own_boat_panel" class="setting-row" hidden>
+        <input id="boat_name" type="text" placeholder="Your name" maxlength="24" autocomplete="off" size="10" title="Name shown on your boat">
+        <input id="own_boat_join" type="button" value="Join with my boat">
+        <input id="own_boat_leave" type="button" value="Leave" hidden>
+        <div id="own_boat_status"></div>
+      </div>
       <label class="setting-row"><input id="devmode" autocomplete="off" type="checkbox" title="Constant wind, no fluid simulation. Also enabled by ?devmode=1">Dev mode</label>
       <br>
       <label class="setting-row"><input id="amr" autocomplete="off" type="checkbox" checked>Mesh refinement</label>

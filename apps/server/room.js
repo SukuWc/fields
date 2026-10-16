@@ -14,6 +14,16 @@
 // binary message: u32 width, u32 height (LE), RGBA bytes. fieldHz 0 = no field.
 import { SimCore } from '../../src/host.js';
 import { answer, eventForClient } from '../../src/host-protocol.js';
+import { BOAT_ACTIONS } from '../../src/sim.js';
+
+// Player boats: a client may spawn boats ({ type: 'spawnBoat', name?, color? })
+// and owns them. While it owns any, its boat commands and held keys are
+// remapped: { boat: k } means its k-th own boat (boatId), so they never reach
+// scenario boats or other players' boats. A client without boats keeps the
+// old behaviour (keys drive scenario boats 0/1). removeBoat only works on own
+// boats; a disconnect removes them all; a scenario restart (room-wide) clears
+// every boat, so ownership is dropped. Each client hears its list as
+// { type: 'event', ev: { type: 'ownBoats', boats: [{ id, name }] } }.
 
 export const TICK_HZ = 30;
 export const MAX_CATCH_UP = 4;
@@ -30,6 +40,7 @@ export class Room {
     this.core = null;
     this.clients = new Set();
     this.inputs = new Map();
+    this.owned = new Map();
     this.ticks = 0;
     this.timer = null;
     this.tickMs = 0;
@@ -49,7 +60,10 @@ export class Room {
     this._fieldDue = false;
     this._painted = false;
     painter.paint = (bm) => { if (this._fieldDue) { paint(bm); this._painted = true; } };
-    core.sim.on((ev) => this.broadcast({ type: 'event', ev: eventForClient(core, ev) }));
+    core.sim.on((ev) => {
+      if (ev.type === 'cleared') this._dropOwnership();
+      this.broadcast({ type: 'event', ev: eventForClient(core, ev) });
+    });
     this.core = core;
     if (!this.lockstep) this._start();
   }
@@ -59,6 +73,8 @@ export class Room {
   join(client) { this.clients.add(client); }
 
   leave(client) {
+    for (const b of this.owned.get(client) || []) this.core.command({ type: 'removeBoat', id: b.id });
+    this.owned.delete(client);
     this.clients.delete(client);
     this.inputs.delete(client);
     if (this.clients.size === 0) this.stop();
@@ -77,18 +93,67 @@ export class Room {
       return;
     }
     if (!this.core) return;
+    if (m.type === 'command' && m.c) {
+      const c = m.c;
+      if (c.type === 'spawnBoat') {
+        const r = this.core.command({ type: 'spawnBoat', name: c.name, color: c.color });
+        const list = this.owned.get(client) || [];
+        list.push({ id: r.id, name: r.name });
+        this.owned.set(client, list);
+        this.send(client, { type: 'result', id: m.id, r });
+        this._sendOwn(client);
+        return;
+      }
+      if (c.type === 'removeBoat') {
+        const list = this.owned.get(client) || [];
+        const i = list.findIndex((b) => b.id === c.id);
+        const r = i >= 0 && this.core.command({ type: 'removeBoat', id: c.id });
+        if (i >= 0) list.splice(i, 1);
+        this.send(client, { type: 'result', id: m.id, r: !!r });
+        this._sendOwn(client);
+        return;
+      }
+      if (BOAT_ACTIONS[c.type]) {
+        const mapped = this._mapBoat(client, c);
+        this.send(client, { type: 'result', id: m.id, r: mapped ? this.core.command(mapped) : undefined });
+        return;
+      }
+    }
     const reply = answer(this.core, m);
     if (reply) { this.send(client, reply); return; }
     if (m.type === 'perf') this.core.perf = !!m.on;
     else if (m.type === 'input') this.inputs.set(client, { held: Array.isArray(m.held) ? m.held : [], view: m.view || null });
-    else if (m.type === 'tick' && this.lockstep) this.step(m.req);
+    else if (m.type === 'tick' && this.lockstep) {
+      const held = (m.req.held || []).map((c) => this._mapBoat(client, c)).filter(Boolean);
+      this.step({ ...m.req, held });
+    }
+  }
+
+  // A boat command from this client, aimed at its own boat when it has one.
+  _mapBoat(client, c) {
+    const list = this.owned.get(client);
+    if (!list || list.length === 0) return c;
+    const own = list[Number.isInteger(c.boat) ? c.boat : 0];
+    if (!own) return null;
+    const { boat: _b, ...rest } = c;
+    return { ...rest, boatId: own.id };
+  }
+
+  _sendOwn(client) { this.send(client, { type: 'event', ev: { type: 'ownBoats', boats: (this.owned.get(client) || []).slice() } }); }
+
+  _dropOwnership() {
+    const had = [...this.owned.keys()];
+    this.owned.clear();
+    for (const c of had) this._sendOwn(c);
   }
 
   _heldUnion() {
     const seen = new Set();
     const out = [];
-    for (const { held } of this.inputs.values()) {
-      for (const c of held) {
+    for (const [client, { held }] of this.inputs) {
+      for (const c0 of held) {
+        const c = this._mapBoat(client, c0);
+        if (!c) continue;
         const k = JSON.stringify(c);
         if (!seen.has(k)) { seen.add(k); out.push(c); }
       }

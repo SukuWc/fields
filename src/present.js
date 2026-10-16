@@ -78,6 +78,10 @@ export function presentStep(sim, rec, view) {
   for (let i = Math.max(0, k); i < rec.physTimes.length; i++) info += "Phys Time: " + rec.physTimes[i] + "<br>";
   for (const player of racing) guides.push(...player.graphics_model_render(view));
   for (const mark of sim.marks) guides.push(...mark.graphics_model_render());
+  // Spawned (player) boats carry a name badge.
+  for (const b of racing) {
+    if (b.spawnName) guides.push({ type: 'label', badge: true, x: b.x, y: b.y + 4, lines: [{ text: b.spawnName, role: 'markno', id: 'name' }] });
+  }
 
   const startSeq = sim.startSequence;
   if (startSeq) {

@@ -29,6 +29,7 @@ src/remote-host.js    — RemoteHost (?host=remote&server=ws://…, or VITE_SIM_
 src/host-choice.js    — host selection from the query + VITE_SIM_HOST / VITE_SIM_SERVER_URL; drops params equal to the build default
 src/host-protocol.js  — message helpers shared by sim.worker.js and apps/server
 apps/server/          — Node ws server (index.js, room.js): one SimCore per ?room=, 30 Hz authoritative, reduced field at 2 Hz; `npm run server`, see apps/server/README.md
+src/own-boat.js       — "Join with my boat" UI in remote mode (spawnBoat/removeBoat, ownBoats event, camera follows own boat); the server (apps/server/room.js) remaps a client's boat commands and held keys to its own boats
 src/present.js        — Host-side presentation: readout/HUD strings and guides (presentStep), body outlines, perf counters, all plain data
 src/sim.js            — Sim: the whole simulation without DOM/three (boats, marks, course, start, finish, bots, boundary, per-Sim rules state, scenarios); step(simDt, held), command(cmd), snapshot(), events
 src/scenarios.js      — Scenario scripts: buildScenarios(sim) (title, description, frames[] in 90 Hz units)
