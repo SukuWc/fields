@@ -103,6 +103,8 @@ export class SimCore {
       stepped: rec.stepped, fieldSteps: rec.fieldSteps, fieldMs: bm.field_ms,
       fieldReady: false, devMode: map.devMode,
       boat0: p0 ? { x: p0.x, y: p0.y } : null,
+      // Boats added with spawnBoat (remote players): id and position.
+      spawned: sim.players.filter((b) => b.spawnId).map((b) => ({ id: b.spawnId, x: b.x, y: b.y, name: b.spawnName })),
     };
     if (present) {
       const hud = presentStep(sim, rec, view);
