@@ -17,13 +17,13 @@
 // no COOP/COEP headers). The client returns the previous buffer, which the
 // painter fills next (paint overwrites every texel).
 import { SimCore } from './host.js';
+import { answer, eventForClient } from './host-protocol.js';
 
 let core = null;
 let spare = null;
 
 function onEvent(ev) {
-  const out = ev.type === 'bindControls' ? { ...ev, boats: core.sim.players.length } : ev;
-  self.postMessage({ type: 'event', ev: out });
+  self.postMessage({ type: 'event', ev: eventForClient(core, ev) });
 }
 
 self.onmessage = (e) => {
@@ -32,13 +32,11 @@ self.onmessage = (e) => {
     case 'init':
       core = new SimCore({ ...m.opts, texture: { image: { data: new Uint8Array(0) } } });
       core.sim.on(onEvent);
-      self.postMessage({ type: 'info', info: core.info() });
+      self.postMessage({ type: 'info', info: { ...core.info(), mode: 'client' } });
       break;
     case 'command':
-      self.postMessage({ type: 'result', id: m.id, r: core.command(m.c) });
-      break;
     case 'query':
-      self.postMessage({ type: 'result', id: m.id, r: core.query(m.q) });
+      self.postMessage(answer(core, m));
       break;
     case 'perf':
       core.perf = !!m.on;

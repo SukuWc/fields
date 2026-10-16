@@ -1,3 +1,5 @@
+import { plainView } from './host-protocol.js';
+
 // WorkerHost (the default; ?worker=0 = LocalHost): the SimHost interface (host.js) with the SimCore in
 // a Web Worker (sim.worker.js). Same calls as LocalHost, but everything is
 // asynchronous: frames arrive by message a little after the tick that asked
@@ -93,11 +95,7 @@ export class WorkerHost {
   // req: { dt, held: array, present, view } — view is copied to plain data.
   tick(req) {
     if (this.maxInFlight > 0 && this.inFlight >= this.maxInFlight) { this.dropped++; return false; }
-    const v = req.view;
-    const view = v ? {
-      camera_position_x: v.camera_position_x, camera_position_y: v.camera_position_y,
-      camera_zoom: v.camera_zoom, show_forces: v.show_forces, show_fields: v.show_fields,
-    } : null;
+    const view = plainView(req.view);
     const held = typeof req.held === 'function' ? req.held() : req.held;
     this.inFlight++;
     this.ticksSent++;
@@ -109,13 +107,4 @@ export class WorkerHost {
 
   // Resolves once every sent tick has come back (tests).
   idle() { return this.inFlight === 0 ? Promise.resolve() : new Promise((r) => this._idle.push(r)); }
-}
-
-// Host choice from the query string: the worker unless ?worker=0, and only
-// where Worker exists. Returns { worker, dropParam } (dropParam: the URL
-// carries the default ?worker=1, which should not stay there).
-export function hostChoice(search, hasWorker) {
-  const q = new URLSearchParams(search);
-  const v = q.get('worker');
-  return { worker: v !== '0' && !!hasWorker, dropParam: v === '1' };
 }
