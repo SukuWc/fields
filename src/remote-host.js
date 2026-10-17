@@ -40,6 +40,8 @@ export class RemoteHost {
     this.inFlight = 0;
     this.dropped = 0;
     this.ticksSent = 0;
+    this.statics = null;
+    this.staticsVersion = 0;
     this.framesReceived = 0;
     this.framesDelivered = 0;
     this.framesDropped = 0;
@@ -106,7 +108,13 @@ export class RemoteHost {
         if (p) p(m.r);
         break;
       }
+      case 'statics':
+        this.statics = m.statics;
+        this.staticsVersion = m.sv;
+        break;
       case 'frame':
+        // The statics this frame was built against (they arrive first).
+        if (m.frame.state) m.frame.statics = this.statics;
         if (this.inFlight > 0) this.inFlight--;
         this.framesReceived++;
         for (const fn of this._arrivalListeners) fn(m.frame);

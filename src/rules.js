@@ -1724,12 +1724,25 @@ export function recordContacts(resolutions, simTime, boats) {
 
 export function contactGuides(nowMs) {
   const now = typeof nowMs === 'number' ? nowMs : performance.now();
-  const guides = [];
+  return contactGuidesFromState(contactFlashState(now));
+}
+
+// Live contact flashes as [{ x, y, age }] (age in ms at nowMs).
+export function contactFlashState(nowMs) {
+  const out = [];
   for (let i = 0; i < R.contactFlashes.length; i++) {
     const flash = R.contactFlashes[i];
-    const age = now - flash.startedAtMs;
+    const age = nowMs - flash.startedAtMs;
     if (age < 0 || age > CONTACT_FLASH_MS) continue;
-    const t = age / CONTACT_FLASH_MS;
+    out.push({ x: flash.x, y: flash.y, age });
+  }
+  return out;
+}
+
+export function contactGuidesFromState(flashes) {
+  const guides = [];
+  for (const flash of flashes) {
+    const t = flash.age / CONTACT_FLASH_MS;
     guides.push({
       type: 'contact',
       x: flash.x,
@@ -1992,32 +2005,40 @@ export function penaltyAutopilotRemainingDeg(boat) {
 // `boats`, as in the info panel).
 // GETS / GIVES BOUNDARY ROOM badges, like markRoomGuides.
 export function boundaryRoomGuides(resolutions, boats) {
-  const g = [];
-  const list = boats || [];
-  for (const r of resolutions || []) {
-    const m = r && r.boundaryRoom;
-    if (!m || !m.rightOfWay || !m.giveWay) continue;
-    const n = list.indexOf(m.rightOfWay);
-    const top = Math.max(m.rightOfWay.y, m.giveWay.y) + 3.3;
-    g.push({ type: 'label', badge: true, x: m.rightOfWay.x, y: top + 1.3, lines: [{ text: 'GETS BOUNDARY ROOM', role: 'cleared', id: 'br' }] });
-    g.push({ type: 'label', badge: true, x: m.giveWay.x, y: top, lines: [{ text: 'GIVES ROOM' + (n >= 0 ? ' → boat ' + n : ''), role: 'turn', id: 'br' }] });
-  }
-  return g;
+  return roomGuidesFromState(roomGuideState(resolutions, boats, 'boundaryRoom'), 'boundaryRoom');
 }
 
 export function markRoomGuides(resolutions, boats) {
-  const g = [];
+  return roomGuidesFromState(roomGuideState(resolutions, boats, 'markRoom'), 'markRoom');
+}
+
+// Live room obligations of one kind ('markRoom' | 'boundaryRoom') as
+// [{ rx, ry, gx, gy, n }]: entitled and giving boat positions, n = the
+// entitled boat's index in boats (−1 if not there).
+export function roomGuideState(resolutions, boats, kind) {
+  const out = [];
   const list = boats || [];
   for (const r of resolutions || []) {
-    const m = r && r.markRoom;
+    const m = r && r[kind];
     if (!m || !m.rightOfWay || !m.giveWay) continue;
-    const ent = m.rightOfWay;
-    const owes = m.giveWay;
-    const n = list.indexOf(ent);
-    // Stacked above the higher boat so the two badges never overlap.
-    const top = Math.max(ent.y, owes.y) + 3.3;
-    g.push({ type: 'label', badge: true, x: ent.x, y: top + 1.3, lines: [{ text: 'GETS MARK-ROOM', role: 'cleared', id: 'mr' }] });
-    g.push({ type: 'label', badge: true, x: owes.x, y: top, lines: [{ text: 'GIVES MARK-ROOM' + (n >= 0 ? ' → boat ' + n : ''), role: 'turn', id: 'mr' }] });
+    out.push({ rx: m.rightOfWay.x, ry: m.rightOfWay.y, gx: m.giveWay.x, gy: m.giveWay.y, n: list.indexOf(m.rightOfWay) });
+  }
+  return out;
+}
+
+// GETS / GIVES badges, stacked above the higher boat so they never overlap.
+export function roomGuidesFromState(list, kind) {
+  const g = [];
+  const mark = kind === 'markRoom';
+  for (const m of list) {
+    const top = Math.max(m.ry, m.gy) + 3.3;
+    if (mark) {
+      g.push({ type: 'label', badge: true, x: m.rx, y: top + 1.3, lines: [{ text: 'GETS MARK-ROOM', role: 'cleared', id: 'mr' }] });
+      g.push({ type: 'label', badge: true, x: m.gx, y: top, lines: [{ text: 'GIVES MARK-ROOM' + (m.n >= 0 ? ' → boat ' + m.n : ''), role: 'turn', id: 'mr' }] });
+    } else {
+      g.push({ type: 'label', badge: true, x: m.rx, y: top + 1.3, lines: [{ text: 'GETS BOUNDARY ROOM', role: 'cleared', id: 'br' }] });
+      g.push({ type: 'label', badge: true, x: m.gx, y: top, lines: [{ text: 'GIVES ROOM' + (m.n >= 0 ? ' → boat ' + m.n : ''), role: 'turn', id: 'br' }] });
+    }
   }
   return g;
 }
@@ -2044,76 +2065,75 @@ export function pendingPenaltyReason(boat) {
 export function penaltyGuides(boats, nowMs) {
   const now = typeof nowMs === 'number' ? nowMs : performance.now();
   const list = boats || [];
-  const live = new Set(list);
-  const guides = [];
+  return penaltyGuidesFromState(penaltyGuideState(list, now), list.map((b) => (b ? { x: b.x, y: b.y, ha: b.hull_angle } : null)));
+}
 
+// Penalty overlay state (scene-state.js), per boat index i:
+//   boats: [{ i, c (pending count), ft (FAULT text), t: { sh, pd, dir, left }
+//           (Q/E circle) | null, mt (tack/gybe progress text) | null }]
+//   cleared: [{ i, c }] CLEARED flashes (expired ones are dropped here).
+export function penaltyGuideState(boats, nowMs) {
+  const list = boats || [];
+  const live = new Set(list);
+  const out = { boats: [], cleared: [] };
   for (let i = 0; i < list.length; i++) {
     const boat = list[i];
     if (!boat || !Number.isFinite(boat.x) || !Number.isFinite(boat.y)) continue;
-    const count = pendingPenaltyCount(boat);
-    if (count > 0) {
-      const at = sternOffset(boat, 2.5);
-      guides.push({
-        type: 'label',
-        badge: true,
-        x: boat.x + at.x,
-        y: boat.y + at.y,
-        lines: [{
-          text: faultBadgeText(boat, count),
-          role: 'badge',
-          id: 'fault',
-        }],
-      });
-    }
-
+    const c = pendingPenaltyCount(boat);
     const turn = boat.penalty_turn;
-    const ahead = bowOffset(boat, 4.3);
+    const e = { i, c, ft: c > 0 ? faultBadgeText(boat, c) : null, t: null, mt: null };
     if (turn && Number.isFinite(turn.startHeading)) {
-      const bow = turn.startHeading - Math.PI / 2;
-      pushArc(guides, boat.x, boat.y, PENALTY_RING_R, bow, Math.PI * 2, 0xffffff, 0.28);
-      const sweep = (turn.progressDeg || 0) * Math.PI / 180;
-      if (Math.abs(sweep) > 1e-3) {
-        pushArc(guides, boat.x, boat.y, PENALTY_RING_R, bow, sweep, 0xffc240, 1);
-      }
-      const left = Math.max(0, Math.ceil(penaltyAutopilotRemainingDeg(boat)));
-      guides.push({
-        type: 'label',
-        badge: true,
-        x: boat.x + ahead.x,
-        y: boat.y + ahead.y,
-        lines: [{ text: (turn.dir < 0 ? 'CW ' : 'CCW ') + left + '°', role: 'turn', id: 'turn' }],
-      });
-      continue;
+      e.t = { sh: turn.startHeading, pd: turn.progressDeg || 0, dir: turn.dir, left: Math.max(0, Math.ceil(penaltyAutopilotRemainingDeg(boat))) };
+    } else if (c > 0) {
+      e.mt = penaltyManeuverText(penaltyManeuverView(boat)) || null;
     }
-
-    const text = count > 0 ? penaltyManeuverText(penaltyManeuverView(boat)) : null;
-    if (!text) continue;
-    guides.push({
-      type: 'label',
-      badge: true,
-      x: boat.x + ahead.x,
-      y: boat.y + ahead.y,
-      lines: [{ text, role: 'turn', id: 'turn' }],
-    });
+    if (e.c > 0 || e.t || e.mt) out.boats.push(e);
   }
-
-  for (let i = R.penaltyCleared.length - 1; i >= 0; i--) {
-    const flash = R.penaltyCleared[i];
-    const age = now - flash.startedAtMs;
+  for (let k = R.penaltyCleared.length - 1; k >= 0; k--) {
+    const flash = R.penaltyCleared[k];
+    const age = nowMs - flash.startedAtMs;
     if (age < 0 || age > PENALTY_CLEARED_MS || !live.has(flash.boat)) {
-      R.penaltyCleared.splice(i, 1);
+      R.penaltyCleared.splice(k, 1);
       continue;
     }
     const boat = flash.boat;
     if (!boat || !Number.isFinite(boat.x) || !Number.isFinite(boat.y)) continue;
-    const at = sternOffset(boat, pendingPenaltyCount(boat) > 0 ? 4.4 : 2.5);
-    guides.push({
-      type: 'label',
-      badge: true,
-      x: boat.x + at.x,
-      y: boat.y + at.y,
-      lines: [{ text: 'CLEARED', role: 'cleared', id: 'cleared' }],
-    });
+    out.cleared.push({ i: list.indexOf(boat), c: pendingPenaltyCount(boat) });
+  }
+  return out;
+}
+
+// FAULT badge while a penalty is pending (with a count when several are),
+// the amber tack/gybe progress label, the ring and degrees left while the
+// Q/E autopilot circles, and a short CLEARED flash. boats[i] = { x, y, ha }.
+export function penaltyGuidesFromState(s, boats) {
+  const guides = [];
+  for (const e of s.boats) {
+    const b = boats[e.i];
+    if (!b) continue;
+    const boat = { x: b.x, y: b.y, hull_angle: b.ha };
+    if (e.c > 0) {
+      const at = sternOffset(boat, 2.5);
+      guides.push({ type: 'label', badge: true, x: boat.x + at.x, y: boat.y + at.y, lines: [{ text: e.ft, role: 'badge', id: 'fault' }] });
+    }
+    const ahead = bowOffset(boat, 4.3);
+    if (e.t) {
+      const bow = e.t.sh - Math.PI / 2;
+      pushArc(guides, boat.x, boat.y, PENALTY_RING_R, bow, Math.PI * 2, 0xffffff, 0.28);
+      const sweep = e.t.pd * Math.PI / 180;
+      if (Math.abs(sweep) > 1e-3) pushArc(guides, boat.x, boat.y, PENALTY_RING_R, bow, sweep, 0xffc240, 1);
+      guides.push({ type: 'label', badge: true, x: boat.x + ahead.x, y: boat.y + ahead.y, lines: [{ text: (e.t.dir < 0 ? 'CW ' : 'CCW ') + e.t.left + '°', role: 'turn', id: 'turn' }] });
+      continue;
+    }
+    if (!e.mt) continue;
+    guides.push({ type: 'label', badge: true, x: boat.x + ahead.x, y: boat.y + ahead.y, lines: [{ text: e.mt, role: 'turn', id: 'turn' }] });
+  }
+  for (const f of s.cleared) {
+    const b = boats[f.i];
+    if (!b) continue;
+    const boat = { x: b.x, y: b.y, hull_angle: b.ha };
+    const at = sternOffset(boat, f.c > 0 ? 4.4 : 2.5);
+    guides.push({ type: 'label', badge: true, x: boat.x + at.x, y: boat.y + at.y, lines: [{ text: 'CLEARED', role: 'cleared', id: 'cleared' }] });
   }
   return guides;
 }

@@ -3,6 +3,8 @@
 // engine objects), so the same client can sit on a worker or socket host.
 // Runs without the DOM stub.
 import { LocalHost, SimCore } from '../src/host.js';
+import { buildScene } from '../src/scene-build.js';
+import { sceneDiff } from './scene-diff.mjs';
 import { Boltzmann } from '../src/boltzmann.js';
 import { Map } from '../src/map.js';
 import { FluidWind, ConstantWind } from '../src/wind.js';
@@ -60,10 +62,12 @@ for (const n of [0, 7, 11]) {
   let plain = true;
   try { structuredClone(last); } catch { plain = false; }
   check(`scenario ${n}: frame is plain data`, plain);
-  check(`scenario ${n}: frame has readout, guides and body outlines`,
-    typeof last.hud.info === 'string' && last.hud.info.includes('Boat 0 TWA') && Array.isArray(last.guides) && last.guides.length > 0
-    && last.bodies.length > 0 && last.bodies.every((o) => o.pts.length >= 4 && Number.isFinite(o.pts[0])),
-    `guides=${last.guides.length} bodies=${last.bodies.length}`);
+  const scene = buildScene(last.state, last.statics, view);
+  check(`scenario ${n}: frame has readout, scene state and statics that build guides and body outlines`,
+    typeof last.hud.info === 'string' && last.hud.info.includes('Boat 0 TWA') && Array.isArray(scene.guides) && scene.guides.length > 0
+    && scene.bodies.length > 0 && scene.bodies.every((o) => o.pts.length >= 4 && Number.isFinite(o.pts[0])),
+    `guides=${scene.guides.length} bodies=${scene.bodies.length}`);
+  check(`scenario ${n}: frame bodies match the live world`, sceneDiff(scene.bodies, h.bodies()) === 0);
   check(`scenario ${n}: boat0 follows boat 0`, last.boat0 && Math.abs(last.boat0.x - ref.players[0].x) < 1e-12);
 }
 

@@ -4,6 +4,7 @@ import { FixedStepLoop } from './loop.js';
 import { initRenderer, startAnimation, renderNow, getCamera, setFluidPlaneSize, setFieldVisible } from './renderer.js';
 import { setupControls, heldCommands, onHeldChange, deferUiToFrames, flushFrameUi } from './controls.js';
 import { LocalHost } from './host.js';
+import { buildScene } from './scene-build.js';
 import { WorkerHost } from './worker-host.js';
 import { RemoteHost } from './remote-host.js';
 import { hostChoice } from './host-choice.js';
@@ -274,12 +275,12 @@ function startClient() {
 
   let currentGuides = [];
   let devMode = false;
-  // Bodies: read at render time from the main-thread host (as the renderer
-  // read the world), else the latest frame's.
+  // Guides and body outlines: built here from the latest frame's scene state
+  // (scene-build.js buildScene), the same code for every host.
   let frameBodies = [];
   // Remote mode: no animation loop; the frame handler below draws.
   startAnimation(view, () => ({
-    bodies: host.bodies ? host.bodies() : frameBodies,
+    bodies: frameBodies,
     guides: currentGuides,
     devMode,
   }), { loop: !remoteDriven });
@@ -291,7 +292,7 @@ function startClient() {
   // The host steps the world; the loop only keeps time.
   const loop = new FixedStepLoop({ step() {} }, { tickHz: 30, maxCatchUp: 4 });
 
-  // Readout and HUD from a frame's presentation (present.js presentStep).
+  // Readout and HUD from a frame's presentation (present.js presentHud).
   function applyHud(hud) {
     if (hud.dist !== null) distInfoEl.innerHTML = hud.dist;
     setInfo(hud.info);
@@ -325,13 +326,16 @@ function startClient() {
     lastFrame = frame;
     devMode = frame.devMode;
     // In a remote room with an own boat, follow that one.
-  const mine = ownBoatId && frame.spawned ? frame.spawned.find((b) => b.id === ownBoatId) : null;
-  followTarget = mine || (ownBoatId ? undefined : frame.boat0) || undefined;
+    const mine = ownBoatId && frame.spawned ? frame.spawned.find((b) => b.id === ownBoatId) : null;
+    followTarget = mine || (ownBoatId ? undefined : frame.boat0) || undefined;
     if (frame.fieldSteps > 0 && isPerfOverlayOn()) recordFieldStep(frame.fieldMs);
     if (frame.hud) {
       applyHud(frame.hud);
-      currentGuides = frame.guides;
-      if (frame.bodies) frameBodies = frame.bodies;
+      if (frame.state && frame.statics) {
+        const scene = buildScene(frame.state, frame.statics, view);
+        currentGuides = scene.guides;
+        frameBodies = scene.bodies;
+      }
     }
     if (frame.fieldReady) dataTextureMaterial.needsUpdate = true;
   });

@@ -56,8 +56,8 @@ const labelTextureCache = new Map();
 const contactPool = [];
 let contactTexture = null;
 
-// Body outlines come from the host as plain data (present.js bodyOutlines):
-// { id, kind, stroke, pts: [x0, y0, x1, y1, ...] } in world coordinates.
+// Body outlines are plain data built from the frame state (scene-build.js
+// buildBodies): { id, kind, stroke, pts: [x0, y0, x1, y1, ...] } in world coordinates.
 function createFixtureLine(body) {
   const pointCount = body.pts.length / 2;
   const geometry = new THREE.BufferGeometry();
