@@ -267,6 +267,16 @@ for (const k of [2, 4]) {
 	}
 }
 
+// --- 7b. 4f viscosity: root and boat stack at FAST4_NU_FLOOR (2x Default's physical nu) ---
+{
+	const { FAST4_NU_FLOOR } = await import('../src/boltzmann.js');
+	const { bm } = H.makeWorld('4f', 15);
+	const phys = bm.nu * bm.cellSize * bm.cellSize * bm.stepsPerFrame;
+	check('4f: root and stack ν at FAST4_NU_FLOOR, physical ν 2× Default (was 16× / 8×)',
+		FAST4_NU_FLOOR === 0.003125 && bm.nu === FAST4_NU_FLOOR && bm.matchedNu === FAST4_NU_FLOOR && near(phys, 0.05, 1e-12),
+		`ν=${bm.nu}/${bm.matchedNu} phys=${phys}`);
+}
+
 // --- 8. Fast-wind grids (2 m root cell stepped 1× / 1.2× per frame) and the 150 m map ---
 {
 	const { FluidWind } = await import('../src/wind.js');
