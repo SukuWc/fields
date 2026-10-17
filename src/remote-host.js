@@ -21,10 +21,15 @@
 // up gets every frame; one that falls behind renders the latest state
 // instead of replaying old ones. coalesce: false delivers every frame.
 //
-// Field: binary message = u32 width, u32 height (little endian), then
-// width × height × 4 RGBA bytes. The server sends a reduced texture at a
-// throttled rate (apps/server/room.js FIELD_*).
+// Field: only while this client shows it (setField({ on, plotType,
+// contrastExp }); the 'plot' command sets the plot). The server then sends,
+// every TICK_HZ / fieldHz ticks, a binary field grid message: the root grid
+// and each refinement domain, one byte per cell (fieldPainter.js
+// encodeFieldGrids). It is painted here into the page's texture with the
+// local palette and layering (FieldPainter.paintGrids), so remote looks like
+// local; the page shows it on the next frame.
 import { plainView } from './host-protocol.js';
+import { FieldPainter, decodeFieldGrids } from './fieldPainter.js';
 
 export class RemoteHost {
   constructor(url, opts, texture, { maxInFlight = 0, WebSocketImpl, coalesce = true } = {}) {
@@ -47,6 +52,10 @@ export class RemoteHost {
       this._channel.port1.onmessage = () => this._deliver();
     }
     this.fieldsReceived = 0;
+    this.fieldBytes = 0;
+    this.lastField = null;
+    this._painter = texture ? new FieldPainter(texture, opts.oversampling || 8) : null;
+    this._field = { on: false, plotType: 3, contrastExp: 0 };
     this.lastFrame = null;
     this.info = null;
     this.mode = null;
@@ -66,7 +75,10 @@ export class RemoteHost {
       this._rejectReady = reject;
     });
     const { texture: _t, ...plain } = opts;
-    ws.onopen = () => ws.send(JSON.stringify({ type: 'init', opts: plain }));
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'init', opts: plain }));
+      if (this._field.on) ws.send(JSON.stringify({ type: 'field', ...this._field }));
+    };
     ws.onerror = () => { if (!this.info) this._rejectReady(new Error('cannot connect to ' + url)); };
     ws.onclose = () => {
       if (!this.info) this._rejectReady(new Error('connection to ' + url + ' closed'));
@@ -121,21 +133,13 @@ export class RemoteHost {
   }
 
   _onField(buf) {
-    const tex = this.texture;
-    if (!tex || !(buf instanceof ArrayBuffer) || buf.byteLength < 8) return;
-    const dv = new DataView(buf);
-    const width = dv.getUint32(0, true), height = dv.getUint32(4, true);
-    const data = new Uint8Array(buf, 8);
-    if (data.length !== width * height * 4) return;
+    if (!(buf instanceof ArrayBuffer)) return;
+    const msg = decodeFieldGrids(buf);
+    if (!msg) return;
     this.fieldsReceived++;
-    const img = tex.image;
-    if (img && img.width === width && img.height === height) {
-      img.data = data;
-    } else {
-      tex.image = { data, width, height };
-      if (typeof tex.dispose === 'function') tex.dispose();
-    }
-    tex.needsUpdate = true;
+    this.fieldBytes += buf.byteLength;
+    this.lastField = msg;
+    if (this._painter) this._painter.paintGrids(msg);
   }
 
   _send(m) { if (this.ws.readyState === 1) this.ws.send(JSON.stringify(m)); }
@@ -152,7 +156,22 @@ export class RemoteHost {
   onFrame(fn) { this._frameListeners.push(fn); }
   // Every frame as it arrives, before coalescing (tests, counters).
   onFrameArrival(fn) { this._arrivalListeners.push(fn); }
-  command(c) { return this._call('command', 'c', c); }
+  command(c) {
+    if (c && c.type === 'plot') {
+      if (Number.isFinite(c.plotType)) this._field.plotType = c.plotType;
+      if ('contrastExp' in c) this._field.contrastExp = Number(c.contrastExp);
+    }
+    return this._call('command', 'c', c);
+  }
+  // Field messages for this client: on/off and the plot (any subset).
+  setField(f) {
+    const next = { ...this._field };
+    if ('on' in f) next.on = !!f.on;
+    if (Number.isFinite(f.plotType)) next.plotType = f.plotType;
+    if ('contrastExp' in f) next.contrastExp = Number(f.contrastExp);
+    this._field = next;
+    this._send({ type: 'field', ...next });
+  }
   query(q) { return this._call('query', 'q', q); }
   setPerf(on) { this._send({ type: 'perf', on: !!on }); }
 

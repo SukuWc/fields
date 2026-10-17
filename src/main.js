@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { FixedStepLoop } from './loop.js';
 
-import { initRenderer, startAnimation, renderNow, getCamera, setFluidPlaneSize } from './renderer.js';
+import { initRenderer, startAnimation, renderNow, getCamera, setFluidPlaneSize, setFieldVisible } from './renderer.js';
 import { setupControls, heldCommands, onHeldChange, deferUiToFrames, flushFrameUi } from './controls.js';
 import { LocalHost } from './host.js';
 import { WorkerHost } from './worker-host.js';
@@ -353,6 +353,22 @@ function startClient() {
       renderNow();
     });
     sendInput();
+    // Field: the server sends field messages only while this page shows the
+    // field (Show field box on and dev mode off); the plot choice was sent
+    // with the 'plot' command above.
+    const fieldBox = document.getElementById('field_plane');
+    document.getElementById('field_plane_row').hidden = false;
+    document.getElementById('field_plane_br').hidden = false;
+    let fieldOn = null;
+    let devMode = false;
+    const syncField = () => {
+      const on = fieldBox.checked && !devMode;
+      setFieldVisible(fieldBox.checked);
+      if (on !== fieldOn) { fieldOn = on; host.setField({ on }); }
+    };
+    host.onFrame((frame) => { if (!!frame.devMode !== devMode) { devMode = !!frame.devMode; syncField(); } });
+    fieldBox.addEventListener('change', syncField);
+    syncField();
     return;
   }
 

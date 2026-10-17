@@ -1,19 +1,19 @@
 // Authoritative sim server: WebSocket, one Room (room.js) per ?room= name.
 //
-//   node dist-server/server.mjs [--port 8787] [--lockstep] [--field-hz 2] [--field-scale 1] [--verbose]
+//   node dist-server/server.mjs [--port 8787] [--lockstep] [--field-hz 2] [--verbose]
 //   (npm run server builds and starts it; PORT env works too)
 //
 // GET / answers a small JSON status (rooms, clients, tick cost) for health checks.
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
-import { Room, FIELD_HZ, FIELD_OVERSAMPLING } from './room.js';
+import { Room, FIELD_HZ } from './room.js';
 
-export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, fieldHz = FIELD_HZ, fieldOversampling = FIELD_OVERSAMPLING } = {}) {
+export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, fieldHz = FIELD_HZ } = {}) {
   const rooms = new Map();
   const server = http.createServer((req, res) => {
     const status = {
       ok: true, lockstep,
-      rooms: [...rooms.values()].map((r) => ({ name: r.name, clients: r.clients.size, ticks: r.ticks, tickMs: Math.round(r.tickMs * 10) / 10 })),
+      rooms: [...rooms.values()].map((r) => ({ name: r.name, clients: r.clients.size, ticks: r.ticks, tickMs: Math.round(r.tickMs * 10) / 10, fieldEncodes: r.fieldEncodes, fieldBytesSent: r.fieldBytesSent })),
     };
     res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
     res.end(JSON.stringify(status));
@@ -22,7 +22,7 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
   wss.on('connection', (ws, req) => {
     const name = new URL(req.url || '/', 'http://x').searchParams.get('room') || 'default';
     let room = rooms.get(name);
-    if (!room) { room = new Room(name, { lockstep, fieldHz, fieldOversampling }); rooms.set(name, room); }
+    if (!room) { room = new Room(name, { lockstep, fieldHz }); rooms.set(name, room); }
     room.join(ws);
     ws.on('message', (data, isBinary) => {
       if (isBinary) return;
@@ -59,7 +59,6 @@ if (isMain) {
     port: Number(arg('port', process.env.PORT || 8787)),
     lockstep: !!arg('lockstep', false),
     fieldHz: Number(arg('field-hz', FIELD_HZ)),
-    fieldOversampling: Number(arg('field-scale', FIELD_OVERSAMPLING)),
   });
   console.info(`sim server listening on ws://localhost:${s.port}${arg('lockstep', false) ? ' (lockstep)' : ''}`);
 }

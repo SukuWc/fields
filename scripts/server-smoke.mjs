@@ -1,6 +1,6 @@
 // CI smoke test for the built sim server: start dist-server/server.mjs,
 // connect one RemoteHost client, load scenario 0, let it run ~2 s and check
-// frames, readout and field arrive. Run `npm run build:server` first.
+// frames, readout and field grids arrive (the client turns the field on). Run `npm run build:server` first.
 import { spawn } from 'node:child_process';
 import { WebSocket } from 'ws';
 import { RemoteHost } from '../src/remote-host.js';
@@ -14,13 +14,14 @@ await new Promise((resolve) => srv.stdout.on('data', (d) => { process.stdout.wri
 const tex = { image: { data: new Uint8Array(0) } };
 const host = new RemoteHost(`ws://127.0.0.1:${port}/?room=smoke`, { mapW: 100, mapH: 200, simRes: '4f' }, tex, { WebSocketImpl: WebSocket });
 const info = await host.ready.catch((e) => fail(String(e)));
+host.setField({ on: true });
 console.log('info: mode', info.mode, 'map', info.mapW + 'x' + info.mapH, 'scenarios', info.scenarios.length);
 const card = await host.command({ type: 'restart', scenario: 0 });
 console.log('scenario 0:', card && card.title);
 await new Promise((r) => setTimeout(r, 2000));
 const f = host.lastFrame;
 const ok = host.framesReceived >= 30 && f && f.hud && /Boat 0 TWA/.test(f.hud.info) && f.boat0 && Number.isFinite(f.boat0.x) && host.fieldsReceived > 0;
-console.log(`frames ${host.framesReceived}, fields ${host.fieldsReceived} (${tex.image.width}x${tex.image.height}), boat0 ${f && f.boat0 && f.boat0.x.toFixed(2)},${f && f.boat0 && f.boat0.y.toFixed(2)}`);
+console.log(`frames ${host.framesReceived}, fields ${host.fieldsReceived} (${host.lastField ? host.lastField.grids.length + ' grids, ' + host.fieldBytes / host.fieldsReceived + ' B each, ' : ''}texture ${tex.image.width}x${tex.image.height}), boat0 ${f && f.boat0 && f.boat0.x.toFixed(2)},${f && f.boat0 && f.boat0.y.toFixed(2)}`);
 const status = await (await fetch(`http://127.0.0.1:${port}/`)).json();
 console.log('status', JSON.stringify(status));
 host.terminate();
