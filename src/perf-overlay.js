@@ -19,6 +19,9 @@ let _getStats = null;
 let el = null;
 let enabled = false;
 let rafId = 0;
+// External driver (remote mode): no rAF; perfOverlayFrame() closes a frame
+// each time a server frame arrives.
+let external = false;
 let lastRefresh = 0;
 
 // Steps and time since the last animation frame.
@@ -116,7 +119,12 @@ function tick(now) {
     lastRefresh = now;
     render();
   }
-  rafId = requestAnimationFrame(tick);
+  if (!external) rafId = requestAnimationFrame(tick);
+}
+
+// One frame of the overlay, driven by the caller (remote: per server frame).
+export function perfOverlayFrame(now) {
+  if (enabled && external) tick(now);
 }
 
 function setEnabled(on) {
@@ -130,7 +138,7 @@ function setEnabled(on) {
     ringFill = 0;
     lastRefresh = 0;
     render();
-    rafId = requestAnimationFrame(tick);
+    if (!external) rafId = requestAnimationFrame(tick);
   } else if (rafId) {
     cancelAnimationFrame(rafId);
     rafId = 0;
@@ -138,8 +146,10 @@ function setEnabled(on) {
 }
 
 // getStats(): the latest perfStats from the host, or null before the first.
-export function setupPerfOverlay(getStats) {
+// options.external: no rAF loop; call perfOverlayFrame() per frame instead.
+export function setupPerfOverlay(getStats, options = {}) {
   _getStats = getStats;
+  external = !!options.external;
   el = document.getElementById('perf_overlay_hud');
   const box = document.getElementById('perf');
   if (!el || !box) return;

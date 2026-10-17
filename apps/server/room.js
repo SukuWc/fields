@@ -1,9 +1,9 @@
 // One room = one authoritative SimCore (src/host.js) and the clients
 // connected to it. Speaks the host protocol (src/host-protocol.js).
 //
-// Ticks: by default the room runs at 30 Hz on its own clock (fixed step,
-// at most MAX_CATCH_UP ticks per timer callback, like loop.js) and sends a
-// frame to every client each tick. Held keys are the union of every
+// Ticks: by default the room runs on its own fixed 30 Hz clock (see _start:
+// a frame is broadcast at the end of its slot, never faster than 30 Hz, no
+// catch-up bursts) and sends every frame to every client. Held keys are the union of every
 // client's latest 'input'. With lockstep the first client's 'tick'
 // messages drive the room instead (reproducible runs, tests).
 //
@@ -26,7 +26,6 @@ import { BOAT_ACTIONS } from '../../src/sim.js';
 // { type: 'event', ev: { type: 'ownBoats', boats: [{ id, name }] } }.
 
 export const TICK_HZ = 30;
-export const MAX_CATCH_UP = 4;
 export const FIELD_HZ = 2;
 export const FIELD_OVERSAMPLING = 1;
 
@@ -42,6 +41,7 @@ export class Room {
     this.inputs = new Map();
     this.owned = new Map();
     this.ticks = 0;
+    this.broadcasts = 0;
     this.timer = null;
     this.tickMs = 0;
   }
@@ -167,7 +167,9 @@ export class Room {
   }
 
   // One tick; req as SimCore.tick (lockstep), or built from the inputs.
-  step(req) {
+  // Compute one tick (req as SimCore.tick in lockstep, else built from the
+  // inputs). Returns what to broadcast; nothing is sent here.
+  _compute(req) {
     const r = req || { dt: 1 / TICK_HZ, held: this._heldUnion(), present: true, view: this._view() };
     const every = this.fieldHz > 0 ? Math.max(1, Math.round(TICK_HZ / this.fieldHz)) : 0;
     if (every && r.dt !== undefined && this.ticks % every === 0) this._fieldDue = true;
@@ -176,36 +178,66 @@ export class Room {
     this.tickMs = this.now() - t0;
     if (r.dt !== undefined) this.ticks++;
     frame.fieldReady = false;
-    this.broadcast({ type: 'frame', frame });
+    // Room tick number: increases by one per tick, the same on every client.
+    frame.tick = this.ticks;
+    let field = null;
     if (this._painted) {
       this._fieldDue = false;
       this._painted = false;
-      this._sendField();
+      field = this._fieldMessage();
     }
-    return frame;
+    return { frame, field };
   }
 
-  _sendField() {
+  // Every client in the room gets every frame; the server never waits on a
+  // client (ws buffers per socket). The field (binary) goes first so a
+  // client drawing on the frame message already has the new texture.
+  _publish({ frame, field }) {
+    if (field) for (const c of this.clients) c.send(field);
+    this.broadcast({ type: 'frame', frame });
+    this.broadcasts++;
+  }
+
+  step(req) {
+    const out = this._compute(req);
+    this._publish(out);
+    return out.frame;
+  }
+
+  _fieldMessage() {
     const img = this.core.texture.image;
-    if (!img || !img.width) return;
+    if (!img || !img.width) return null;
     const buf = Buffer.allocUnsafe(8 + img.data.length);
     buf.writeUInt32LE(img.width, 0);
     buf.writeUInt32LE(img.height, 4);
     buf.set(img.data, 8);
-    for (const c of this.clients) c.send(buf);
+    return buf;
   }
 
+  // Fixed 30 Hz clock. Slot k starts at T_k: the tick is computed then, and
+  // its frame is broadcast at the end of the slot (T_k + 1/30 s) if it finished
+  // early, so broadcasts never exceed 30 Hz and the sim never runs ahead of
+  // real time. A tick slower than its slot is broadcast as soon as it is done,
+  // and the next slot starts then (no catch-up burst; that time is dropped).
   _start() {
     const dt = 1000 / TICK_HZ;
-    let next = this.now();
-    const loop = () => {
-      const t = this.now();
-      let n = 0;
-      while (t >= next && n < MAX_CATCH_UP) { this.step(); next += dt; n++; }
-      if (t >= next) next = t + dt; // drop time we cannot catch up
-      this.timer = setTimeout(loop, Math.max(0, next - this.now()));
+    let slot = this.now();
+    const runSlot = () => {
+      this.timer = null;
+      if (!this.core) return;
+      const out = this._compute();
+      const end = slot + dt;
+      const publish = () => {
+        this.timer = null;
+        this._publish(out);
+        slot = Math.max(end, this.now());
+        this.timer = setTimeout(runSlot, Math.max(0, slot - this.now()));
+      };
+      const wait = end - this.now();
+      if (wait > 0) this.timer = setTimeout(publish, wait);
+      else publish();
     };
-    this.timer = setTimeout(loop, 0);
+    this.timer = setTimeout(runSlot, 0);
   }
 
   stop() { if (this.timer) clearTimeout(this.timer); this.timer = null; }

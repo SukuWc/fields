@@ -498,10 +498,18 @@ export function getCamera() {
 }
 
 // getScene(): { bodies, guides, devMode } from the host (main.js).
-export function startAnimation(view, getScene) {
+// options.loop false (remote mode): no animation loop; the caller draws with
+// renderNow() when a server frame arrives.
+export function startAnimation(view, getScene, options = {}) {
   _view = view;
   _getScene = getScene;
-  renderer.setAnimationLoop(animation);
+  if (options.loop !== false) renderer.setAnimationLoop(animation);
+}
+
+// Draw one frame now (no frame-rate cap). Remote mode calls it per server frame.
+export function renderNow() {
+  if (!_getScene) return;
+  animation(undefined);
 }
 
 // Rendering is capped at RENDER_FPS (the sim tick rate): frames from

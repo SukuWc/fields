@@ -13,7 +13,7 @@ npm start                           # vite dev server in another terminal
 
 Options: `node dist-server/server.mjs --port 8787 --field-hz 2 --field-scale 1 --lockstep --verbose`. `PORT` in the environment also sets the port.
 
-- `--lockstep`: the client's loop drives each tick, as with the worker. Runs are reproducible; the browser comparison and `test/server.test.mjs` use it.
+- `--lockstep`: each tick is driven by a client `tick` message instead of the server clock. Runs are reproducible; `test/server.test.mjs` uses it from Node (`RemoteHost.tick`). It is test-only: the browser page is frame-driven in remote mode and never sends `tick`, so a page against a lockstep server stays on the restart frame.
 - `--field-hz N`: field texture messages per second (default 2; 0 = no field).
 - `--field-scale N`: field texels per root cell at resolution 1 (default 1: 1 m per texel on the default 4f grid).
 - `GET http://localhost:8787/`: JSON status (rooms, clients, ticks, last tick ms).
@@ -35,12 +35,20 @@ Params equal to the build default are removed from the URL. If the server can't 
 
 `src/host-protocol.js` is shared with the worker. It uses JSON text messages: `init`, `command`/`query` → `result`, `event`, `frame`, `input` (held keys + camera, sent only when they change), and `tick` in lockstep. The field is a binary message: u32 width, u32 height (little endian), then RGBA bytes.
 
+## Frame clock and broadcast
+
+- The room ticks on a fixed 30 Hz clock (`Room._start`). Each tick is computed at the start of its 33.3 ms slot and broadcast at the slot's end, so a cheap tick waits for its slot: the server never sends faster than 30 Hz and never runs ahead of real time. A tick slower than 33 ms is broadcast as soon as it finishes, and the next slot starts then: no catch-up burst, the room just runs slower than real time.
+- Every frame goes to every client in the room (a due field texture is sent first, then the `frame` JSON with its `tick` number). The server doesn't wait for clients; `ws` buffers per socket.
+- The page is event-driven in remote mode (`src/main.js`, `remoteDriven`): no `requestAnimationFrame` loop (renderer `setAnimationLoop` off, perf overlay updated per frame), no local tick loop, no interpolation or prediction. Each arriving frame updates the camera, HUD, readout, guides, cursor wind readout, perf overlay and field texture, then renders once (`renderNow`). Keys and touch send `input` when they change; the camera position (rounded to 0.1 m) is resent when it moves after a frame.
+- Slow client: `RemoteHost` counts every frame on arrival (`framesReceived`, `onFrameArrival`) but hands frames to the page from a posted task. If several arrive before the page gets to run, only the newest is rendered and the rest are counted in `framesDropped`. Pass `coalesce: false` to deliver every frame (the lockstep tests do).
+- `test/remote-frames.test.mjs` checks this: two clients receive every frame with consecutive matching ticks and identical content, cheap ticks on a 20 × 20 m grid broadcast at ≤ 30 Hz without bursts, 60 ms ticks go out every ~61 ms and return to 30 Hz without a burst, and a client that falls behind renders only the newest frame.
+
 ## Decisions
 
 - **Field streaming:** the server paints a reduced RGBA texture, only when one is due (painting is skipped otherwise), and sends it at 2 Hz. On 100 × 200 m with 4f that's 100 × 200 texels = 80 KB per message, about 160 KB/s per client. That's fine on localhost or a LAN, but too much for real remote play. Next steps (phase 6): a quantized speed grid (Uint8, ~16 KB) coloured on the client, or no field by default.
 - **Authority:** the server's clock is authoritative. All clients' held keys are merged, and every client controls boats 0/1 (no boat assignment yet). Any client's restart or settings change applies to the whole room. Each page restarts its URL's scenario when it connects.
 - **No npm workspaces:** the server sources live in `apps/server` (with a tiny `package.json` that only sets `"type": "module"`). `ws` and `esbuild` are root dependencies, and `npm run build:server` bundles everything, including planck, into one file. Splitting into `packages/sim-core`, `apps/web` and `apps/server` would move every `src/` import, the Vite config and the test paths, for no runtime gain yet. Revisit when the server gets its own deploy (Docker).
-- **CPU:** one 4f room with a single boat costs ~30 ms per tick on the dev box, which is right at the 33 ms budget. Heavier scenarios (two-boat rule scenarios) drop below 30 Hz. The fixed step drops time it can't catch up (max 4 ticks per wake). This answers plan Q2 for now: a room per core, or a coarser server grid.
+- **CPU:** one 4f room with a single boat costs ~30 ms per tick on the dev box, which is right at the 33 ms budget. Heavier scenarios (two-boat rule scenarios) drop below 30 Hz. A slow tick is broadcast when done and the room simply runs slower than real time (no catch-up). This answers plan Q2 for now: a room per core, or a coarser server grid.
 
 ## Player boats
 
