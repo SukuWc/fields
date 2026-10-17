@@ -1,7 +1,7 @@
 // The Node sim server (apps/server) and RemoteHost (src/remote-host.js):
 // lockstep runs match LocalHost frame for frame; the authoritative 30 Hz
 // mode ticks on its own, takes commands and held keys from clients, streams
-// the reduced field and serves several clients from one room.
+// field grids to clients that show the field, and serves several clients from one room.
 import { WebSocket } from 'ws';
 import { startServer } from '../apps/server/index.js';
 import { RemoteHost } from '../src/remote-host.js';
@@ -59,6 +59,7 @@ mute();
   const a = new RemoteHost(url, opts, tex(), { WebSocketImpl: WebSocket });
   const info = await a.ready;
   check('server mode: info mode server', info.mode === 'server');
+  a.setField({ on: true });
   const events = [];
   a.on((e) => events.push(e));
   await a.command({ type: 'restart', scenario: 0 });
@@ -66,7 +67,7 @@ mute();
   const n1 = a.framesReceived;
   check('server mode: ~30 frames per second without client ticks', n1 >= 25 && n1 <= 50, `frames in 1.5 s = ${n1}`);
   check('server mode: bindControls event reaches the client', events.some((e) => e.type === 'bindControls' && e.boats === 1));
-  check('server mode: reduced field arrives as binary', a.fieldsReceived >= 3 && a.texture.image.width > 0 && a.texture.image.width <= 200,
+  check('server mode: field grids arrive as binary and paint the texture', a.fieldsReceived >= 3 && a.lastField && a.lastField.grids.length >= 1 && a.texture.image.width === a.lastField.rootW * Math.round((opts.oversampling || 8) / Math.min(1, a.lastField.resolution)),
     `fields=${a.fieldsReceived} size=${a.texture.image.width}x${a.texture.image.height}`);
   const b = new RemoteHost(url, opts, tex(), { WebSocketImpl: WebSocket });
   const evB = [];

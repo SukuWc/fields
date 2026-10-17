@@ -94,7 +94,10 @@ for (var c=0; c<=nColors; c++) {
 }
 redList[nColors+1] = 0; greenList[nColors+1] = 0; blueList[nColors+1] = 0;	// barriers are black
 
-function get_color(cIndex){
+// The palette for clients that colour field values themselves (RemoteHost).
+export const PALETTE = { nColors, red: redList, green: greenList, blue: blueList };
+
+export function get_color(cIndex){
 
 	if (cIndex < 0) cIndex = 0;
 	if (cIndex > nColors) cIndex = nColors;
@@ -174,14 +177,20 @@ class SimulationCell {
 	calculate_color(plot_type, contrast) {
 		// Returns {red, green, blue}; FieldPainter handles positioning (colorSquare).
 		if (this.barrier) return {red: 0, green: 0, blue: 0};
-		if (plot_type === 0) return get_color(Math.round(nColors * ((this.rho-1)*6*contrast + 0.5)));
-		if (plot_type === 1) return get_color(Math.round(nColors * (this.ux*2*contrast + 0.5)));
-		if (plot_type === 2) return get_color(Math.round(nColors * (this.uy*2*contrast + 0.5)));
+		return get_color(this.color_index(plot_type, contrast));
+	}
+
+	// Palette index (0..nColors, unclamped) of the plotted quantity; the
+	// remote field stream (fieldPainter.js encodeFieldGrids) quantizes it.
+	color_index(plot_type, contrast) {
+		if (plot_type === 0) return Math.round(nColors * ((this.rho-1)*6*contrast + 0.5));
+		if (plot_type === 1) return Math.round(nColors * (this.ux*2*contrast + 0.5));
+		if (plot_type === 2) return Math.round(nColors * (this.uy*2*contrast + 0.5));
 		if (plot_type === 3) {
 			const speed = Math.sqrt(this.ux*this.ux + this.uy*this.uy);
-			return get_color(Math.round(nColors * (speed*4*contrast)));
+			return Math.round(nColors * (speed*4*contrast));
 		}
-		return get_color(Math.round(nColors * (this.curl*5*contrast + 0.5)));
+		return Math.round(nColors * (this.curl*5*contrast + 0.5));
 	}
 
 	collide(omega) {

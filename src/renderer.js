@@ -2,6 +2,9 @@ import * as THREE from 'three';
 
 let camera, scene, renderer, fluidPlane;
 let _planeBase = null;
+// Field plane shown (remote: the page's Show field box). Dev mode hides it too.
+let _fieldVisible = true;
+export function setFieldVisible(on) { _fieldVisible = !!on; }
 let _getScene;
 let _view;
 
@@ -531,7 +534,7 @@ function animation(t) {
   camera.position.y = _view.camera_position_y;
   camera.position.z = _view.camera_zoom;
   const sceneData = _getScene();
-  if (fluidPlane) fluidPlane.visible = !sceneData.devMode;
+  if (fluidPlane) fluidPlane.visible = !sceneData.devMode && _fieldVisible;
 
   // Update persistent fixture lines — create/remove only when fixture set changes
   const seenFixtures = new Set();

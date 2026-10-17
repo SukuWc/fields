@@ -11,11 +11,14 @@
 //   { type: 'input', held, view }   held keys and camera for a server that ticks on
 //                                     its own clock (remote, authoritative)
 //   { type: 'perf', on }
+//   { type: 'field', on, plotType, contrastExp }  server: send this client field grid
+//                                     messages (fieldPainter.js) or stop
 // Host → client
 //   { type: 'info', info }          info also carries mode: 'client' | 'server' (who ticks)
 //   { type: 'event', ev }           Sim events; bindControls carries boats
 //   { type: 'frame', frame }        plus the field texture: transferred (worker) or a
-//                                     binary message (server, see apps/server/room.js)
+//                                     binary field grid message to clients
+//                                     showing the field (server, apps/server/room.js)
 
 // Sim event as sent to clients.
 export function eventForClient(core, ev) {
