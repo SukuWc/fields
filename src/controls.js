@@ -15,6 +15,25 @@ const _wind = { angle: 90, speed: 15 };
 // (helm, heading target), sent to sim.step once per tick; KEYDOWN bindings
 // send a one-shot command on press.
 let key_bind_list = [];
+// Remote mode sends held keys when they change instead of every tick.
+let _onHeldChange = null;
+export function onHeldChange(fn) { _onHeldChange = fn; }
+function heldChanged() { if (_onHeldChange) _onHeldChange(); }
+
+// Cursor wind readout (#wind_info). In remote mode the page only updates on
+// server frames, so the answer is held until flushFrameUi() (per frame).
+let _deferUi = false;
+let _pendingWindInfo = null;
+export function deferUiToFrames(on) { _deferUi = !!on; }
+function setWindInfo(html) {
+  if (_deferUi) { _pendingWindInfo = html; return; }
+  document.getElementById("wind_info").innerHTML = html;
+}
+export function flushFrameUi() {
+  if (_pendingWindInfo === null) return;
+  document.getElementById("wind_info").innerHTML = _pendingWindInfo;
+  _pendingWindInfo = null;
+}
 let key_state = [];
 
 function typingInControl(e) {
@@ -37,13 +56,16 @@ function checkKeyPress(e) {
   // Letter keys (Q, E) also sit on the settings panel. Ignore them, and the
   // helm keys, while a control has focus so typing does not steer the boat.
   if (typingInControl(e)) return;
+  const was = key_state[e.keyCode];
   key_state[e.keyCode] = true;
   fireKeydown(bind => key_state[bind.activation_key]);
+  if (was !== true) heldChanged();
 }
 
 function checkKeyRelease(e) {
   e = e || window.event;
   key_state[e.keyCode] = false;
+  heldChanged();
 }
 
 // Touch controls press the same keys. Held keys (helm, heading) are read by
@@ -51,11 +73,13 @@ function checkKeyRelease(e) {
 export function setVirtualKey(keyCode, down) {
   if (!down) {
     key_state[keyCode] = false;
+    heldChanged();
     return;
   }
   if (key_state[keyCode] === true) return;
   key_state[keyCode] = true;
   fireKeydown(bind => bind.activation_key === keyCode);
+  heldChanged();
 }
 
 // Held boat commands for this tick, in binding order (sim.step reads them
@@ -102,13 +126,14 @@ function autokeybind(boats) {
     K(17, -1, { type: "autopilot", boat: 1 });
     K(16, -1, { type: "tack", boat: 1 });
   }
+  heldChanged();
 }
 
 // Sim events: key bindings and scenario camera hints, applied synchronously
 // during the step that emits them (as the old in-script DOM calls were).
 function onSimEvent(ev) {
   if (ev.type === "bindControls") autokeybind(ev.boats);
-  else if (ev.type === "cleared") key_bind_list = [];
+  else if (ev.type === "cleared") { key_bind_list = []; heldChanged(); }
   else if (ev.type === "view") {
     if (ev.follow) {
       const follow = document.getElementById('camera_follow');
@@ -124,8 +149,8 @@ function onSimEvent(ev) {
 function mouse_monitor(e) {
   if (_devMode) {
     _host.query({ type: "wind", x: 0, y: 0 }).then((w) => {
-      document.getElementById("wind_info").innerHTML =
-        "Speed: " + Math.floor(w.speed * 10) / 10 + "<br>Direction: " + Math.floor(w.direction * 10) / 10;
+      setWindInfo(
+        "Speed: " + Math.floor(w.speed * 10) / 10 + "<br>Direction: " + Math.floor(w.direction * 10) / 10);
     });
     return;
   }
@@ -151,7 +176,7 @@ function mouse_monitor(e) {
   _host.query({ type: "fieldVelocity", x: pos.x, y: pos.y }).then(({ x: vx, y: vy }) => {
     const wdir = Math.atan2(vy, vx) / Math.PI * 180;
     const wspe = Math.sqrt(vx * vx + vy * vy);
-    document.getElementById("wind_info").innerHTML = "Speed: " + Math.floor(wspe * 1000) / 10 + "<br>Direction: " + Math.floor(wdir * 10) / 10;
+    setWindInfo("Speed: " + Math.floor(wspe * 1000) / 10 + "<br>Direction: " + Math.floor(wdir * 10) / 10);
   });
 }
 

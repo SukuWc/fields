@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { FixedStepLoop } from './loop.js';
 
-import { initRenderer, startAnimation, getCamera, setFluidPlaneSize } from './renderer.js';
-import { setupControls, heldCommands } from './controls.js';
+import { initRenderer, startAnimation, renderNow, getCamera, setFluidPlaneSize } from './renderer.js';
+import { setupControls, heldCommands, onHeldChange, deferUiToFrames, flushFrameUi } from './controls.js';
 import { LocalHost } from './host.js';
 import { WorkerHost } from './worker-host.js';
 import { RemoteHost } from './remote-host.js';
@@ -11,7 +11,7 @@ import { setupOwnBoat } from './own-boat.js';
 import { View } from './view.js';
 import { installUrlSettings } from './url-settings.js';
 import { setInfo, flushInfo } from './info.js';
-import { setupPerfOverlay, isPerfOverlayOn, recordFieldStep } from './perf-overlay.js';
+import { setupPerfOverlay, isPerfOverlayOn, recordFieldStep, perfOverlayFrame } from './perf-overlay.js';
 import { setupMobileMenu } from './mobile-menu.js';
 import { setupTouchControls } from './touch-controls.js';
 
@@ -238,7 +238,10 @@ function startClient() {
   // Before installUrlSettings so ?perf=1 turns the overlay on through its change listener.
   // Counters: live from the main-thread host, else the latest frame's.
   let lastFrame = null;
-  setupPerfOverlay(() => (host.perfStats ? host.perfStats() : lastFrame && lastFrame.perf) || null);
+  // Remote mode (server clock) is event-driven: the overlay closes a frame per
+  // server frame instead of running its own rAF loop.
+  const remoteDriven = host.kind === 'remote' && host.mode !== 'client';
+  setupPerfOverlay(() => (host.perfStats ? host.perfStats() : lastFrame && lastFrame.perf) || null, { external: remoteDriven });
   document.getElementById('perf').addEventListener('change', (e) => host.setPerf(e.target.checked));
   // Before installUrlSettings: the device default must be the checkbox default.
   setupTouchControls();
@@ -274,11 +277,12 @@ function startClient() {
   // Bodies: read at render time from the main-thread host (as the renderer
   // read the world), else the latest frame's.
   let frameBodies = [];
+  // Remote mode: no animation loop; the frame handler below draws.
   startAnimation(view, () => ({
     bodies: host.bodies ? host.bodies() : frameBodies,
     guides: currentGuides,
     devMode,
-  }));
+  }), { loop: !remoteDriven });
 
   const distInfoEl = document.getElementById('dist_info');
   const startHud = document.getElementById('start_hud');
@@ -331,6 +335,26 @@ function startClient() {
     }
     if (frame.fieldReady) dataTextureMaterial.needsUpdate = true;
   });
+
+  if (remoteDriven) {
+    // Remote (server clock): nothing runs on a local clock. Each server frame
+    // (handled above: readout, HUD, guides, perf counters, field texture)
+    // moves the camera, closes a perf-overlay frame and draws once; held keys
+    // and the camera go to the server when they change.
+    const sendInput = () => host.sendInput({ held: heldCommands(), view });
+    onHeldChange(sendInput);
+    deferUiToFrames(true);
+    host.onFrame(() => {
+      view.set_camera_follow_target(followTarget);
+      view.update();
+      sendInput();
+      perfOverlayFrame(performance.now());
+      flushFrameUi();
+      renderNow();
+    });
+    sendInput();
+    return;
+  }
 
   // One 30 Hz tick: camera follow, sim step(s), then the readout. Each tick runs
   // SIM_PASSES_PER_TICK sim steps (the first with simDt); ?simPasses=1..5.

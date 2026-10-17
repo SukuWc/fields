@@ -25,7 +25,7 @@ mute();
   // A fresh room per scenario: a room keeps its lattice across restarts, as
   // a page does, and the reference is a fresh LocalHost.
   for (const n of [0, 7, 11]) {
-    rh = new RemoteHost(`ws://127.0.0.1:${srv.port}/?room=t1-${n}`, opts, tex(), { WebSocketImpl: WebSocket });
+    rh = new RemoteHost(`ws://127.0.0.1:${srv.port}/?room=t1-${n}`, opts, tex(), { WebSocketImpl: WebSocket, coalesce: false });
     info = await rh.ready;
     if (n === 0) check('lockstep: info from the server (mode client, scenarios)', info.mode === 'client' && info.mapW === 100 && info.scenarios.length > 10);
     const lh = new LocalHost({ ...opts, texture: tex() });

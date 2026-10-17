@@ -4,11 +4,22 @@
 // text messages, plus binary messages for the field texture.
 //
 // The server says in its info who ticks:
-//   mode 'server'  (default) the server runs the Sim at 30 Hz on its own
-//                  clock and broadcasts a frame per tick; tick() only sends
-//                  the held keys and camera when they change ('input').
-//   mode 'client'  (server --lockstep, tests) the client's loop drives each
-//                  tick as with the worker, so runs are reproducible.
+//   mode 'server'  (default) the server runs the Sim on its own 30 Hz clock
+//                  and broadcasts every frame to every client in the room.
+//                  The page is purely event-driven (main.js): no loop, no
+//                  rAF; it draws when a frame arrives and sends held keys and
+//                  camera with sendInput() when they change.
+//   mode 'client'  (server --lockstep, Node tests only) tick() asks for each
+//                  tick, so runs are reproducible; frames are still broadcast
+//                  to every client. The browser never calls tick() in remote
+//                  mode, so a page against a lockstep server does not advance.
+//
+// Slow clients: frames are counted as they arrive (framesReceived,
+// onFrameArrival) but delivered to onFrame listeners through one posted task
+// (MessageChannel): if several frames are queued when that task runs, only the
+// newest is delivered and the rest count as framesDropped. A client that keeps
+// up gets every frame; one that falls behind renders the latest state
+// instead of replaying old ones. coalesce: false delivers every frame.
 //
 // Field: binary message = u32 width, u32 height (little endian), then
 // width × height × 4 RGBA bytes. The server sends a reduced texture at a
@@ -16,7 +27,7 @@
 import { plainView } from './host-protocol.js';
 
 export class RemoteHost {
-  constructor(url, opts, texture, { maxInFlight = 0, WebSocketImpl } = {}) {
+  constructor(url, opts, texture, { maxInFlight = 0, WebSocketImpl, coalesce = true } = {}) {
     this.kind = 'remote';
     this.url = url;
     this.texture = texture;
@@ -25,6 +36,16 @@ export class RemoteHost {
     this.dropped = 0;
     this.ticksSent = 0;
     this.framesReceived = 0;
+    this.framesDelivered = 0;
+    this.framesDropped = 0;
+    this.coalesce = coalesce && typeof MessageChannel === 'function';
+    this._arrivalListeners = [];
+    this._latest = null;
+    this._scheduled = false;
+    if (this.coalesce) {
+      this._channel = new MessageChannel();
+      this._channel.port1.onmessage = () => this._deliver();
+    }
     this.fieldsReceived = 0;
     this.lastFrame = null;
     this.info = null;
@@ -76,13 +97,27 @@ export class RemoteHost {
       case 'frame':
         if (this.inFlight > 0) this.inFlight--;
         this.framesReceived++;
-        this.lastFrame = m.frame;
-        for (const fn of this._frameListeners) fn(m.frame);
-        if (this.inFlight === 0) { const w = this._idle; this._idle = []; for (const fn of w) fn(); }
+        for (const fn of this._arrivalListeners) fn(m.frame);
+        if (this._latest) this.framesDropped++;
+        this._latest = m.frame;
+        if (!this.coalesce) this._deliver();
+        else if (!this._scheduled) { this._scheduled = true; this._channel.port2.postMessage(0); }
         break;
       default:
         break;
     }
+  }
+
+  // Hand the newest frame to the onFrame listeners (see the header).
+  _deliver() {
+    this._scheduled = false;
+    const frame = this._latest;
+    this._latest = null;
+    if (!frame) return;
+    this.framesDelivered++;
+    this.lastFrame = frame;
+    for (const fn of this._frameListeners) fn(frame);
+    if (this.inFlight === 0) { const w = this._idle; this._idle = []; for (const fn of w) fn(); }
   }
 
   _onField(buf) {
@@ -115,6 +150,8 @@ export class RemoteHost {
 
   on(fn) { this._listeners.push(fn); }
   onFrame(fn) { this._frameListeners.push(fn); }
+  // Every frame as it arrives, before coalescing (tests, counters).
+  onFrameArrival(fn) { this._arrivalListeners.push(fn); }
   command(c) { return this._call('command', 'c', c); }
   query(q) { return this._call('query', 'q', q); }
   setPerf(on) { this._send({ type: 'perf', on: !!on }); }
@@ -129,19 +166,28 @@ export class RemoteHost {
       this._send({ type: 'tick', req: { dt: req.dt, held, present: !!req.present, view } });
       return true;
     }
-    // Server clock: send what the server should use until it changes. The
-    // camera only feeds the dev-mode wind arrow, so it is rounded to 0.1 m.
-    if (!req.present) return false;
-    const input = { held, view: view && { ...view, camera_position_x: Math.round(view.camera_position_x * 10) / 10, camera_position_y: Math.round(view.camera_position_y * 10) / 10 } };
-    const key = JSON.stringify(input);
-    if (key !== this._lastInput) {
-      this._lastInput = key;
-      this._send({ type: 'input', ...input });
-    }
+    // Server clock: input goes with sendInput() instead.
+    this.sendInput({ held, view });
     return true;
   }
 
-  terminate() { try { this.ws.close(); } catch { /* closed */ } }
+  // Held keys and camera for a server that ticks on its own clock; sent only
+  // when they change. The camera only feeds the dev-mode wind arrow, so it is
+  // rounded to 0.1 m.
+  sendInput({ held, view }) {
+    const v = plainView(view);
+    const input = { held: held || [], view: v && { ...v, camera_position_x: Math.round(v.camera_position_x * 10) / 10, camera_position_y: Math.round(v.camera_position_y * 10) / 10 } };
+    const key = JSON.stringify(input);
+    if (key === this._lastInput) return false;
+    this._lastInput = key;
+    this._send({ type: 'input', ...input });
+    return true;
+  }
+
+  terminate() {
+    try { this.ws.close(); } catch { /* closed */ }
+    if (this._channel) this._channel.port1.close();
+  }
 
   // Resolves once every sent tick has come back (lockstep tests).
   idle() { return this.inFlight === 0 ? Promise.resolve() : new Promise((r) => this._idle.push(r)); }
