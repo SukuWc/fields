@@ -321,6 +321,7 @@ function collideAndStream(cells, omega) {
 // Lowest root lattice ν kept on a coarse setting. See Boltzmann._build.
 export const ROOT_NU_FLOOR = 0.025;
 export const FAST_MATCHED_NU_FLOOR = 0.0125;
+export const FAST4_NU_FLOOR = 0.003125;
 
 const POP_KEYS = ['f0','fN','fS','fE','fW','fNE','fNW','fSE','fSW'];
 
@@ -2050,8 +2051,22 @@ export class Boltzmann {
 		// ν_lat ≥ 0.025, the τ Default's root is proven at, and both modes then
 		// hold lattice U 0.25 like Default. Physically the boat stack is 2× /
 		// 2.4× Default's viscosity. x2 / x4 (steps = resolution) are untouched.
-		if (this.stepsPerFrame > resolution) this.matchedNu = Math.max(this.matchedNu, FAST_MATCHED_NU_FLOOR);
-		this.nu = Math.max(this.matchedNu, Math.min(this.baseNu ?? 0.025, ROOT_NU_FLOOR));
+		// 4f (4 m root stepped every frame) is the app default and gets its own,
+		// much lower floor: FAST4_NU_FLOOR (0.003125, τ 0.509) on the root and
+		// the boat stack, i.e. 2× Default's physical viscosity instead of the
+		// 8× (stack) / 16× (root) that the 0.0125 / 0.025 floors gave, which
+		// let the 4f wake dissipate ~25-40% faster than 1 m / x4. Fully
+		// matched (0.0015625) holds at UI wind 25 but diverges with the
+		// barrier at UI 58 (34 kn); 0.0021 diverges at UI 100 (the 4f
+		// ceiling, lattice U 0.25); 0.003125 holds there and the root runs at
+		// it too. 2f / 2f34 keep FAST_MATCHED_NU_FLOOR and the root floor:
+		// matched ν there diverges at UI 50 / 62.
+		const fast = this.stepsPerFrame > resolution;
+		const fast4 = fast && this.cellSize >= 4;
+		if (fast4) this.matchedNu = Math.max(this.matchedNu, FAST4_NU_FLOOR);
+		else if (fast) this.matchedNu = Math.max(this.matchedNu, FAST_MATCHED_NU_FLOOR);
+		this.nu = fast4 ? this.matchedNu
+			: Math.max(this.matchedNu, Math.min(this.baseNu ?? 0.025, ROOT_NU_FLOOR));
 		this._stepAcc = 0;
 
 		// A map side that is not a whole number of coarse cells (75 at x2 = 37.5)
@@ -2299,8 +2314,6 @@ export class Boltzmann {
 	initFluid() {
 		const hspeed = Math.cos(this.direction / 180 * Math.PI) * this.speed;
 		const vspeed = Math.sin(this.direction / 180 * Math.PI) * this.speed;
-
-		console.log(hspeed, vspeed);
 
 		// Amazingly, if I nest the y loop inside the x loop, Firefox slows down by a factor of 20
 		for (var y = 0; y < this.height; y++) {

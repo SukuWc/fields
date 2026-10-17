@@ -152,9 +152,9 @@ export function scenario0(k, { frames = 600, amr = true, energy = true } = {}) {
 // Fleet run: boats [x, y, heading], autopilot on at frame 1, optional
 // tack per boat at a frame. TWS of each boat over the last 100 frames.
 // kick[i] false turns boat i's sail push off (to isolate another boat's wake).
-export function fleet(k, boatsSpec, { frames = 300, kick = null, tacks = {}, amr = true, timing = false, series = false } = {}) {
+export function fleet(k, boatsSpec, { frames = 300, kick = null, tacks = {}, amr = true, timing = false, series = false, wind = 15 } = {}) {
 	const opts_series = series;
-	const { bm, map } = makeWorld(k);
+	const { bm, map } = makeWorld(k, wind);
 	const boats = boatsSpec.map(([x, y, h]) => new Boat(map, x, y, h));
 	const tws = boats.map(() => 0);
 	let n = 0, maxU = 0, bad = 0, minGap = Infinity, fieldMs = 0, churn = 0, churnN = 0, prevStack = null;
