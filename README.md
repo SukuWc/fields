@@ -36,7 +36,7 @@ Last updated: 2026-10-17
 - [x] Node WebSocket sim server + RemoteHost: authoritative 30 Hz rooms, `--lockstep` mode, streamed wind field, `?host=remote` with LocalHost fallback (sim/client split, phase 5a): [#60](https://github.com/SukuWc/fields/pull/60)
 - [x] Remote mode: fixed 30 Hz server frame clock, every frame broadcast to every client, frame-driven client with no rAF loop: [#62](https://github.com/SukuWc/fields/pull/62)
 - [x] True- and apparent-wind chevrons sit upwind of the boat with tips pointing downwind (fixes a regression that pointed them upwind): [#59](https://github.com/SukuWc/fields/pull/59)
-- [ ] Run `npm test` in CI
+- [ ] Run `npm test` in CI (in progress, [#63](https://github.com/SukuWc/fields/pull/63): test + server smoke workflow, added as root `test.yml` until it moves to `.github/workflows/`)
 
 ### 2. Wind and boat feel
 - [x] Fluid sim on, stable from wind 5 through 25 with the sail wake on the fine grid: [#9](https://github.com/SukuWc/fields/pull/9)
