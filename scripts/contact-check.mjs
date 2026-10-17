@@ -29,7 +29,7 @@ function assert(cond, message) {
   }
 }
 
-const wind = new ConstantWind(90, 15);
+const wind = new ConstantWind(90, 4.5);
 const getWind = (x, y) => wind.getWind(x, y);
 const world = new World(Vec2(0, 0));
 const STARBOARD = 5 * Math.PI / 4;

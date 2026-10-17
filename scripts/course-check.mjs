@@ -331,7 +331,7 @@ function roundPort(state, k, r = 5, past = 15) {
   const { Map } = await import("../src/map.js");
   const { Boat } = await import("../src/boat.js");
   const { Mark, markMassForBoat } = await import("../src/mark.js");
-  const map = new Map(75, 75, 90, 15, null);
+  const map = new Map(75, 75, 90, 4.5, null);
   map.physics_model_init();
   map.setDevMode(true);
   const boat = new Boat(map, L.start.x, L.start.y, L.startHeading);

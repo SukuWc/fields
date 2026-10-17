@@ -152,7 +152,7 @@ const plainMark = (x, y, name) => ({ x, y, radius: 0.5, anchor: { x, y }, markNa
   resetRule15Memory();
   resetContacts();
   resetMarkTouches();
-  const map = new Map(75, 75, 90, 15, null);
+  const map = new Map(75, 75, 90, 4.5, null);
   map.physics_model_init();
   map.setDevMode(true);
   const heading = 5 * Math.PI / 4 + 5 * Math.PI / 180;
@@ -185,7 +185,7 @@ const plainMark = (x, y, name) => ({ x, y, radius: 0.5, anchor: { x, y }, markNa
   resetRule15Memory();
   resetContacts();
   resetMarkTouches();
-  const map = new Map(75, 75, 90, 15, null);
+  const map = new Map(75, 75, 90, 4.5, null);
   map.physics_model_init();
   map.setDevMode(true);
   // Port boat crossing a starboard boat (rule 10): port is at fault.

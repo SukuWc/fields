@@ -19,7 +19,7 @@ if (part === 'all' || part === 'boat') {
 	}
 }
 if (part === 'all' || part === 'barrier') {
-	for (const [k, w] of [['4f', 100], [1, 25], ['2f34', 62]]) {
+	for (const [k, w] of [['4f', 30], [1, 7.5], ['2f34', 18.6]]) {
 		const b = H.barrier(k, w, { frames: 900, amr: true });
 		log('barrier ' + k + ' ' + w, { diverge: b.diverge, worstU: r2(b.worstU), endU: r2(b.endU), bad: b.bad, islands: b.islands });
 	}

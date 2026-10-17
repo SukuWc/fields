@@ -30,8 +30,8 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol;
 	check('app default refinement layout is auto (dropdown + host.js); fixed stays selectable',
 		selected === 'auto' && /<option value="fixed">/.test(sel[1]) && /type: 'amrMode', mode: 'auto'/.test(hostJs) && H.amrMode() === 'auto',
 		`selected=${selected} harness=${H.amrMode()}`);
-	const eng = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
-	const engFixed = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
+	const eng = new Boltzmann(75, 75, 1, 90, 4.5, undefined, 1);
+	const engFixed = new Boltzmann(75, 75, 1, 90, 4.5, undefined, 1);
 	engFixed.amrMode = 'fixed';
 	check('Boltzmann engine defaults to auto; amrMode = fixed still selects the rings',
 		eng.amrMode === 'auto' && amrParams(eng).auto && !amrParams(engFixed).auto && amrParams(engFixed).levels[0].worldRadius === 8);
@@ -39,7 +39,7 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol;
 H.setAmrMode('fixed');
 const KS = [1, 2, 4];
 
-function lattice(k, wind = 15) {
+function lattice(k, wind = 4.5) { // m/s
 	const bm = new Boltzmann(75, 75, 1, 90, wind, undefined, 1);
 	if (k !== 1) bm.setResolution(1 / k);
 	return bm;
@@ -114,7 +114,7 @@ for (const k of KS) {
 	}
 	const tex = { image: { data: new Uint8Array(75 * 8 * 75 * 8 * 4), width: 600, height: 600 } };
 	const painter = new FieldPainter(tex, 8);
-	const bm = new Boltzmann(75, 75, 1, 90, 15, painter);
+	const bm = new Boltzmann(75, 75, 1, 90, 4.5, painter);
 	const sizes = [painter.oversampling];
 	bm.setResolution(0.5); sizes.push(painter.oversampling, tex.image.width);
 	bm.setResolution(0.25); sizes.push(painter.oversampling, tex.image.width);
@@ -257,10 +257,10 @@ for (const [name, spec, tacks] of [
 // --- 7. Barrier at wind 5, 15, 25 for 1500 frames on the coarse grids ---
 // Default is covered by wind-stability.test.mjs.
 for (const k of [2, 4]) {
-	for (const wind of [5, 15, 25]) {
+	for (const wind of [1.5, 4.5, 7.5]) { // m/s (old UI 5 / 15 / 25)
 		for (const amr of [false, true]) {
 			const r = H.barrier(k, wind, { frames: 1500, amr });
-			check(`x${k} barrier wind ${wind} ${amr ? 'refine-anywhere' : 'no AMR'} stable for 1500 frames`,
+			check(`x${k} barrier wind ${wind} m/s ${amr ? 'refine-anywhere' : 'no AMR'} stable for 1500 frames`,
 				r.diverge === null && r.bad === 0 && r.worstU < 0.6 && r.worstDr < 0.3 && r.endU < 0.55,
 				`max|u|=${r.worstU.toFixed(3)} max|ρ−1|=${r.worstDr.toFixed(3)} islands=${r.islands}`);
 		}
@@ -270,7 +270,7 @@ for (const k of [2, 4]) {
 // --- 7b. 4f viscosity: root and boat stack at FAST4_NU_FLOOR (2x Default's physical nu) ---
 {
 	const { FAST4_NU_FLOOR } = await import('../src/boltzmann.js');
-	const { bm } = H.makeWorld('4f', 15);
+	const { bm } = H.makeWorld('4f', 4.5);
 	const phys = bm.nu * bm.cellSize * bm.cellSize * bm.stepsPerFrame;
 	check('4f: root and stack ν at FAST4_NU_FLOOR, physical ν 2× Default (was 16× / 8×)',
 		FAST4_NU_FLOOR === 0.003125 && bm.nu === FAST4_NU_FLOOR && bm.matchedNu === FAST4_NU_FLOOR && near(phys, 0.05, 1e-12),
@@ -281,22 +281,22 @@ for (const k of [2, 4]) {
 {
 	const { FluidWind } = await import('../src/wind.js');
 	for (const [mode, steps, vs] of [['2f', 1, 2], ['2f34', 1.2, 2.4]]) {
-		const { bm } = H.makeWorld(mode, 15);
+		const { bm } = H.makeWorld(mode, 4.5);
 		let n = 0;
 		for (let f = 0; f < 10; f++) n += bm.advance_frame();
 		const w = new FluidWind(bm).getWind(3, -4);
-		check(`${mode}: ${steps} steps/frame, velScale ${vs}, lattice U = 0.15/${vs}, felt wind 15`,
+		check(`${mode}: ${steps} steps/frame, velScale ${vs}, lattice U = 0.15/${vs}, felt wind 4.5 m/s`,
 			n === Math.floor(10 * steps + 1e-9) && near(bm.velScale, vs, 1e-12) && near(bm.speed, 0.15 / vs, 1e-15)
-			&& near(w.speed, 15, 1e-6) && bm.nu === 0.025 && bm.matchedNu === 0.0125,
+			&& near(w.speed, 4.5, 1e-6) && bm.nu === 0.025 && bm.matchedNu === 0.0125,
 			`steps=${n} U=${bm.speed.toFixed(4)} TWS=${w.speed.toFixed(3)} ν=${bm.nu}/${bm.matchedNu}`);
 		const r = H.scenario0(mode);
 		check(`${mode} scenario 0 holds close-hauled like Default`,
 			r.twa < -45 && r.twa > -54 && r.twaSpread < 3 && r.bs > 2.4 && r.bs < 3.1 && r.bad === 0 && r.finestStep === 0.125,
 			`twa=${r.twa.toFixed(2)} bs=${r.bs.toFixed(3)}`);
 	}
-	for (const [mode, wind] of [['2f', 45], ['2f34', 58]]) {
+	for (const [mode, wind] of [['2f', 13.5], ['2f34', 17.4]]) {
 		const r = H.barrier(mode, wind, { frames: 1500, amr: true });
-		check(`${mode} barrier at UI wind ${wind} (refine-anywhere) stable for 1500 frames`,
+		check(`${mode} barrier at ${wind} m/s (refine-anywhere) stable for 1500 frames`,
 			r.diverge === null && r.bad === 0 && r.worstU < 0.6 && r.worstDr < 0.3,
 			`max|u|=${r.worstU.toFixed(3)} islands=${r.islands}`);
 	}

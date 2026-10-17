@@ -21,11 +21,11 @@ const view = { camera_position_x: 0, camera_position_y: 0, show_forces: false, s
 
 // Bare Sim set up the way the app used to (main.js before phase 4).
 function bareSim(simRes) {
-  const bm = new Boltzmann(W, H, 0.25, 90, 15);
-  const map = new Map(W, H, 90, 15, bm, new FluidWind(bm), new ConstantWind(90, 15));
+  const bm = new Boltzmann(W, H, 0.25, 90, 4.5);
+  const map = new Map(W, H, 90, 4.5, bm, new FluidWind(bm), new ConstantWind(90, 4.5));
   map.physics_model_init();
   const sim = new Sim(map);
-  if (simRes === '4f') { bm.setResolution(0.25, 1); bm.setWindSpeed(15); }
+  if (simRes === '4f') { bm.setResolution(0.25, 1); bm.setWindSpeed(4.5); }
   return sim;
 }
 

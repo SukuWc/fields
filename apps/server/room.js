@@ -57,7 +57,7 @@ export class Room {
   _create(opts) {
     const o = opts || {};
     const core = new SimCore({
-      mapW: o.mapW || 100, mapH: o.mapH || 200, windAngle: o.windAngle ?? 90, windSpeed: o.windSpeed ?? 15,
+      mapW: o.mapW || 100, mapH: o.mapH || 200, windAngle: o.windAngle ?? 90, windSpeed: o.windSpeed ?? 4.5,
       simRes: o.simRes || '4f',
       // No texture: the server never paints RGBA (the painter is inert);
       // field messages are encoded from the lattice when due (_fieldMessages).

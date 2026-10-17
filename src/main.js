@@ -33,7 +33,7 @@ const map_h = MAP_SIZES[mapSizeKey].h;
 // Angle is where the wind comes from: 0 = from +X, 90 = from +Y (blows toward −Y).
 // Speed is true-wind speed (the value boats report as TWS).
 const wind_angle = 90;
-const wind_speed = 15;
+const wind_speed = 4.5; // m/s (old UI 15)
 const bm_resolution = 1;
 // Level 3 cells are dx = 0.125. The speed plot stamps oversampling*dx pixels,
 // and a fractional stamp collapses several fine nodes onto one texel (the

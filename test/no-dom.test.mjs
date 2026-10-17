@@ -26,8 +26,8 @@ try {
   const { Map } = mods['map.js'];
   const { Boat } = mods['boat.js'];
   const { FluidWind, ConstantWind } = mods['wind.js'];
-  const bm = new Boltzmann(32, 32, 1, 90, 15);
-  const map = new Map(32, 32, 90, 15, bm, new FluidWind(bm), new ConstantWind(90, 15));
+  const bm = new Boltzmann(32, 32, 1, 90, 4.5);
+  const map = new Map(32, 32, 90, 4.5, bm, new FluidWind(bm), new ConstantWind(90, 4.5));
   map.physics_model_init();
   const boat = new Boat(map, 0, 0, 5 * Math.PI / 4);
   for (let i = 0; i < 30; i++) { boat.physics_model_step(); map.world.step(1 / 30); bm.advance_frame(); }
@@ -46,10 +46,10 @@ try {
   const { FluidWind, ConstantWind } = mods['wind.js'];
   const { Sim } = mods['sim.js'];
   const makeSim = (w = 100, h = 200) => {
-    const bm = new Boltzmann(w, h, 0.25, 90, 15);
+    const bm = new Boltzmann(w, h, 0.25, 90, 4.5);
     bm.setResolution(0.25, 1); // the app default, simRes 4f
-    bm.setWindSpeed(15);
-    const map = new Map(w, h, 90, 15, bm, new FluidWind(bm), new ConstantWind(90, 15));
+    bm.setWindSpeed(4.5);
+    const map = new Map(w, h, 90, 4.5, bm, new FluidWind(bm), new ConstantWind(90, 4.5));
     map.physics_model_init();
     return new Sim(map);
   };

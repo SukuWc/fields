@@ -38,7 +38,7 @@ assert(RULE15_RANGE_M === 8, "two boat lengths is 8 m");
 assert(RULE15_ROOM_S === 1, "Rule 15 room lasts 1 s");
 assert(Math.abs(SIM_STEP_S - 1 / 30) < 1e-15, "simulation step is 1/30 s");
 
-const wind = new ConstantWind(90, 15);
+const wind = new ConstantWind(90, 4.5);
 const getWind = (x, y) => wind.getWind(x, y);
 
 const HULL = [

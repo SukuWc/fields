@@ -35,7 +35,7 @@ export function boatTelemetryHtml(t) {
   if ('qd' in t) h += 'q/d: ' + t.qd + '°<br>';
   if ('error' in t) h += 'error: ' + Math.floor(t.error) + '°<br>';
   if ('twa' in t) h += 'TWA: ' + Math.floor(t.twa) + '<br>';
-  if ('tws' in t) h += 'TWS: ' + Math.floor(t.tws * 10) / 10 + '<br>';
+  if ('tws' in t) h += 'TWS: ' + Math.floor(t.tws * 10) / 10 + ' m/s<br>';
   if ('awa' in t) h += 'AWA: ' + Math.floor(t.awa) + '<br>';
   if ('aws' in t) h += 'AWS: ' + Math.floor(t.aws * 10) / 10 + '<br>';
   if ('bs' in t) h += 'BS: ' + Math.floor(t.bs * 10) / 10 + '<br>';

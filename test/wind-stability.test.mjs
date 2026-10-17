@@ -90,7 +90,7 @@ function fieldNoise(bm) {
 }
 
 function run(ui, track, frames) {
-	const bm = new Boltzmann(75, 75, 1, 90, ui, undefined, 1);
+	const bm = new Boltzmann(75, 75, 1, 90, ui * 0.3, undefined, 1);
 	bm.setBarriers(true);
 	const worst = { bad: 0, maxU: 0, maxDr: 0, upNeigh: 0, checker: 0, edgeNeigh: 0, islands: 0, cells: 0 };
 	// Cell indices. The barrier is centred on width/2 = 37.5, so 37 is the

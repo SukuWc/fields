@@ -281,7 +281,7 @@ check('thresholds satisfy τ_on > τ_off and a few frames of hold',
 }
 
 function make(w, h, speed) {
-	return new Boltzmann(w, h, 1, 90, speed, undefined, 1);
+	return new Boltzmann(w, h, 1, 90, speed * 0.3, undefined, 1);
 }
 
 // The disk-floor mechanics below (exact R 8 / 8 / 8 floors, DOMAIN_HALF

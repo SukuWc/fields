@@ -50,7 +50,7 @@ export const SIM_RES_MODES = {
 //   { type: 'removeBoat', id }         remove a spawned boat; returns true if found
 // Admin commands (sim.command()):
 //   { type: 'restart', scenario }      clear and load scenario N
-//   { type: 'wind', angle?, speed? }   UI wind (from-angle °, TWS)
+//   { type: 'wind', angle?, speed? }   UI wind (from-angle °, true wind m/s)
 //   { type: 'devMode', on }            uniform wind, lattice frozen
 //   { type: 'barrier', on }
 //   { type: 'options', amr?, boatEnergy? }
@@ -158,7 +158,7 @@ export class Sim {
         }
         if (Number.isFinite(c.speed)) {
           map.wind_speed = c.speed;
-          if (bm.setWindSpeed) bm.setWindSpeed(c.speed); else bm.speed = c.speed / 100;
+          if (bm.setWindSpeed) bm.setWindSpeed(c.speed); else bm.speed = c.speed / 30;
           map.constantWind.setSpeed(c.speed);
         }
         return undefined;

@@ -67,7 +67,7 @@ for (const diff of [0, 80, 99.9, 100, 180]) {
 
 // 2. Sampler never throws and never returns a non-finite velocity,
 //    including NaN probes and a punched-out cell.
-const bm = new Boltzmann(75, 75, 1, 90, 15, undefined, 4);
+const bm = new Boltzmann(75, 75, 1, 90, 4.5, undefined, 4);
 bm.addDomain(30, 30, 55, 55);
 const level1 = bm.domains[0];
 level1.addDomain(20, 20, 45, 45);
