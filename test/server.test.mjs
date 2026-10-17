@@ -2,6 +2,8 @@
 // lockstep runs match LocalHost frame for frame; the authoritative 30 Hz
 // mode ticks on its own, takes commands and held keys from clients, streams
 // field grids to clients that show the field, and serves several clients from one room.
+import { buildScene } from '../src/scene-build.js';
+import { sceneDiff } from './scene-diff.mjs';
 import { WebSocket } from 'ws';
 import { startServer } from '../apps/server/index.js';
 import { RemoteHost } from '../src/remote-host.js';
@@ -42,8 +44,8 @@ mute();
     await rh.idle();
     rh._frameListeners.length = 0;
     if (n !== 11) rh.terminate();
-    const same = frames.length === 60 && frames.every((f, i) => strip(f.hud.info) === strip(local[i].hud.info) && JSON.stringify(f.boat0) === JSON.stringify(local[i].boat0) && f.guides.length === local[i].guides.length);
-    check(`lockstep scenario ${n}: 60 frames identical to LocalHost`, same, `frames=${frames.length}`);
+    const same = frames.length === 60 && frames.every((f, i) => strip(f.hud.info) === strip(local[i].hud.info) && sceneDiff(f.boat0, local[i].boat0) <= 1e-3 && sceneDiff(buildScene(f.state, f.statics, view), buildScene(local[i].state, local[i].statics, view)) <= 1e-3);
+    check(`lockstep scenario ${n}: 60 frames match LocalHost (HUD; boat0 and built scene within 1e-3, server rounds to 1e-4)`, same, `frames=${frames.length}`);
     check(`lockstep scenario ${n}: restart returns the card`, card && card.title === info.scenarios[n].title);
   }
   const v = await rh.query({ type: 'fieldVelocity', x: 0, y: 0 });

@@ -322,11 +322,29 @@ function dashed(a, b, color, opacity, dash = 1.2, gap = 0.8) {
 // Line colour: amber before the gun, pulsing green while it is the boat's
 // next target, red while she is OCS, grey once she has started.
 export function startGuides(seq, boat, nowMs = 0) {
+  return startGuidesFromState(lineState(seq.line), startGuideState(seq, boat), boat ? { x: boat.x, y: boat.y } : null, nowMs);
+}
+
+// A start or finish line as plain data (its ends are fixed anchors).
+export function lineState(L) {
+  return { a: L.a, b: L.b, len: L.len, tx: L.tx, ty: L.ty, nx: L.nx, ny: L.ny, mid: L.mid };
+}
+
+// What startGuides needs from the sequence for this boat (scene-state.js).
+export function startGuideState(seq, boat) {
+  const st = boat ? seq.statusOf(boat) : 'prestart';
+  const t0 = boat && st === 'started' ? seq.stateFor(boat).startTime : null;
+  return { st, t0, clock: seq.clock };
+}
+
+// Start line overlay from state: L = lineState, s = startGuideState, boat =
+// { x, y } of the boat it is drawn for (or null). Every host's client draws
+// it with this (scene-build.js).
+export function startGuidesFromState(L, s, boat, nowMs = 0) {
   const g = [];
-  const L = seq.line;
   const a = L.a;
   const b = L.b;
-  const st = boat ? seq.statusOf(boat) : 'prestart';
+  const st = s.st;
   let color = START_LINE_COLOR;
   let opacity = 0.85;
   let text = 'START LINE';
@@ -347,9 +365,9 @@ export function startGuides(seq, boat, nowMs = 0) {
     role = 'rounded';
   }
   g.push(...dashed(a, b, color, opacity, 1.6, 0.8));
-  for (let s = 1; s < L.len; s += 2) {
-    const x = a.x + L.tx * s;
-    const y = a.y + L.ty * s;
+  for (let k = 1; k < L.len; k += 2) {
+    const x = a.x + L.tx * k;
+    const y = a.y + L.ty * k;
     g.push({ type: 'guide', color, opacity: 0.45, x1: x, y1: y, x2: x - L.nx * 1, y2: y - L.ny * 1 });
   }
   const mid = L.mid;
@@ -359,9 +377,8 @@ export function startGuides(seq, boat, nowMs = 0) {
   if (boat && st === 'ocs') {
     g.push({ type: 'label', badge: true, x: boat.x, y: boat.y + 3.2, lines: [{ text: 'OCS — return', role: 'badge', id: 'ocs' }] });
   } else if (boat && st === 'started') {
-    const s = seq.stateFor(boat);
-    if (seq.clock - s.startTime < START_LABEL_S) {
-      g.push({ type: 'label', badge: true, x: boat.x, y: boat.y + 3.2, lines: [{ text: 'STARTED +' + s.startTime.toFixed(1) + ' s', role: 'cleared', id: 'started' }] });
+    if (s.clock - s.t0 < START_LABEL_S) {
+      g.push({ type: 'label', badge: true, x: boat.x, y: boat.y + 3.2, lines: [{ text: 'STARTED +' + s.t0.toFixed(1) + ' s', role: 'cleared', id: 'started' }] });
     }
   }
   return g;

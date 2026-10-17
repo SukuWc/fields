@@ -540,32 +540,65 @@ function ray(c, deg, len) {
 // - marks rounded this lap (roundedMarks): grey ring and "✓ n";
 // - other marks: their number.
 export function courseGuides(course, progress, nowMs = 0) {
-  const g = [];
+  return courseGuidesFromState(courseStatics(course), courseGuideState(course, progress), nowMs);
+}
+
+// The fixed part of a course overlay (anchors, sides, start, finish
+// midpoint): sent once per scenario (scene-state.js statics).
+export function courseStatics(course) {
   const n = course.length;
-  const anchors = course.marks.map(anchorOf);
+  const fin = course.finish;
+  return {
+    n,
+    anchors: course.marks.map(anchorOf),
+    gates: course.marks.map((el) => (isGate(el) ? [anchorOf(el.gate[0]), anchorOf(el.gate[1])] : null)),
+    sides: course.sides.slice(0, n),
+    start: course.start,
+    fin: fin ? fin.mid : null,
+    lapsFinite: Number.isFinite(course.laps),
+  };
+}
+
+// The moving part for one boat's progress: mark centres (buoys drift on
+// their anchors), the highlighted step and the rounded marks.
+export function courseGuideState(course, progress) {
   const waiting = progress.waitingForStart;
-  const view = waiting ? { index: -1 } : progress.view();
+  const v = waiting ? null : progress.view();
+  return {
+    c: course.marks.map((el) => (isGate(el) ? [centreOf(el.gate[0]), centreOf(el.gate[1])] : centreOf(el))),
+    waiting,
+    display: progress.display,
+    view: v ? { index: v.index, midDeg: v.midDeg, rounded: v.rounded } : null,
+    rounded: [...progress.roundedMarks()],
+  };
+}
+
+// Course overlay from courseStatics + courseGuideState (scene-build.js).
+export function courseGuidesFromState(cs, s, nowMs = 0) {
+  const g = [];
+  const n = cs.n;
+  const anchors = cs.anchors;
+  const waiting = s.waiting;
+  const view = waiting ? { index: -1 } : s.view;
 
   // Course line; with a finish on a set number of laps the last leg goes to
   // the finish line instead of looping back to mark 1.
-  const fin = course.finish;
-  const finMid = fin ? fin.mid : null;
+  const finMid = cs.fin;
   for (let i = 0; i < n; i++) {
-    if (fin && i === n - 1 && Number.isFinite(course.laps)) g.push(...dashedLine(anchors[i], finMid, COURSE_LINE_COLOR, 0.45));
+    if (finMid && i === n - 1 && cs.lapsFinite) g.push(...dashedLine(anchors[i], finMid, COURSE_LINE_COLOR, 0.45));
     else g.push(...dashedLine(anchors[i], anchors[(i + 1) % n], COURSE_LINE_COLOR, 0.45));
   }
-  if (progress.display === 0 && !waiting) g.push(...dashedLine(course.start, anchors[0], COURSE_LINE_COLOR, 0.3, 1, 2));
+  if (s.display === 0 && !waiting) g.push(...dashedLine(cs.start, anchors[0], COURSE_LINE_COLOR, 0.3, 1, 2));
 
-  const rounded = progress.roundedMarks();
+  const rounded = new Set(s.rounded);
   for (let i = 0; i < n; i++) {
-    const el = course.marks[i];
-    if (isGate(el)) {
-      g.push(...gateGuides(el, i, i === view.index ? view : null, rounded.has(i), nowMs));
+    if (cs.gates[i]) {
+      g.push(...gateGuides(cs.gates[i], s.c[i], i, i === view.index ? view : null, rounded.has(i), nowMs));
       continue;
     }
-    const c = centreOf(el);
+    const c = s.c[i];
     if (i === view.index) {
-      const side = course.sides[i] === PORT ? 'port' : 'stbd';
+      const side = cs.sides[i] === PORT ? 'port' : 'stbd';
       const pulse = 0.5 + 0.5 * Math.sin(nowMs / 250);
       g.push(...circleSegments(c.x, c.y, 1.1 + 0.6 * pulse, COURSE_NEXT_COLOR, 0.6 + 0.4 * pulse, 32));
       g.push(...circleSegments(c.x, c.y, COURSE_ACTIVATION_RADIUS_M, COURSE_ZONE_COLOR, 0.25, 72, true));
@@ -586,13 +619,14 @@ export function courseGuides(course, progress, nowMs = 0) {
 // One gate: dashed gate line between the anchors (amber while highlighted),
 // and, while highlighted, pulsing green rings on both marks with faint zones
 // and one label "NEXT GATE n" ("✓ n" once passed); passed this lap: grey
-// rings and "✓ n"; otherwise "GATE n".
-function gateGuides(gate, i, view, passed, nowMs) {
+// rings and "✓ n"; otherwise "GATE n". ends: the two anchors, centres: the
+// two buoys.
+function gateGuides(ends, centres, i, view, passed, nowMs) {
   const g = [];
-  const a = anchorOf(gate.gate[0]);
-  const b = anchorOf(gate.gate[1]);
-  const ca = centreOf(gate.gate[0]);
-  const cb = centreOf(gate.gate[1]);
+  const a = ends[0];
+  const b = ends[1];
+  const ca = centres[0];
+  const cb = centres[1];
   const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
   const no = String(i + 1);
   let text;

@@ -19,6 +19,12 @@
 //   { type: 'frame', frame }        plus the field texture: transferred (worker) or a
 //                                     binary field grid message to clients
 //                                     showing the field (server, apps/server/room.js)
+//                                   frame.state: compact scene state (scene-state.js);
+//                                     frame.statics only when they changed (worker)
+//   { type: 'statics', sv, statics } server: shapes and layouts for frame.state,
+//                                     sent to a client before the first frame of
+//                                     version sv it gets (join, restart, new boat)
+// Frames and statics from the server have numbers rounded to 1e-4 (room.js).
 
 // Sim event as sent to clients.
 export function eventForClient(core, ev) {
@@ -32,7 +38,7 @@ export function answer(core, m) {
   return null;
 }
 
-// The client View as plain data (what presentStep reads).
+// The client View as plain data (what the presenters read).
 export function plainView(v) {
   return v ? {
     camera_position_x: v.camera_position_x, camera_position_y: v.camera_position_y,

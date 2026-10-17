@@ -15,6 +15,14 @@
 // every refinement domain as its own grid, one byte per cell) and sends it as
 // one binary message to those clients only. Nobody showing it, or dev mode
 // (frozen lattice, the page hides the field): nothing is encoded.
+//
+// Frames carry compact scene state (src/scene-state.js), not geometry; each
+// client builds its guides and body outlines (src/scene-build.js). Statics
+// (hull and body shapes, course layout, ...) are not in the broadcast frame:
+// a client gets { type: 'statics', sv, statics } before the first frame it
+// needs them for (on join, and again whenever they change, e.g. a restart or
+// a spawned boat). Numbers in these JSON messages are rounded to 1e-4
+// (roundJson), which is well under a pixel at any zoom.
 import { SimCore } from '../../src/host.js';
 import { answer, eventForClient } from '../../src/host-protocol.js';
 import { BOAT_ACTIONS } from '../../src/sim.js';
@@ -30,6 +38,12 @@ import { encodeFieldGrids } from '../../src/fieldPainter.js';
 // { type: 'event', ev: { type: 'ownBoats', boats: [{ id, name }] } }.
 
 export const TICK_HZ = 30;
+
+// JSON for state messages: non-integer numbers rounded to 4 decimals, except
+// multiples of 1/4096 (cell sizes such as 0.03125 and the like are scale
+// factors, kept exact; they print short anyway).
+const roundNum = (_k, v) => (typeof v === 'number' && !Number.isInteger(v * 4096) ? Math.round(v * 1e4) / 1e4 : v);
+export function roundJson(m) { return JSON.stringify(m, roundNum); }
 export const FIELD_HZ = 2;
 
 export class Room {
@@ -49,6 +63,12 @@ export class Room {
     this.owned = new Map();
     this.ticks = 0;
     this.broadcasts = 0;
+    // Statics version last sent to each client; bytes of frame and statics
+    // messages sent (all clients).
+    this.staticsSent = new Map();
+    this.frameBytesSent = 0;
+    this.staticsBytesSent = 0;
+    this.lastFrameBytes = 0;
     this.timer = null;
     this.tickMs = 0;
   }
@@ -81,6 +101,7 @@ export class Room {
     this.clients.delete(client);
     this.inputs.delete(client);
     this.fieldSubs.delete(client);
+    this.staticsSent.delete(client);
     if (this.clients.size === 0) this.stop();
   }
 
@@ -223,14 +244,18 @@ export class Room {
     frame.fieldReady = false;
     // Room tick number: increases by one per tick, the same on every client.
     frame.tick = this.ticks;
+    // Statics go out as their own message (_publish), not in the frame.
+    delete frame.statics;
+    const statics = frame.state ? { sv: this.core.staticsVersion, statics: this.core.statics } : null;
     const fields = fieldDue ? this._fieldMessages() : [];
-    return { frame, fields };
+    return { frame, fields, statics };
   }
 
   // Every client in the room gets every frame; the server never waits on a
   // client (ws buffers per socket). The field (binary) goes first so a
-  // client drawing on the frame message already has the new texture.
-  _publish({ frame, fields }) {
+  // client drawing on the frame message already has the new texture, and
+  // so does a statics message a client has not had yet.
+  _publish({ frame, fields, statics }) {
     for (const f of fields || []) {
       for (const c of f.clients) {
         if (!this.clients.has(c)) continue;
@@ -238,7 +263,20 @@ export class Room {
         this.fieldBytesSent += f.buf.length;
       }
     }
-    this.broadcast({ type: 'frame', frame });
+    if (statics && statics.statics) {
+      let msg = null;
+      for (const c of this.clients) {
+        if (this.staticsSent.get(c) === statics.sv) continue;
+        msg = msg || roundJson({ type: 'statics', sv: statics.sv, statics: statics.statics });
+        c.send(msg);
+        this.staticsSent.set(c, statics.sv);
+        this.staticsBytesSent += msg.length;
+      }
+    }
+    const s = roundJson({ type: 'frame', frame });
+    for (const c of this.clients) c.send(s);
+    this.lastFrameBytes = s.length;
+    this.frameBytesSent += s.length * this.clients.size;
     this.broadcasts++;
   }
 

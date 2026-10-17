@@ -1,6 +1,7 @@
 import planck from 'planck-js';
 import { aeroCoefficients } from './utils.js';
 import { resetPenaltyManeuvers, updatePenaltyManeuvers, updateTackingState } from './rules.js';
+import { boatGuides, windGridPoints } from './boat-draw.js';
 
 // Lattice momentum per frame = sail reaction × SAIL_LATTICE_COUPLING.
 //
@@ -80,35 +81,10 @@ const DEPOWER_STEP = (1 / 30) / DEPOWER_RAMP_S;
 // phase counts graphics_model_render calls (one per 30 Hz tick), so the
 // animation is deterministic. Nothing here feeds back into the physics.
 export const SAIL_FLAP_HZ = 3;
-export const SAIL_FLAP_AMP_M = 0.12;
-export const SAIL_FLAP_JIB_AMP_M = 0.08;
 export const SAIL_FLAP_AWS_REF = 15;
 export const SAIL_FLAP_AOA_DEG = 12;
 // The jib also flaps when running: it collapses in the main's shadow.
 export const SAIL_FLAP_JIB_SHADOW_AWA_DEG = 150;
-const SAIL_FLAP_POINTS = 9;
-
-// Sail polyline p[0..3] → segments. amp 0 draws the original three segments.
-function pushSailSegments(graphics, p, amp, phase) {
-  if (!(amp > 1e-4)) {
-    for (let i = 0; i < 3; i++) graphics.push({ color: 0x8866ff, type: "sail", x1: p[i].x, y1: p[i].y, x2: p[i + 1].x, y2: p[i + 1].y });
-    return;
-  }
-  const cx = p[3].x - p[0].x, cy = p[3].y - p[0].y;
-  const len = Math.hypot(cx, cy) || 1;
-  const nx = -cy / len, ny = cx / len;
-  let prev = null;
-  for (let k = 0; k < SAIL_FLAP_POINTS; k++) {
-    const u = k / (SAIL_FLAP_POINTS - 1) * 3;
-    const i = Math.min(2, Math.floor(u)), f = u - i;
-    const bx = p[i].x + (p[i + 1].x - p[i].x) * f, by = p[i].y + (p[i + 1].y - p[i].y) * f;
-    const sN = u / 3;
-    const w = amp * Math.sin(Math.PI * sN) * Math.sin(phase - 3 * Math.PI * sN);
-    const pt = { x: bx + nx * w, y: by + ny * w };
-    if (prev) graphics.push({ color: 0x8866ff, type: "sail", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y });
-    prev = pt;
-  }
-}
 
 export const PENALTY_TURN_RUDDER_MAX = 50;
 export const PENALTY_TURN_KP = 1.2;
@@ -701,138 +677,16 @@ export class Boat{
     resetPenaltyManeuvers(this);
   }
   
-  graphics_model_render(view){
-
-    let graphics = []
-
-    this.forces.forEach(force => {
-      
-      graphics.push({ color: 0x00ff00, type: "force",
-        x1: force.point.x,
-        y1: force.point.y,
-        x2: force.point.x + force.vector.x/10,
-        y2: force.point.y + force.vector.y/10 
-      })
-
-    });
-
-
-    // autopilot guide
-    let a = {}
-
-    let a_length = 2;
-    if (this.autopilot_enabled){
-      a_length = 10;
-    }
-
-    a.x1 = this.physics_model.getWorldPoint(Vec2(0.0, 0.0)).x;
-    a.y1 = this.physics_model.getWorldPoint(Vec2(0.0, 0.0)).y;
-    a.x2 = a.x1+Math.cos((this.wind_direction + this.autopilot_heading_target)/180*Math.PI)*a_length;
-    a.y2 = a.y1+Math.sin((this.wind_direction + this.autopilot_heading_target)/180*Math.PI)*a_length;
-
-    a.color = 0x556677
-    a.type = "autopilot"
-
-    graphics.push(a)
-
-    // wind indicator
-
-    
-    // Chevron geometry: the apex is at r = 3 from the boat and the wings open
-    // out to r = 5, so the visible TIP points back TOWARD the boat, opposite
-    // to wind_angle. wind_angle is therefore the side the wind comes FROM:
-    // the chevron sits upwind of the boat and its tip points downwind, along
-    // the flow (vx, vy). (19357ab used the flow angle here, which put the
-    // chevron downwind with its tip pointing upwind.)
-    let wind_angle = Math.atan2(this.wind_vy_smooth, this.wind_vx_smooth) + Math.PI
-
-    graphics.push({ color: 0x554477, type: "guide", role: "tw",
-      x1: this.x + Math.cos(wind_angle)*3,
-      y1: this.y + Math.sin(wind_angle)*3,
-      x2: this.x + Math.cos(wind_angle)*5 + Math.cos(wind_angle+Math.PI/2)*0.5,
-      y2: this.y + Math.sin(wind_angle)*5 + Math.sin(wind_angle+Math.PI/2)*0.5
-    })
-
-    graphics.push({ color: 0x554477, type: "guide", role: "tw",
-      x1: this.x + Math.cos(wind_angle)*3,
-      y1: this.y + Math.sin(wind_angle)*3,
-      x2: this.x + Math.cos(wind_angle)*5 - Math.cos(wind_angle+Math.PI/2)*0.5,
-      y2: this.y + Math.sin(wind_angle)*5 - Math.sin(wind_angle+Math.PI/2)*0.5
-    })
-
-    graphics.push({ color: 0x554477, type: "guide", role: "tw",
-      x1: this.x + Math.cos(wind_angle)*4.75,
-      y1: this.y + Math.sin(wind_angle)*4.75,
-      x2: this.x + Math.cos(wind_angle)*5 - Math.cos(wind_angle+Math.PI/2)*0.5,
-      y2: this.y + Math.sin(wind_angle)*5 - Math.sin(wind_angle+Math.PI/2)*0.5
-    })    
-    
-    graphics.push({ color: 0x554477, type: "guide", role: "tw",
-      x1: this.x + Math.cos(wind_angle)*4.75,
-      y1: this.y + Math.sin(wind_angle)*4.75,
-      x2: this.x + Math.cos(wind_angle)*5 + Math.cos(wind_angle+Math.PI/2)*0.5,
-      y2: this.y + Math.sin(wind_angle)*5 + Math.sin(wind_angle+Math.PI/2)*0.5
-    })
-
-    // Apparent wind: awa + hull - 90° is where the apparent wind comes FROM
-    // (aw_vector = boat velocity + true "from" vector). Same chevron
-    // convention as above: it sits on that side and its tip points downwind,
-    // along the apparent flow.
-    wind_angle = (this.awa)/180*Math.PI + this.hull_angle - Math.PI/2
-
-    graphics.push({ color: 0x550077, type: "guide", role: "aw",
-      x1: this.x + Math.cos(wind_angle)*3,
-      y1: this.y + Math.sin(wind_angle)*3,
-      x2: this.x + Math.cos(wind_angle)*5 + Math.cos(wind_angle+Math.PI/2)*0.5,
-      y2: this.y + Math.sin(wind_angle)*5 + Math.sin(wind_angle+Math.PI/2)*0.5
-    })
-
-    graphics.push({ color: 0x550077, type: "guide", role: "aw",
-      x1: this.x + Math.cos(wind_angle)*3,
-      y1: this.y + Math.sin(wind_angle)*3,
-      x2: this.x + Math.cos(wind_angle)*5 - Math.cos(wind_angle+Math.PI/2)*0.5,
-      y2: this.y + Math.sin(wind_angle)*5 - Math.sin(wind_angle+Math.PI/2)*0.5
-    })
-
-    graphics.push({ color: 0x550077, type: "guide", role: "aw",
-      x1: this.x + Math.cos(wind_angle)*4.75,
-      y1: this.y + Math.sin(wind_angle)*4.75,
-      x2: this.x + Math.cos(wind_angle)*5 - Math.cos(wind_angle+Math.PI/2)*0.5,
-      y2: this.y + Math.sin(wind_angle)*5 - Math.sin(wind_angle+Math.PI/2)*0.5
-    })    
-    
-    graphics.push({ color: 0x550077, type: "guide", role: "aw",
-      x1: this.x + Math.cos(wind_angle)*4.75,
-      y1: this.y + Math.sin(wind_angle)*4.75,
-      x2: this.x + Math.cos(wind_angle)*5 + Math.cos(wind_angle+Math.PI/2)*0.5,
-      y2: this.y + Math.sin(wind_angle)*5 + Math.sin(wind_angle+Math.PI/2)*0.5
-    })
-
-    // rendering the rudder
-
-    graphics.push({ color: 0x550000, type: "hydro",
-      x1: this.physics_model.getWorldPoint(Vec2(0.0, this.rudder_position)).x,
-      y1: this.physics_model.getWorldPoint(Vec2(0.0, this.rudder_position)).y,
-      x2: this.physics_model.getWorldPoint(Vec2(0.0, this.rudder_position)).x + Math.cos(this.physics_model.getAngle() + Math.PI/2 +this.rudder_angle/180*Math.PI)*this.rudder_lenght,
-      y2: this.physics_model.getWorldPoint(Vec2(0.0, this.rudder_position)).y + Math.sin(this.physics_model.getAngle() + Math.PI/2 +this.rudder_angle/180*Math.PI)*this.rudder_lenght
-    })
-
-    // rendering the centerboard
-
-
-    graphics.push({ color: 0x550000, type: "hydro",
-      x1: this.physics_model.getWorldPoint(Vec2(0.0, this.centerboard_position + this.centerboard_length/2)).x,
-      y1: this.physics_model.getWorldPoint(Vec2(0.0, this.centerboard_position + this.centerboard_length/2)).y,
-      x2: this.physics_model.getWorldPoint(Vec2(0.0, this.centerboard_position - this.centerboard_length/2)).x,
-      y2: this.physics_model.getWorldPoint(Vec2(0.0, this.centerboard_position - this.centerboard_length/2)).y
-    })
-
-
+  // Drawing state for this tick (boat-draw.js). Advances the visual
+  // smoothing once per call (boom angles, flap phase), as the old
+  // graphics_model_render did; nothing here feeds back into the physics.
+  renderState(view) {
+    const body = this.physics_model;
+    const p = body.getPosition();
     // Sail flapping (visual): luff amount, amplitude scale and tick phase.
     this._flapTick = (this._flapTick || 0) + 1;
     const aoaLuff = Number.isFinite(this._sailAoaDeg) ? Math.max(0, 1 - this._sailAoaDeg / SAIL_FLAP_AOA_DEG) : 0;
-    const luff = aoaLuff;
-    const flapScale = luff * Math.min(1, (this._aws || 0) / SAIL_FLAP_AWS_REF);
+    const flapScale = aoaLuff * Math.min(1, (this._aws || 0) / SAIL_FLAP_AWS_REF);
     const flapPhase = 2 * Math.PI * SAIL_FLAP_HZ * this._flapTick / 30;
     this.sailFlap = flapScale;
     // Jib: its own AoA, or collapsed in the main's shadow when running
@@ -841,111 +695,46 @@ export class Boat{
     const jibAoaLuff = Number.isFinite(this._jibAoaDeg) ? Math.max(0, 1 - this._jibAoaDeg / SAIL_FLAP_AOA_DEG) : 0;
     const shadow = Number.isFinite(this.awa) ? Math.max(0, Math.min(1, (Math.abs(this.awa) - SAIL_FLAP_JIB_SHADOW_AWA_DEG) / 20)) : 0;
     this.jibFlap = Math.max(jibAoaLuff, shadow * (this.depower || 0)) * Math.min(1, (this._aws || 0) / SAIL_FLAP_AWS_REF);
-
-    // rendering the mainsail
-
-    
-    let mainsail = []
-
-    mainsail[0] = {};
-    mainsail[0].x = this.physics_model.getWorldPoint(Vec2(0.0, this.mainsail_leading_edge_position)).x;
-    mainsail[0].y = this.physics_model.getWorldPoint(Vec2(0.0, this.mainsail_leading_edge_position)).y;
-
-    let awa = this.mainsail_boom_angle/this.mainsail_boom_angle_factor
-
-
-    this.mainsail_boom_angle_actual+= (this.mainsail_boom_angle-this.mainsail_boom_angle_actual)/30;
-
-    let mainsail_fat1 = (this.mainsail_boom_length*0.05*Math.abs(this.awa)/30 < this.mainsail_boom_length/10)?this.mainsail_boom_length*0.05*Math.abs(this.awa)/30 :this.mainsail_boom_length/10;
-    mainsail[1] = {};
-    mainsail[1].x = mainsail[0].x + Math.cos(this.hull_angle+ Math.PI/2 + this.mainsail_boom_angle_actual /180*Math.PI) * this.mainsail_boom_length*0.25 +  Math.cos(this.hull_angle+ this.mainsail_boom_angle_actual /180*Math.PI)*-mainsail_fat1*Math.sign(this.mainsail_boom_angle_actual);
-    mainsail[1].y = mainsail[0].y  +Math.sin(this.hull_angle+ Math.PI/2 + this.mainsail_boom_angle_actual /180*Math.PI) * this.mainsail_boom_length*0.25 +  Math.sin(this.hull_angle + this.mainsail_boom_angle_actual /180*Math.PI)*-mainsail_fat1*Math.sign(this.mainsail_boom_angle_actual);
-    
-    let mainsail_fat2 = mainsail_fat1;
-    mainsail[2] = {};
-    mainsail[2].x = mainsail[0].x + Math.cos(this.hull_angle + Math.PI/2 + this.mainsail_boom_angle_actual /180*Math.PI) * this.mainsail_boom_length*0.5 +  Math.cos(this.hull_angle + this.mainsail_boom_angle_actual /180*Math.PI)*-mainsail_fat2*Math.sign(this.mainsail_boom_angle_actual);
-    mainsail[2].y = mainsail[0].y  +Math.sin(this.hull_angle + Math.PI/2 + this.mainsail_boom_angle_actual /180*Math.PI) * this.mainsail_boom_length*0.5 +  Math.sin(this.hull_angle + this.mainsail_boom_angle_actual /180*Math.PI)*-mainsail_fat2*Math.sign(this.mainsail_boom_angle_actual);
-
-    mainsail[3] = {};
-    mainsail[3].x = mainsail[0].x + Math.cos(this.hull_angle + Math.PI/2 + this.mainsail_boom_angle_actual /180*Math.PI) * this.mainsail_boom_length;
-    mainsail[3].y = mainsail[0].y  +Math.sin(this.hull_angle + Math.PI/2 + this.mainsail_boom_angle_actual /180*Math.PI) * this.mainsail_boom_length;
-
-    pushSailSegments(graphics, mainsail, SAIL_FLAP_AMP_M * flapScale, flapPhase);
-
-    // RENDER JIB SHAPE
-
-
-    this.jib_boom_angle_actual+= (this.jib_boom_angle-this.jib_boom_angle_actual)/20;
-
-    let jib = []
-
-    jib[0] = {};
-    jib[0].x = this.physics_model.getWorldPoint(Vec2(0.0, this.jib_leading_edge_position)).x;
-    jib[0].y = this.physics_model.getWorldPoint(Vec2(0.0, this.jib_leading_edge_position)).y;
-
-    let jib_fat1 = (this.jib_boom_length*0.05*Math.abs(this.awa)/15 < this.jib_boom_length/3)?this.jib_boom_length*0.05*Math.abs(this.awa)/15 :this.jib_boom_length/3;
-    jib[1] = {};
-    jib[1].x = jib[0].x + Math.cos(this.hull_angle + Math.PI/2 + this.jib_boom_angle_actual /180*Math.PI) * this.jib_boom_length*0.25 +  Math.cos(this.hull_angle + this.jib_boom_angle_actual /180*Math.PI)*-jib_fat1*Math.sign(this.jib_boom_angle_actual);
-    jib[1].y = jib[0].y  +Math.sin(this.hull_angle + Math.PI/2 + this.jib_boom_angle_actual /180*Math.PI) * this.jib_boom_length*0.25 +  Math.sin(this.hull_angle + this.jib_boom_angle_actual /180*Math.PI)*-jib_fat1*Math.sign(this.jib_boom_angle_actual);
-    
-    let jib_fat2 = jib_fat1;
-    jib[2] = {};
-    jib[2].x = jib[0].x + Math.cos(this.hull_angle + Math.PI/2 + this.jib_boom_angle_actual /180*Math.PI) * this.jib_boom_length*0.5 +  Math.cos(this.hull_angle + this.jib_boom_angle_actual /180*Math.PI)*-jib_fat2*Math.sign(this.jib_boom_angle_actual);
-    jib[2].y = jib[0].y  +Math.sin(this.hull_angle + Math.PI/2 + this.jib_boom_angle_actual /180*Math.PI) * this.jib_boom_length*0.5 +  Math.sin(this.hull_angle + this.jib_boom_angle_actual /180*Math.PI)*-jib_fat2*Math.sign(this.jib_boom_angle_actual);
-
-    jib[3] = {};
-    jib[3].x = jib[0].x + Math.cos(this.hull_angle + Math.PI/2 + this.jib_boom_angle_actual /180*Math.PI) * this.jib_boom_length;
-    jib[3].y = jib[0].y  +Math.sin(this.hull_angle + Math.PI/2 + this.jib_boom_angle_actual /180*Math.PI) * this.jib_boom_length;
-
-    pushSailSegments(graphics, jib, SAIL_FLAP_JIB_AMP_M * this.jibFlap, flapPhase + 1.3);
-
-    
-    if (view && view.show_fields){
-
-      const wind_indicator_size = 10
-      for(let i = -wind_indicator_size; i<wind_indicator_size; i++ ){
-  
-        for(let j = -wind_indicator_size; j<wind_indicator_size; j++ ){
-  
-          if (Math.sqrt(i*i + j*j)<wind_indicator_size-1){
-  
-            const res = this.map.bm.resolution
-
-            //Math.floor(x*this.resolution)
-
-            let x = Math.floor(this.x*res)/res + i/res;
-            let y = Math.floor(this.y*res)/res + j/res;
-    
-            let velo;
-            if (this.map.devMode) {
-              const w = this.map.get_wind(x, y);
-              velo = { x: w.vx, y: w.vy };
-            } else {
-              velo = this.map.bm.get_field_velocity(x, y);
-            }
-    
-            graphics.push({ color: 0x8866ff, type: "sail",
-              x1: x,
-              y1: y,
-              x2: x+velo.x*30,
-              y2: y+velo.y*30
-            })  
-          }
-  
-  
-  
+    this.mainsail_boom_angle_actual += (this.mainsail_boom_angle - this.mainsail_boom_angle_actual) / 30;
+    this.jib_boom_angle_actual += (this.jib_boom_angle - this.jib_boom_angle_actual) / 20;
+    const f = [];
+    for (const force of this.forces) f.push(force.point.x, force.point.y, force.vector.x, force.vector.y);
+    const s = {
+      x: this.x, y: this.y, px: p.x, py: p.y, pa: body.getAngle(), ha: this.hull_angle,
+      awa: this.awa, tw: Math.atan2(this.wind_vy_smooth, this.wind_vx_smooth),
+      ap: this.autopilot_enabled ? 1 : 0, wd: this.wind_direction, aht: this.autopilot_heading_target,
+      ra: this.rudder_angle, mba: this.mainsail_boom_angle_actual, jba: this.jib_boom_angle_actual,
+      mf: flapScale, jf: this.jibFlap, ph: flapPhase, f,
+    };
+    if (view && view.show_fields) {
+      const res = this.map.bm.resolution;
+      const v = [];
+      windGridPoints(this.x, this.y, res, (x, y) => {
+        let velo;
+        if (this.map.devMode) {
+          const w = this.map.get_wind(x, y);
+          velo = { x: w.vx, y: w.vy };
+        } else {
+          velo = this.map.bm.get_field_velocity(x, y);
         }
-  
-      }
-
+        v.push(velo.x, velo.y);
+      });
+      s.wg = { res, v };
     }
-    
+    return s;
+  }
 
+  // Static drawing numbers (boat-draw.js boatGuides).
+  renderDef() {
+    return {
+      rp: this.rudder_position, rl: this.rudder_lenght, cp: this.centerboard_position, cl: this.centerboard_length,
+      mle: this.mainsail_leading_edge_position, mbl: this.mainsail_boom_length,
+      jle: this.jib_leading_edge_position, jbl: this.jib_boom_length,
+    };
+  }
 
-
-
-
-    return graphics
+  graphics_model_render(view) {
+    return boatGuides(this.renderState(view), this.renderDef());
   }
   
 
