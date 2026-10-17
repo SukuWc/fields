@@ -43,6 +43,7 @@ Last updated: 2026-10-17
 - [x] Fluid sim on, stable from wind 5 through 25 with the sail wake on the fine grid: [#9](https://github.com/SukuWc/fields/pull/9)
 - [ ] Per-boat wind shadow / dirty air (partial: [#9](https://github.com/SukuWc/fields/pull/9) gives each boat a sail wake, so a downwind boat reads slower true wind)
 - [x] Depower toggle (X / touch): sails eased out and luffing with a 0.5 s ramp: [#51](https://github.com/SukuWc/fields/pull/51)
+- [ ] Near-matched viscosity on the default 4 m fast-wind grid (`simRes=4f`) so sail wakes match the 1 m and x4 grids (in progress, [#65](https://github.com/SukuWc/fields/pull/65))
 - [ ] Strategy tuning
 
 ### 3. Multiplayer open water
