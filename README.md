@@ -35,6 +35,7 @@ Last updated: 2026-10-17
 - [x] Web Worker sim host by default (`?worker=0` for main thread) with transferred field buffers (sim/client split, phase 4b): [#57](https://github.com/SukuWc/fields/pull/57)
 - [x] Node WebSocket sim server + RemoteHost: authoritative 30 Hz rooms, `--lockstep` mode, streamed wind field, `?host=remote` with LocalHost fallback (sim/client split, phase 5a): [#60](https://github.com/SukuWc/fields/pull/60)
 - [x] Remote mode: fixed 30 Hz server frame clock, every frame broadcast to every client, frame-driven client with no rAF loop: [#62](https://github.com/SukuWc/fields/pull/62)
+- [ ] Server field streaming: per-level 1-byte grids coloured on the client, sent only to clients showing the field (in progress, [#64](https://github.com/SukuWc/fields/pull/64))
 - [x] True- and apparent-wind chevrons sit upwind of the boat with tips pointing downwind (fixes a regression that pointed them upwind): [#59](https://github.com/SukuWc/fields/pull/59)
 - [x] Run `npm test` in CI (test + server smoke workflow in `.github/workflows/test.yml`): [#63](https://github.com/SukuWc/fields/pull/63)
 
