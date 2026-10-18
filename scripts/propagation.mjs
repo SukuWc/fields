@@ -108,8 +108,11 @@ export function run(mode, wind, kind, refine, { y0 = 0, raw = false, from = 90, 
 		const half = Math.max(3, Math.round((reach / 2 + 3 * sigma) / info.cell));
 		const c = Math.round(bm.width / 2), cy = Math.round(bm.height / 2 + y0 / info.cell);
 		bm.addDomain(c - half, cy - half, c + half, cy + half);
-		const d = bm.domains[0], h2 = Math.max(4, half);
-		d.addDomain(2 + half - h2 / 2, 2 + half - h2 / 2, 2 + half + h2 / 2, 2 + half + h2 / 2);
+		// L2 box centred on the start in L1 fine indices (start = fine 2 + 2·half),
+		// even width so its corners are whole fine indices.
+		const d = bm.domains[0], h2 = 2 * Math.max(2, Math.round(half / 2));
+		const fc = 2 + 2 * half;
+		d.addDomain(fc - h2 / 2, fc - h2 / 2, fc + h2 / 2, fc + h2 / 2);
 	}
 	const amp = kind === 'pulse' ? 0.01 : (U > 0 ? 0.1 * U : 0.01);
 	const ux0 = Math.cos(bm.direction / 180 * Math.PI) * U, uy0 = Math.sin(bm.direction / 180 * Math.PI) * U;
@@ -189,6 +192,7 @@ export function run(mode, wind, kind, refine, { y0 = 0, raw = false, from = 90, 
 		const nc = nodeCentroid(bm, y0);
 		out.travelN = nc.x * ex + nc.y * ey;
 		out.lateralN = -nc.x * ey + nc.y * ex;
+		out.dirErrN = wind > 0 ? Math.atan2(out.lateralN, out.travelN) * 180 / Math.PI : 0;
 		out.exp = wind * 1;
 		out.expT = wind * t;
 	}
@@ -222,6 +226,6 @@ if (process.argv[1] && process.argv[1].endsWith('propagation.mjs')) {
 			down: [r2(p.down), r2(p.expDown), pct(p.down, p.expDown)],
 			up: [r2(p.up), r2(p.expUp), pct(p.up, p.expUp)],
 			axisErr: r2(p.axisErr), diagErr: r2(p.diagErr),
-			adv: [r2(v.travel), r2(v.expT), pct(v.travel, v.expT)], lat: r2(v.lateral), dirErr: r2(v.dirErr), bad: p.bad || v.bad }));
+			adv: [r2(v.travelN), r2(v.expT), pct(v.travelN, v.expT)], lat: r2(v.lateralN), dirErr: r2(v.dirErrN), advSampled: r2(v.travel), bad: p.bad || v.bad }));
 	}
 }
