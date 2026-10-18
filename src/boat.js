@@ -1,7 +1,7 @@
 import planck from 'planck-js';
 import { aeroCoefficients } from './utils.js';
 import { resetPenaltyManeuvers, updatePenaltyManeuvers, updateTackingState } from './rules.js';
-import { boatGuides, windGridPoints } from './boat-draw.js';
+import { boatGuides } from './boat-draw.js';
 
 // Lattice momentum per frame = sail reaction × SAIL_LATTICE_COUPLING.
 //
@@ -706,21 +706,6 @@ export class Boat{
       ra: this.rudder_angle, mba: this.mainsail_boom_angle_actual, jba: this.jib_boom_angle_actual,
       mf: flapScale, jf: this.jibFlap, ph: flapPhase, f,
     };
-    if (view && view.show_fields) {
-      const res = this.map.bm.resolution;
-      const v = [];
-      windGridPoints(this.x, this.y, res, (x, y) => {
-        let velo;
-        if (this.map.devMode) {
-          const w = this.map.get_wind(x, y);
-          velo = { x: w.vx, y: w.vy };
-        } else {
-          velo = this.map.bm.get_field_velocity(x, y);
-        }
-        v.push(velo.x, velo.y);
-      });
-      s.wg = { res, v };
-    }
     return s;
   }
 

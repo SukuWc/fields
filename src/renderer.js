@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { FlowTracers, tracerCountFor, TRACER_LIFETIME_S } from './flow-tracers.js';
 
 let camera, scene, renderer, fluidPlane;
 let _planeBase = null;
@@ -38,6 +39,7 @@ const labelGroupPool = [];
 // Pooled and moving lines also set frustumCulled = false: three.js computes a
 // geometry's bounding sphere once, from the first positions, so a segment that
 // moves later is culled by its stale sphere and vanishes in whole arcs.
+const ORDER_TRACERS = 0.5; // flow tracers: over the field, under the hulls
 const ORDER_HULL = 1;
 const ORDER_GUIDE = 2;
 const ORDER_RIBBON = 3;
@@ -496,6 +498,53 @@ export function setFluidPlaneSize(width, height) {
   fluidPlane.scale.set(width / _planeBase.w, height / _planeBase.h, 1);
 }
 
+// Flow tracers (flow-tracers.js): one LineSegments buffer for the whole pool,
+// created on the first grid. Shown while view.show_fields (Flow tracers box).
+let tracers = null, tracerLines = null, _tracerT = null;
+// Streak colour: slow (wind shadow) dim blue → fast bright white-cyan.
+const TRACER_SLOW_RGB = [0.1, 0.35, 1], TRACER_FAST_RGB = [1, 1, 0.85];
+function urlNumber(key) {
+  if (typeof location === 'undefined') return undefined;
+  const v = parseFloat(new URLSearchParams(location.search).get(key));
+  return Number.isFinite(v) ? v : undefined;
+}
+export function setFlowGrid(grid) {
+  if (!grid || !scene) return;
+  if (!tracers) {
+    const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+    const mw = _planeBase ? _planeBase.w : 100, mh = _planeBase ? _planeBase.h : 200;
+    const count = tracerCountFor(mw, mh, { touch, override: urlNumber('tracers') });
+    const life = urlNumber('tracerLife');
+    tracers = new FlowTracers({ count, lifetime: life > 0 ? life : TRACER_LIFETIME_S });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 6), 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(count * 6), 3).setUsage(THREE.DynamicDrawUsage));
+    const mat = new THREE.LineBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending });
+    markOverlay(mat);
+    tracerLines = new THREE.LineSegments(geo, mat);
+    tracerLines.renderOrder = ORDER_TRACERS;
+    tracerLines.frustumCulled = false;
+    tracerLines.visible = false;
+    scene.add(tracerLines);
+  }
+  tracers.setGrid(grid);
+}
+export function getTracers() { return tracers; }
+
+function renderTracers() {
+  const now = performance.now();
+  const dt = _tracerT === null ? 0 : (now - _tracerT) / 1000;
+  _tracerT = now;
+  const on = !!(_view && _view.show_fields && tracers && tracers.grid);
+  if (tracerLines) tracerLines.visible = on;
+  if (!on) { _tracerT = null; return; }
+  tracers.step(dt);
+  const g = tracerLines.geometry;
+  tracers.write(g.attributes.position.array, g.attributes.color.array, 0.005, TRACER_SLOW_RGB, TRACER_FAST_RGB);
+  g.attributes.position.needsUpdate = true;
+  g.attributes.color.needsUpdate = true;
+}
+
 export function getCamera() {
   return camera;
 }
@@ -534,7 +583,8 @@ function animation(t) {
   camera.position.y = _view.camera_position_y;
   camera.position.z = _view.camera_zoom;
   const sceneData = _getScene();
-  if (fluidPlane) fluidPlane.visible = !sceneData.devMode && _fieldVisible;
+  // Flow tracers replace the colour field plot while they are on.
+  if (fluidPlane) fluidPlane.visible = !sceneData.devMode && _fieldVisible && !_view.show_fields;
 
   // Update persistent fixture lines — create/remove only when fixture set changes
   const seenFixtures = new Set();
@@ -617,6 +667,7 @@ function animation(t) {
   }
   renderContacts(contactMarks);
   renderRuleLabels(ruleLabels);
+  renderTracers();
 
   renderer.render(scene, camera);
 

@@ -32,6 +32,7 @@ import { FluidWind, ConstantWind } from './wind.js';
 import { Sim } from './sim.js';
 import { presentHud, bodyOutlines, perfStats } from './present.js';
 import { sceneFrame } from './scene-state.js';
+import { sampleFlowGrid, FLOW_GRID_EVERY } from './flow-tracers.js';
 
 // The Sim and everything around it that a host runs (shared by LocalHost and
 // the worker). texture: the painter target, a three.js DataTexture or a plain
@@ -53,6 +54,7 @@ export class SimCore {
     this.statics = null;
     this.staticsVersion = 0;
     this._staticsKey = '';
+    this._flowTick = 0;
     // The constructor only took the root resolution; the mode's explicit
     // stepsPerFrame (fast-wind defaults such as '4f') applies before anything runs.
     this.sim.command({ type: 'simRes', mode: simRes });
@@ -97,6 +99,7 @@ export class SimCore {
   // world.step(dt) (when dt is given) and one sim.step. Returns the frame:
   //   { stepped, fieldSteps, fieldMs, fieldReady, devMode, boat0: { x, y } | null,
   //     hud?, state? (present), statics? (present, when they changed),
+//     flow? (present with view.show_fields: flow-tracers.js grid),
   //     perf? (setPerf) }
   // state: compact scene state, statics: shapes and layouts
   // (scene-state.js); the client builds guides and body outlines from them
@@ -127,6 +130,15 @@ export class SimCore {
       }
       state.sv = this.staticsVersion;
       frame.state = state;
+      // Flow tracers (flow-tracers.js): the wind on a coarse grid, every
+      // FLOW_GRID_EVERY presented ticks while the view shows them (the first
+      // presented tick after they are switched on carries one at once).
+      if (view && view.show_fields) {
+        if (this._flowTick % FLOW_GRID_EVERY === 0) frame.flow = sampleFlowGrid(map);
+        this._flowTick++;
+      } else {
+        this._flowTick = 0;
+      }
     }
     if (this.perf) frame.perf = perfStats(bm, map);
     if (!map.devMode && bm.step_ready) {

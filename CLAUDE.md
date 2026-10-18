@@ -37,7 +37,8 @@ src/boat-draw.js      — Pure boat drawing (boatGuides(state, def)); Boat.rende
 src/sim.js            — Sim: the whole simulation without DOM/three (boats, marks, course, start, finish, bots, boundary, per-Sim rules state, scenarios); step(simDt, held), command(cmd), snapshot(), events
 src/scenarios.js      — Scenario scripts: buildScenarios(sim) (title, description, frames[] in 90 Hz units)
 src/view.js           — Client View: camera position/zoom/follow + show_forces / show_fields (was in map.js)
-src/renderer.js       — Three.js scene init and animation loop
+src/renderer.js       — Three.js scene init and animation loop; flow tracers drawn as one LineSegments buffer
+src/flow-tracers.js   — Wind flow tracers: host grid (sampleFlowGrid → frame.flow every 3 ticks while show_fields), client pool (FlowTracers: speed-weighted rejection spawn, bilinear RK2 advection, 3 s life with fade). "Flow tracers" box (#show_field, default on) replaces the old per-boat wind arrow grid and hides the colour field plot while on. ?tracers=N, ?tracerLife=s. Check: scripts/tracers-check.mjs
 src/controls.js       — Keyboard/touch keys → Sim commands, DOM UI listeners → admin commands, scenario card, scenario view hints
 src/url-settings.js   — Sync #settings controls with the query string (non-defaults only)
 src/utils.js          — range_map and HSVtoRGB helpers

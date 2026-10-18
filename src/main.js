@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { FixedStepLoop } from './loop.js';
 
-import { initRenderer, startAnimation, renderNow, getCamera, setFluidPlaneSize, setFieldVisible } from './renderer.js';
+import { initRenderer, startAnimation, renderNow, getCamera, setFluidPlaneSize, setFieldVisible, setFlowGrid } from './renderer.js';
 import { setupControls, heldCommands, onHeldChange, deferUiToFrames, flushFrameUi } from './controls.js';
 import { LocalHost } from './host.js';
 import { buildScene } from './scene-build.js';
@@ -338,6 +338,7 @@ function startClient() {
       }
     }
     if (frame.fieldReady) dataTextureMaterial.needsUpdate = true;
+    if (frame.flow) setFlowGrid(frame.flow);
   });
 
   if (remoteDriven) {
