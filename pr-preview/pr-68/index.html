@@ -568,7 +568,7 @@
       }
     </style>
   
-    <script type="module" crossorigin src="/fields/pr-preview/pr-68/assets/index-CrpE9XR7.js"></script>
+    <script type="module" crossorigin src="/fields/pr-preview/pr-68/assets/index-jxBAQT-c.js"></script>
   </head>
   <body>
 
@@ -638,7 +638,12 @@
       <br>
       <label class="setting-row"><input id="boat_energy" autocomplete="off" type="checkbox" checked>Boat energy</label>
       <br>
-      <label class="setting-row"><input id="show_field" autocomplete="off" type="checkbox" checked title="Wind flow tracers: short streaks carried by the local wind, denser and brighter where it blows harder. Untick to see the colour field plot (Plot speed etc.) instead.">Flow tracers</label>
+      <label class="setting-row"><input id="show_field" autocomplete="off" type="checkbox" checked title="Wind flow tracers: short streaks carried by the local wind, denser where it blows harder, each with a tail along its own path. Drawn on top of the colour field plot; independent of it.">Flow tracers</label>
+      <br>
+      <span class="setting-row setting-field" id="tracer_controls" title="Flow tracers: how many (empty = auto for the map size and device; ?tracers=N), how long each lives (?tracerLife=s) and how long a tail of its past path it draws (?tracerTail=s). Applied live.">
+        <label><input id="tracers" autocomplete="off" type="number" min="10" max="20000" step="50" inputmode="numeric" style="width: 80px;" placeholder="auto">tracers</label><br>
+        <label><input id="tracerLife" autocomplete="off" type="number" min="0.5" max="30" step="0.5" inputmode="decimal" style="width: 46px;" value="6">s life</label>
+        <label><input id="tracerTail" autocomplete="off" type="number" min="0" max="10" step="0.25" inputmode="decimal" style="width: 46px;" value="1.5">s tail</label></span>
       <br>
       <label class="setting-row" id="field_plane_row" hidden title="Server mode only: the field plot. Off, the server sends this page no field data. Also ?field_plane=0"><input id="field_plane" autocomplete="off" type="checkbox" checked>Show field (server)</label>
       <br id="field_plane_br" hidden>
@@ -664,8 +669,8 @@
       <label class="setting-row setting-field">Wind angle<br>
       <input id="windAngle" autocomplete="off" type="number" min="0" max="360" step="5" value="90"></label>
       <br>
-      <label class="setting-row setting-field">Wind speed<br>
-      <input id="windSpeed" autocomplete="off" type="number" min="0" max="40" step="1" value="15"></label>
+      <label class="setting-row setting-field">Wind speed (m/s) <span id="windSpeedKn"></span><br>
+      <input id="windSpeed" autocomplete="off" type="number" min="0" max="12" step="0.5" value="4.5"></label>
       <br>
       <span class="setting-row setting-field">Select Scenario<br>
       <input id="scenario_selector" autocomplete="off" type="number" min="0" max="19" value="0" style="width: 50px;" title="Scenario 6: Rule 13 tack. Scenario 7: leeward boat tacks into a Rule 10 collision. Scenario 8: Rule 15 overlap. Scenario 9: contact during Rule 15. Scenario 10: penalty turn, a tack and a gybe in a row (Q counter-clockwise, E clockwise autopilot circle). Scenario 11: anchored mark buoy, boat hits it. Scenario 12: anticlockwise triangle course, marks to port, next mark highlighted. Scenario 13: windward mark and leeward gate. Scenario 14: start sequence countdown, OCS individual recall, then windward mark and leeward gate. Scenario 15: Rule 18.2 mark-room, two boats overlapped at the leeward gate. Scenario 16: finish line and results list, unserved penalty becomes a time penalty. Scenario 17: three-boat test race with the live leaderboard. Scenario 18: fleet of four upwind (refinement budget). Scenario 19: virtual boundary, room to tack away from the boundary. Use with Dev mode.">
