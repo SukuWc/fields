@@ -32,7 +32,7 @@ function assert(cond, message) {
   }
 }
 
-const windFromNorth = new ConstantWind(90, 15);
+const windFromNorth = new ConstantWind(90, 4.5);
 const getWind = (x, y) => windFromNorth.getWind(x, y);
 
 const HULL = [
@@ -206,7 +206,7 @@ assert(portAstern.y < portAhead.y, "port-tack trailer is downwind");
 assertOverlay(evaluateSectionA(portAhead, portAstern, getWind), portAhead, portAstern, "Rule 12");
 
 // Wind from +X, so windward is larger X, not larger Y.
-const windFromEast = new ConstantWind(0, 15);
+const windFromEast = new ConstantWind(0, 4.5);
 const getEast = (x, y) => windFromEast.getWind(x, y);
 const eastLow = makeBoat(world, 0, 0, Math.PI);
 const eastHigh = makeBoat(world, 3, 0, Math.PI);

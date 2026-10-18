@@ -12,10 +12,17 @@
 // (vx, vy) themselves point the other way: downwind, which is the lattice
 // flow and the direction sail drag pushes the boat.
 
+// FIELD_TO_WIND_SPEED turns a field sample into the boat's internal wind
+// units (the old UI wind: 100 × Default lattice U). Those units still drive
+// the boat's sail model, unchanged. WIND_UNIT_MPS is one such unit in true
+// m/s: Default lattice U × 1 m × 30 steps/s / 100 = 0.3 m/s. Every external
+// wind (UI, Boltzmann, Map, ConstantWind, sample.speed) is in m/s.
 const FIELD_TO_WIND_SPEED = 100 * 4;
+export const WIND_UNIT_MPS = 0.3;
+const FIELD_TO_MPS = FIELD_TO_WIND_SPEED * WIND_UNIT_MPS;
 
 export function windSample(vx, vy) {
-  const speed = Math.sqrt(vx * vx + vy * vy) * FIELD_TO_WIND_SPEED;
+  const speed = Math.sqrt(vx * vx + vy * vy) * FIELD_TO_MPS;
   const direction = Math.atan2(vy, vx) / Math.PI * 180 + 180;
   return { speed, direction, vx, vy };
 }
@@ -45,7 +52,7 @@ export class ConstantWind {
     // at uiSpeed/100. get_field_velocity returns that divided by 4, and the
     // +180 in windSample brings the reported direction back to uiAngle.
     const rad = (this.angleDeg + 180) * Math.PI / 180;
-    const mag = this.speed / FIELD_TO_WIND_SPEED;
+    const mag = this.speed / FIELD_TO_MPS;
     let vx = Math.cos(rad) * mag;
     let vy = Math.sin(rad) * mag;
     if (Math.abs(vx) < 1e-12) vx = 0;

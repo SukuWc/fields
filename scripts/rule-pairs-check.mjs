@@ -29,7 +29,7 @@ function assert(cond, message) {
   }
 }
 
-const wind = new ConstantWind(90, 15);
+const wind = new ConstantWind(90, 4.5);
 const getWind = (x, y) => wind.getWind(x, y);
 
 const HULL = [

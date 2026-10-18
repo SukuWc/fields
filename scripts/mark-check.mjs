@@ -76,7 +76,7 @@ const DT = 1 / 30;
 
 // --- Scenario 11 geometry (src/controls.js) ---
 
-const map = new Map(75, 75, 90, 15, null);
+const map = new Map(75, 75, 90, 4.5, null);
 map.physics_model_init();
 map.setDevMode(true);
 

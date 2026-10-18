@@ -320,6 +320,8 @@ function collideAndStream(cells, omega) {
 
 // Lowest root lattice ν kept on a coarse setting. See Boltzmann._build.
 export const ROOT_NU_FLOOR = 0.025;
+// Field/physics ticks per second (fixed 30 Hz loop).
+export const FRAME_HZ = 30;
 export const FAST_MATCHED_NU_FLOOR = 0.0125;
 export const FAST4_NU_FLOOR = 0.003125;
 
@@ -1968,11 +1970,13 @@ export class Boltzmann {
 		this.t_delta = 0;
 		this.field_ms = 0;
 
-		// uiSpeed is the UI wind / 100: the lattice U of a Default-grid
-		// lattice. The lattice inlet U is uiSpeed / velScale (see _build),
-		// so a given UI wind is the same physical wind on every setting.
-		this.uiSpeed = speed / 100;
-		this.speed = this.uiSpeed; // default speed 0.12
+		// windMps is the true wind in m/s (world units are metres). The
+		// lattice inlet U (cells per lattice step) is windMps · Δt / Δx with
+		// Δt = 1 / (30 · stepsPerFrame) s and Δx = cellSize m, i.e.
+		// windMps / (30 · velScale) (see _latticeU), so a given m/s is the same
+		// physical wind on every setting. The 1 m Default here: Δx 1, Δt 1/30.
+		this.windMps = speed;
+		this.speed = speed / FRAME_HZ;
 
 		// Kinematic viscosity in lattice units. ω_c = 1/(3ν + 1/2) and, on each
 		// refined level, ω_f = 2ω_c/(4 − ω_c) (Eq. 24). The Eq. 29/30 factors are
@@ -2032,7 +2036,7 @@ export class Boltzmann {
 		// stable wind ceiling (lattice U ≲ 0.25) is velScale × UI wind 25.
 		this.stepsPerFrame = stepsPerFrame > 0 && Number.isFinite(stepsPerFrame) ? stepsPerFrame : resolution;
 		this.velScale = this.cellSize * this.stepsPerFrame;
-		if (this.uiSpeed !== undefined) this.speed = this.velScale === 1 ? this.uiSpeed : this.uiSpeed / this.velScale;
+		if (this.windMps !== undefined) this.speed = this._latticeU(this.windMps);
 		// Physical ν = ν_lat·Δx²/Δt ∝ ν_lat·k, so Default's physical viscosity
 		// on a k-unit root cell is ν_lat = baseNu/k (matchedNu). Plain BGK at
 		// 0.0125 (x2) diverges at wind 25 with the barrier, like 0.020 did at
@@ -2177,9 +2181,16 @@ export class Boltzmann {
 	}
 
 	// UI wind (TWS units) → lattice inlet U on the current grid.
-	setWindSpeed(uiWind) {
-		this.uiSpeed = uiWind / 100;
-		this.speed = this.velScale === 1 ? this.uiSpeed : this.uiSpeed / this.velScale;
+	setWindSpeed(mps) {
+		this.windMps = mps;
+		this.speed = this._latticeU(mps);
+	}
+
+	// True wind m/s → lattice U: m/s · Δt / Δx, Δt = 1/(30 · stepsPerFrame) s,
+	// Δx = cellSize m. Equals the old UI-wind rule uiWind/100/velScale with
+	// uiWind = m/s / 0.3.
+	_latticeU(mps) {
+		return mps / (FRAME_HZ * this.cellSize * this.stepsPerFrame);
 	}
 
 	// Lattice steps the next advance_frame call will run.

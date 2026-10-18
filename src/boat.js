@@ -1,6 +1,7 @@
 import planck from 'planck-js';
 import { aeroCoefficients } from './utils.js';
 import { resetPenaltyManeuvers, updatePenaltyManeuvers, updateTackingState } from './rules.js';
+import { WIND_UNIT_MPS } from './wind.js';
 import { boatGuides, windGridPoints } from './boat-draw.js';
 
 // Lattice momentum per frame = sail reaction × SAIL_LATTICE_COUPLING.
@@ -506,7 +507,7 @@ export class Boat{
     this.forces.push({name: "rudder", type: "arrow", vector: rudder_f, point: rudder_p})
 
     tel.twa = twa;
-    tel.tws = this.wind_speed;
+    tel.tws = this.wind_speed * WIND_UNIT_MPS; // m/s; wind_speed is the internal unit
     tel.awa = awa;
     tel.aws = aws;
 
