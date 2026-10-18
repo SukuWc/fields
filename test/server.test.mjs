@@ -69,7 +69,10 @@ mute();
   await sleep(1500);
   const n1 = a.framesReceived;
   check('server mode: ~30 frames per second without client ticks', n1 >= 25 && n1 <= 50, `frames in 1.5 s = ${n1}`);
-  check('server mode: bindControls event reaches the client', events.some((e) => e.type === 'bindControls' && e.boats === 1));
+  check('server mode: the scenario\'s bindControls is not sent (spectator: no keys)', !events.some((e) => e.type === 'bindControls') && a.bindings === 0);
+  await a.command({ type: 'spawnBoat', name: 'A' });
+  await sleep(100);
+  check('server mode: an own boat brings this client\'s key binding', events.some((e) => e.type === 'bindControls' && e.boats === 1) && a.bindings === 1);
   check('server mode: field grids arrive as binary and paint the texture', a.fieldsReceived >= 3 && a.lastField && a.lastField.grids.length >= 1 && a.texture.image.width === a.lastField.rootW * Math.round((opts.oversampling || 8) / Math.min(1, a.lastField.resolution)),
     `fields=${a.fieldsReceived} size=${a.texture.image.width}x${a.texture.image.height}`);
   const b = new RemoteHost(url, opts, tex(), { WebSocketImpl: WebSocket });
@@ -77,15 +80,14 @@ mute();
   b.on((e) => evB.push(e));
   await b.ready;
   await sleep(300);
-  check('second client joins the same room and gets frames and the key binding', b.framesReceived > 3 && evB.some((e) => e.type === 'bindControls'));
-  const ap0 = hudFromState(a.lastFrame.state.hud).info.match(/Autopilot(\w+)/)[1];
-  // Hold helm from client A for 1 s: the autopilot turns off (helm overrides).
-  for (let i = 0; i < 30; i++) { a.tick({ dt: 1 / 30, held: [{ type: 'helm', boat: 0, dir: -1 }], present: true, view }); await sleep(33); }
-  a.tick({ dt: 1 / 30, held: [], present: true, view });
+  check('second client joins the same room: frames and the welcome (spectator, no key binding)', b.framesReceived > 3 && b.room && b.room.scenario.index === 0 && b.bindings === 0 && !evB.some((e) => e.type === 'bindControls'));
+  const core = srv.rooms.get('t2').core;
+  // Hold helm from spectator B for 1 s: nothing happens to scenario boat 0.
+  for (let i = 0; i < 30; i++) { b.tick({ dt: 1 / 30, held: [{ type: 'helm', boat: 0, dir: -1 }], present: true, view }); await sleep(33); }
+  b.tick({ dt: 1 / 30, held: [], present: true, view });
   await sleep(200);
-  const ap1 = hudFromState(a.lastFrame.state.hud).info.match(/Autopilot(\w+)/)[1];
-  const apB = hudFromState(b.lastFrame.state.hud).info.match(/Autopilot(\w+)/)[1];
-  check('held keys from one client steer the shared boat (autopilot off)', ap0 === 'true' && ap1 === 'false' && apB === 'false', `${ap0} -> ${ap1} / B ${apB}`);
+  const ap = hudFromState(b.lastFrame.state.hud).info.match(/Autopilot(\w+)/)[1];
+  check('a spectator\'s held keys steer nothing (scenario boat keeps its autopilot)', ap === 'true' && core.sim.players[0].autopilot_enabled === true, ap);
   const st = await (await fetch(`http://127.0.0.1:${srv.port}/`)).json();
   check('status endpoint lists the room and its clients', st.ok && st.rooms.some((r) => r.name === 't2' && r.clients === 2 && r.ticks > 30), JSON.stringify(st.rooms));
   a.terminate(); b.terminate();

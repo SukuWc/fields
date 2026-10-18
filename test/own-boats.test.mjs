@@ -1,6 +1,6 @@
 // Player boats in a server room: two clients each spawn a boat, steer it
 // independently (keys apply only to the own boat, never scenario boats),
-// and a disconnect removes the client's boat. Plus the Sim commands
+// a disconnect removes the client's boat and a restart keeps it. Plus the Sim commands
 // spawnBoat / removeBoat on their own (local/worker modes are unchanged).
 import { hudFromState } from '../src/hud.js';
 import { buildScene } from '../src/scene-build.js';
@@ -58,10 +58,10 @@ const tex = () => ({ image: { data: new Uint8Array(0) } });
   await sleep(300);
   const ra = await A.command({ type: 'spawnBoat', name: 'A' });
   const rb = await B.command({ type: 'spawnBoat', name: 'B' });
-  await sleep(300);
+  for (let i = 0; i < 60 && !(A.lastFrame.spawned.length === 2 && B.lastFrame.spawned.length === 2); i++) await sleep(50);
   const pos = (h, id) => h.lastFrame.spawned.find((b) => b.id === id);
   check('each client spawns its own boat (server assigns ids)', ra.id && rb.id && ra.id !== rb.id && ownA.at(-1)[0].id === ra.id && ownB.at(-1)[0].id === rb.id);
-  check('both clients see both spawned boats', A.lastFrame.spawned.length === 2 && B.lastFrame.spawned.length === 2);
+  check('both clients see both spawned boats', A.lastFrame.spawned.length === 2 && B.lastFrame.spawned.length === 2, JSON.stringify([ra, rb, A.lastFrame.spawned, B.lastFrame.spawned]));
   const ap = (h, name) => (hudFromState(h.lastFrame.state.hud).info.match(/Autopilot(\w+)/) || [])[1];
   // A tacks "boat 0" (its own boat) with a one-shot command: only A's
   // autopilot target flips sign.
@@ -89,8 +89,9 @@ const tex = () => ({ image: { data: new Uint8Array(0) } });
   await sleep(100);
   check('disconnect removes the client\'s boat', !byId(rb.id) && !!byId(ra.id) && A.lastFrame.spawned.length === 1);
   await A.command({ type: 'restart', scenario: 0 });
-  await sleep(200);
-  check('a room-wide restart clears player boats and ownership', !byId(ra.id) && ownA.at(-1).length === 0);
+  for (let i = 0; i < 50 && !(ownA.at(-1).length === 1 && ownA.at(-1)[0].id !== ra.id); i++) await sleep(50);
+  const again = ownA.at(-1)[0];
+  check('a room-wide restart keeps player boats (spawned again, same name, owned again)', !byId(ra.id) && again && byId(again.id) && byId(again.id).spawnName === 'A');
   A.terminate();
   await srv.close();
 }
