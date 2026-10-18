@@ -22,9 +22,12 @@
 // TRACER_TAIL_SUBDIV segments per interval, fading towards the end. A
 // respawn clears the buffer, so no tail jumps across the map.
 
-// Lattice velocity (Boltzmann.get_field_velocity, wind.js vx/vy) → m/s:
-// × 400 gives the UI wind speed (knots), × 0.5144 knots → m/s.
-export const FIELD_TO_MPS = 400 * 0.5144;
+import { WIND_UNIT_MPS } from './wind.js';
+
+// Lattice velocity (Boltzmann.get_field_velocity, wind.js vx/vy) → m/s, the
+// same scale as wind.js windSample().speed: × 400 internal wind units,
+// × WIND_UNIT_MPS each.
+export const FIELD_TO_MPS = 400 * WIND_UNIT_MPS;
 // Grid: at most FLOW_GRID_MAX_X × 2·FLOW_GRID_MAX_X nodes (2:1 maps), at
 // least 1 m apart. 50×100 → 1 m, 100×200 → 1.35 m, 200×400 → 2.7 m (finer
 // than the 4 m fast-wind root cell; refined cells near boats are finer still).

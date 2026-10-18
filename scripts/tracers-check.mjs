@@ -165,7 +165,7 @@ for (const k of ["50x100", "100x200", "200x400"]) {
   const cw = m.get_wind(0, 0);
   const ok = g.v.length === g.nx * g.ny * 2 && g.nx <= T.FLOW_GRID_MAX_X && g.cell >= 1 && Math.abs(g.v[1] - cw.vy * T.FIELD_TO_MPS) < 1e-3;
   const mps = Math.hypot(g.v[0], g.v[1]);
-  assert(ok && Math.abs(mps - 15 * 0.5144) < 0.01, `${k} dev mode: ${g.nx}×${g.ny} grid, ${g.cell.toFixed(2)} m cells, uniform ${mps.toFixed(2)} m/s (15 kn)`);
+  assert(ok && Math.abs(mps - cw.speed) < 0.01, `${k} dev mode: ${g.nx}×${g.ny} grid, ${g.cell.toFixed(2)} m cells, uniform ${mps.toFixed(2)} m/s (= wind sample speed ${cw.speed.toFixed(2)})`);
   m.setDevMode(false);
   for (let i = 0; i < 20; i++) bm.step_ready = false, bm.advance_frame ? bm.advance_frame() : null;
   g = T.sampleFlowGrid(m);
