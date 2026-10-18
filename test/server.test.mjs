@@ -2,8 +2,9 @@
 // lockstep runs match LocalHost frame for frame; the authoritative 30 Hz
 // mode ticks on its own, takes commands and held keys from clients, streams
 // field grids to clients that show the field, and serves several clients from one room.
+import { hudFromState } from '../src/hud.js';
 import { buildScene } from '../src/scene-build.js';
-import { sceneDiff } from './scene-diff.mjs';
+import { sceneDiff, geom } from './scene-diff.mjs';
 import { WebSocket } from 'ws';
 import { startServer } from '../apps/server/index.js';
 import { RemoteHost } from '../src/remote-host.js';
@@ -44,7 +45,7 @@ mute();
     await rh.idle();
     rh._frameListeners.length = 0;
     if (n !== 11) rh.terminate();
-    const same = frames.length === 60 && frames.every((f, i) => strip(f.hud.info) === strip(local[i].hud.info) && sceneDiff(f.boat0, local[i].boat0) <= 1e-3 && sceneDiff(buildScene(f.state, f.statics, view), buildScene(local[i].state, local[i].statics, view)) <= 1e-3);
+    const same = frames.length === 60 && frames.every((f, i) => strip(hudFromState(f.state.hud).info) === strip(hudFromState(local[i].state.hud).info) && sceneDiff(f.boat0, local[i].boat0) <= 1e-3 && sceneDiff(geom(buildScene(f.state, f.statics, view)), geom(buildScene(local[i].state, local[i].statics, view))) <= 1e-3);
     check(`lockstep scenario ${n}: 60 frames match LocalHost (HUD; boat0 and built scene within 1e-3, server rounds to 1e-4)`, same, `frames=${frames.length}`);
     check(`lockstep scenario ${n}: restart returns the card`, card && card.title === info.scenarios[n].title);
   }
@@ -77,13 +78,13 @@ mute();
   await b.ready;
   await sleep(300);
   check('second client joins the same room and gets frames and the key binding', b.framesReceived > 3 && evB.some((e) => e.type === 'bindControls'));
-  const ap0 = a.lastFrame.hud.info.match(/Autopilot(\w+)/)[1];
+  const ap0 = hudFromState(a.lastFrame.state.hud).info.match(/Autopilot(\w+)/)[1];
   // Hold helm from client A for 1 s: the autopilot turns off (helm overrides).
   for (let i = 0; i < 30; i++) { a.tick({ dt: 1 / 30, held: [{ type: 'helm', boat: 0, dir: -1 }], present: true, view }); await sleep(33); }
   a.tick({ dt: 1 / 30, held: [], present: true, view });
   await sleep(200);
-  const ap1 = a.lastFrame.hud.info.match(/Autopilot(\w+)/)[1];
-  const apB = b.lastFrame.hud.info.match(/Autopilot(\w+)/)[1];
+  const ap1 = hudFromState(a.lastFrame.state.hud).info.match(/Autopilot(\w+)/)[1];
+  const apB = hudFromState(b.lastFrame.state.hud).info.match(/Autopilot(\w+)/)[1];
   check('held keys from one client steer the shared boat (autopilot off)', ap0 === 'true' && ap1 === 'false' && apB === 'false', `${ap0} -> ${ap1} / B ${apB}`);
   const st = await (await fetch(`http://127.0.0.1:${srv.port}/`)).json();
   check('status endpoint lists the room and its clients', st.ok && st.rooms.some((r) => r.name === 't2' && r.clients === 2 && r.ticks > 30), JSON.stringify(st.rooms));

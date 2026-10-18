@@ -292,7 +292,7 @@ function startClient() {
   // The host steps the world; the loop only keeps time.
   const loop = new FixedStepLoop({ step() {} }, { tickHz: 30, maxCatchUp: 4 });
 
-  // Readout and HUD from a frame's presentation (present.js presentHud).
+  // Readout and HUD panels built from the frame state (hud.js hudFromState).
   function applyHud(hud) {
     if (hud.dist !== null) distInfoEl.innerHTML = hud.dist;
     setInfo(hud.info);
@@ -329,13 +329,11 @@ function startClient() {
     const mine = ownBoatId && frame.spawned ? frame.spawned.find((b) => b.id === ownBoatId) : null;
     followTarget = mine || (ownBoatId ? undefined : frame.boat0) || undefined;
     if (frame.fieldSteps > 0 && isPerfOverlayOn()) recordFieldStep(frame.fieldMs);
-    if (frame.hud) {
-      applyHud(frame.hud);
-      if (frame.state && frame.statics) {
-        const scene = buildScene(frame.state, frame.statics, view);
-        currentGuides = scene.guides;
-        frameBodies = scene.bodies;
-      }
+    if (frame.state && frame.statics) {
+      const scene = buildScene(frame.state, frame.statics, view);
+      if (scene.hud) applyHud(scene.hud);
+      currentGuides = scene.guides;
+      frameBodies = scene.bodies;
     }
     if (frame.fieldReady) dataTextureMaterial.needsUpdate = true;
   });

@@ -30,7 +30,7 @@ import { FieldPainter } from './fieldPainter.js';
 import { Map } from './map.js';
 import { FluidWind, ConstantWind } from './wind.js';
 import { Sim } from './sim.js';
-import { presentHud, bodyOutlines, perfStats } from './present.js';
+import { bodyOutlines, perfStats } from './present.js';
 import { sceneFrame } from './scene-state.js';
 
 // The Sim and everything around it that a host runs (shared by LocalHost and
@@ -96,11 +96,11 @@ export class SimCore {
 
   // world.step(dt) (when dt is given) and one sim.step. Returns the frame:
   //   { stepped, fieldSteps, fieldMs, fieldReady, devMode, boat0: { x, y } | null,
-  //     hud?, state? (present), statics? (present, when they changed),
+  //     state? (present), statics? (present, when they changed),
   //     perf? (setPerf) }
-  // state: compact scene state, statics: shapes and layouts
-  // (scene-state.js); the client builds guides and body outlines from them
-  // (scene-build.js). statics only rides on the frame where it changed
+  // state: compact scene state incl. the HUD values (state.hud), statics:
+  // shapes and layouts (scene-state.js); the client builds guides, body
+  // outlines and the readout / HUD panels from them (scene-build.js). statics only rides on the frame where it changed
   // (this.statics always holds the current one, version state.sv).
   // fieldReady: the painter wrote a new texture this pass.
   tick({ dt, held, present, view }) {
@@ -117,7 +117,6 @@ export class SimCore {
     };
     if (present) {
       const { state, statics } = sceneFrame(sim, rec, view, performance.now(), this._fixtureIds);
-      frame.hud = presentHud(sim, rec);
       const key = JSON.stringify(statics);
       if (key !== this._staticsKey) {
         this._staticsKey = key;

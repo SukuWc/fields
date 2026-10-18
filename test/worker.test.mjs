@@ -1,8 +1,9 @@
 // sim.worker.js message protocol, run in-process with a fake `self`: the
 // worker's frames match a LocalHost step for step, everything it posts is
 // structured-cloneable, and field buffers are handed over and recycled.
+import { hudFromState } from '../src/hud.js';
 import { buildScene } from '../src/scene-build.js';
-import { sceneDiff } from './scene-diff.mjs';
+import { sceneDiff, geom } from './scene-diff.mjs';
 import { LocalHost } from '../src/host.js';
 import { hostChoice } from '../src/host-choice.js';
 
@@ -32,8 +33,8 @@ for (let t = 0; t < 60; t++) {
   const lf = local.tick({ dt: 1 / 30, held, present: true, view });
   const fm = msgs.find((x) => x.m.type === 'frame');
   if (fm && fm.m.frame.statics) { statics = fm.m.frame.statics; staticsFrames++; }
-  if (fm) sceneMax = Math.max(sceneMax, sceneDiff(buildScene(fm.m.frame.state, statics, view), buildScene(lf.state, lf.statics, view)));
-  if (!fm || fm.m.frame.hud.info.replace(/Phys Time.*?<br>/g, '') !== lf.hud.info.replace(/Phys Time.*?<br>/g, '')
+  if (fm) sceneMax = Math.max(sceneMax, sceneDiff(geom(buildScene(fm.m.frame.state, statics, view)), geom(buildScene(lf.state, lf.statics, view))));
+  if (!fm || hudFromState(fm.m.frame.state.hud).info.replace(/Phys Time.*?<br>/g, '') !== hudFromState(lf.state.hud).info.replace(/Phys Time.*?<br>/g, '')
     || JSON.stringify(fm.m.frame.boat0) !== JSON.stringify(lf.boat0)) same = false;
   if (fm && fm.m.field) {
     fields++;

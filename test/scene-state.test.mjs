@@ -10,6 +10,9 @@
 //      its first frame, again only when they change (restart, a new boat),
 //      and to a late joiner before its first frame; frames never carry them.
 //   4. buildScene is pure: the same state and statics build the same scene.
+//   5. The readout / HUD panels the client writes from the server JSON read
+//      exactly as the local ones (HUD values travel unrounded), and no state
+//      carries prebuilt HTML or guide records.
 import { SimCore } from '../src/host.js';
 import { buildScene } from '../src/scene-build.js';
 import { Room, roundJson } from '../apps/server/room.js';
@@ -27,10 +30,10 @@ const view = { camera_position_x: 0, camera_position_y: 0, camera_zoom: 20, show
 
 // 1. and 4.
 const seen = new Set();
-for (const [n, ticks] of [[0, 90], [11, 400], [15, 300], [19, 300], [17, 150]]) {
+for (const [n, ticks] of [[0, 90], [11, 400], [15, 300], [19, 300], [17, 150], [18, 150]]) {
   const core = new SimCore({ ...opts, texture: undefined });
   mute(() => core.command({ type: 'restart', scenario: n }));
-  let max = 0, pure = true, statics = null, rstatics = null, guides = 0;
+  let max = 0, pure = true, statics = null, rstatics = null, guides = 0, hudSame = true, prebuilt = null;
   mute(() => {
     for (let t = 0; t < ticks; t++) {
       const held = n === 0 && t % 45 < 12 ? [{ type: 'helm', boat: 0, dir: 1 }] : [];
@@ -39,16 +42,23 @@ for (const [n, ticks] of [[0, 90], [11, 400], [15, 300], [19, 300], [17, 150]]) 
       const r = JSON.parse(roundJson({ type: 'frame', frame: { ...f, statics: undefined } })).frame;
       for (const [k, v] of Object.entries(f.state)) if (v && (typeof v !== 'object' || Object.keys(v).length)) seen.add(k);
       const exact = buildScene(f.state, statics, view);
-      max = Math.max(max, sceneDiff(exact, buildScene(r.state, rstatics, view)));
+      const remote = buildScene(r.state, rstatics, view);
+      max = Math.max(max, sceneDiff(exact, remote));
+      if (JSON.stringify(exact.hud) !== JSON.stringify(remote.hud)) hudSame = false;
+      // No ready-made text or geometry in the state: no HTML, no guide records.
+      const js = JSON.stringify(f.state);
+      if (!prebuilt && /<br>|<div|"type":"(guide|rule|label|force|abeam)"|"x1":/.test(js)) prebuilt = js.match(/.{0,60}(<br>|<div|"type":"\w+"|"x1":).{0,40}/)[0];
       if (t % 30 === 0 && sceneDiff(exact, buildScene(f.state, statics, view)) !== 0) pure = false;
       guides = exact.guides.length;
     }
   });
   check(`scenario ${n}: scene from the rounded server JSON matches the exact one`, max <= 1e-3, `max diff ${max.toExponential(2)}, ${guides} guides`);
   check(`scenario ${n}: buildScene is pure`, pure);
+  check(`scenario ${n}: readout and HUD panels from the server JSON read exactly as local`, hudSame);
+  check(`scenario ${n}: state carries no prebuilt text or geometry`, !prebuilt, prebuilt || '');
 }
 
-const want = ['boats', 'mk', 'start', 'course', 'finish', 'pair', 'br', 'mr', 'mt', 'cf', 'pen', 'amr', 'bt'];
+const want = ['hud', 'boats', 'mk', 'start', 'course', 'finish', 'pair', 'br', 'mr', 'mt', 'cf', 'pen', 'amr', 'bt'];
 check('the round trip covered every kind of state', want.every((k) => seen.has(k)), 'missing: ' + want.filter((k) => !seen.has(k)).join(','));
 
 // 2. Size, scenario 0, 1 boat.

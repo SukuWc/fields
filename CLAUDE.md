@@ -30,7 +30,8 @@ src/host-choice.js    — host selection from the query + VITE_SIM_HOST / VITE_S
 src/host-protocol.js  — message helpers shared by sim.worker.js and apps/server
 apps/server/          — Node ws server (index.js, room.js): one SimCore per ?room=, fixed 30 Hz slot clock (never faster, no catch-up), every frame broadcast to every client, field grids (fieldPainter.js encodeFieldGrids) every 15 ticks to clients that show the field, one encode per distinct plot; `npm run server`, see apps/server/README.md
 src/own-boat.js       — "Join with my boat" UI in remote mode (spawnBoat/removeBoat, ownBoats event, camera follows own boat); the server (apps/server/room.js) remaps a client's boat commands and held keys to its own boats
-src/present.js        — Host-side presentation: readout/HUD strings (presentHud), perf counters; presentStep / bodyOutlines (state + build in one call, for tools/tests)
+src/present.js        — Perf counters; presentHud / presentStep / bodyOutlines (state + client build in one call, for tools/tests)
+src/hud.js            — Readout / HUD panels: hudState (host: raw values, state.hud) and hudFromState (client: readout, start HUD, leaderboard HTML)
 src/scene-state.js    — Host side: compact per-frame scene state (sceneState: boats, marks, start/course/finish, rules overlays, penalties, AMR domains as mask runs, moving-body transforms) and statics (sceneStatics: boat defs and names, mark anchors, body shapes, course/start/finish layout, boundary), plain JSON
 src/scene-build.js    — Client side: buildScene(state, statics, view) → { guides, bodies }, the same code for local, worker and remote hosts (draw helpers in boat-draw.js and the *GuidesFromState functions of mark/start/finish/course/boundary/rules/mark-touch)
 src/boat-draw.js      — Pure boat drawing (boatGuides(state, def)); Boat.renderState/renderDef feed it
@@ -56,7 +57,7 @@ src/map.js            — Planck.js world container, wind queries, dev mode
 
 ### Simulation Loop
 
-`loop.js` `FixedStepLoop` ticks at 30 Hz: `world.step(1/30)`, then in `main.js`: camera follow (`view.update()` on the last frame's `boat0`), `host.tick({ dt, held, present, view })`; the host does `world.step`, `sim.step` and `presentStep` and hands back a plain frame (readout/HUD text, compact scene `state`, `statics` when they change), from which main.js builds guides and body outlines (`buildScene`). Host-built geometry left: rule-resolver pair overlays (`state.pair`, only during encounters). `Sim.step` (sim.js), in order:
+`loop.js` `FixedStepLoop` ticks at 30 Hz: `world.step(1/30)`, then in `main.js`: camera follow (`view.update()` on the last frame's `boat0`), `host.tick({ dt, held, present, view })`; the host does `world.step`, `sim.step` and `presentStep` and hands back a plain frame (compact scene `state` incl. the HUD values `state.hud`, `statics` when they change), from which main.js builds guides, body outlines and the readout / HUD panels (`buildScene`). Nothing drawn or shown is built on the host: pair overlays travel as `rules.js` `pairGuideState` (built by `pairGuidesFromState`), penalty badges and finish labels as data. `Sim.step` (sim.js), in order:
 1. scenario frames f..f+2 (`SCENARIO_FRAMES_PER_TICK` = 3)
 2. held boat commands (helm, heading target) from `controls.js` `heldCommands()`
 3. `boat.physics_model_step()` per boat + boat→fluid energy
