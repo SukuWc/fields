@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { FixedStepLoop } from './loop.js';
 
-import { initRenderer, startAnimation, renderNow, getCamera, setFluidPlaneSize, setFieldVisible, setFlowGrid } from './renderer.js';
+import { initRenderer, startAnimation, renderNow, getCamera, setFluidPlaneSize, setFieldVisible, setFlowGrid, setTracerParams, getTracerParams } from './renderer.js';
 import { setupControls, heldCommands, onHeldChange, deferUiToFrames, flushFrameUi } from './controls.js';
 import { LocalHost } from './host.js';
 import { buildScene } from './scene-build.js';
@@ -138,6 +138,21 @@ function startClient() {
     sendPlot();
   }
   setupControls(host, view, getCamera);
+  // Flow tracer inputs (count, life, tail): live, and before installUrlSettings
+  // so ?tracers / ?tracerLife / ?tracerTail arrive through these listeners.
+  {
+    const num = (id) => { const el = document.getElementById(id); const v = el ? parseFloat(el.value) : NaN; return Number.isFinite(v) ? v : undefined; };
+    const applyTracers = () => {
+      setTracerParams({ count: num('tracers') || null, lifetime: num('tracerLife'), tail: num('tracerTail') });
+      const el = document.getElementById('tracers');
+      if (el) el.placeholder = 'auto ' + getTracerParams().count;
+    };
+    for (const id of ['tracers', 'tracerLife', 'tracerTail']) {
+      const el = document.getElementById(id);
+      if (el) { el.addEventListener('change', applyTracers); el.addEventListener('input', applyTracers); }
+    }
+    applyTracers();
+  }
   // Simulation resolution (#simRes, ?simRes=2 / 4). Rebuilds the root lattice
   // in place (every module keeps the same bm), drops the refinement windows,
   // resizes the field plane, and restarts the scenario like the Restart button.

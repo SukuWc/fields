@@ -258,8 +258,7 @@ export function setupControls(host, view, getCamera) {
 
   document.getElementById("camera_follow").checked = false;
   document.getElementById("show_forces").checked = false;
-  // Flow tracers on by default (flow-tracers.js); they replace the field
-  // plot, which shows again when the box is unticked.
+  // Flow tracers on by default (flow-tracers.js), drawn over the field plot.
   document.getElementById("show_field").checked = true;
   view.input_show_fields(true);
 

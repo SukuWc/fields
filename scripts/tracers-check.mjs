@@ -82,10 +82,69 @@ function grid(w, h, cell, f) {
   tr.age[0] = 0; assert(tr.alpha(0) === 0, "alpha 0 at birth");
   tr.age[0] = life / 2; assert(tr.alpha(0) === 1, "alpha 1 mid-life");
   tr.age[0] = life * 0.999; assert(tr.alpha(0) < 0.01, "alpha → 0 at death");
-  const pos = new Float32Array(n * 6), col = new Float32Array(n * 6);
+  const pos = new Float32Array(n * T.TRACER_SEGMENTS * 6), col = new Float32Array(n * T.TRACER_SEGMENTS * 8);
   tr.write(pos, col);
   assert([...pos].every(Number.isFinite) && [...col].every((c) => c >= 0 && c <= 1), "buffers: finite positions, colours 0..1");
-  assert(Math.abs((pos[0] - pos[3]) - 0.5 * T.TRACER_TRAIL_S) < 1e-4, "streak tail trails the head by v × trail");
+}
+
+// --- Tail follows the head's own past path ---
+{
+  // Solid-body rotation about the origin: the past path is an arc of radius
+  // 20 m; a straight streak along the current velocity would leave it.
+  const w = 0.5, R0 = 20, tailS = 2;
+  const tr = new T.FlowTracers({ count: 1, lifetime: 100, tail: tailS, rng: T.mulberry32(6) });
+  tr.setGrid(grid(100, 200, 0.5, (x, y) => [-w * y, w * x]));
+  tr.x[0] = R0; tr.y[0] = 0; tr.age[0] = 1; tr.hLen[0] = 0; tr.hAcc[0] = 0;
+  for (let k = 0; k < 120; k++) tr.step(1 / 30);
+  const px = new Float32Array(T.TRACER_TAIL_POINTS + 1), py = new Float32Array(T.TRACER_TAIL_POINTS + 1);
+  const n = tr.tailPoints(0, px, py);
+  let maxDev = 0;
+  for (let k = 0; k < n; k++) maxDev = Math.max(maxDev, Math.abs(Math.hypot(px[k], py[k]) - R0));
+  const a0 = Math.atan2(py[0], px[0]), aEnd = Math.atan2(py[n - 1], px[n - 1]);
+  assert(n === T.TRACER_TAIL_POINTS + 1, `ring buffer full: head + ${n - 1} stored points`);
+  assert(maxDev < 0.05, `stored tail points lie on the 20 m arc (max off ${maxDev.toFixed(3)} m)`);
+  assert(Math.abs((a0 - aEnd) - w * tailS) < w * tailS * 0.12, `tail spans ≈ tail time along the path: ${(a0 - aEnd).toFixed(3)} rad (expect ${(w * tailS).toFixed(2)})`);
+  const pos = new Float32Array(T.TRACER_SEGMENTS * 6), col = new Float32Array(T.TRACER_SEGMENTS * 8);
+  tr.write(pos, col);
+  let curveDev = 0;
+  for (let k = 0; k < pos.length; k += 3) curveDev = Math.max(curveDev, Math.abs(Math.hypot(pos[k], pos[k + 1]) - R0));
+  assert(curveDev < 0.1, `Catmull-Rom tail stays on the arc (max off ${curveDev.toFixed(3)} m)`);
+  assert(pos[0] === tr.x[0] && pos[1] === tr.y[0], "tail starts at the head");
+  let fadeOk = true;
+  for (let sg = 1; sg < T.TRACER_SEGMENTS; sg++) if (col[sg * 8 + 3] > col[(sg - 1) * 8 + 3] + 1e-6) fadeOk = false;
+  assert(fadeOk && Math.abs(col[3] - tr.alpha(0)) < 1e-6 && col[(T.TRACER_SEGMENTS - 1) * 8 + 7] < 1e-6, "alpha falls along the tail from the head to 0 at its end");
+  // Respawn clears the history: no segment jumps from the old place.
+  tr.age[0] = 200; tr.step(1 / 30);
+  assert(tr.hLen[0] === 0, "respawn resets the history");
+  tr.write(pos, col);
+  let span = 0;
+  for (let k = 0; k < pos.length; k += 3) span = Math.max(span, Math.hypot(pos[k] - tr.x[0], pos[k + 1] - tr.y[0]));
+  assert(span === 0, "right after a respawn the tail is empty (no line across the map)");
+  for (let k = 0; k < 15; k++) tr.step(1 / 30);
+  tr.write(pos, col);
+  span = 0;
+  for (let k = 0; k < pos.length; k += 3) span = Math.max(span, Math.hypot(pos[k] - tr.x[0], pos[k + 1] - tr.y[0]));
+  const flown = 15 / 30 * w * Math.hypot(tr.x[0], tr.y[0]) + 1e-3;
+  assert(span <= flown * 1.05, `new tail only covers the new path (${span.toFixed(2)} m ≤ ${flown.toFixed(2)} m flown)`);
+  // Tail 0: no tail at all.
+  tr.setTail(0);
+  for (let k = 0; k < 10; k++) tr.step(1 / 30);
+  assert(tr.tailPoints(0, px, py) === 1, "tail 0 s: head only");
+}
+
+// --- Live settings (the UI inputs call these through renderer.setTracerParams) ---
+{
+  const tr = new T.FlowTracers({ count: 300, lifetime: 3, rng: T.mulberry32(8) });
+  tr.setGrid(grid(100, 200, 2, () => [0, -7]));
+  for (let k = 0; k < 30; k++) tr.step(1 / 30);
+  assert(tr.setCount(800) && tr.count === 800 && tr.x.length === 800 && tr.hx.length === 800 * T.TRACER_TAIL_POINTS && [...tr.x].every(Number.isFinite), "count: pool reallocated and refilled live");
+  assert(!tr.setCount(800), "same count: no reallocation");
+  tr.setLifetime(1);
+  let maxAge = 0;
+  for (let k = 0; k < 90; k++) { tr.step(1 / 30); for (let i = 0; i < tr.count; i++) maxAge = Math.max(maxAge, tr.age[i]); }
+  assert(maxAge < 1, `lifetime 1 s applies at once (max age ${maxAge.toFixed(2)} s)`);
+  tr.setTail(4);
+  assert(Math.abs(tr.histDt - 4 / T.TRACER_TAIL_POINTS) < 1e-9, "tail 4 s: points stored every tail / points s");
 }
 
 // --- Pool size ---

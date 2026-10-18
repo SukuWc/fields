@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FlowTracers, tracerCountFor, TRACER_LIFETIME_S } from './flow-tracers.js';
+import { FlowTracers, tracerCountFor, TRACER_LIFETIME_S, TRACER_TAIL_S, TRACER_SEGMENTS, TRACER_COUNT_LIMIT } from './flow-tracers.js';
 
 let camera, scene, renderer, fluidPlane;
 let _planeBase = null;
@@ -498,38 +498,61 @@ export function setFluidPlaneSize(width, height) {
   fluidPlane.scale.set(width / _planeBase.w, height / _planeBase.h, 1);
 }
 
-// Flow tracers (flow-tracers.js): one LineSegments buffer for the whole pool,
-// created on the first grid. Shown while view.show_fields (Flow tracers box).
+// Flow tracers (flow-tracers.js): one LineSegments buffer for the whole pool
+// (TRACER_SEGMENTS per tracer), created on the first grid and rebuilt when
+// the count changes. Shown while view.show_fields (Flow tracers box).
 let tracers = null, tracerLines = null, _tracerT = null;
-// Streak colour: slow (wind shadow) dim blue → fast bright white-cyan.
+// Tail colour, slow (wind shadow) → fast. Over the colour field plot the
+// tracers are dark (navy → black) so they read on the bright palette; on the
+// black background (dev mode, field plot off) blue → warm white.
 const TRACER_SLOW_RGB = [0.1, 0.35, 1], TRACER_FAST_RGB = [1, 1, 0.85];
-function urlNumber(key) {
-  if (typeof location === 'undefined') return undefined;
-  const v = parseFloat(new URLSearchParams(location.search).get(key));
-  return Number.isFinite(v) ? v : undefined;
+const TRACER_SLOW_ON_FIELD = [0.05, 0.12, 0.45], TRACER_FAST_ON_FIELD = [0, 0, 0];
+// Live settings from the Tracers / Life / Tail inputs (setTracerParams).
+// count null = auto (tracerCountFor the map size and device).
+const _tracerParams = { count: null, lifetime: TRACER_LIFETIME_S, tail: TRACER_TAIL_S };
+function autoTracerCount() {
+  const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  const mw = _planeBase ? _planeBase.w : 100, mh = _planeBase ? _planeBase.h : 200;
+  return tracerCountFor(mw, mh, { touch });
 }
+function tracerBuffers(count) {
+  const v = count * TRACER_SEGMENTS * 2;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(v * 3), 3).setUsage(THREE.DynamicDrawUsage));
+  // RGBA: the alpha carries the life fade and the fade along the tail.
+  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(v * 4), 4).setUsage(THREE.DynamicDrawUsage));
+  if (tracerLines) { tracerLines.geometry.dispose(); tracerLines.geometry = geo; return; }
+  const mat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true });
+  markOverlay(mat);
+  tracerLines = new THREE.LineSegments(geo, mat);
+  tracerLines.renderOrder = ORDER_TRACERS;
+  tracerLines.frustumCulled = false;
+  tracerLines.visible = false;
+  scene.add(tracerLines);
+}
+// p: { count (null/0 = auto), lifetime (s), tail (s) }; applies live.
+export function setTracerParams(p = {}) {
+  if ('count' in p) _tracerParams.count = p.count >= 100 ? p.count : null;
+  if (p.lifetime > 0) _tracerParams.lifetime = p.lifetime;
+  if (p.tail >= 0) _tracerParams.tail = p.tail;
+  if (!tracers) return;
+  tracers.setLifetime(_tracerParams.lifetime);
+  tracers.setTail(_tracerParams.tail);
+  if (tracers.setCount(_tracerParams.count || autoTracerCount())) tracerBuffers(tracers.count);
+}
+export function getTracerParams() { return { ..._tracerParams, count: tracers ? tracers.count : (_tracerParams.count || autoTracerCount()) }; }
 export function setFlowGrid(grid) {
   if (!grid || !scene) return;
   if (!tracers) {
-    const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-    const mw = _planeBase ? _planeBase.w : 100, mh = _planeBase ? _planeBase.h : 200;
-    const count = tracerCountFor(mw, mh, { touch, override: urlNumber('tracers') });
-    const life = urlNumber('tracerLife');
-    tracers = new FlowTracers({ count, lifetime: life > 0 ? life : TRACER_LIFETIME_S });
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 6), 3).setUsage(THREE.DynamicDrawUsage));
-    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(count * 6), 3).setUsage(THREE.DynamicDrawUsage));
-    const mat = new THREE.LineBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending });
-    markOverlay(mat);
-    tracerLines = new THREE.LineSegments(geo, mat);
-    tracerLines.renderOrder = ORDER_TRACERS;
-    tracerLines.frustumCulled = false;
-    tracerLines.visible = false;
-    scene.add(tracerLines);
+    const count = Math.min(TRACER_COUNT_LIMIT, _tracerParams.count || autoTracerCount());
+    tracers = new FlowTracers({ count, lifetime: _tracerParams.lifetime, tail: _tracerParams.tail });
+    tracerBuffers(count);
   }
   tracers.setGrid(grid);
 }
 export function getTracers() { return tracers; }
+// Headless browser checks read the live pool (count, lifetime, tail).
+if (typeof window !== 'undefined') window.__tracers = () => tracers && { count: tracers.count, lifetime: tracers.lifetime, tail: tracers.tail, visible: !!(tracerLines && tracerLines.visible) };
 
 function renderTracers() {
   const now = performance.now();
@@ -540,7 +563,9 @@ function renderTracers() {
   if (!on) { _tracerT = null; return; }
   tracers.step(dt);
   const g = tracerLines.geometry;
-  tracers.write(g.attributes.position.array, g.attributes.color.array, 0.005, TRACER_SLOW_RGB, TRACER_FAST_RGB);
+  const onField = !!(fluidPlane && fluidPlane.visible);
+  tracers.write(g.attributes.position.array, g.attributes.color.array, 0.005,
+    onField ? TRACER_SLOW_ON_FIELD : TRACER_SLOW_RGB, onField ? TRACER_FAST_ON_FIELD : TRACER_FAST_RGB);
   g.attributes.position.needsUpdate = true;
   g.attributes.color.needsUpdate = true;
 }
@@ -583,8 +608,7 @@ function animation(t) {
   camera.position.y = _view.camera_position_y;
   camera.position.z = _view.camera_zoom;
   const sceneData = _getScene();
-  // Flow tracers replace the colour field plot while they are on.
-  if (fluidPlane) fluidPlane.visible = !sceneData.devMode && _fieldVisible && !_view.show_fields;
+  if (fluidPlane) fluidPlane.visible = !sceneData.devMode && _fieldVisible;
 
   // Update persistent fixture lines — create/remove only when fixture set changes
   const seenFixtures = new Set();
