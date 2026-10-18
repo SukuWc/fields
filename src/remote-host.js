@@ -67,7 +67,8 @@ export class RemoteHost {
     this.fieldsReceived = 0;
     this.fieldBytes = 0;
     this.lastField = null;
-    this._painter = texture ? new FieldPainter(texture, opts.oversampling || 8) : null;
+    this._oversampling = opts.oversampling || 8;
+    this._painter = texture ? new FieldPainter(texture, this._oversampling) : null;
     this._field = { on: false, plotType: 3, contrastExp: 0 };
     this._flowOn = false;
     this._perfOn = false;
@@ -171,6 +172,13 @@ export class RemoteHost {
     this.lastFrame = frame;
     for (const fn of this._frameListeners) fn(frame);
     if (this.inFlight === 0) { const w = this._idle; this._idle = []; for (const fn of w) fn(); }
+  }
+
+  // The page's field texture, when it is sized only after the welcome
+  // (a room created with another map size).
+  setTexture(texture) {
+    this.texture = texture;
+    this._painter = texture ? new FieldPainter(texture, this._oversampling) : null;
   }
 
   _onField(buf) {

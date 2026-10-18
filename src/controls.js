@@ -1,10 +1,20 @@
 // Client input and settings UI: keyboard and touch keys become Sim commands
-// (sim.js), the settings panel sends admin commands, scenario view hints move
-// the camera (view.js), and the scenario card shows the Sim's scenario text.
+// (sim.js), the room settings panel (#admin_panel: scenario, wind, dev mode)
+// sends room-wide commands, scenario view hints move the camera (view.js),
+// and the scenario card shows the Sim's scenario text.
 // Everything goes through the SimHost (host.js); no Sim objects here.
+//
+// Local and worker modes: the page owns the Sim, so its controls are the
+// truth: setup sends dev mode off and loads the selected scenario.
+// Remote mode (a server room): the room's state is the truth. Setup sends
+// nothing; the controls start from the welcome snapshot (host.room) and
+// follow every 'room' event (applyRoomState), so a join or reload never
+// restarts the room or changes its settings. A user edit sends the command;
+// the server validates it, applies it and broadcasts the new room state.
 import * as THREE from 'three';
 
 let _host, _view, _getCamera;
+let _remote = false;
 // Client copies of what this module last told the host (dev mode, UI wind),
 // for the dev-mode banner.
 let _devMode = false;
@@ -95,10 +105,10 @@ export function heldCommands() {
 }
 
 // Boat 0: arrows steer / heading target, Space autopilot, Enter tack, Q / E
-// penalty circles. Boat 1: A / D, W / S, Ctrl, Shift. boats: player count.
-// Own-boat play (own-boat.js): the keys drive "boat 0", which the server maps
-// to this client's boat.
-export function bindKeysForBoats(boats) { autokeybind(boats); }
+// penalty circles. Boat 1: A / D, W / S, Ctrl, Shift. boats: from the
+// bindControls event: the scenario's player count (local, worker), or in a
+// server room this client's own boats (0 when spectating: no keys at all);
+// "boat 0" is then the client's own boat (the server maps it).
 
 function autokeybind(boats) {
   key_bind_list = [];
@@ -180,7 +190,7 @@ function mouse_monitor(e) {
   });
 }
 
-const DEV_MODE_FLUID_CONTROLS = ["amr", "barrier", "boat_energy", "plotSelect", "contrastSlider", "mirrorSlider"];
+const DEV_MODE_FLUID_CONTROLS = ["amr", "barrier", "boat_energy", "plotSelect", "contrastSlider"];
 
 function syncDevModeUi() {
   const on = _devMode;
@@ -200,8 +210,9 @@ function syncDevModeUi() {
 function applyWindAngle() {
   const angle = parseInt(document.getElementById("windAngle").value, 10);
   if (!Number.isFinite(angle)) return;
+  _host.command({ type: "wind", angle }).then((r) => { if (r && r.error) showRoomError(r.error); });
+  if (_remote) return;
   _wind.angle = angle;
-  _host.command({ type: "wind", angle });
   syncDevModeUi();
 }
 
@@ -214,9 +225,10 @@ function showWindKnots(mps) {
 function applyWindSpeed() {
   const speed = parseFloat(document.getElementById("windSpeed").value);
   if (!Number.isFinite(speed)) return;
-  _wind.speed = speed;
   showWindKnots(speed);
-  _host.command({ type: "wind", speed });
+  _host.command({ type: "wind", speed }).then((r) => { if (r && r.error) showRoomError(r.error); });
+  if (_remote) return;
+  _wind.speed = speed;
   syncDevModeUi();
 }
 
@@ -247,7 +259,47 @@ function renderScenarioCard(scenario) {
 }
 
 function scenario_start(index) {
-  _host.command({ type: "restart", scenario: index }).then(renderScenarioCard);
+  _host.command({ type: "restart", scenario: _remote ? Number(index) : index }).then((r) => {
+    if (r && r.error) { showRoomError(r.error); return; }
+    if (!_remote) renderScenarioCard(r);
+  });
+}
+
+// A refused room command (remote mode: the server validates them).
+export function showRoomError(msg) {
+  const el = document.getElementById("admin_status");
+  if (!el) return;
+  el.textContent = msg ? "Refused: " + msg : "";
+  el.hidden = !msg;
+}
+
+// Remote mode: show the room's scenario and settings in the room panel
+// (no change events: nothing is sent back). room: SimCore.roomState().
+export function applyRoomState(room) {
+  if (!room) return;
+  const set = (id, prop, v) => { const el = document.getElementById(id); if (el && v !== undefined && v !== null) el[prop] = v; };
+  const st = room.settings || {};
+  if (room.scenario && room.scenario.index !== null) set("scenario_selector", "value", String(room.scenario.index));
+  renderScenarioCard(room.scenario && room.scenario.index !== null ? room.scenario : null);
+  if (st.wind) {
+    _wind.angle = st.wind.angle;
+    _wind.speed = st.wind.speed;
+    set("windAngle", "value", String(st.wind.angle));
+    set("windSpeed", "value", String(st.wind.speed));
+    showWindKnots(st.wind.speed);
+  }
+  _devMode = !!st.devMode;
+  set("devmode", "checked", _devMode);
+  set("amr", "checked", st.amr !== false);
+  set("barrier", "checked", !!st.barrier);
+  set("boat_energy", "checked", st.boatEnergy !== false);
+  set("simRes", "value", st.simRes);
+  set("amrMode", "value", st.amrMode);
+  if (st.cellBudget) {
+    set("cellBudgetTune", "checked", !!st.cellBudget.tune);
+    set("cellBudget", "value", st.cellBudget.target === null ? "" : String(st.cellBudget.target));
+  }
+  syncDevModeUi();
 }
 
 // host: a SimHost (host.js) whose info is ready.
@@ -255,7 +307,9 @@ export function setupControls(host, view, getCamera) {
   _host = host;
   _view = view;
   _getCamera = getCamera;
+  _remote = host.kind === "remote";
   host.on(onSimEvent);
+  if (_remote) host.on((ev) => { if (ev.type === "room") { applyRoomState(ev.room); showRoomError(null); } });
   const info = host.info;
   _wind.angle = info.wind.from;
   _wind.speed = info.wind.speed;
@@ -276,13 +330,14 @@ export function setupControls(host, view, getCamera) {
   // after these listeners exist. Leave the checkbox at its default so that
   // default can be captured; the change listener below turns dev mode on.
   _devMode = false;
-  host.command({ type: "devMode", on: false });
+  if (!_remote) host.command({ type: "devMode", on: false });
   syncDevModeUi();
 
   document.getElementById("devmode").addEventListener("change", () => {
-    _devMode = document.getElementById("devmode").checked;
-    host.command({ type: "devMode", on: _devMode });
-    syncDevModeUi();
+    const on = document.getElementById("devmode").checked;
+    host.command({ type: "devMode", on }).then((r) => { if (r && r.error) showRoomError(r.error); });
+    // Remote: the room event sets it (and the banner) for every client.
+    if (!_remote) { _devMode = on; syncDevModeUi(); }
   });
 
   document.getElementById("show_forces").addEventListener("change", () => {
@@ -324,5 +379,6 @@ export function setupControls(host, view, getCamera) {
 
   document.addEventListener("mousemove", mouse_monitor);
 
-  scenario_start(document.getElementById("scenario_selector").value);
+  if (_remote) { applyRoomState(host.room); autokeybind(host.bindings || 0); }
+  else scenario_start(document.getElementById("scenario_selector").value);
 }
