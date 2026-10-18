@@ -86,3 +86,13 @@ Measured (scenario 0, 100 × 200 m, 4f, field off, text bytes one RemoteHost rec
 | 3 boats, B/s (7.5–8.4 frames/s) | 780 139 | 41 928 |
 
 Statics: 700 B (1 boat), 1 202 B (3 boats), once per change. The biggest scenario frames are now ~8 KB (scenario 18, four boats; was ~138 KB).
+
+Client-built HUD and pair overlays (frame bytes per tick, lockstep room, ticks 30–180, scenario 18 ticks 30–450, 4f; before = the HUD as HTML strings and pair overlays as guide records):
+
+| | before | after | HUD part | pair part (frames with encounters) |
+|---|---|---|---|---|
+| scenario 0, 1 boat | 1 864 | 1 778 | 277 → 191 | – |
+| scenario 0, 3 boats | 5 850 | 5 165 | 329 → 244 | 855 → 256 |
+| scenario 18, four boats | 8 309 | 6 813 | 345 → 251 | 2 012 → 610 |
+
+Telemetry values the readout floors travel floored (whole units or tenths, as integers); everything else in `state.hud` is exact.
