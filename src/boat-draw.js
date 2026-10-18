@@ -1,6 +1,6 @@
 // Boat drawing from compact state (no planck, no Sim): the guide segments of
 // one boat (forces, autopilot line, true/apparent wind chevrons, rudder,
-// centreboard, sails, and the wind-indicator grid of "Toggle Field"). The
+// centreboard and sails; the wind field is drawn by flow-tracers.js). The
 // host takes the state with Boat.renderState(view) (which also advances the
 // visual smoothing: boom angles, flap phase) and the static numbers with
 // Boat.renderDef(); every client builds the same segments from them with
@@ -11,14 +11,12 @@
 //   (hull_angle), awa, tw (smoothed true wind direction, rad), ap (autopilot on),
 //   wd (wind_direction), aht (autopilot heading target), ra (rudder angle),
 //   mba, jba (drawn boom angles), mf, jf (main and jib flap amounts), ph
-//   (flap phase), f (forces: [px, py, vx, vy, ...]), wg (wind grid, only with
-//   show_fields: res and [vx, vy, ...] per drawn point).
+//   (flap phase), f (forces: [px, py, vx, vy, ...]).
 // def d: rp, rl (rudder position, length), cp, cl (centreboard), mle, mbl
 //   (main leading edge, boom length), jle, jbl (jib).
 export const SAIL_FLAP_AMP_M = 0.12;
 export const SAIL_FLAP_JIB_AMP_M = 0.08;
 const SAIL_FLAP_POINTS = 9;
-export const WIND_INDICATOR_SIZE = 10;
 
 // Sail polyline p[0..3] → segments. amp 0 draws the original three segments.
 export function pushSailSegments(graphics, p, amp, phase) {
@@ -46,21 +44,6 @@ export function pushSailSegments(graphics, p, amp, phase) {
 function wp(s, ly) {
   const c = Math.cos(s.pa), sn = Math.sin(s.pa);
   return { x: (c * 0 - sn * ly) + s.px, y: (sn * 0 + c * ly) + s.py };
-}
-
-// The wind-indicator grid points (Toggle Field), in drawing order. vel(x, y)
-// gives the velocity; used host-side to sample and client-side to draw.
-export function windGridPoints(bx, by, res, fn) {
-  const n = WIND_INDICATOR_SIZE;
-  for (let i = -n; i < n; i++) {
-    for (let j = -n; j < n; j++) {
-      if (Math.sqrt(i * i + j * j) < n - 1) {
-        const x = Math.floor(bx * res) / res + i / res;
-        const y = Math.floor(by * res) / res + j / res;
-        fn(x, y);
-      }
-    }
-  }
 }
 
 function chevron(graphics, s, angle, color, role) {
@@ -129,14 +112,5 @@ export function boatGuides(s, d) {
   pushSailSegments(graphics, sail(s, d.mle, d.mbl, s.mba, mainFat), SAIL_FLAP_AMP_M * s.mf, s.ph);
   const jibFat = (d.jbl * 0.05 * Math.abs(s.awa) / 15 < d.jbl / 3) ? d.jbl * 0.05 * Math.abs(s.awa) / 15 : d.jbl / 3;
   pushSailSegments(graphics, sail(s, d.jle, d.jbl, s.jba, jibFat), SAIL_FLAP_JIB_AMP_M * s.jf, s.ph + 1.3);
-  // Wind indicator grid (Toggle Field)
-  if (s.wg) {
-    const v = s.wg.v;
-    let k = 0;
-    windGridPoints(s.x, s.y, s.wg.res, (x, y) => {
-      graphics.push({ color: 0x8866ff, type: "sail", x1: x, y1: y, x2: x + v[k] * 30, y2: y + v[k + 1] * 30 });
-      k += 2;
-    });
-  }
   return graphics;
 }

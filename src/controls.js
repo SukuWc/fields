@@ -265,7 +265,9 @@ export function setupControls(host, view, getCamera) {
 
   document.getElementById("camera_follow").checked = false;
   document.getElementById("show_forces").checked = false;
-  document.getElementById("show_field").checked = false;
+  // Flow tracers on by default (flow-tracers.js), drawn over the field plot.
+  document.getElementById("show_field").checked = true;
+  view.input_show_fields(true);
 
   document.getElementById("windAngle").value = info.wind.from;
   document.getElementById("windSpeed").value = info.wind.speed;

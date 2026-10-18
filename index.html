@@ -637,7 +637,12 @@
       <br>
       <label class="setting-row"><input id="boat_energy" autocomplete="off" type="checkbox" checked>Boat energy</label>
       <br>
-      <label class="setting-row"><input id="show_field" autocomplete="off" type="checkbox">Toggle Field</label>
+      <label class="setting-row"><input id="show_field" autocomplete="off" type="checkbox" checked title="Wind flow tracers: short streaks carried by the local wind, denser where it blows harder, each with a tail along its own path. Drawn on top of the colour field plot; independent of it.">Flow tracers</label>
+      <br>
+      <span class="setting-row setting-field" id="tracer_controls" title="Flow tracers: how many (empty = auto for the map size and device; ?tracers=N), how long each lives (?tracerLife=s) and how long a tail of its past path it draws (?tracerTail=s). Applied live.">
+        <label><input id="tracers" autocomplete="off" type="number" min="10" max="20000" step="50" inputmode="numeric" style="width: 80px;" placeholder="auto">tracers</label><br>
+        <label><input id="tracerLife" autocomplete="off" type="number" min="0.5" max="30" step="0.5" inputmode="decimal" style="width: 46px;" value="6">s life</label>
+        <label><input id="tracerTail" autocomplete="off" type="number" min="0" max="10" step="0.25" inputmode="decimal" style="width: 46px;" value="1.5">s tail</label></span>
       <br>
       <label class="setting-row" id="field_plane_row" hidden title="Server mode only: the field plot. Off, the server sends this page no field data. Also ?field_plane=0"><input id="field_plane" autocomplete="off" type="checkbox" checked>Show field (server)</label>
       <br id="field_plane_br" hidden>
