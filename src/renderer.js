@@ -532,7 +532,7 @@ function tracerBuffers(count) {
 }
 // p: { count (null/0 = auto), lifetime (s), tail (s) }; applies live.
 export function setTracerParams(p = {}) {
-  if ('count' in p) _tracerParams.count = p.count >= 100 ? p.count : null;
+  if ('count' in p) _tracerParams.count = p.count >= 10 ? p.count : null;
   if (p.lifetime > 0) _tracerParams.lifetime = p.lifetime;
   if (p.tail >= 0) _tracerParams.tail = p.tail;
   if (!tracers) return;

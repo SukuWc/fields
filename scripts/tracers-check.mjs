@@ -151,7 +151,9 @@ function grid(w, h, cell, f) {
 {
   const c = (w, h, o) => T.tracerCountFor(w, h, o);
   assert(c(100, 200) === T.TRACER_COUNT && c(50, 100) === T.TRACER_COUNT_MIN && c(200, 400) === T.TRACER_COUNT_MAX, `count: 50×100 ${c(50, 100)}, 100×200 ${c(100, 200)}, 200×400 ${c(200, 400)}`);
-  assert(c(100, 200, { touch: true }) === T.TRACER_COUNT / 2 && c(100, 200, { override: 800 }) === 800, "touch halves it; ?tracers=N overrides");
+  assert(c(100, 200) === 250 && c(50, 100) === 100 && c(200, 400) === 500, "defaults: 250 on 100×200, 100 on 50×100, 500 on 200×400");
+  assert(c(100, 200, { touch: true }) === 125 && c(50, 100, { touch: true }) === T.TRACER_COUNT_MIN && c(100, 200, { override: 800 }) === 800, "touch halves it (not below the minimum); ?tracers=N overrides");
+  assert(T.TRACER_LIFETIME_S === 6 && T.TRACER_TAIL_S === 1.5, "defaults: 6 s life, 1.5 s tail");
 }
 
 // --- Host grid on every map size: dev mode and full fluid ---

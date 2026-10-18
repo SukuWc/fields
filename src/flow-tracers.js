@@ -35,13 +35,13 @@ export const FLOW_GRID_MAX_X = 75;
 // Host sends the grid every Nth presented tick (30 Hz ticks → 10 Hz).
 export const FLOW_GRID_EVERY = 3;
 // Pool size on the 100 × 200 map; scaled with map area (clamped), halved on
-// coarse-pointer (touch) devices. UI / URL: Tracers (?tracers=N, empty =
+// coarse-pointer (touch) devices but never below TRACER_COUNT_MIN. UI / URL: Tracers (?tracers=N, empty =
 // this auto count), Life (?tracerLife=s), Tail (?tracerTail=s).
-export const TRACER_COUNT = 2500;
-export const TRACER_COUNT_MIN = 1000;
-export const TRACER_COUNT_MAX = 5000;
+export const TRACER_COUNT = 250;
+export const TRACER_COUNT_MIN = 100;
+export const TRACER_COUNT_MAX = 500;
 export const TRACER_COUNT_LIMIT = 20000;
-export const TRACER_LIFETIME_S = 3;
+export const TRACER_LIFETIME_S = 6;
 // Fraction of the lifetime spent fading in (and again fading out).
 export const TRACER_FADE = 0.25;
 // Tail length in seconds of the tracer's own past path.
@@ -59,7 +59,7 @@ export function tracerCountFor(mapW, mapH, { touch = false, override } = {}) {
   if (Number.isFinite(override) && override > 0) return Math.min(TRACER_COUNT_LIMIT, Math.round(override));
   let n = Math.round(TRACER_COUNT * (mapW * mapH) / (100 * 200));
   n = Math.max(TRACER_COUNT_MIN, Math.min(TRACER_COUNT_MAX, n));
-  return touch ? Math.round(n / 2) : n;
+  return touch ? Math.max(TRACER_COUNT_MIN, Math.round(n / 2)) : n;
 }
 
 // Host side. map: Map (map.js). Returns plain data (survives postMessage and
