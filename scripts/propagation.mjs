@@ -41,13 +41,13 @@ function world(mode, wind, side, from = 90) {
 function eachCell(bm, fn) {
 	const W = bm.width, Hh = bm.height, r = bm.resolution;
 	for (let y = 1; y < Hh - 1; y++) for (let x = 1; x < W - 1; x++) {
-		fn(bm.cells[x + y * W], (x + 0.5 - W / 2) / r, (y + 0.5 - Hh / 2) / r);
+		fn(bm.cells[x + y * W], (x - W / 2) / r, (y - Hh / 2) / r);
 	}
 	const walk = (ds) => { for (const d of ds) {
 		for (let j = 0; j < d.height; j++) for (let i = 0; i < d.width; i++) {
 			// Fine node i coincides with root node cx0_root + (i − 2)·dx
 			// (coarseX / Eq. 34); a root node sits at continuous x + 0.5.
-			const cx = d.cx0_root + (i - 2) * d.dx + 0.5, cy = d.cy0_root + (j - 2) * d.dx + 0.5;
+			const cx = d.cx0_root + (i - 2) * d.dx, cy = d.cy0_root + (j - 2) * d.dx;
 			fn(d.cells[i + j * d.width], (cx - W / 2) / r, (cy - Hh / 2) / r);
 		}
 		walk(d.domains);
@@ -55,8 +55,43 @@ function eachCell(bm, fn) {
 	walk(bm.domains);
 }
 
+
+// ω² centroid from the grid nodes themselves: every node owned by the
+// finest grid at its spot (root node not under a child mask; fine node
+// fluid on its level and not under a grandchild mask), ω by central
+// differences on that node's own grid, weight ω²·area. No resampling across
+// levels, so the estimate does not mix grids or interpolation offsets.
+export function nodeCentroid(bm, y0 = 0) {
+	const r = bm.resolution, W = bm.width, Hh = bm.height;
+	let sw = 0, sx = 0, sy = 0;
+	const acc = (cells, w, h, i, j, dxw, wx, wy) => {
+		const c = (a, b) => cells[a + b * w];
+		const e = c(i + 1, j), ww = c(i - 1, j), n = c(i, j + 1), s = c(i, j - 1);
+		if (!e || !ww || !n || !s) return;
+		const om = (e.uy - ww.uy - n.ux + s.ux) / (2 * dxw);
+		if (!Number.isFinite(om)) return;
+		const wt = om * om * dxw * dxw;
+		sw += wt; sx += wt * wx; sy += wt * wy;
+	};
+	for (let y = 2; y < Hh - 2; y++) for (let x = 2; x < W - 2; x++) {
+		if (bm.domains.some((d) => d._maskAt(x, y))) continue;
+		acc(bm.cells, W, Hh, x, y, 1 / r, (x - W / 2) / r, (y - Hh / 2) / r);
+	}
+	const walk = (ds) => { for (const d of ds) {
+		for (let j = 1; j < d.height - 1; j++) for (let i = 1; i < d.width - 1; i++) {
+			if (!d._isFluid(i, j) || !d._isFluid(i + 1, j) || !d._isFluid(i - 1, j) || !d._isFluid(i, j + 1) || !d._isFluid(i, j - 1)) continue;
+			if (d.domains.some((c) => c._maskAt(i, j))) continue;
+			const cx = d.cx0_root + (i - 2) * d.dx, cy = d.cy0_root + (j - 2) * d.dx;
+			acc(d.cells, d.width, d.height, i, j, d.dx / r, (cx - W / 2) / r, (cy - Hh / 2) / r);
+		}
+		walk(d.domains);
+	} };
+	walk(bm.domains);
+	return sw > 0 ? { x: sx / sw, y: sy / sw - y0 } : { x: NaN, y: NaN };
+}
+
 // One run. Returns measured distances (m) after 30 frames.
-export function run(mode, wind, kind, refine, { y0 = 0, raw = false, from = 90 } = {}) {
+export function run(mode, wind, kind, refine, { y0 = 0, raw = false, from = 90, frames = FRAMES } = {}) {
 	const info = modeInfo(mode);
 	const reach = kind === 'pulse' ? info.cs + wind : wind;
 	const sigma = 1.5 * info.cell;
@@ -89,7 +124,7 @@ export function run(mode, wind, kind, refine, { y0 = 0, raw = false, from = 90 }
 		}
 	});
 	let steps = 0;
-	for (let f = 0; f < FRAMES; f++) {
+	for (let f = 0; f < frames; f++) {
 		if (refine === 'auto' && bm.stepsDueThisFrame() > 0) trackBoats(bm, []);
 		steps += bm.advance_frame();
 	}
@@ -99,16 +134,7 @@ export function run(mode, wind, kind, refine, { y0 = 0, raw = false, from = 90 }
 	eachCell(bm, (c) => { if (!Number.isFinite(c.rho) || !Number.isFinite(c.ux)) bad = true; });
 	out.bad = bad;
 	const h = Math.min(info.cell / 4, 0.5);
-	// get_field_velocity maps a refined point with fineIndex(cx0, cx_cont),
-	// which puts fine node 2 at continuous cx0 while the root's own lookup
-	// puts root node cx0 at cx0 + 0.5: inside refinement the sample is half a
-	// root cell off on both axes. sample() undoes that so the physics is
-	// measured; opts.raw keeps the engine's lookup to show the offset.
-	const half = 0.5 / bm.resolution;
-	const sample = raw ? (x, y) => bm.get_field_velocity(x, y) : (x, y) => {
-		const cx = bm.width / 2 + x * bm.resolution, cy = bm.height / 2 + y * bm.resolution;
-		return bm._finestDomain(cx, cy) ? bm.get_field_velocity(x - half, y - half) : bm.get_field_velocity(x, y);
-	};
+	const sample = (x, y) => bm.get_field_velocity(x, y);
 	if (kind === 'pulse') {
 		// Peak outward radial Δu along rays at grid angles 0, 45, …, 315°.
 		// Expected: a circle of radius c_s·t centred at the start + U·t:
@@ -160,6 +186,9 @@ export function run(mode, wind, kind, refine, { y0 = 0, raw = false, from = 90 }
 		out.travel = dx * ex + dy * ey;            // along the flow
 		out.lateral = -dx * ey + dy * ex;          // cross-flow (left +)
 		out.dirErr = wind > 0 ? Math.atan2(out.lateral, out.travel) * 180 / Math.PI : 0;
+		const nc = nodeCentroid(bm, y0);
+		out.travelN = nc.x * ex + nc.y * ey;
+		out.lateralN = -nc.x * ey + nc.y * ex;
 		out.exp = wind * 1;
 		out.expT = wind * t;
 	}
