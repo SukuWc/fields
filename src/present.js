@@ -62,5 +62,9 @@ export function perfStats(bm, map) {
     defaultTarget: def,
     curlScale: bm.curlScale,
     devMode: !!map.devMode,
+    // ~1 s averages per tick: per-level ms and cell updates, field / tracking /
+    // whole sim tick ms (LevelPerf), and per-level cell size in m.
+    levelPerf: bm.levelPerf ? bm.levelPerf.snapshot() : null,
+    rootCell: bm.cellSize ?? 1 / bm.resolution,
   };
 }

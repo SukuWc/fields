@@ -309,6 +309,51 @@ class SimulationCell {
 }
 
 
+
+// Per-level timing (perf panel). runChild steps one refinement grid: the
+// parent's t-state snapshot for it, then its sub-step(s) with its own
+// children inside. The child's exclusive time (inclusive minus its
+// children's) and its stepped cells go to the root's per-tick level
+// tallies; the parent learns the inclusive time so it can subtract it.
+const perfNow = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : () => Date.now();
+function runChild(child, parent) {
+	const root = child._lvlRoot;
+	if (!root || root.levelTiming === false) { child.saveCoarseBoundary(parent); child.step(parent); return; }
+	const t0 = perfNow();
+	const outer = child._childMs;
+	child._childMs = 0;
+	child.saveCoarseBoundary(parent);
+	child.step(parent);
+	const dt = perfNow() - t0;
+	const lv = child.depth;
+	root._lvlMsTick[lv] = (root._lvlMsTick[lv] || 0) + dt - child._childMs;
+	child._childMs = outer;
+	parent._childMs = (parent._childMs || 0) + dt;
+}
+
+
+// Exponential moving average over ~30 ticks (1 s at 30 Hz) of per-level ms
+// and cell updates per tick, plus field ms, refinement tracking ms and the
+// whole sim tick ms (the last two are fed by Sim.step).
+export class LevelPerf {
+	constructor(n = 30) { this.a = 1 / n; this.ms = []; this.updates = []; this.fieldMs = 0; this.trackMs = 0; this.tickMs = 0; this.ticks = 0; }
+	_ema(old, v) { return this.ticks === 0 ? v : old + this.a * (v - old); }
+	tick(ms, upd, fieldMs) {
+		const L = Math.max(ms.length, upd.length, this.ms.length);
+		for (let i = 0; i < L; i++) {
+			this.ms[i] = this._ema(this.ms[i] || 0, ms[i] || 0);
+			this.updates[i] = this._ema(this.updates[i] || 0, upd[i] || 0);
+		}
+		this.fieldMs = this._ema(this.fieldMs, fieldMs);
+		this.ticks++;
+	}
+	side(trackMs, tickMs) {
+		this.trackMs = this.ticks <= 1 ? trackMs : this.trackMs + this.a * (trackMs - this.trackMs);
+		this.tickMs = this.ticks <= 1 ? tickMs : this.tickMs + this.a * (tickMs - this.tickMs);
+	}
+	snapshot() { return { ms: this.ms.slice(), updates: this.updates.slice(), fieldMs: this.fieldMs, trackMs: this.trackMs, tickMs: this.tickMs }; }
+}
+
 // One full LBM step (collide→stream→bounce→consolidate) on an arbitrary cell array.
 // Module-level so all refinement levels can call it without passing the root Boltzmann around.
 function collideAndStream(cells, omega) {
@@ -595,6 +640,10 @@ export class RefinementDomain {
 		// Eq. 24: omega_c for this domain = parent's effective omega.
 		// Recursive application: level-1 uses root omega_c; level-2 uses level-1 omega_f; etc.
 		this.omega_c = (parent instanceof RefinementDomain) ? parent.omega_f : 1 / (3 * parent.nu + 0.5);
+		// Refinement depth (1 = child of the root) and the root, for per-level perf tallies.
+		this.depth = (parent instanceof RefinementDomain) ? parent.depth + 1 : 1;
+		this._lvlRoot = (parent instanceof RefinementDomain) ? parent._lvlRoot : parent;
+		this._childMs = 0;
 		// Level 1 under a root whose ν was floored (coarse settings): build
 		// ω_f from the matched root ν, so this level and everything below
 		// (Eq. 24 recursion) carries Default's physical viscosity. The root
@@ -729,12 +778,10 @@ export class RefinementDomain {
 		}
 		this._restoreGhostFromSnapshot();
 		collideAndStream(this.streamCells, this.omega_f);
+		this._countUpdates();
 
 		// Run child domains for this sub-interval (this domain is now at t+½)
-		for (const child of this.domains) {
-			child.saveCoarseBoundary(this);
-			child.step(this);
-		}
+		for (const child of this.domains) runChild(child, this);
 
 		// Sub-step 2: inject t+1 parent state, interpolate ρ, u, f_neq to t+½, run.
 		// Re-inject so the boat wake persists through the second sub-step (§3.5).
@@ -746,17 +793,20 @@ export class RefinementDomain {
 			this._applyForceFineCell(inj.fi, inj.fj, inj.fx, inj.fy);
 		}
 		collideAndStream(this.streamCells, this.omega_f);
+		this._countUpdates();
 
 		// Run child domains for this sub-interval (this domain is now at t+1)
-		for (const child of this.domains) {
-			child.saveCoarseBoundary(this);
-			child.step(this);
-		}
+		for (const child of this.domains) runChild(child, this);
 
 		// Ghosts were left at t+½. The restriction stencil reads them, so rebuild
 		// the pure t+1 boundary first (Lagrava §3.5 step 3, then step 4).
 		this.injectFromCoarse(parent);
 		this.averageToCoarse(parent);
+	}
+
+	_countUpdates() {
+		const r = this._lvlRoot;
+		if (r && r._lvlUpdTick) r._lvlUpdTick[this.depth] = (r._lvlUpdTick[this.depth] || 0) + this.streamCells.length;
 	}
 
 	// Section 3.5 (Lagrava): capture t-state ghost boundary BEFORE the parent step runs.
@@ -1969,6 +2019,8 @@ export class Boltzmann {
 		this.step_ready = false;
 		this.t_delta = 0;
 		this.field_ms = 0;
+		// ~1 s moving average of per-level time and updates per tick (perf panel).
+		this.levelPerf = new LevelPerf();
 
 		// windMps is the true wind in m/s (world units are metres). The
 		// lattice inlet U (cells per lattice step) is windMps · Δt / Δx with
@@ -2205,15 +2257,24 @@ export class Boltzmann {
 	advance_frame() {
 		this._stepAcc += this.stepsPerFrame;
 		let n = 0;
+		this._lvlMsTick = [];
+		this._lvlUpdTick = [];
+		let fieldMs = 0;
 		while (this._stepAcc >= 1 - 1e-9 && n < 8) {
 			this._stepAcc -= 1;
 			this.physics_model_step();
+			fieldMs += this.field_ms;
 			n++;
 		}
 		if (this._stepAcc < 1e-9) this._stepAcc = 0;
 		if (n === 0) this.field_ms = 0;
+		this.levelPerf.tick(this._lvlMsTick, this._lvlUpdTick, fieldMs);
 		return n;
 	}
+
+	// Per-level cell updates and time this tick (the last advance_frame), not
+	// smoothed. Sums of updates equal cellUpdates() × steps run.
+	levelTick() { return { ms: this._lvlMsTick || [], updates: this._lvlUpdTick || [] }; }
 
 	// Add a rectangular fine refinement domain in coarse grid coordinates.
 	// cx0, cy0: top-left corner; cx1, cy1: bottom-right corner (exclusive).
@@ -2355,8 +2416,13 @@ export class Boltzmann {
 
 		// Section 3.5 (Lagrava): save t-state ghost boundaries BEFORE the coarse step,
 		// so sub-step 1 of each domain can use the correct t-state (temporal interpolation).
+		// Level-1 t-state snapshots are timed as level-1 work.
+		this._childMs = 0;
+		const timing = this.levelTiming !== false && this._lvlMsTick;
 		for (let d = 0; d < this.domains.length; d++) {
+			const t0 = timing ? perfNow() : 0;
 			this.domains[d].saveCoarseBoundary(this);
+			if (timing) { const dt = perfNow() - t0; this._lvlMsTick[1] = (this._lvlMsTick[1] || 0) + dt; this._childMs += dt; }
 		}
 
 		// 1 coarse step (Eq. 15→16→bounce-back→consolidate→boundary).
@@ -2366,8 +2432,16 @@ export class Boltzmann {
 		this.collideAndStream(this.streamCells, omega_c);
 		this.setBoundaries();
 
+		if (this._lvlUpdTick) this._lvlUpdTick[0] = (this._lvlUpdTick[0] || 0) + this.streamCells.length;
 		for (let d = 0; d < this.domains.length; d++) {
-			this.domains[d].step(this);
+			const dom = this.domains[d];
+			if (!timing) { dom.step(this); continue; }
+			const t0 = perfNow();
+			dom._childMs = 0;
+			dom.step(this);
+			const dt = perfNow() - t0;
+			this._lvlMsTick[1] = (this._lvlMsTick[1] || 0) + dt - dom._childMs;
+			this._childMs += dt;
 		}
 		this._syncBoatOverlaps();
 
@@ -2384,6 +2458,9 @@ export class Boltzmann {
 		this.t_delta = new Date() - t_start;
 		// Field iteration only (sub-steps, coupling, curl); paintTexture is excluded.
 		this.field_ms = performance.now() - field_t0;
+		// Root level: everything in this step not spent inside a refinement grid
+		// (root collide/stream, boundaries, boat-overlap sync, curl).
+		if (timing) this._lvlMsTick[0] = (this._lvlMsTick[0] || 0) + this.field_ms - this._childMs;
 		this.step_ready = true;
 
 		this.paintTexture();

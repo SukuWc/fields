@@ -69,6 +69,31 @@ export function budgetLines(st, updates) {
   ];
 }
 
+
+// Per-level share of cell updates vs time (~1 s averages per tick, from
+// Boltzmann.levelPerf). ms is each level's exclusive time: its collide /
+// stream plus its interface work (t-state snapshot, coarse→fine injection,
+// time interpolation, filtered restriction). L0 also holds boundaries,
+// boat-overlap sync and curl; "track" is refinement tracking (auto
+// create / destroy), "other" the rest of the sim tick (boats, rules).
+export function levelTableLines(st) {
+  const lp = st.levelPerf;
+  const L = Math.max(lp.ms.length, lp.updates.length);
+  let U = 0, T = 0;
+  for (let i = 0; i < L; i++) { U += lp.updates[i] || 0; T += lp.ms[i] || 0; }
+  const out = ['lvl  cell   upd/tk  %upd    ms  %time ns/upd'];
+  for (let i = 0; i < L; i++) {
+    const u = lp.updates[i] || 0, m = lp.ms[i] || 0;
+    const cell = st.rootCell / (1 << i);
+    out.push('L' + i + ' ' + pad(cell >= 1 ? cell + 'm' : '1/' + Math.round(1 / cell), 5) + ' ' + pad(fmt(Math.round(u)), 8) + ' ' +
+      pad(U ? (100 * u / U).toFixed(1) : '-', 5) + ' ' + pad(m.toFixed(2), 5) + ' ' + pad(T ? (100 * m / T).toFixed(1) : '-', 5) + ' ' +
+      pad(u > 0 ? Math.round(1e6 * m / u) : '-', 6));
+  }
+  const other = Math.max(0, lp.tickMs - lp.fieldMs - lp.trackMs);
+  out.push('field ' + lp.fieldMs.toFixed(2) + '  track ' + lp.trackMs.toFixed(2) + '  other ' + other.toFixed(2) + ' ms/tick');
+  return out;
+}
+
 function render() {
   const st = _getStats();
   if (!st) return;
@@ -87,6 +112,7 @@ function render() {
   lines.push('total ' + pad(fmt(total), 7) + ' cells');
   lines.push('upd/step ' + pad(fmt(updates), 7));
   lines.push(...budgetLines(st, updates));
+  if (st.levelPerf) lines.push(...levelTableLines(st));
 
   let ms = 0;
   let steps = 0;
