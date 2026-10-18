@@ -2,6 +2,7 @@
 // everything it hands the client is plain data (structured-cloneable, no
 // engine objects), so the same client can sit on a worker or socket host.
 // Runs without the DOM stub.
+import { hudFromState } from '../src/hud.js';
 import { LocalHost, SimCore } from '../src/host.js';
 import { buildScene } from '../src/scene-build.js';
 import { sceneDiff } from './scene-diff.mjs';
@@ -64,7 +65,7 @@ for (const n of [0, 7, 11]) {
   check(`scenario ${n}: frame is plain data`, plain);
   const scene = buildScene(last.state, last.statics, view);
   check(`scenario ${n}: frame has readout, scene state and statics that build guides and body outlines`,
-    typeof last.hud.info === 'string' && last.hud.info.includes('Boat 0 TWA') && Array.isArray(scene.guides) && scene.guides.length > 0
+    typeof hudFromState(last.state.hud).info === 'string' && hudFromState(last.state.hud).info.includes('Boat 0 TWA') && Array.isArray(scene.guides) && scene.guides.length > 0
     && scene.bodies.length > 0 && scene.bodies.every((o) => o.pts.length >= 4 && Number.isFinite(o.pts[0])),
     `guides=${scene.guides.length} bodies=${scene.bodies.length}`);
   check(`scenario ${n}: frame bodies match the live world`, sceneDiff(scene.bodies, h.bodies()) === 0);
@@ -97,7 +98,7 @@ const st = host.perfStats();
 check('perf stats are plain data', Array.isArray(st.levels) && Number.isFinite(st.defaultTarget) && structuredClone(st) !== null);
 host.setPerf(true);
 const pf = mute(() => host.tick({ dt: 1 / 30, held: [], present: false, view }));
-check('frame carries perf stats when asked, no HUD when not presenting', pf.perf && pf.perf.levels.length >= 1 && pf.hud === undefined);
+check('frame carries perf stats when asked, no HUD when not presenting', pf.perf && pf.perf.levels.length >= 1 && pf.state === undefined);
 const v = await host.query({ type: 'fieldVelocity', x: 0, y: 0 });
 const w = await host.query({ type: 'wind', x: 0, y: 0 });
 check('queries answer with plain numbers', Number.isFinite(v.x) && Number.isFinite(w.speed));

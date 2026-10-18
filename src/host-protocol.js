@@ -26,6 +26,20 @@
 //                                     version sv it gets (join, restart, new boat)
 // Frames and statics from the server have numbers rounded to 1e-4 (room.js).
 
+// Objects marked here (and everything inside them) keep their numbers exact
+// in the server's rounded JSON (apps/server/room.js roundJson): values that
+// end up as text (HUD readouts, badges) must read the same in every mode.
+// A symbol property: not serialised, not structured-cloned (the worker
+// copies everything exactly anyway).
+export const EXACT_JSON = Symbol.for('fields.exactJson');
+export function markExact(o) {
+  if (o && typeof o === 'object' && !o[EXACT_JSON]) {
+    Object.defineProperty(o, EXACT_JSON, { value: true });
+    for (const k in o) markExact(o[k]);
+  }
+  return o;
+}
+
 // Sim event as sent to clients.
 export function eventForClient(core, ev) {
   return ev.type === 'bindControls' ? { ...ev, boats: core.sim.players.length } : ev;

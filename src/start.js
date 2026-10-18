@@ -165,11 +165,11 @@ export class StartSequence {
 
   signalAt(clock) {
     const T = this.timings;
-    if (clock < -T.warning) return { id: 'none', text: 'Sequence starting', flags: [] };
-    if (clock < -T.prep) return { id: 'warning', text: 'Warning · class flag up', flags: ['class'] };
-    if (clock < -T.oneMinute) return { id: 'prep', text: 'Preparatory · P flag up', flags: ['class', 'P'] };
-    if (clock < 0) return { id: 'oneMinute', text: 'One minute · P flag down', flags: ['class'] };
-    return { id: 'start', text: 'START · class flag down', flags: [] };
+    if (clock < -T.warning) return signalById('none');
+    if (clock < -T.prep) return signalById('warning');
+    if (clock < -T.oneMinute) return signalById('prep');
+    if (clock < 0) return signalById('oneMinute');
+    return signalById('start');
   }
 
   get signal() {
@@ -264,6 +264,19 @@ export class StartSequence {
   }
 }
 
+// The signals of the sequence by id (the HUD state carries the id).
+const SIGNALS = {
+  none: { text: 'Sequence starting', flags: [] },
+  warning: { text: 'Warning · class flag up', flags: ['class'] },
+  prep: { text: 'Preparatory · P flag up', flags: ['class', 'P'] },
+  oneMinute: { text: 'One minute · P flag down', flags: ['class'] },
+  start: { text: 'START · class flag down', flags: [] },
+};
+export function signalById(id) {
+  const s = SIGNALS[id];
+  return { id, text: s.text, flags: s.flags.slice() };
+}
+
 // "−0:45" before the signal, "+1:05" after.
 export function formatStartClock(clock) {
   const neg = clock < 0;
@@ -275,7 +288,12 @@ export function formatStartClock(clock) {
 
 export function startStatusText(seq, boat) {
   const st = seq.statusOf(boat);
-  if (st === 'started') return 'Started +' + seq.stateFor(boat).startTime.toFixed(1) + ' s';
+  return startStatusTextOf(st, st === 'started' ? seq.stateFor(boat).startTime : null);
+}
+
+// st: statusOf; startTime (s) when started.
+export function startStatusTextOf(st, startTime) {
+  if (st === 'started') return 'Started +' + startTime.toFixed(1) + ' s';
   if (st === 'ocs') return 'OCS — return below the line';
   if (st === 'notStarted') return 'Not started';
   return 'Pre-start';
@@ -289,18 +307,29 @@ const FLAG_HTML = {
 
 // HTML for the start HUD: big clock, signal and flags, boat status.
 export function startHudHtml(seq, boat) {
-  const sig = seq.signal;
-  const flags = sig.flags.slice();
+  return startHudHtmlOf(startHudState(seq, boat));
+}
+
+// The start HUD as data (hud.js): clock, signal id, X flag, HUD flash, boat
+// status (null without a boat) and her start time when started.
+export function startHudState(seq, boat) {
+  const st = boat ? seq.statusOf(boat) : null;
+  return { clock: seq.clock, sig: seq.signal.id, x: seq.xFlag ? 1 : 0, fl: seq.flashing ? 1 : 0, st, t0: st === 'started' ? seq.stateFor(boat).startTime : null };
+}
+
+export function startHudHtmlOf(h) {
+  const sig = signalById(h.sig);
+  const flags = sig.flags;
   let text = sig.text;
-  if (seq.xFlag) {
+  if (h.x) {
     flags.push('X');
     text = 'X flag: individual recall';
   }
-  const st = boat ? seq.statusOf(boat) : 'prestart';
+  const st = h.st || 'prestart';
   const cls = st === 'ocs' ? 'ocs' : st === 'started' ? 'ok' : '';
-  return '<div class="start-clock">' + formatStartClock(seq.clock) + '</div>' +
+  return '<div class="start-clock">' + formatStartClock(h.clock) + '</div>' +
     '<div class="start-signal">' + flags.map((f) => FLAG_HTML[f]).join('') + ' ' + text + '</div>' +
-    (boat ? '<div class="start-boat ' + cls + '">' + startStatusText(seq, boat) + '</div>' : '');
+    (h.st ? '<div class="start-boat ' + cls + '">' + startStatusTextOf(h.st, h.t0) + '</div>' : '');
 }
 
 function dashed(a, b, color, opacity, dash = 1.2, gap = 0.8) {

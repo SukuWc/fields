@@ -24,7 +24,7 @@
 // a spawned boat). Numbers in these JSON messages are rounded to 1e-4
 // (roundJson), which is well under a pixel at any zoom.
 import { SimCore } from '../../src/host.js';
-import { answer, eventForClient } from '../../src/host-protocol.js';
+import { answer, eventForClient, EXACT_JSON } from '../../src/host-protocol.js';
 import { BOAT_ACTIONS } from '../../src/sim.js';
 import { encodeFieldGrids } from '../../src/fieldPainter.js';
 
@@ -42,7 +42,11 @@ export const TICK_HZ = 30;
 // JSON for state messages: non-integer numbers rounded to 4 decimals, except
 // multiples of 1/4096 (cell sizes such as 0.03125 and the like are scale
 // factors, kept exact; they print short anyway).
-const roundNum = (_k, v) => (typeof v === 'number' && !Number.isInteger(v * 4096) ? Math.round(v * 1e4) / 1e4 : v);
+// Objects marked with host-protocol.js markExact (HUD values, badge numbers)
+// keep their numbers exact.
+function roundNum(_k, v) {
+  return typeof v === 'number' && !Number.isInteger(v * 4096) && !this[EXACT_JSON] ? Math.round(v * 1e4) / 1e4 : v;
+}
 export function roundJson(m) { return JSON.stringify(m, roundNum); }
 export const FIELD_HZ = 2;
 

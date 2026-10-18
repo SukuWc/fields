@@ -15,7 +15,8 @@ import { startGuidesFromState } from './start.js';
 import { courseGuidesFromState } from './course.js';
 import { finishGuidesFromState } from './finish.js';
 import { boundaryGuides } from './boundary.js';
-import { roomGuidesFromState, contactGuidesFromState, penaltyGuidesFromState } from './rules.js';
+import { roomGuidesFromState, contactGuidesFromState, penaltyGuidesFromState, pairGuidesFromState } from './rules.js';
+import { hudFromState } from './hud.js';
 import { markTouchGuidesFromState } from './mark-touch.js';
 
 // Smooth circle per boat disk. A field island has a mask and no disk, so
@@ -154,7 +155,7 @@ export function buildGuides(state, statics, view) {
   if (statics.boundary) guides.push(...boundaryGuides(statics.boundary));
   if (state.br) guides.push(...roomGuidesFromState(state.br, 'boundaryRoom'));
   if (state.mr) guides.push(...roomGuidesFromState(state.mr, 'markRoom'));
-  if (state.pair) guides.push(...state.pair);
+  if (state.pair) for (const p of state.pair) guides.push(...pairGuidesFromState(p));
   if (state.mt) guides.push(...markTouchGuidesFromState(state.mt));
   if (state.cf) guides.push(...contactGuidesFromState(state.cf));
   if (state.pen) guides.push(...penaltyGuidesFromState(state.pen, boats));
@@ -173,7 +174,8 @@ export function buildGuides(state, statics, view) {
   return guides;
 }
 
+// { guides, bodies, hud } (hud: hud.js hudFromState, null without HUD state).
 export function buildScene(state, statics, view) {
-  if (!state || !statics) return { guides: [], bodies: [] };
-  return { guides: buildGuides(state, statics, view), bodies: buildBodies(statics.bodies, state.bt) };
+  if (!state || !statics) return { guides: [], bodies: [], hud: null };
+  return { guides: buildGuides(state, statics, view), bodies: buildBodies(statics.bodies, state.bt), hud: state.hud ? hudFromState(state.hud) : null };
 }

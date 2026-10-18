@@ -203,7 +203,34 @@ export function leaderboardRowText(r) {
 }
 
 export function leaderboardHtml(lb, highlightBoat = 0) {
-  const rows = lb.rows();
+  return leaderboardHtmlOf(leaderboardState(lb), highlightBoat);
+}
+
+const LABEL_CODE = { '–': '-', Fin: 'F', Start: 'S', OCS: 'O', Finish: 'E' };
+const LABEL_TEXT = { '-': '–', F: 'Fin', S: 'Start', O: 'OCS', E: 'Finish' };
+
+// The rows as data (hud.js): rows() with the label as a code ('L' = "Leg
+// n/m" from leg and legs) and the finish entry reduced to what is shown.
+export function leaderboardState(lb) {
+  return lb.rows().map((r) => ({
+    position: r.position, boat: r.boat, status: r.status,
+    label: r.label in LABEL_CODE ? LABEL_CODE[r.label] : (r.label === legLabel(r.leg, r.legs) ? 'L' : r.label),
+    leg: r.leg, legs: Number.isFinite(r.legs) ? r.legs : null, kind: r.kind, legM: Number.isFinite(r.legM) ? r.legM : null,
+    gapM: r.gapM === null || !Number.isFinite(r.gapM) ? null : r.gapM,
+    entry: r.entry ? { elapsed: r.entry.elapsed, unserved: r.entry.unserved.slice(), dsq: r.entry.dsq ? 1 : 0, penaltyS: r.entry.penaltyS } : null,
+  }));
+}
+
+function legLabel(leg, legs) {
+  return 'Leg ' + leg + (Number.isFinite(legs) ? '/' + legs : '');
+}
+
+export function leaderboardHtmlOf(rowsState, highlightBoat = 0) {
+  const rows = rowsState.map((r) => ({
+    ...r,
+    label: r.label === 'L' ? legLabel(r.leg, r.legs) : (r.label in LABEL_TEXT ? LABEL_TEXT[r.label] : r.label),
+    legM: r.legM === null ? Infinity : r.legM,
+  }));
   const out = rows.map((r) => {
     const cls = 'finish-row' + (r.boat === highlightBoat ? ' me' : '') + (r.entry && r.entry.unserved.length ? ' pen' : '') + (r.status === 'finished' ? ' fin' : '');
     return '<div class="' + cls + '">' + leaderboardRowText(r) + '</div>';
