@@ -7,8 +7,19 @@
 //   mode 'server'  (default) the server runs the Sim on its own 30 Hz clock
 //                  and broadcasts every frame to every client in the room.
 //                  The page is purely event-driven (main.js): no loop, no
-//                  rAF; it draws when a frame arrives and sends held keys and
-//                  camera with sendInput() when they change.
+//                  rAF; it draws when a frame arrives and sends held keys
+//                  with sendInput() when they change (they steer only this
+//                  client's own boat; the camera stays on the page).
+//
+// Joining: the server answers 'init' with one welcome message: info, the
+// room state (room: scenario, room-wide settings, lattice), this client's
+// own boats and key binding. They are kept here (info, room, own, bindings)
+// for the page to start from, and kept current by the 'room', 'ownBoats' and
+// 'bindControls' events, which also go to on() listeners.
+//
+// Per-client subscriptions: setField (below), setFlow(on) (flow tracer
+// grids, arriving as frame.flow) and setPerf(on) (perf counters, as
+// frame.perf); the server sends each only to clients that asked.
 //   mode 'client'  (server --lockstep, Node tests only) tick() asks for each
 //                  tick, so runs are reproducible; frames are still broadcast
 //                  to every client. The browser never calls tick() in remote
@@ -58,6 +69,14 @@ export class RemoteHost {
     this.lastField = null;
     this._painter = texture ? new FieldPainter(texture, opts.oversampling || 8) : null;
     this._field = { on: false, plotType: 3, contrastExp: 0 };
+    this._flowOn = false;
+    this._perfOn = false;
+    // Flow grid / perf counters for the next frame (they arrive just before it).
+    this._nextFlow = null;
+    this._nextPerf = null;
+    this.room = null;
+    this.own = [];
+    this.bindings = 0;
     this.lastFrame = null;
     this.info = null;
     this.mode = null;
@@ -80,6 +99,8 @@ export class RemoteHost {
     ws.onopen = () => {
       ws.send(JSON.stringify({ type: 'init', opts: plain }));
       if (this._field.on) ws.send(JSON.stringify({ type: 'field', ...this._field }));
+      if (this._flowOn) ws.send(JSON.stringify({ type: 'flow', on: true }));
+      if (this._perfOn) ws.send(JSON.stringify({ type: 'perf', on: true }));
     };
     ws.onerror = () => { if (!this.info) this._rejectReady(new Error('cannot connect to ' + url)); };
     ws.onclose = () => {
@@ -94,14 +115,24 @@ export class RemoteHost {
 
   _onMessage(m) {
     switch (m.type) {
+      case 'welcome':
+        this.room = m.room || null;
+        this.own = m.own || [];
+        this.bindings = m.bindings || 0;
+        // falls through
       case 'info':
         this.info = m.info;
         this.mode = m.info.mode;
         this._resolveReady(m.info);
         break;
       case 'event':
+        if (m.ev.type === 'room') this.room = m.ev.room;
+        else if (m.ev.type === 'ownBoats') this.own = m.ev.boats || [];
+        else if (m.ev.type === 'bindControls') this.bindings = m.ev.boats || 0;
         for (const fn of this._listeners) fn(m.ev);
         break;
+      case 'flow': this._nextFlow = m.flow; break;
+      case 'perf': this._nextPerf = m.perf; break;
       case 'result': {
         const p = this._pending.get(m.id);
         this._pending.delete(m.id);
@@ -115,6 +146,8 @@ export class RemoteHost {
       case 'frame':
         // The statics this frame was built against (they arrive first).
         if (m.frame.state) m.frame.statics = this.statics;
+        if (this._nextFlow) { m.frame.flow = this._nextFlow; this._nextFlow = null; }
+        if (this._nextPerf) { m.frame.perf = this._nextPerf; this._nextPerf = null; }
         if (this.inFlight > 0) this.inFlight--;
         this.framesReceived++;
         for (const fn of this._arrivalListeners) fn(m.frame);
@@ -181,7 +214,14 @@ export class RemoteHost {
     this._send({ type: 'field', ...next });
   }
   query(q) { return this._call('query', 'q', q); }
-  setPerf(on) { this._send({ type: 'perf', on: !!on }); }
+  // Perf counters in this client's frames (frame.perf), or not.
+  setPerf(on) { this._perfOn = !!on; this._send({ type: 'perf', on: !!on }); }
+  // Flow tracer grids in this client's frames (frame.flow), or not.
+  setFlow(on) {
+    if (this._flowOn === !!on) return;
+    this._flowOn = !!on;
+    this._send({ type: 'flow', on: !!on });
+  }
 
   tick(req) {
     const held = typeof req.held === 'function' ? req.held() : req.held;
@@ -194,16 +234,15 @@ export class RemoteHost {
       return true;
     }
     // Server clock: input goes with sendInput() instead.
-    this.sendInput({ held, view });
+    this.sendInput({ held });
     return true;
   }
 
-  // Held keys and camera for a server that ticks on its own clock; sent only
-  // when they change. The camera only feeds the dev-mode wind arrow, so it is
-  // rounded to 0.1 m.
-  sendInput({ held, view }) {
-    const v = plainView(view);
-    const input = { held: held || [], view: v && { ...v, camera_position_x: Math.round(v.camera_position_x * 10) / 10, camera_position_y: Math.round(v.camera_position_y * 10) / 10 } };
+  // Held keys for a server that ticks on its own clock; sent only when they
+  // change. (The view stays here: the server only needs the flow
+  // subscription, setFlow.)
+  sendInput({ held }) {
+    const input = { held: held || [] };
     const key = JSON.stringify(input);
     if (key === this._lastInput) return false;
     this._lastInput = key;

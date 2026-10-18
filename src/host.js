@@ -29,9 +29,10 @@ import { Boltzmann } from './boltzmann.js';
 import { FieldPainter } from './fieldPainter.js';
 import { Map } from './map.js';
 import { FluidWind, ConstantWind } from './wind.js';
-import { Sim } from './sim.js';
+import { Sim, SIM_RES_MODES } from './sim.js';
 import { bodyOutlines, perfStats } from './present.js';
 import { sceneFrame } from './scene-state.js';
+import { eventForClient } from './host-protocol.js';
 import { sampleFlowGrid, FLOW_GRID_EVERY } from './flow-tracers.js';
 
 // The Sim and everything around it that a host runs (shared by LocalHost and
@@ -55,6 +56,13 @@ export class SimCore {
     this.staticsVersion = 0;
     this._staticsKey = '';
     this._flowTick = 0;
+    // Room-wide settings as last applied (commands below keep it current):
+    // what a server room reports to joining clients and broadcasts on change.
+    this.settings = {
+      devMode: false, wind: { angle: windAngle, speed: windSpeed }, barrier: false,
+      simRes, amrMode: 'auto', cellBudget: { tune: true, target: null },
+      amr: this.sim.options.amr, boatEnergy: this.sim.options.boatEnergy,
+    };
     // The constructor only took the root resolution; the mode's explicit
     // stepsPerFrame (fast-wind defaults such as '4f') applies before anything runs.
     this.sim.command({ type: 'simRes', mode: simRes });
@@ -85,9 +93,42 @@ export class SimCore {
       return undefined;
     }
     const r = this.sim.command(c);
+    this._trackSetting(c, r);
     if (c.type === 'restart') return r ? { title: r.title, description: r.description } : null;
     if (c.type === 'simRes' || c.type === 'amrMode') return { rebuilt: !!r, lattice: this.lattice() };
     return r;
+  }
+
+  // Room-wide settings record (this.settings) after a command.
+  _trackSetting(c, r) {
+    const st = this.settings;
+    switch (c.type) {
+      case 'devMode': st.devMode = !!c.on; break;
+      case 'barrier': st.barrier = !!c.on; break;
+      case 'wind':
+        st.wind = { angle: this.map.wind_direction, speed: this.map.wind_speed };
+        break;
+      case 'simRes': st.simRes = SIM_RES_MODES[c.mode] ? c.mode : '1'; break;
+      case 'amrMode': st.amrMode = c.mode === 'auto' ? 'auto' : 'fixed'; break;
+      case 'cellBudget': st.cellBudget = { tune: !!c.tune, target: c.tune && Number.isFinite(c.target) && c.target > 0 ? c.target : null }; break;
+      case 'options':
+        st.amr = this.sim.options.amr;
+        st.boatEnergy = this.sim.options.boatEnergy;
+        break;
+      default: break;
+    }
+  }
+
+  // The scenario in play and the room-wide settings, as plain data (the
+  // welcome snapshot and the room event of a server room).
+  roomState() {
+    const i = this.sim.scenarioIndex;
+    const sc = Number.isInteger(i) ? this.sim.scenarios[i] : null;
+    return {
+      scenario: { index: Number.isInteger(i) ? i : null, title: sc ? sc.title : null, description: sc ? sc.description : null },
+      settings: JSON.parse(JSON.stringify(this.settings)),
+      lattice: this.lattice(),
+    };
   }
 
   query(q) {
@@ -161,7 +202,7 @@ export class LocalHost {
     this.lastFrame = null;
     const sim = this.core.sim;
     sim.on((ev) => {
-      const out = ev.type === 'bindControls' ? { ...ev, boats: sim.players.length } : ev;
+      const out = eventForClient(this.core, ev);
       for (const fn of this._listeners) fn(out);
     });
     this.info = this.core.info();
