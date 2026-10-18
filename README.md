@@ -45,7 +45,7 @@ Last updated: 2026-10-18
 - [ ] Per-boat wind shadow / dirty air (partial: [#9](https://github.com/SukuWc/fields/pull/9) gives each boat a sail wake, so a downwind boat reads slower true wind)
 - [x] Depower toggle (X / touch): sails eased out and luffing with a 0.5 s ramp: [#51](https://github.com/SukuWc/fields/pull/51)
 - [x] Near-matched viscosity on the default 4 m fast-wind grid (`simRes=4f`) so sail wakes match the 1 m and x4 grids: [#65](https://github.com/SukuWc/fields/pull/65)
-- [ ] Wind speed in true m/s everywhere (UI, sim, telemetry, scenarios) with perturbation propagation tests (in progress, [#67](https://github.com/SukuWc/fields/pull/67))
+- [x] Wind speed in true m/s everywhere (UI, sim, telemetry, scenarios) with perturbation propagation tests: [#67](https://github.com/SukuWc/fields/pull/67)
 - [ ] Strategy tuning
 
 ### 3. Multiplayer open water
