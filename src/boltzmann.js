@@ -318,7 +318,7 @@ class SimulationCell {
 const perfNow = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : () => Date.now();
 function runChild(child, parent) {
 	const root = child._lvlRoot;
-	if (!root || root.levelTiming === false) { child.saveCoarseBoundary(parent); child.step(parent); return; }
+	if (!root || root.levelTiming === false || !root._lvlMsTick) { child.saveCoarseBoundary(parent); child.step(parent); return; }
 	const t0 = perfNow();
 	const outer = child._childMs;
 	child._childMs = 0;
