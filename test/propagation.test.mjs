@@ -21,7 +21,10 @@ const check = (name, ok, detail = '') => {
 	if (!ok) failed++;
 };
 const rows = [];
-for (const mode of Object.keys(P.MODES)) for (const w of P.winds(mode)) for (const refine of ['off', 'auto', 'forced']) {
+// npm test runs a fast subset (wind 0 and 5 m/s, refinement off / auto);
+// PROP_FULL=1 or scripts/propagation.mjs runs the full matrix.
+const FULL = !!process.env.PROP_FULL;
+for (const mode of Object.keys(P.MODES)) for (const w of P.winds(mode).filter((w) => FULL || w === 0 || w === 5)) for (const refine of FULL ? ['off', 'auto', 'forced'] : ['off', 'auto']) {
 	const info = P.modeInfo(mode);
 	const p = P.run(mode, w, 'pulse', refine), v = P.run(mode, w, 'vortex', refine);
 	const tag = `${mode} ${w} m/s ${refine}`;
