@@ -46,6 +46,7 @@ Last updated: 2026-10-18
 - [x] Depower toggle (X / touch): sails eased out and luffing with a 0.5 s ramp: [#51](https://github.com/SukuWc/fields/pull/51)
 - [x] Near-matched viscosity on the default 4 m fast-wind grid (`simRes=4f`) so sail wakes match the 1 m and x4 grids: [#65](https://github.com/SukuWc/fields/pull/65)
 - [x] Wind speed in true m/s everywhere (UI, sim, telemetry, scenarios) with perturbation propagation tests: [#67](https://github.com/SukuWc/fields/pull/67)
+- [ ] 45° and 22.5° wind propagation tests, root-grid wind read fixed by half a cell (no more 2 m wind jump at refinement edges on 4f), node-based vortex centroid (in progress, [#69](https://github.com/SukuWc/fields/pull/69))
 - [ ] Strategy tuning
 
 ### 3. Multiplayer open water
