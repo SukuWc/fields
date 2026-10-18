@@ -2562,18 +2562,13 @@ export class Boltzmann {
 		const best = this._finestDomain(cx_cont, cy_cont);
 		if (best) return best.getVelocityAt(cx_cont, cy_cont);
 
-		// Default resolution keeps the original per-world-unit lookup. On a
-		// coarser root grid a cell is 2 or 4 world units wide, and that lookup
-		// would step the wind a boat feels by a whole cell at a time, so the
-		// sample is bilinear in the continuous cell coordinate.
-		let x, y;
-		if (this.resolution === 1) {
-			x = this.width/2  + Math.floor(worldX * this.resolution);
-			y = this.height/2 + Math.floor(worldY * this.resolution);
-		} else {
-			x = cx_cont - 0.5;
-			y = cy_cont - 0.5;
-		}
+		// Root node x sits at continuous coordinate x, the convention the
+		// refined levels (fineIndex: node 2 at cx0), apply_energy
+		// (depositBilinear) and boat tracking already use. The old lookup put it
+		// at x + 0.5 (bilinear at x − 0.5, or the floor cell at Default), so the
+		// root read was half a root cell (2 m at 4 m cells) off the refined
+		// read and the force deposit. Bilinear at every resolution.
+		const x = cx_cont, y = cy_cont;
 
 		// The ±2 world-unit wind stencil (and the mouse probe) can land past the
 		// outer cells. An unclamped index is undefined there — negative y underflows
