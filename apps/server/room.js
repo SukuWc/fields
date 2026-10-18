@@ -22,7 +22,8 @@
 // a client gets { type: 'statics', sv, statics } before the first frame it
 // needs them for (on join, and again whenever they change, e.g. a restart or
 // a spawned boat). Numbers in these JSON messages are rounded to 1e-4
-// (roundJson), which is well under a pixel at any zoom.
+// (roundJson), which is well under a pixel at any zoom; values that end up
+// as text (state.hud, penalty badges, finish labels) stay exact.
 import { SimCore } from '../../src/host.js';
 import { answer, eventForClient, EXACT_JSON } from '../../src/host-protocol.js';
 import { BOAT_ACTIONS } from '../../src/sim.js';
