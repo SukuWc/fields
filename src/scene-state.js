@@ -1,0 +1,166 @@
+// Host side of the scene: the compact game state the client draws from.
+// Runs wherever the Sim runs (LocalHost: main thread, WorkerHost: the
+// worker, apps/server). Instead of drawn geometry (guide segments, body
+// outlines) a frame carries `state`, a few numbers per object, and the host
+// sends `statics` (shapes and layouts that only change on restart, spawn,
+// resolution change) once per change. scene-build.js turns state + statics
+// into the guides and outlines the renderer draws, with the same code in
+// every host mode.
+//
+// sceneState(sim, rec, view, nowMs) → state:
+//   t      host clock (ms) for pulses and flash ages
+//   boats  per racing boat: Boat.renderState (boat-draw.js)
+//   mk     mark buoy positions [[x, y], ...] (anchors in statics.marks)
+//   start  startGuideState (start.js) for boat 0
+//   course courseGuideState (course.js) for boat 0
+//   finish finishGuideState (finish.js)
+//   br, mr boundary-room / mark-room badges (rules.js roomGuideState)
+//   pair   Section A / Rule 15 / 18 overlays from the rule resolver: built
+//          host-side by the rules engine (small, only during encounters)
+//   mt, cf mark-touch and contact flashes ([{ ..., age }])
+//   pen    penaltyGuideState (rules.js)
+//   amr    refinement domains (outline only): { mode, d: [domain] } with
+//          domain = { x, y, w, h (parent cells), dx, rx, ry (root origin),
+//          k: [cx, cy, radius] | 0 (disk), m: run lengths of the mask | null,
+//          c: [children] }; absent in dev mode
+//   wind   dev mode: flow direction (deg) for the wind arrow
+//   bt     transforms of the moving bodies, flat, in statics.bodies order
+// sceneStatics(sim) → statics:
+//   lat    { w, h, res } root lattice (for the refinement outlines)
+//   defs   per racing boat: Boat.renderDef + name (spawned boats)
+//   marks  mark anchors [[x, y], ...]
+//   start, finish  line geometry; course courseStatics; boundary { x, zone, yMin, yMax }
+//   bodies [{ id, kind, stroke, pts }] (static bodies: final outline) or
+//          { id, kind, stroke, r | v (local vertices), com? } (moving bodies)
+import { lineState, startGuideState } from './start.js';
+import { courseStatics, courseGuideState } from './course.js';
+import { finishLineState, finishGuideState } from './finish.js';
+import { roomGuideState, contactFlashState, penaltyGuideState } from './rules.js';
+import { markTouchState } from './mark-touch.js';
+
+// Mask (Uint8Array, refined = 1) → run lengths, alternating starting with
+// unrefined, base 36, comma separated.
+export function encodeMaskRuns(mask) {
+  const runs = [];
+  let cur = 0, n = 0;
+  for (let i = 0; i < mask.length; i++) {
+    const v = mask[i] === 1 ? 1 : 0;
+    if (v === cur) { n++; continue; }
+    runs.push(n.toString(36));
+    cur = v;
+    n = 1;
+  }
+  runs.push(n.toString(36));
+  return runs.join(',');
+}
+
+function domainState(d) {
+  return {
+    x: d.cx0, y: d.cy0, w: d.cx1 - d.cx0, h: d.cy1 - d.cy0, dx: d.dx, rx: d.cx0_root, ry: d.cy0_root,
+    k: d.disk ? [d.disk.cx, d.disk.cy, d.disk.radius] : 0,
+    m: d.mask ? encodeMaskRuns(d.mask) : null,
+    c: d.domains.map(domainState),
+  };
+}
+
+const COLOR_BY_TYPE = { circle: 0x00ff00, edge: 0xff0000, polygon: 0x0000ff };
+let _nextFixtureId = 1;
+
+// Body outlines split into statics (shapes) and per-frame transforms.
+// ids: WeakMap fixture → id, shared with present.js bodyOutlines.
+export function bodyScene(world, ids) {
+  const statics = [];
+  const bt = [];
+  for (let body = world.getBodyList(); body; body = body.getNext()) {
+    for (let fixture = body.getFixtureList(); fixture; fixture = fixture.getNext()) {
+      if (body.render && body.render.hidden) continue;
+      const kind = fixture.getType();
+      if (kind !== 'circle' && kind !== 'edge' && kind !== 'polygon') continue;
+      let id = ids.get(fixture);
+      if (id === undefined) { id = _nextFixtureId++; ids.set(fixture, id); }
+      const stroke = body.render && typeof body.render.stroke === 'number' ? body.render.stroke : COLOR_BY_TYPE[kind];
+      const shape = fixture.getShape();
+      const moving = !body.isStatic();
+      const e = { id, kind, stroke };
+      if (kind === 'circle') {
+        e.r = shape.m_radius;
+        const p = body.getPosition();
+        if (moving) bt.push(p.x, p.y); else e.at = [p.x, p.y];
+      } else if (kind === 'edge') {
+        const v1 = shape.m_vertex1, v2 = shape.m_vertex2, p = body.m_xf.p;
+        e.v = [v1.x, v1.y, v2.x, v2.y];
+        if (moving) bt.push(p.x, p.y); else e.at = [p.x, p.y];
+      } else {
+        const v = [];
+        for (const q of shape.m_vertices) v.push(q.x, q.y);
+        e.v = v;
+        const com = body.getLocalCenter();
+        e.com = [com.x, com.y];
+        const c = fixture.m_body.c_position.c;
+        if (moving) bt.push(body.getAngle(), c.x, c.y); else e.at = [body.getAngle(), c.x, c.y];
+      }
+      if (moving) e.mv = 1;
+      statics.push(e);
+    }
+  }
+  return { statics, bt };
+}
+
+export function sceneStatics(sim, ids, bodies = bodyScene(sim.map.world, ids)) {
+  const racing = sim.players;
+  const bm = sim.bm;
+  const st = {
+    lat: { w: bm.width, h: bm.height, res: bm.resolution },
+    defs: racing.map((b) => (b.spawnName ? { ...b.renderDef(), name: b.spawnName } : b.renderDef())),
+    marks: sim.marks.map((m) => [m.anchor.x, m.anchor.y]),
+    bodies: bodies.statics,
+  };
+  if (sim.startSequence) st.start = lineState(sim.startSequence.line);
+  const course = sim.course;
+  if (course && racing[0]) st.course = courseStatics(course);
+  if (course && course.finish && sim.raceResults) st.finish = finishLineState(course.finish);
+  if (sim.boundary) st.boundary = sim.boundary.boundaryState();
+  return st;
+}
+
+export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.map.world, ids)) {
+  sim.activate();
+  const map = sim.map, bm = sim.bm;
+  const racing = sim.players;
+  const s = { t: nowMs, boats: racing.map((b) => b.renderState(view)) };
+  if (sim.marks.length) s.mk = sim.marks.map((m) => { const p = m.physics_model.getPosition(); return [p.x, p.y]; });
+  const seq = sim.startSequence;
+  if (seq) s.start = startGuideState(seq, racing[0]);
+  const course = sim.course;
+  if (course && racing[0]) s.course = courseGuideState(course, course.progressFor(racing[0]));
+  const results = sim.raceResults;
+  if (course && course.finish && results) s.finish = finishGuideState(course, racing[0] ? course.progressFor(racing[0]) : null, results, racing, rec.raceClock);
+  const res = rec.resolutions;
+  const br = roomGuideState(res, racing, 'boundaryRoom');
+  if (br.length) s.br = br;
+  const mr = roomGuideState(res, racing, 'markRoom');
+  if (mr.length) s.mr = mr;
+  const pair = [];
+  for (let i = 0; i < res.length; i++) if (res[i].guides && res[i].guides.length) pair.push(...res[i].guides);
+  if (pair.length) s.pair = pair;
+  const mt = markTouchState(nowMs);
+  if (mt.length) s.mt = mt;
+  const cf = contactFlashState(nowMs);
+  if (cf.length) s.cf = cf;
+  const pen = penaltyGuideState(racing, nowMs);
+  if (pen.boats.length || pen.cleared.length) s.pen = pen;
+  if (!map.devMode) s.amr = { mode: bm.amrMode, d: bm.domains.map(domainState) };
+  else {
+    const wind = map.get_wind(0, 0);
+    s.wind = Math.atan2(wind.vy, wind.vx) * 180 / Math.PI;
+  }
+  s.bt = bodies.bt;
+  return s;
+}
+
+// Both at once (one walk over the bodies).
+export function sceneFrame(sim, rec, view, nowMs, ids) {
+  const bodies = bodyScene(sim.map.world, ids);
+  const state = sceneState(sim, rec, view, nowMs, ids, bodies);
+  return { state, statics: sceneStatics(sim, ids, bodies) };
+}

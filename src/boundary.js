@@ -95,24 +95,31 @@ export class Boundary {
   // Faint overlay: dashed red/white boundary line, dashed zone edge, light
   // diagonal hatching across the zone.
   guides() {
-    const g = [];
-    const y0 = this.yMin, y1 = this.yMax;
-    for (const s of [1, -1]) {
-      const x = s * this.x;
-      let k = 0;
-      for (let y = y0; y < y1; y += 2, k++) {
-        g.push({ type: 'guide', color: k % 2 ? 0xffffff : BOUNDARY_LINE_COLOR, opacity: 0.85, x1: x, y1: y, x2: x, y2: Math.min(y1, y + 2) });
-      }
-      const xi = s * (this.x - this.zone);
-      for (let y = y0; y < y1; y += 4) {
-        g.push({ type: 'guide', color: BOUNDARY_ZONE_COLOR, opacity: 0.35, x1: xi, y1: y, x2: xi, y2: Math.min(y1, y + 1.5) });
-      }
-      for (let y = y0; y < y1 - this.zone * 0.5; y += 6) {
-        g.push({ type: 'guide', color: BOUNDARY_ZONE_COLOR, opacity: 0.12, x1: xi, y1: y, x2: x, y2: y + this.zone * 0.5 });
-      }
-    }
-    return g;
+    return boundaryGuides(this.boundaryState());
   }
+
+  boundaryState() { return { x: this.x, zone: this.zone, yMin: this.yMin, yMax: this.yMax }; }
+}
+
+// Boundary overlay from its state ({ x, zone, yMin, yMax }; scene-build.js).
+export function boundaryGuides(b) {
+  const g = [];
+  const y0 = b.yMin, y1 = b.yMax;
+  for (const s of [1, -1]) {
+    const x = s * b.x;
+    let k = 0;
+    for (let y = y0; y < y1; y += 2, k++) {
+      g.push({ type: 'guide', color: k % 2 ? 0xffffff : BOUNDARY_LINE_COLOR, opacity: 0.85, x1: x, y1: y, x2: x, y2: Math.min(y1, y + 2) });
+    }
+    const xi = s * (b.x - b.zone);
+    for (let y = y0; y < y1; y += 4) {
+      g.push({ type: 'guide', color: BOUNDARY_ZONE_COLOR, opacity: 0.35, x1: xi, y1: y, x2: xi, y2: Math.min(y1, y + 1.5) });
+    }
+    for (let y = y0; y < y1 - b.zone * 0.5; y += 6) {
+      g.push({ type: 'guide', color: BOUNDARY_ZONE_COLOR, opacity: 0.12, x1: xi, y1: y, x2: x, y2: y + b.zone * 0.5 });
+    }
+  }
+  return g;
 }
 
 function hullPoints(boat) {

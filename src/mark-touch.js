@@ -176,18 +176,31 @@ export function recordMarkTouches(boats, marks, opts = {}) {
 // Red ring round each touched buoy for MARK_TOUCH_FLASH_MS.
 export function markTouchGuides(nowMs) {
   const now = typeof nowMs === 'number' ? nowMs : performance.now();
-  const g = [];
+  return markTouchGuidesFromState(markTouchState(now));
+}
+
+// Live mark-touch flashes as [{ x, y, r, age }] (newest first, as drawn);
+// expired ones are dropped here.
+export function markTouchState(nowMs) {
+  const out = [];
   for (let i = T().flashes.length - 1; i >= 0; i--) {
     const f = T().flashes[i];
-    const age = now - f.startedAtMs;
+    const age = nowMs - f.startedAtMs;
     if (age > MARK_TOUCH_FLASH_MS || age < 0) { T().flashes.splice(i, 1); continue; }
     const c = markCentre(f.mark);
-    const r = (f.mark.radius || 0.5) + 0.25;
-    const opacity = 1 - 0.6 * (age / MARK_TOUCH_FLASH_MS);
+    out.push({ x: c.x, y: c.y, r: (f.mark.radius || 0.5) + 0.25, age });
+  }
+  return out;
+}
+
+export function markTouchGuidesFromState(flashes) {
+  const g = [];
+  for (const f of flashes) {
+    const opacity = 1 - 0.6 * (f.age / MARK_TOUCH_FLASH_MS);
     for (let k = 0; k < 24; k++) {
       const a0 = k / 24 * 2 * Math.PI;
       const a1 = (k + 1) / 24 * 2 * Math.PI;
-      g.push({ type: 'guide', color: MARK_TOUCH_COLOR, opacity, x1: c.x + r * Math.cos(a0), y1: c.y + r * Math.sin(a0), x2: c.x + r * Math.cos(a1), y2: c.y + r * Math.sin(a1) });
+      g.push({ type: 'guide', color: MARK_TOUCH_COLOR, opacity, x1: f.x + f.r * Math.cos(a0), y1: f.y + f.r * Math.sin(a0), x2: f.x + f.r * Math.cos(a1), y2: f.y + f.r * Math.sin(a1) });
     }
   }
   return g;

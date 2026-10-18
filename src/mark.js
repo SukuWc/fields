@@ -123,16 +123,20 @@ export class Mark {
 
   // Anchor cross, plus the anchor line to the buoy while it is displaced.
   graphics_model_render() {
-    const g = [];
     const p = this.physics_model.getPosition();
-    const ax = this.anchor.x;
-    const ay = this.anchor.y;
-    const s = 0.3;
-    g.push({ color: MARK_ANCHOR_COLOR, type: 'guide', x1: ax - s, y1: ay - s, x2: ax + s, y2: ay + s });
-    g.push({ color: MARK_ANCHOR_COLOR, type: 'guide', x1: ax - s, y1: ay + s, x2: ax + s, y2: ay - s });
-    if (Math.hypot(p.x - ax, p.y - ay) > MARK_LINE_MIN_M) {
-      g.push({ color: MARK_ANCHOR_COLOR, opacity: 0.8, type: 'guide', x1: ax, y1: ay, x2: p.x, y2: p.y });
-    }
-    return g;
+    return markGuides(this.anchor.x, this.anchor.y, p.x, p.y);
   }
+}
+
+// Mark drawing from state (anchor, buoy position): every host's client
+// builds it with this (scene-build.js).
+export function markGuides(ax, ay, px, py) {
+  const g = [];
+  const s = 0.3;
+  g.push({ color: MARK_ANCHOR_COLOR, type: 'guide', x1: ax - s, y1: ay - s, x2: ax + s, y2: ay + s });
+  g.push({ color: MARK_ANCHOR_COLOR, type: 'guide', x1: ax - s, y1: ay + s, x2: ax + s, y2: ay - s });
+  if (Math.hypot(px - ax, py - ay) > MARK_LINE_MIN_M) {
+    g.push({ color: MARK_ANCHOR_COLOR, opacity: 0.8, type: 'guide', x1: ax, y1: ay, x2: px, y2: py });
+  }
+  return g;
 }

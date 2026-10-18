@@ -1,6 +1,8 @@
 // sim.worker.js message protocol, run in-process with a fake `self`: the
 // worker's frames match a LocalHost step for step, everything it posts is
 // structured-cloneable, and field buffers are handed over and recycled.
+import { buildScene } from '../src/scene-build.js';
+import { sceneDiff } from './scene-diff.mjs';
 import { LocalHost } from '../src/host.js';
 import { hostChoice } from '../src/host-choice.js';
 
@@ -21,6 +23,7 @@ const local = new LocalHost({ ...opts, texture: { image: { data: new Uint8Array(
 console.log = () => {};
 send({ type: 'command', id: 1, c: { type: 'restart', scenario: 7 } });
 local.commandSync({ type: 'restart', scenario: 7 });
+let statics = null, sceneMax = 0, staticsFrames = 0;
 let same = true, fields = 0, recycled = false, lastField = null;
 for (let t = 0; t < 60; t++) {
   const held = t > 10 && t < 30 ? [{ type: 'helm', boat: 0, dir: 1 }] : [];
@@ -28,8 +31,10 @@ for (let t = 0; t < 60; t++) {
   send({ type: 'tick', req: { dt: 1 / 30, held, present: true, view } });
   const lf = local.tick({ dt: 1 / 30, held, present: true, view });
   const fm = msgs.find((x) => x.m.type === 'frame');
+  if (fm && fm.m.frame.statics) { statics = fm.m.frame.statics; staticsFrames++; }
+  if (fm) sceneMax = Math.max(sceneMax, sceneDiff(buildScene(fm.m.frame.state, statics, view), buildScene(lf.state, lf.statics, view)));
   if (!fm || fm.m.frame.hud.info.replace(/Phys Time.*?<br>/g, '') !== lf.hud.info.replace(/Phys Time.*?<br>/g, '')
-    || JSON.stringify(fm.m.frame.boat0) !== JSON.stringify(lf.boat0) || fm.m.frame.guides.length !== lf.guides.length) same = false;
+    || JSON.stringify(fm.m.frame.boat0) !== JSON.stringify(lf.boat0)) same = false;
   if (fm && fm.m.field) {
     fields++;
     check.quiet = true;
@@ -41,6 +46,8 @@ for (let t = 0; t < 60; t++) {
 console.log = quiet;
 const evs = msgs.length;
 check('worker frames match LocalHost for 60 ticks (scenario 7, held helm)', same);
+check('worker scene state builds the same scene as LocalHost', sceneMax === 0, 'max diff ' + sceneMax);
+check('worker sends statics once (not every frame)', staticsFrames === 1, 'frames with statics: ' + staticsFrames);
 check('field frames carry transferred RGBA buffers', fields > 0, 'fields=' + fields);
 send({ type: 'query', id: 2, q: { type: 'fieldVelocity', x: 0, y: 0 } });
 const q = msgs.find((x) => x.m.type === 'result' && x.m.id === 2);

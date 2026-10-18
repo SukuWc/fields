@@ -18,6 +18,7 @@ export class WorkerHost {
     this.dropped = 0;
     this.ticksSent = 0;
     this.lastFrame = null;
+    this.statics = null;
     this.info = null;
     this._listeners = [];
     this._frameListeners = [];
@@ -52,6 +53,10 @@ export class WorkerHost {
       case 'frame':
         this.inFlight--;
         if (m.field) this._applyField(m.field);
+        // statics only cross the worker boundary when they change; every
+        // delivered frame carries the current ones (as LocalHost frames do).
+        if (m.frame.statics) this.statics = m.frame.statics;
+        if (m.frame.state) m.frame.statics = this.statics;
         this.lastFrame = m.frame;
         for (const fn of this._frameListeners) fn(m.frame);
         if (this.inFlight === 0) { const w = this._idle; this._idle = []; for (const fn of w) fn(); }
