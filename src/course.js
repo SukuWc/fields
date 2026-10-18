@@ -657,13 +657,30 @@ function gateGuides(ends, centres, i, view, passed, nowMs) {
 // One line for the info panel: the mark (or gate) course progress is
 // waiting for, and the lap.
 export function courseText(progress) {
-  if (progress.waitingForStart) return 'Course: start first, then mark 1';
-  if (progress.courseComplete) return progress.course.finish ? 'Course: finish' : 'Course: complete';
-  const laps = Number.isFinite(progress.course.laps) ? '/' + progress.course.laps : '';
+  return courseTextOf(courseTextState(progress));
+}
+
+// What courseText says, as data (hud.js): w waiting for the start, done
+// course complete, fin has a finish, laps (null when looping), i target
+// index, gate / port flags for that element, lap.
+export function courseTextState(progress) {
+  if (progress.waitingForStart) return { w: 1 };
+  if (progress.courseComplete) return { done: 1, fin: progress.course.finish ? 1 : 0 };
   const i = progress.targetIndex;
-  if (isGate(progress.course.marks[i])) return 'Course: next gate ' + (i + 1) + ' · lap ' + progress.lap + laps;
-  const side = progress.course.sides[i] === PORT ? 'port' : 'starboard';
-  return 'Course: next mark ' + (i + 1) + ' (' + side + ') · lap ' + progress.lap + laps;
+  return {
+    i, lap: progress.lap,
+    laps: Number.isFinite(progress.course.laps) ? progress.course.laps : null,
+    gate: isGate(progress.course.marks[i]) ? 1 : 0,
+    port: progress.course.sides[i] === PORT ? 1 : 0,
+  };
+}
+
+export function courseTextOf(c) {
+  if (c.w) return 'Course: start first, then mark 1';
+  if (c.done) return c.fin ? 'Course: finish' : 'Course: complete';
+  const laps = c.laps !== null && c.laps !== undefined ? '/' + c.laps : '';
+  if (c.gate) return 'Course: next gate ' + (c.i + 1) + ' · lap ' + c.lap + laps;
+  return 'Course: next mark ' + (c.i + 1) + ' (' + (c.port ? 'port' : 'starboard') + ') · lap ' + c.lap + laps;
 }
 
 // Scenario 13 layout (wind from +Y): windward-leeward. Element 1 is a

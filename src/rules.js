@@ -629,6 +629,13 @@ function evaluateRule13(ctx) {
 // Short segment through the aftermost hull station, perpendicular to course.
 // Null if the hull or heading is missing.
 export function sternAbeamSegment(boat) {
+  const p = sternAbeamPoint(boat);
+  return p ? sternSegmentFromState(p) : null;
+}
+
+// The aftermost hull station's centre and the heading: [cx, cy, hullAngle]
+// (pair overlay state), or null.
+export function sternAbeamPoint(boat) {
   const poly = hullVerticesWorld(boat);
   const forward = headingForward(boat && boat.hull_angle);
   if (poly.length < 3 || !forward) return null;
@@ -653,6 +660,13 @@ export function sternAbeamSegment(boat) {
   if (n === 0) return null;
   cx /= n;
   cy /= n;
+  return [cx, cy, boat.hull_angle];
+}
+
+// The stern mark from sternAbeamPoint's [cx, cy, hullAngle].
+export function sternSegmentFromState(p) {
+  const cx = p[0], cy = p[1];
+  const forward = headingForward(p[2]);
   const px = -forward.y;
   const py = forward.x;
   return {
@@ -667,15 +681,20 @@ export function sternAbeamSegment(boat) {
 }
 
 function sternMarks(obligation) {
+  return sternPoints(obligation).map(sternSegmentFromState);
+}
+
+// Stern mark states ([cx, cy, hullAngle]) for Rules 11 and 12.
+function sternPoints(obligation) {
   if (!obligation) return [];
   if (obligation.rule === 'Rule 12') {
-    const mark = sternAbeamSegment(obligation.rightOfWay);
+    const mark = sternAbeamPoint(obligation.rightOfWay);
     return mark ? [mark] : [];
   }
   if (obligation.rule === 'Rule 11') {
     const marks = [];
-    const leeward = sternAbeamSegment(obligation.rightOfWay);
-    const windward = sternAbeamSegment(obligation.giveWay);
+    const leeward = sternAbeamPoint(obligation.rightOfWay);
+    const windward = sternAbeamPoint(obligation.giveWay);
     if (leeward) marks.push(leeward);
     if (windward) marks.push(windward);
     return marks;
@@ -844,33 +863,6 @@ export function acquisitionCause(boatA, boatB, prevA, prevB, prevRowId, nextRowI
   if (aClose > bClose + GAP_CLOSING_EPS_M) return boatA;
   if (bClose > aClose + GAP_CLOSING_EPS_M) return boatB;
   return null;
-}
-
-function rule15Overlay(obligation, blockedRule, progress) {
-  const row = obligation.rightOfWay;
-  const give = obligation.giveWay;
-  const mx = (row.x + give.x) / 2;
-  const my = (row.y + give.y) / 2;
-  return [
-    { type: 'rule', color: RIGHT_OF_WAY_COLOR, x1: mx, y1: my, x2: row.x, y2: row.y, z: 0.2 },
-    {
-      type: 'rule',
-      color: ROOM_OWED_COLOR,
-      stroke: ROOM_OWED_STROKE_M,
-      x1: mx, y1: my, x2: row.x, y2: row.y,
-      z: 0.22,
-    },
-    { type: 'rule', color: GIVE_WAY_COLOR, x1: mx, y1: my, x2: give.x, y2: give.y, z: 0.2 },
-    {
-      type: 'label',
-      text: 'Rule 15 (blocks ' + blockedRule + ')',
-      x: mx,
-      y: my,
-      rule15: true,
-      progress,
-    },
-    ...sternMarks(obligation),
-  ];
 }
 
 // Rule 15 keeps its own per-pair state: the previous step's right-of-way
@@ -1354,59 +1346,100 @@ export function evaluateSectionA(boatA, boatB, getWind) {
   };
 }
 
-// Highest layer first, so an inhibitor sits above the rule it blocks.
-// The legacy `text` on the guide stays the single-line label the checks read.
-function labelLinesFor(resolution) {
+// Rule names as short codes in the pair overlay state (anything not listed
+// travels as its own text).
+export const RULE_TEXT = {
+  10: 'Rule 10', 11: 'Rule 11', 12: 'Rule 12', 13: 'Rule 13', '13b': 'Rule 13 both',
+  15: 'Rule 15', 18: 'Rule 18.2 mark-room', BR: 'Boundary room',
+};
+const RULE_CODE = Object.fromEntries(Object.entries(RULE_TEXT).map(([k, v]) => [v, k]));
+export const ruleCode = (text) => (text in RULE_CODE ? RULE_CODE[text] : text);
+export const ruleText = (code) => (code in RULE_TEXT ? RULE_TEXT[code] : code);
+const ROLE_CODE = { inhibited: 'i', final: 'f', other: 'o' };
+const ROLE_TEXT = { i: 'inhibited', f: 'final', o: 'other' };
+
+// Label stack, highest layer first, so an inhibitor sits above the rule it
+// blocks: [[rule code, role code, id]].
+function labelLinesState(resolution) {
   const lines = [];
   const items = resolution.applicable || [];
   for (let i = items.length - 1; i >= 0; i--) {
     const item = items[i];
     const isFinal = !!(resolution.final && item.id === resolution.final.id && !item.inhibited);
-    lines.push({
-      text: item.id === '15' ? 'Rule 15' : item.rule,
-      role: item.inhibited ? 'inhibited' : (isFinal ? 'final' : 'other'),
-      id: item.id,
-    });
+    lines.push([ruleCode(item.id === '15' ? 'Rule 15' : item.rule), ROLE_CODE[item.inhibited ? 'inhibited' : (isFinal ? 'final' : 'other')], item.id]);
   }
   return lines;
 }
 
-function attachLabelStack(guides, resolution) {
-  const lines = labelLinesFor(resolution);
+const xy = (b) => [b.x, b.y];
+
+// Compact state of one pair's overlay (scene-state.js state.pair), or null:
+//   { k: 'b' (Rule 13, both tacking) | '15' | 'o' (one boat keeps clear),
+//     a, b: [x, y] (right-of-way, give-way; both boats for 'b'),
+//     r: rule code (label), bl, pr: blocked rule code and progress (15),
+//     sm: stern marks [[cx, cy, hullAngle]], ln: label stack lines }.
+// Positions are taken when the rules run (as the guides were).
+export function pairGuideState(resolution) {
+  const final = resolution.final;
+  if (!final) return null;
+  let p;
+  if (final.bothGiveWay) {
+    const boats = final.boats;
+    if (!boats || boats.length < 2) return null;
+    p = { k: 'b', a: xy(boats[0]), b: xy(boats[1]), r: ruleCode(final.rule) };
+  } else if (final.id === '15') {
+    const current = resolution.sectionA && resolution.sectionA.final;
+    if (!current || !final.rightOfWay || !final.giveWay) return null;
+    // Stern marks follow the rule she is sailing under now. The label names
+    // the rule she acquired right of way under, which is the blocked one.
+    p = { k: '15', a: xy(final.rightOfWay), b: xy(final.giveWay), bl: ruleCode(final.blockedRule), pr: final.progress,
+      sm: sternPoints({ rule: current.rule, rightOfWay: final.rightOfWay, giveWay: final.giveWay }) };
+  } else {
+    p = { k: 'o', a: xy(final.rightOfWay), b: xy(final.giveWay), r: ruleCode(final.rule),
+      sm: sternPoints({ rule: final.rule, rightOfWay: final.rightOfWay, giveWay: final.giveWay }) };
+  }
+  p.ln = labelLinesState(resolution);
+  return p;
+}
+
+// Guides of one pair overlay from pairGuideState (scene-build.js too).
+// Green runs from the midpoint to the right-of-way boat; red to the give-way
+// boat; Rule 15 adds the amber room-owed bar; cyan stern marks for Rules 11
+// and 12; Rule 13 with both boats tacking draws two red halves.
+export function pairGuidesFromState(p) {
+  const [ax, ay] = p.a, [bx, by] = p.b;
+  const mx = (ax + bx) / 2;
+  const my = (ay + by) / 2;
+  let guides;
+  if (p.k === 'b') {
+    guides = [
+      { type: 'rule', color: GIVE_WAY_COLOR, x1: mx, y1: my, x2: ax, y2: ay, z: 0.2 },
+      { type: 'rule', color: GIVE_WAY_COLOR, x1: mx, y1: my, x2: bx, y2: by, z: 0.2 },
+      { type: 'label', text: ruleText(p.r), x: mx, y: my },
+    ];
+  } else if (p.k === '15') {
+    guides = [
+      { type: 'rule', color: RIGHT_OF_WAY_COLOR, x1: mx, y1: my, x2: ax, y2: ay, z: 0.2 },
+      { type: 'rule', color: ROOM_OWED_COLOR, stroke: ROOM_OWED_STROKE_M, x1: mx, y1: my, x2: ax, y2: ay, z: 0.22 },
+      { type: 'rule', color: GIVE_WAY_COLOR, x1: mx, y1: my, x2: bx, y2: by, z: 0.2 },
+      { type: 'label', text: 'Rule 15 (blocks ' + ruleText(p.bl) + ')', x: mx, y: my, rule15: true, progress: p.pr },
+      ...(p.sm || []).map(sternSegmentFromState),
+    ];
+  } else {
+    guides = [
+      { type: 'rule', color: RIGHT_OF_WAY_COLOR, x1: mx, y1: my, x2: ax, y2: ay, z: 0.2 },
+      { type: 'rule', color: GIVE_WAY_COLOR, x1: mx, y1: my, x2: bx, y2: by, z: 0.2 },
+      { type: 'label', text: ruleText(p.r), x: mx, y: my },
+      ...(p.sm || []).map(sternSegmentFromState),
+    ];
+  }
+  const lines = p.ln.map(([r, o, id]) => ({ text: ruleText(r), role: ROLE_TEXT[o], id }));
   for (let i = 0; i < guides.length; i++) {
     if (guides[i].type !== 'label') continue;
     guides[i].lines = lines;
     break;
   }
   return guides;
-}
-
-function guidesFor(resolution) {
-  const final = resolution.final;
-  if (!final) return [];
-  let guides;
-  if (final.bothGiveWay) {
-    guides = bothGiveWayOverlay({ rule: final.rule, boats: final.boats });
-  } else if (final.id === '15') {
-    const current = resolution.sectionA && resolution.sectionA.final;
-    if (!current || !final.rightOfWay || !final.giveWay) return [];
-    // Stern marks follow the rule she is sailing under now. The label names
-    // the rule she acquired right of way under, which is the blocked one.
-    guides = rule15Overlay({
-      rule: current.rule,
-      rightOfWay: final.rightOfWay,
-      giveWay: final.giveWay,
-    }, final.blockedRule, final.progress);
-  } else if (final.id === '18') {
-    guides = obligationOverlay({ rule: final.rule, rightOfWay: final.rightOfWay, giveWay: final.giveWay });
-  } else {
-    guides = obligationOverlay({
-      rule: final.rule,
-      rightOfWay: final.rightOfWay,
-      giveWay: final.giveWay,
-    });
-  }
-  return attachLabelStack(guides, resolution);
 }
 
 function pairSlot(key) {
@@ -1452,7 +1485,10 @@ function evaluatePair(boatA, boatB, getWind, clearance, simTime, slot, markFor, 
   resolution.boatA = boatA;
   resolution.boatB = boatB;
   resolution.sectionA = ctx.sectionA;
-  resolution.guides = inRange ? guidesFor(resolution) : [];
+  // Overlay: compact state for the client (scene-state.js) and the guides
+  // built from it (the headless checks read those).
+  resolution.pairState = inRange ? pairGuideState(resolution) : null;
+  resolution.guides = resolution.pairState ? pairGuidesFromState(resolution.pairState) : [];
   return resolution;
 }
 
@@ -2046,10 +2082,20 @@ export function roomGuidesFromState(list, kind) {
 // "FAULT", "FAULT x2"; with the oldest pending penalty's reason when it has
 // one (mark touches: "FAULT · Rule 31 · touched mark 2").
 export function faultBadgeText(boat, count = pendingPenaltyCount(boat)) {
+  return faultText(count, pendingPenaltyLabel(boat));
+}
+
+// The badge text from the count and the oldest penalty's label (or null).
+export function faultText(count, label) {
   const base = count > 1 ? 'FAULT x' + count : 'FAULT';
+  return label ? base + ' · ' + label : base;
+}
+
+// Label of the oldest pending penalty ("Rule 31 · touched mark 2"), or null.
+export function pendingPenaltyLabel(boat) {
   const queue = R.pendingPenalties.get(boat);
   const oldest = queue && queue[0] && queue[0].incident;
-  return oldest && oldest.label ? base + ' · ' + oldest.label : base;
+  return oldest && oldest.label ? oldest.label : null;
 }
 
 // Reason of the oldest pending penalty ("Rule 31: touched mark 2"), or null.
@@ -2081,13 +2127,16 @@ export function penaltyGuideState(boats, nowMs) {
     if (!boat || !Number.isFinite(boat.x) || !Number.isFinite(boat.y)) continue;
     const c = pendingPenaltyCount(boat);
     const turn = boat.penalty_turn;
-    const e = { i, c, ft: c > 0 ? faultBadgeText(boat, c) : null, t: null, mt: null };
+    // lb: the oldest penalty's label (FAULT badge); mv: the penalty
+    // tack/gybe progress (penaltyManeuverView) while one is waiting.
+    const e = { i, c, lb: c > 0 ? pendingPenaltyLabel(boat) : null, t: null, mv: null };
     if (turn && Number.isFinite(turn.startHeading)) {
       e.t = { sh: turn.startHeading, pd: turn.progressDeg || 0, dir: turn.dir, left: Math.max(0, Math.ceil(penaltyAutopilotRemainingDeg(boat))) };
     } else if (c > 0) {
-      e.mt = penaltyManeuverText(penaltyManeuverView(boat)) || null;
+      const v = penaltyManeuverView(boat);
+      if (v && v.first) e.mv = { first: v.first, remainingS: v.remainingS };
     }
-    if (e.c > 0 || e.t || e.mt) out.boats.push(e);
+    if (e.c > 0 || e.t || e.mv) out.boats.push(e);
   }
   for (let k = R.penaltyCleared.length - 1; k >= 0; k--) {
     const flash = R.penaltyCleared[k];
@@ -2114,7 +2163,7 @@ export function penaltyGuidesFromState(s, boats) {
     const boat = { x: b.x, y: b.y, hull_angle: b.ha };
     if (e.c > 0) {
       const at = sternOffset(boat, 2.5);
-      guides.push({ type: 'label', badge: true, x: boat.x + at.x, y: boat.y + at.y, lines: [{ text: e.ft, role: 'badge', id: 'fault' }] });
+      guides.push({ type: 'label', badge: true, x: boat.x + at.x, y: boat.y + at.y, lines: [{ text: faultText(e.c, e.lb), role: 'badge', id: 'fault' }] });
     }
     const ahead = bowOffset(boat, 4.3);
     if (e.t) {
@@ -2125,8 +2174,9 @@ export function penaltyGuidesFromState(s, boats) {
       guides.push({ type: 'label', badge: true, x: boat.x + ahead.x, y: boat.y + ahead.y, lines: [{ text: (e.t.dir < 0 ? 'CW ' : 'CCW ') + e.t.left + '°', role: 'turn', id: 'turn' }] });
       continue;
     }
-    if (!e.mt) continue;
-    guides.push({ type: 'label', badge: true, x: boat.x + ahead.x, y: boat.y + ahead.y, lines: [{ text: e.mt, role: 'turn', id: 'turn' }] });
+    const mt = e.mv ? penaltyManeuverText(e.mv) : null;
+    if (!mt) continue;
+    guides.push({ type: 'label', badge: true, x: boat.x + ahead.x, y: boat.y + ahead.y, lines: [{ text: mt, role: 'turn', id: 'turn' }] });
   }
   for (const f of s.cleared) {
     const b = boats[f.i];

@@ -2,6 +2,7 @@
 // independently (keys apply only to the own boat, never scenario boats),
 // and a disconnect removes the client's boat. Plus the Sim commands
 // spawnBoat / removeBoat on their own (local/worker modes are unchanged).
+import { hudFromState } from '../src/hud.js';
 import { buildScene } from '../src/scene-build.js';
 import { WebSocket } from 'ws';
 import { startServer } from '../apps/server/index.js';
@@ -61,7 +62,7 @@ const tex = () => ({ image: { data: new Uint8Array(0) } });
   const pos = (h, id) => h.lastFrame.spawned.find((b) => b.id === id);
   check('each client spawns its own boat (server assigns ids)', ra.id && rb.id && ra.id !== rb.id && ownA.at(-1)[0].id === ra.id && ownB.at(-1)[0].id === rb.id);
   check('both clients see both spawned boats', A.lastFrame.spawned.length === 2 && B.lastFrame.spawned.length === 2);
-  const ap = (h, name) => (h.lastFrame.hud.info.match(/Autopilot(\w+)/) || [])[1];
+  const ap = (h, name) => (hudFromState(h.lastFrame.state.hud).info.match(/Autopilot(\w+)/) || [])[1];
   // A tacks "boat 0" (its own boat) with a one-shot command: only A's
   // autopilot target flips sign.
   const core = srv.rooms.get('own').core;

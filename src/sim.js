@@ -369,6 +369,7 @@ export class Sim {
         penaltyTurn: steered ? { dir: steered.dir, remainingDeg: penaltyAutopilotRemainingDeg(b) } : null,
         reason: pending > 0 ? pendingPenaltyReason(b) : null,
         maneuvers: pending > 0 ? penaltyManeuverText(penaltyManeuverView(b)) : null,
+        maneuverView: pending > 0 ? penaltyManeuverView(b) : null,
       });
     }
 

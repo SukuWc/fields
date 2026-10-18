@@ -5,6 +5,7 @@
 //   slot (no faster than 30 Hz), slow ticks go out when done (no catch-up
 //   burst afterwards);
 // - a client that falls behind delivers only the newest queued frame.
+import { hudFromState } from '../src/hud.js';
 import { WebSocket } from 'ws';
 import { startServer } from '../apps/server/index.js';
 import { RemoteHost } from '../src/remote-host.js';
@@ -54,8 +55,8 @@ const tiny = { mapW: 20, mapH: 20, simRes: '1' };
   const B = new RemoteHost(url, tiny, tex(), { WebSocketImpl: WebSocket });
   await B.ready;
   const fa = new Map(), fb = new Map();
-  A.onFrameArrival((f) => fa.set(f.tick, JSON.stringify([f.boat0, f.hud && f.hud.info])));
-  B.onFrameArrival((f) => fb.set(f.tick, JSON.stringify([f.boat0, f.hud && f.hud.info])));
+  A.onFrameArrival((f) => fa.set(f.tick, JSON.stringify([f.boat0, f.state && hudFromState(f.state.hud).info])));
+  B.onFrameArrival((f) => fb.set(f.tick, JSON.stringify([f.boat0, f.state && hudFromState(f.state.hud).info])));
   await sleep(1000);
   A.terminate(); B.terminate();
   const keys = [...fa.keys()].filter((k) => fb.has(k));

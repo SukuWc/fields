@@ -70,11 +70,11 @@ Room-wide: a scenario restart or a settings change from any client applies to ev
 
 ## Frames: compact state
 
-A `frame` carries the HUD text and a compact scene `state` (`src/scene-state.js`): per boat position, body angle, hull angle, AWA, true wind direction, autopilot, rudder, drawn boom angles, sail flap, forces (and the wind grid while the room view shows fields); mark positions; start / course / finish / boundary state (sequence clock and flags, next mark, rounded marks, finish labels); rule overlays (mark and boundary room badges, contacts, mark touches, penalties); the refinement domains (rectangle, disk, mask as base-36 run lengths); and the transforms of moving bodies. Every client builds its guides and body outlines from it with `src/scene-build.js` `buildScene(state, statics, view)`, the same code the local and worker pages use.
+A `frame` carries a compact scene `state` (`src/scene-state.js`): per boat position, body angle, hull angle, AWA, true wind direction, autopilot, rudder, drawn boom angles, sail flap, forces (and the wind grid while the room view shows fields); mark positions; start / course / finish / boundary state (sequence clock and flags, next mark, rounded marks, finish labels); rule overlays (mark and boundary room badges, contacts, mark touches, penalties, and the two-boat encounter overlays as `rules.js` `pairGuideState`: kind, the two boat positions, rule codes, Rule 15 progress, stern-mark points, label stack); the readout / HUD values (`state.hud`, `src/hud.js`: telemetry, start sequence clock and signal id, course progress, leaderboard rows, per-boat rules status); the refinement domains (rectangle, disk, mask as base-36 run lengths); and the transforms of moving bodies. Every client builds its guides, body outlines and the readout / start HUD / leaderboard panels from it with `src/scene-build.js` `buildScene(state, statics, view)`, the same code the local and worker pages use.
 
 Statics (boat hull/rudder/sail numbers and names, body shapes, mark anchors, course, start and finish layout, boundary, lattice size) are not in frames. The room sends `{ type: 'statics', sv, statics }` to a client before the first frame it needs them for: on join, and to everyone again when they change (restart, a spawned or removed boat). `state.sv` names the version a frame was built against. Numbers in server JSON are rounded to 1e-4 (multiples of 1/4096 such as cell sizes are kept exact); the built scene stays within 1e-3 m of the local one (`test/scene-state.test.mjs`).
 
-Left as host-built geometry: the rule-resolver pair overlays (`state.pair`, only while two boats are in an encounter).
+Nothing is sent as ready-made geometry or HTML. Strings left in the state are data: incident labels and reasons ("Rule 31 · touched mark 2"), room bases ("east boundary"), rule names that have no short code. The HUD values, penalty badges and finish labels are exempt from the 1e-4 rounding (`host-protocol.js` `markExact`), so their text reads the same in every mode.
 
 Measured (scenario 0, 100 × 200 m, 4f, field off, text bytes one RemoteHost receives from an in-process server, 8 s windows):
 
@@ -86,3 +86,13 @@ Measured (scenario 0, 100 × 200 m, 4f, field off, text bytes one RemoteHost rec
 | 3 boats, B/s (7.5–8.4 frames/s) | 780 139 | 41 928 |
 
 Statics: 700 B (1 boat), 1 202 B (3 boats), once per change. The biggest scenario frames are now ~8 KB (scenario 18, four boats; was ~138 KB).
+
+Client-built HUD and pair overlays (frame bytes per tick, lockstep room, ticks 30–180, scenario 18 ticks 30–450, 4f; before = the HUD as HTML strings and pair overlays as guide records):
+
+| | before | after | HUD part | pair part (frames with encounters) |
+|---|---|---|---|---|
+| scenario 0, 1 boat | 1 864 | 1 778 | 277 → 191 | – |
+| scenario 0, 3 boats | 5 850 | 5 165 | 329 → 244 | 855 → 256 |
+| scenario 18, four boats | 8 309 | 6 813 | 345 → 251 | 2 012 → 610 |
+
+Telemetry values the readout floors travel floored (whole units or tenths, as integers); everything else in `state.hud` is exact.

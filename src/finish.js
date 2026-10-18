@@ -231,8 +231,8 @@ export function finishGuideState(course, progress, results, boats, clock) {
       if (!(clock - e.finishTime <= FINISH_LABEL_S)) continue;
       const boat = boats ? boats[e.index] : e.boat;
       if (!boat) continue;
-      const text = (e.dsq ? 'Finished · DSQ' : 'Finished P' + e.position) + (e.unserved.length ? ' · ' + penaltyNote(e) : '');
-      labels.push({ x: boat.x, y: boat.y, text, turn: e.unserved.length ? 1 : 0 });
+      // The result as data; finishGuidesFromState writes the text.
+      labels.push({ x: boat.x, y: boat.y, dsq: e.dsq ? 1 : 0, position: e.position, unserved: e.unserved.slice(), penaltyS: e.penaltyS });
     }
   }
   return { next, labels };
@@ -252,7 +252,8 @@ export function finishGuidesFromState(line, s, nowMs = 0) {
   const m = line.mid;
   g.push({ type: 'label', badge: true, x: m.x, y: m.y + 1.6, lines: [{ text: next ? 'NEXT FINISH' : 'FINISH', role: next ? 'next' : 'markno', id: 'finish' }] });
   for (const l of s.labels) {
-    g.push({ type: 'label', badge: true, x: l.x, y: l.y + 3.3, lines: [{ text: l.text, role: l.turn ? 'turn' : 'cleared', id: 'fin' }] });
+    const text = (l.dsq ? 'Finished · DSQ' : 'Finished P' + l.position) + (l.unserved.length ? ' · ' + penaltyNote(l) : '');
+    g.push({ type: 'label', badge: true, x: l.x, y: l.y + 3.3, lines: [{ text, role: l.unserved.length ? 'turn' : 'cleared', id: 'fin' }] });
   }
   return g;
 }

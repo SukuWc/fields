@@ -9,14 +9,15 @@
 //
 // sceneState(sim, rec, view, nowMs) → state:
 //   t      host clock (ms) for pulses and flash ages
+//   hud    readout / HUD values (hud.js hudState; marked exact: no rounding)
 //   boats  per racing boat: Boat.renderState (boat-draw.js)
 //   mk     mark buoy positions [[x, y], ...] (anchors in statics.marks)
 //   start  startGuideState (start.js) for boat 0
 //   course courseGuideState (course.js) for boat 0
 //   finish finishGuideState (finish.js)
 //   br, mr boundary-room / mark-room badges (rules.js roomGuideState)
-//   pair   Section A / Rule 15 / 18 overlays from the rule resolver: built
-//          host-side by the rules engine (small, only during encounters)
+//   pair   rule-resolver pair overlays: [rules.js pairGuideState] (only
+//          during encounters)
 //   mt, cf mark-touch and contact flashes ([{ ..., age }])
 //   pen    penaltyGuideState (rules.js)
 //   amr    refinement domains (outline only): { mode, d: [domain] } with
@@ -37,6 +38,8 @@ import { courseStatics, courseGuideState } from './course.js';
 import { finishLineState, finishGuideState } from './finish.js';
 import { roomGuideState, contactFlashState, penaltyGuideState } from './rules.js';
 import { markTouchState } from './mark-touch.js';
+import { hudState } from './hud.js';
+import { markExact } from './host-protocol.js';
 
 // Mask (Uint8Array, refined = 1) → run lengths, alternating starting with
 // unrefined, base 36, comma separated.
@@ -128,6 +131,7 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
   const map = sim.map, bm = sim.bm;
   const racing = sim.players;
   const s = { t: nowMs, boats: racing.map((b) => b.renderState(view)) };
+  s.hud = markExact(hudState(sim, rec));
   if (sim.marks.length) s.mk = sim.marks.map((m) => { const p = m.physics_model.getPosition(); return [p.x, p.y]; });
   const seq = sim.startSequence;
   if (seq) s.start = startGuideState(seq, racing[0]);
@@ -141,14 +145,16 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
   const mr = roomGuideState(res, racing, 'markRoom');
   if (mr.length) s.mr = mr;
   const pair = [];
-  for (let i = 0; i < res.length; i++) if (res[i].guides && res[i].guides.length) pair.push(...res[i].guides);
+  for (let i = 0; i < res.length; i++) if (res[i].pairState) pair.push(res[i].pairState);
   if (pair.length) s.pair = pair;
   const mt = markTouchState(nowMs);
   if (mt.length) s.mt = mt;
   const cf = contactFlashState(nowMs);
   if (cf.length) s.cf = cf;
   const pen = penaltyGuideState(racing, nowMs);
-  if (pen.boats.length || pen.cleared.length) s.pen = pen;
+  // Penalty badges and finish labels carry numbers that end up as text.
+  if (pen.boats.length || pen.cleared.length) s.pen = markExact(pen);
+  if (s.finish) markExact(s.finish.labels);
   if (!map.devMode) s.amr = { mode: bm.amrMode, d: bm.domains.map(domainState) };
   else {
     const wind = map.get_wind(0, 0);

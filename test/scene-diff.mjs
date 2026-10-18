@@ -17,3 +17,7 @@ export function sceneDiff(a, b) {
   }
   return a === b ? 0 : Infinity;
 }
+
+// The drawn part of a built scene (the HUD carries wall-clock Phys Time
+// values, so two hosts' HUDs are compared as text with those stripped).
+export const geom = (scene) => ({ guides: scene.guides, bodies: scene.bodies });
