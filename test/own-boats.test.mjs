@@ -2,6 +2,7 @@
 // independently (keys apply only to the own boat, never scenario boats),
 // and a disconnect removes the client's boat. Plus the Sim commands
 // spawnBoat / removeBoat on their own (local/worker modes are unchanged).
+import { buildScene } from '../src/scene-build.js';
 import { WebSocket } from 'ws';
 import { startServer } from '../apps/server/index.js';
 import { RemoteHost } from '../src/remote-host.js';
@@ -28,7 +29,7 @@ const tex = () => ({ image: { data: new Uint8Array(0) } });
   check('spawnBoat adds boats with ids, clear of each other and boat 0',
     sim.players.length === 3 && a.id !== b.id && d(a, b) >= 9 && d(a, sim.players[0]) >= 9 && d(b, sim.players[0]) >= 9, JSON.stringify([a, b]));
   const f = h.tick({ dt: 1 / 30, held: [], present: true, view });
-  check('frame lists spawned boats; name badges drawn', f.spawned.length === 2 && f.guides.some((g) => g.type === 'label' && g.lines[0].text === 'Ann'));
+  check('frame lists spawned boats; name badges drawn', f.spawned.length === 2 && buildScene(f.state, f.statics, view).guides.some((g) => g.type === 'label' && g.lines[0].text === 'Ann'));
   check('own colour on the hull outline', sim.players[1].physics_model.render.stroke === 0xd81b60);
   check('removeBoat removes only that boat', h.commandSync({ type: 'removeBoat', id: a.id }) === true && sim.players.length === 2 && sim.players[1].spawnId === b.id);
   for (let t = 0; t < 30; t++) h.tick({ dt: 1 / 30, held: [], present: true, view });

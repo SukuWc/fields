@@ -32,7 +32,7 @@ Params equal to the build default are removed from the URL. If the server can't 
 
 ## Protocol
 
-`src/host-protocol.js` is shared with the worker. It uses JSON text messages: `init`, `command`/`query` → `result`, `event`, `frame`, `input` (held keys + camera, sent only when they change), `tick` in lockstep, and `field` (`{ on, plotType, contrastExp }`: whether this client shows the field and which plot). Field data is a binary field grid message (layout in `src/fieldPainter.js`, above `encodeFieldGrids`).
+`src/host-protocol.js` is shared with the worker. It uses JSON text messages: `init`, `command`/`query` → `result`, `event`, `frame`, `statics`, `input` (held keys + camera, sent only when they change), `tick` in lockstep, and `field` (`{ on, plotType, contrastExp }`: whether this client shows the field and which plot). Field data is a binary field grid message (layout in `src/fieldPainter.js`, above `encodeFieldGrids`).
 
 ## Field streaming
 
@@ -40,7 +40,7 @@ Params equal to the build default are removed from the URL. If the server can't 
 - **One byte per cell.** The value is the selected plot's palette index (the one local mode would use, clamped to the palette) quantized to 0–253. 254 = barrier, 255 = hidden. The header carries plotType and `scale`/`offset`/`base`, so `value = base + (byte/253 − offset)/scale` gives rho, ux, uy, speed or curl back (`decodeFieldValue`).
 - **Painted on the client.** `RemoteHost` decodes it and `FieldPainter.paintGrids` paints it into the page's texture with the local palette, texture size and layering. Against a local paint of the same lattice the difference is at most one palette step (max channel difference 3 of 255 on scenario 0; `test/field-grids.test.mjs`).
 - **Only to clients that show it.** The page sends `field` when its **Show field (server)** box (server mode only, `?field_plane=0`) or dev mode changes, and the plot with the `plot` command. Plot options are per client. When a field message is due, the room encodes the lattice once per distinct plot among the clients showing the field and sends it to those clients only. If nobody shows it, or dev mode is on, nothing is encoded. New clients start with the field off until they ask.
-- **Size** (scenario 0, 100 × 200 m, 4f): 6 grids, 22 211 B per message with one boat (the old flattened RGBA image: 80 008 B at 1 m/texel, missing the fine levels). With three boats: 63 979 B. Encoding takes ~0.5–2.5 ms. Compression and delta frames are a later step. The per-frame JSON (`frame`, ~40 KB with bodies, guides and HUD at ~25 frames/s) is now by far the largest part of the traffic.
+- **Size** (scenario 0, 100 × 200 m, 4f): 6 grids, 22 211 B per message with one boat (the old flattened RGBA image: 80 008 B at 1 m/texel, missing the fine levels). With three boats: 63 979 B. Encoding takes ~0.5–2.5 ms. Compression and delta frames are a later step. The per-frame JSON used to be ~40 KB (bodies, guides and HUD); see Frames below.
 
 ## Frame clock and broadcast
 
@@ -67,3 +67,22 @@ In a remote room, the settings panel (the ☰ menu on phones) shows a name field
 **Leave** (`removeBoat`, own boats only) or closing the page removes the boat. A client that hasn't joined still drives scenario boats 0/1 as before.
 
 Room-wide: a scenario restart or a settings change from any client applies to everyone, and a restart removes every player boat (clients get `ownBoats: []` and can join again). The readout panel shows the scenario's telemetry boat, not necessarily your own.
+
+## Frames: compact state
+
+A `frame` carries the HUD text and a compact scene `state` (`src/scene-state.js`): per boat position, body angle, hull angle, AWA, true wind direction, autopilot, rudder, drawn boom angles, sail flap, forces (and the wind grid while the room view shows fields); mark positions; start / course / finish / boundary state (sequence clock and flags, next mark, rounded marks, finish labels); rule overlays (mark and boundary room badges, contacts, mark touches, penalties); the refinement domains (rectangle, disk, mask as base-36 run lengths); and the transforms of moving bodies. Every client builds its guides and body outlines from it with `src/scene-build.js` `buildScene(state, statics, view)`, the same code the local and worker pages use.
+
+Statics (boat hull/rudder/sail numbers and names, body shapes, mark anchors, course, start and finish layout, boundary, lattice size) are not in frames. The room sends `{ type: 'statics', sv, statics }` to a client before the first frame it needs them for: on join, and to everyone again when they change (restart, a spawned or removed boat). `state.sv` names the version a frame was built against. Numbers in server JSON are rounded to 1e-4 (multiples of 1/4096 such as cell sizes are kept exact); the built scene stays within 1e-3 m of the local one (`test/scene-state.test.mjs`).
+
+Left as host-built geometry: the rule-resolver pair overlays (`state.pair`, only while two boats are in an encounter).
+
+Measured (scenario 0, 100 × 200 m, 4f, field off, text bytes one RemoteHost receives from an in-process server, 8 s windows):
+
+| | before | after |
+|---|---|---|
+| 1 boat, bytes per frame | 40 889 | 1 771 |
+| 1 boat, B/s (24–26 frames/s) | 984 523 | 45 964 |
+| 3 boats, bytes per frame | 104 306 | 5 010 |
+| 3 boats, B/s (7.5–8.4 frames/s) | 780 139 | 41 928 |
+
+Statics: 700 B (1 boat), 1 202 B (3 boats), once per change. The biggest scenario frames are now ~8 KB (scenario 18, four boats; was ~138 KB).

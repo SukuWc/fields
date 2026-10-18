@@ -211,29 +211,48 @@ export function resultsHtml(results) {
 // boat 0's next step), "FINISH" / "NEXT FINISH" label, and a "Finished P1"
 // badge on each boat for FINISH_LABEL_S after she finishes.
 export function finishGuides(course, progress, results, boats, clock, nowMs = 0) {
-  const g = [];
   const line = course && course.finish;
-  if (!line) return g;
+  if (!line) return [];
+  return finishGuidesFromState(finishLineState(line), finishGuideState(course, progress, results, boats, clock), nowMs);
+}
+
+// The finish line as plain data.
+export function finishLineState(line) {
+  return { a: line.a, b: line.b, len: line.len, tx: line.tx, ty: line.ty, mid: line.mid };
+}
+
+// What finishGuides needs this tick (scene-state.js): whether the finish is
+// next, and the "Finished" badges with their boat positions.
+export function finishGuideState(course, progress, results, boats, clock) {
   const next = !!progress && progress.finishNext && !(results && results.isFinished(progress.boat));
-  const a = line.a;
-  const b = line.b;
-  const len = line.len;
-  const pulse = 0.5 + 0.5 * Math.sin(nowMs / 250);
-  const color = next ? FINISH_NEXT_COLOR : FINISH_LINE_COLOR;
-  for (let s = 0; s < len; s += 2) {
-    const e = Math.min(len, s + 1.2);
-    g.push({ type: 'guide', color, opacity: next ? 0.6 + 0.4 * pulse : 0.55, x1: a.x + line.tx * s, y1: a.y + line.ty * s, x2: a.x + line.tx * e, y2: a.y + line.ty * e });
-  }
-  const m = line.mid;
-  g.push({ type: 'label', badge: true, x: m.x, y: m.y + 1.6, lines: [{ text: next ? 'NEXT FINISH' : 'FINISH', role: next ? 'next' : 'markno', id: 'finish' }] });
+  const labels = [];
   if (results) {
     for (const e of results.entries) {
       if (!(clock - e.finishTime <= FINISH_LABEL_S)) continue;
       const boat = boats ? boats[e.index] : e.boat;
       if (!boat) continue;
       const text = (e.dsq ? 'Finished · DSQ' : 'Finished P' + e.position) + (e.unserved.length ? ' · ' + penaltyNote(e) : '');
-      g.push({ type: 'label', badge: true, x: boat.x, y: boat.y + 3.3, lines: [{ text, role: e.unserved.length ? 'turn' : 'cleared', id: 'fin' }] });
+      labels.push({ x: boat.x, y: boat.y, text, turn: e.unserved.length ? 1 : 0 });
     }
+  }
+  return { next, labels };
+}
+
+export function finishGuidesFromState(line, s, nowMs = 0) {
+  const g = [];
+  const next = s.next;
+  const a = line.a;
+  const len = line.len;
+  const pulse = 0.5 + 0.5 * Math.sin(nowMs / 250);
+  const color = next ? FINISH_NEXT_COLOR : FINISH_LINE_COLOR;
+  for (let k = 0; k < len; k += 2) {
+    const e = Math.min(len, k + 1.2);
+    g.push({ type: 'guide', color, opacity: next ? 0.6 + 0.4 * pulse : 0.55, x1: a.x + line.tx * k, y1: a.y + line.ty * k, x2: a.x + line.tx * e, y2: a.y + line.ty * e });
+  }
+  const m = line.mid;
+  g.push({ type: 'label', badge: true, x: m.x, y: m.y + 1.6, lines: [{ text: next ? 'NEXT FINISH' : 'FINISH', role: next ? 'next' : 'markno', id: 'finish' }] });
+  for (const l of s.labels) {
+    g.push({ type: 'label', badge: true, x: l.x, y: l.y + 3.3, lines: [{ text: l.text, role: l.turn ? 'turn' : 'cleared', id: 'fin' }] });
   }
   return g;
 }

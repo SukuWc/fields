@@ -30,7 +30,8 @@ import { FieldPainter } from './fieldPainter.js';
 import { Map } from './map.js';
 import { FluidWind, ConstantWind } from './wind.js';
 import { Sim } from './sim.js';
-import { presentStep, bodyOutlines, perfStats } from './present.js';
+import { presentHud, bodyOutlines, perfStats } from './present.js';
+import { sceneFrame } from './scene-state.js';
 
 // The Sim and everything around it that a host runs (shared by LocalHost and
 // the worker). texture: the painter target, a three.js DataTexture or a plain
@@ -49,6 +50,9 @@ export class SimCore {
     this.map = map;
     this.sim = new Sim(map);
     this._fixtureIds = new WeakMap();
+    this.statics = null;
+    this.staticsVersion = 0;
+    this._staticsKey = '';
     // The constructor only took the root resolution; the mode's explicit
     // stepsPerFrame (fast-wind defaults such as '4f') applies before anything runs.
     this.sim.command({ type: 'simRes', mode: simRes });
@@ -92,7 +96,12 @@ export class SimCore {
 
   // world.step(dt) (when dt is given) and one sim.step. Returns the frame:
   //   { stepped, fieldSteps, fieldMs, fieldReady, devMode, boat0: { x, y } | null,
-  //     hud?, guides?, bodies? (present), perf? (setPerf) }
+  //     hud?, state? (present), statics? (present, when they changed),
+  //     perf? (setPerf) }
+  // state: compact scene state, statics: shapes and layouts
+  // (scene-state.js); the client builds guides and body outlines from them
+  // (scene-build.js). statics only rides on the frame where it changed
+  // (this.statics always holds the current one, version state.sv).
   // fieldReady: the painter wrote a new texture this pass.
   tick({ dt, held, present, view }) {
     const { sim, bm, map } = this;
@@ -107,11 +116,17 @@ export class SimCore {
       spawned: sim.players.filter((b) => b.spawnId).map((b) => ({ id: b.spawnId, x: b.x, y: b.y, name: b.spawnName })),
     };
     if (present) {
-      const hud = presentStep(sim, rec, view);
-      frame.guides = hud.guides;
-      hud.guides = undefined;
-      frame.hud = hud;
-      frame.bodies = this.bodies();
+      const { state, statics } = sceneFrame(sim, rec, view, performance.now(), this._fixtureIds);
+      frame.hud = presentHud(sim, rec);
+      const key = JSON.stringify(statics);
+      if (key !== this._staticsKey) {
+        this._staticsKey = key;
+        this.statics = statics;
+        this.staticsVersion++;
+        frame.statics = statics;
+      }
+      state.sv = this.staticsVersion;
+      frame.state = state;
     }
     if (this.perf) frame.perf = perfStats(bm, map);
     if (!map.devMode && bm.step_ready) {
@@ -153,6 +168,8 @@ export class LocalHost {
 
   tick(req) {
     const frame = this.core.tick(req);
+    // The client reads the current statics from every frame (scene-build.js).
+    if (frame.state) frame.statics = this.core.statics;
     this.lastFrame = frame;
     for (const fn of this._frameListeners) fn(frame);
     return frame;
