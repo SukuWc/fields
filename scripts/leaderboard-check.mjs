@@ -139,7 +139,7 @@ const boat = (x, y) => ({ x, y, hull_angle: 0, hull: [{ x, y }], bow: { x, y } }
   R.resetContacts();
   resetMarkTouches();
   const DT = 1 / 30;
-  const m = new Map(75, 75, 90, 15, null);
+  const m = new Map(75, 75, 90, 4.5, null);
   m.physics_model_init();
   m.setDevMode(true);
   const { boats, marks, seq, course, results, leaderboard, bots } = setupTestRace(m);

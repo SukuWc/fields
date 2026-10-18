@@ -82,8 +82,9 @@ function maxDeviation(bm, ux0, uy0) {
 	return { dr, du };
 }
 
+// speed: old UI wind units (× 0.3 = m/s, the Boltzmann input).
 function make(w, h, speed) {
-	return new Boltzmann(w, h, 1, 90, speed, undefined, 1);
+	return new Boltzmann(w, h, 1, 90, speed * 0.3, undefined, 1);
 }
 
 // --- 1. Stored macros match populations after a step ---
@@ -346,8 +347,8 @@ function enclosedHole(domain) {
 	const { Map } = await import('../src/map.js');
 	const { Boat } = await import('../src/boat.js');
 	const { FluidWind, ConstantWind } = await import('../src/wind.js');
-	const bm = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
-	const map = new Map(75, 75, 90, 15, bm, new FluidWind(bm), new ConstantWind(90, 15));
+	const bm = new Boltzmann(75, 75, 1, 90, 4.5, undefined, 1);
+	const map = new Map(75, 75, 90, 4.5, bm, new FluidWind(bm), new ConstantWind(90, 4.5));
 	map.physics_model_init();
 	const boat = new Boat(map, 10, -9, 5 * Math.PI / 4);
 	let bmMs = 0;
@@ -605,7 +606,7 @@ function enclosedHole(domain) {
 {
 	const uy0 = -0.15;
 	function impulse(levels) {
-		const bm = new Boltzmann(48, 48, 1, 90, 15, undefined, 1);
+		const bm = new Boltzmann(48, 48, 1, 90, 4.5, undefined, 1);
 		if (levels >= 1) {
 			bm.addDomain(12, 12, 36, 36);
 			bm.domains[0].setDisk(24, 24, 8);
@@ -715,7 +716,7 @@ function enclosedHole(domain) {
 		d2.domains[0].setDisk(f2x, f2y, 16);
 	}
 	function sailJy(setup) {
-		const bm = new Boltzmann(64, 64, 1, 90, 15, undefined, 1);
+		const bm = new Boltzmann(64, 64, 1, 90, 4.5, undefined, 1);
 		setup(bm);
 		const j0 = physical(bm);
 		bm.apply_energy_segment(-6, 0, 6, 0, 0, 0.12);
@@ -745,8 +746,8 @@ function enclosedHole(domain) {
 	const { Map } = await import('../src/map.js');
 	const { Boat } = await import('../src/boat.js');
 	const { FluidWind, ConstantWind } = await import('../src/wind.js');
-	const bm = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
-	const map = new Map(75, 75, 90, 15, bm, new FluidWind(bm), new ConstantWind(90, 15));
+	const bm = new Boltzmann(75, 75, 1, 90, 4.5, undefined, 1);
+	const map = new Map(75, 75, 90, 4.5, bm, new FluidWind(bm), new ConstantWind(90, 4.5));
 	map.physics_model_init();
 	const boat = new Boat(map, 10, -9, 5 * Math.PI / 4);
 	// Same initial window main.js would place on the boat at (10, −9): the sail
@@ -834,8 +835,8 @@ function enclosedHole(domain) {
 		return { range: maxS - minS, minS, maxS, peak, sum, n };
 	}
 	function sailRun(refine) {
-		const bm = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
-		const map = new Map(75, 75, 90, 15, bm, new FluidWind(bm), new ConstantWind(90, 15));
+		const bm = new Boltzmann(75, 75, 1, 90, 4.5, undefined, 1);
+		const map = new Map(75, 75, 90, 4.5, bm, new FluidWind(bm), new ConstantWind(90, 4.5));
 		map.physics_model_init();
 		const boat = new Boat(map, 10, -9, 5 * Math.PI / 4);
 		const N = 160;
@@ -1254,8 +1255,8 @@ function maskShare(a, b) {
 	const { FluidWind, ConstantWind } = await import('../src/wind.js');
 
 	function fleet(starts, frames) {
-		const bm = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
-		const map = new Map(75, 75, 90, 15, bm, new FluidWind(bm), new ConstantWind(90, 15));
+		const bm = new Boltzmann(75, 75, 1, 90, 4.5, undefined, 1);
+		const map = new Map(75, 75, 90, 4.5, bm, new FluidWind(bm), new ConstantWind(90, 4.5));
 		map.physics_model_init();
 		const boats = starts.map(([x, y, h]) => new Boat(map, x, y, h));
 		let maxOff = 0;
@@ -1377,7 +1378,7 @@ function maskShare(a, b) {
 	const side = 24 * os;
 	const data = new Uint8Array(side * side * 4);
 	const texture = { image: { data } };
-	const bm = new Boltzmann(24, 24, 1, 90, 15, new FieldPainter(texture, os));
+	const bm = new Boltzmann(24, 24, 1, 90, 4.5, new FieldPainter(texture, os));
 	bm.addDomain(4, 4, 20, 20);
 	const l1 = bm.domains[0];
 	l1.setDisk(12, 12, 6);
@@ -1444,8 +1445,8 @@ function maskShare(a, b) {
 	const { Map } = await import('../src/map.js');
 	const { Boat } = await import('../src/boat.js');
 	const { FluidWind, ConstantWind } = await import('../src/wind.js');
-	const live = new Boltzmann(75, 75, 1, 90, 15, undefined, 1);
-	const map = new Map(75, 75, 90, 15, live, new FluidWind(live), new ConstantWind(90, 15));
+	const live = new Boltzmann(75, 75, 1, 90, 4.5, undefined, 1);
+	const map = new Map(75, 75, 90, 4.5, live, new FluidWind(live), new ConstantWind(90, 4.5));
 	map.physics_model_init();
 	const boat = new Boat(map, 10, -9, 5 * Math.PI / 4);
 	for (let frame = 0; frame < 80; frame++) {

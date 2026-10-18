@@ -31,7 +31,7 @@ function assert(cond, message) {
 
 const DT = 1 / 30;
 const D = Math.PI / 180;
-const map = new Map(75, 75, 90, 15, null);
+const map = new Map(75, 75, 90, 4.5, null);
 map.physics_model_init();
 map.setDevMode(true);
 const getWind = (x, y) => map.get_wind(x, y);
@@ -220,7 +220,7 @@ const RUN = -10 * D; // heading 10° west of south: starboard run (TWA ≈ −17
 {
   fresh();
   const L = MARK_ROOM_LAYOUT;
-  const m2 = new Map(75, 75, 90, 15, null);
+  const m2 = new Map(75, 75, 90, 4.5, null);
   m2.physics_model_init();
   m2.setDevMode(true);
   const boats = [L.inside, L.outside].map((p) => {

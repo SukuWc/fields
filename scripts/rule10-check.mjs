@@ -30,7 +30,7 @@ function assert(cond, message) {
   }
 }
 
-const wind = new ConstantWind(90, 15);
+const wind = new ConstantWind(90, 4.5);
 assert(Math.abs(wind.getWind(0, 0).direction - 90) < 1e-6, "constant wind from +Y is 90°");
 
 // Scenario 2 headings, wind from +Y. Port is 3π/4, starboard is 5π/4.

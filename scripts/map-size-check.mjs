@@ -33,7 +33,7 @@ for (const k of SIZES) assert(MS.MAP_SIZES[k].h === 2 * MS.MAP_SIZES[k].w, `${k}
 // --- Walls match the size ---
 for (const k of [...SIZES, "75x75"]) {
   const { w, h } = MS.MAP_SIZES[k];
-  const m = new Map(w, h, 90, 15, null);
+  const m = new Map(w, h, 90, 4.5, null);
   m.physics_model_init();
   let xs = [], ys = [];
   for (let b = m.world.getBodyList(); b; b = b.getNext()) {
@@ -52,7 +52,7 @@ for (const k of [...SIZES, "75x75"]) {
 const RES = { "1": 1, "2": 0.5, "4": 0.25, "2f": 0.5, "2f34": 0.5, "4f": 0.25 };
 for (const k of SIZES) {
   const { w, h, simRes } = MS.MAP_SIZES[k];
-  const bm = new Boltzmann(w, h, RES[simRes], 90, 15, undefined, 8);
+  const bm = new Boltzmann(w, h, RES[simRes], 90, 4.5, undefined, 8);
   // The root grid is whole cells: with 4 m cells the 50 m width rounds up
   // to 13 cells (52 m), so the lattice may overhang the map by < 1 cell.
   const cell = 1 / RES[simRes];
@@ -94,7 +94,7 @@ for (const k of SIZES) {
   R.resetContacts(); resetMarkTouches();
   const DT = 1 / 30;
   const { w, h } = MS.MAP_SIZES[MS.DEFAULT_MAP_SIZE];
-  const m = new Map(w, h, 90, 15, null);
+  const m = new Map(w, h, 90, 4.5, null);
   m.physics_model_init();
   m.setDevMode(true);
   const { boats, marks, seq, course, results, leaderboard, bots } = setupTestRace(m);

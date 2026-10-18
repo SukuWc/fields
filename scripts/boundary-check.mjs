@@ -16,7 +16,7 @@ function assert(cond, message) {
 const near = (a, b, e = 1e-6) => Math.abs(a - b) < e;
 const DT = 1 / 30;
 function freshMap() {
-  const m = new Map(100, 200, 90, 15, null);
+  const m = new Map(100, 200, 90, 4.5, null);
   m.physics_model_init();
   m.setDevMode(true);
   return m;

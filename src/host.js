@@ -38,7 +38,7 @@ import { sampleFlowGrid, FLOW_GRID_EVERY } from './flow-tracers.js';
 // the worker). texture: the painter target, a three.js DataTexture or a plain
 // { image: { data, width, height } }.
 export class SimCore {
-  constructor({ mapW, mapH, windAngle = 90, windSpeed = 15, simRes = '1', texture, oversampling = 8 }) {
+  constructor({ mapW, mapH, windAngle = 90, windSpeed = 4.5, simRes = '1', texture, oversampling = 8 }) {
     this.plot = { plotType: 3, contrastExp: 0 };
     this.perf = false;
     this.texture = texture;

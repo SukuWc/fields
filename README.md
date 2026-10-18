@@ -37,6 +37,7 @@ Last updated: 2026-10-18
 - [x] Remote mode: fixed 30 Hz server frame clock, every frame broadcast to every client, frame-driven client with no rAF loop: [#62](https://github.com/SukuWc/fields/pull/62)
 - [x] Server field streaming: per-level 1-byte grids coloured on the client, sent only to clients showing the field: [#64](https://github.com/SukuWc/fields/pull/64)
 - [x] Compact JSON server frames: host sends scene state (statics only on change), client builds all geometry, about 1.8 KB per frame in scenario 0 instead of about 40 KB: [#66](https://github.com/SukuWc/fields/pull/66)
+- [ ] Client builds the readout/HUD panels and encounter overlays from compact JSON state (follow-up to #66, about 18% fewer bytes per frame in the four-boat scenario) (in progress, [#70](https://github.com/SukuWc/fields/pull/70))
 - [x] True- and apparent-wind chevrons sit upwind of the boat with tips pointing downwind (fixes a regression that pointed them upwind): [#59](https://github.com/SukuWc/fields/pull/59)
 - [x] Run `npm test` in CI (test + server smoke workflow in `.github/workflows/test.yml`): [#63](https://github.com/SukuWc/fields/pull/63)
 
@@ -45,6 +46,8 @@ Last updated: 2026-10-18
 - [ ] Per-boat wind shadow / dirty air (partial: [#9](https://github.com/SukuWc/fields/pull/9) gives each boat a sail wake, so a downwind boat reads slower true wind)
 - [x] Depower toggle (X / touch): sails eased out and luffing with a 0.5 s ramp: [#51](https://github.com/SukuWc/fields/pull/51)
 - [x] Near-matched viscosity on the default 4 m fast-wind grid (`simRes=4f`) so sail wakes match the 1 m and x4 grids: [#65](https://github.com/SukuWc/fields/pull/65)
+- [x] Wind speed in true m/s everywhere (UI, sim, telemetry, scenarios) with perturbation propagation tests: [#67](https://github.com/SukuWc/fields/pull/67)
+- [x] 45° and 22.5° wind propagation tests, root-grid wind read fixed by half a cell (no more 2 m wind jump at refinement edges on 4f), node-based vortex centroid: [#69](https://github.com/SukuWc/fields/pull/69)
 - [ ] Strategy tuning
 
 ### 3. Multiplayer open water

@@ -67,7 +67,7 @@ export const FLEET4 = [[14, -6], [24, -6], [19, -14], [29, -14]]
 	.map(([x, y]) => [x, y, 5 * Math.PI / 4]);
 export function setAmrMode(m) { AMR_MODE = m; }
 
-export function makeWorld(k, wind = 15) {
+export function makeWorld(k, wind = 4.5) {
 	const bm = new Boltzmann(MAP_SIDE, MAP_SIDE, 1, 90, wind, undefined, 1);
 	bm.amrMode = AMR_MODE === 'auto' ? 'auto' : 'fixed';
 	bm.cellUpdateTarget = BUDGET;
@@ -152,7 +152,7 @@ export function scenario0(k, { frames = 600, amr = true, energy = true } = {}) {
 // Fleet run: boats [x, y, heading], autopilot on at frame 1, optional
 // tack per boat at a frame. TWS of each boat over the last 100 frames.
 // kick[i] false turns boat i's sail push off (to isolate another boat's wake).
-export function fleet(k, boatsSpec, { frames = 300, kick = null, tacks = {}, amr = true, timing = false, series = false, wind = 15 } = {}) {
+export function fleet(k, boatsSpec, { frames = 300, kick = null, tacks = {}, amr = true, timing = false, series = false, wind = 4.5 } = {}) {
 	const opts_series = series;
 	const { bm, map } = makeWorld(k, wind);
 	const boats = boatsSpec.map(([x, y, h]) => new Boat(map, x, y, h));

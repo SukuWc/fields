@@ -64,7 +64,7 @@ function cubic38(a, b, c, d) {
 }
 
 function make(w, h) {
-	const bm = new Boltzmann(w, h, 1, 90, 25, undefined, 1);
+	const bm = new Boltzmann(w, h, 1, 90, 7.5, undefined, 1);
 	bm.domains.length = 0;
 	return bm;
 }

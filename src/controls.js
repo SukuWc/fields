@@ -150,7 +150,7 @@ function mouse_monitor(e) {
   if (_devMode) {
     _host.query({ type: "wind", x: 0, y: 0 }).then((w) => {
       setWindInfo(
-        "Speed: " + Math.floor(w.speed * 10) / 10 + "<br>Direction: " + Math.floor(w.direction * 10) / 10);
+        "Speed: " + Math.floor(w.speed * 10) / 10 + " m/s<br>Direction: " + Math.floor(w.direction * 10) / 10);
     });
     return;
   }
@@ -189,7 +189,7 @@ function syncDevModeUi() {
   const fromDeg = _wind.angle;
   const toDeg = (fromDeg + 180) % 360;
   document.getElementById("dev_wind_label").textContent =
-    "from " + fromDeg + "° to " + toDeg + "° @ " + _wind.speed;
+    "from " + fromDeg + "° to " + toDeg + "° @ " + _wind.speed + " m/s";
   // CSS rotation is clockwise; world +Y is up. Point the arrow downwind ("to").
   document.getElementById("dev_wind_arrow").style.transform = "rotate(" + (-toDeg) + "deg)";
   for (const id of DEV_MODE_FLUID_CONTROLS) {
@@ -205,10 +205,17 @@ function applyWindAngle() {
   syncDevModeUi();
 }
 
+// Wind speed input is true wind in m/s; show knots next to the label.
+function showWindKnots(mps) {
+  const el = document.getElementById("windSpeedKn");
+  if (el && Number.isFinite(mps)) el.textContent = "≈ " + (mps * 3600 / 1852).toFixed(1) + " kn";
+}
+
 function applyWindSpeed() {
   const speed = parseFloat(document.getElementById("windSpeed").value);
   if (!Number.isFinite(speed)) return;
   _wind.speed = speed;
+  showWindKnots(speed);
   _host.command({ type: "wind", speed });
   syncDevModeUi();
 }
@@ -264,6 +271,7 @@ export function setupControls(host, view, getCamera) {
 
   document.getElementById("windAngle").value = info.wind.from;
   document.getElementById("windSpeed").value = info.wind.speed;
+  showWindKnots(info.wind.speed);
   // Query-string settings, including ?devmode=1, are applied by installUrlSettings
   // after these listeners exist. Leave the checkbox at its default so that
   // default can be captured; the change listener below turns dev mode on.

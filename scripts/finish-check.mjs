@@ -32,7 +32,7 @@ function assert(cond, message) {
 }
 
 const DT = 1 / 30;
-const map = new Map(75, 75, 90, 15, null);
+const map = new Map(75, 75, 90, 4.5, null);
 map.physics_model_init();
 map.setDevMode(true);
 
@@ -229,7 +229,7 @@ function sail(res, course, i, x, y0, y1, h, clock0) {
 {
   fresh();
   const L = F.FINISH_COURSE_LAYOUT;
-  const m2 = new Map(75, 75, 90, 15, null);
+  const m2 = new Map(75, 75, 90, 4.5, null);
   m2.physics_model_init();
   m2.setDevMode(true);
   const bs = L.boats.map((q) => {
