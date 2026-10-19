@@ -47,7 +47,7 @@ try {
   const { Sim } = mods['sim.js'];
   const makeSim = (w = 100, h = 200) => {
     const bm = new Boltzmann(w, h, 0.25, 90, 4.5);
-    bm.setResolution(0.25, 1); // the app default, simRes 4f
+    bm.setResolution(0.5, 1); // the app default, simRes 2f
     bm.setWindSpeed(4.5);
     const map = new Map(w, h, 90, 4.5, bm, new FluidWind(bm), new ConstantWind(90, 4.5));
     map.physics_model_init();

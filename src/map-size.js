@@ -14,13 +14,13 @@
 // 100 × 200 keeps the 1 m root so the field behaves as on the old map.
 
 export const MAP_SIZES = {
-  '50x100':  { w: 50,  h: 100, simRes: '4f', label: '50 × 100 m' },
-  '100x200': { w: 100, h: 200, simRes: '4f', label: '100 × 200 m' },
-  '200x400': { w: 200, h: 400, simRes: '4f', label: '200 × 400 m' },
+  '50x100':  { w: 50,  h: 100, simRes: '2f', label: '50 × 100 m' },
+  '100x200': { w: 100, h: 200, simRes: '2f', label: '100 × 200 m' },
+  '200x400': { w: 200, h: 400, simRes: '2f', label: '200 × 400 m' },
   // Legacy squares (?mapSize=75 / 150 from before the dropdown). Not in the
   // dropdown, still accepted from the URL.
-  '75x75':   { w: 75,  h: 75,  simRes: '4f', label: '75 × 75 m (legacy)', legacy: true },
-  '150x150': { w: 150, h: 150, simRes: '4f', label: '150 × 150 m (legacy)', legacy: true },
+  '75x75':   { w: 75,  h: 75,  simRes: '2f', label: '75 × 75 m (legacy)', legacy: true },
+  '150x150': { w: 150, h: 150, simRes: '2f', label: '150 × 150 m (legacy)', legacy: true },
 };
 // Dropdown order, smallest first. fitMapSize grows along this list.
 export const MAP_SIZE_ORDER = ['50x100', '100x200', '200x400'];

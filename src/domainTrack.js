@@ -87,8 +87,8 @@ export const BUDGET_MAX_SCALE = 50;
 // Default target for the app (main.js sets bm.cellUpdateTarget = 'default';
 // ?cellBudget=N overrides). The engine default is Infinity (no budget).
 // One boat's floor (finest disk + shells, calm water) costs about 8.7k cell
-// updates per root step at Default and 17.7k on the 4-level stacks (x2 / 2f /
-// 2f34; the finest level steps 16× there). DEFAULT_CELL_UPDATE_TARGET per
+// updates per root step at Default and 17.7k on the 4-level stacks (x2 / 2f;
+// the finest level steps 16× there). DEFAULT_CELL_UPDATE_TARGET per
 // 3-level stack is 50k, tuned for 4 boats: 4 floors (~37k) plus ~35 % headroom
 // for wakes (4 boats Default ≈ 44 ms/frame vs 61 unbudgeted; the floors alone
 // cost ~40 ms, so 33 ms is not reachable at 4 boats), and one or two boats
@@ -145,7 +145,7 @@ const domainByBoat = new WeakMap();
 // spacing (Δx · cellSize), so τ tracks the same physical vorticity. Tracking
 // runs once per lattice step (main.js), so holds are counted in root steps:
 // CURL_HOLD_SECONDS (0.2 s) × 30 × stepsPerFrame steps, never below 2 so one
-// noisy step cannot open a cell (6 Default, 3 x2, 2 x4, 6 2f, 7 2f34).
+// noisy step cannot open a cell (6 Default, 3 x2, 2 x4, 6 2f, 6 4f).
 const paramCache = new Map();
 
 // Boat refinement stack in world units, finest last. The inner three are the

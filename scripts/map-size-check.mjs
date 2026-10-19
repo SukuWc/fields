@@ -49,7 +49,7 @@ for (const k of [...SIZES, "75x75"]) {
 }
 
 // --- Lattice dims at each size's default root cell ---
-const RES = { "1": 1, "2": 0.5, "4": 0.25, "2f": 0.5, "2f34": 0.5, "4f": 0.25 };
+const RES = { "1": 1, "2": 0.5, "4": 0.25, "2f": 0.5, "4f": 0.25 };
 for (const k of SIZES) {
   const { w, h, simRes } = MS.MAP_SIZES[k];
   const bm = new Boltzmann(w, h, RES[simRes], 90, 4.5, undefined, 8);

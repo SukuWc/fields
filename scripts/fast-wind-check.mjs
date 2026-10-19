@@ -11,7 +11,7 @@ const TWO = [[12, -6, 5 * Math.PI / 4], [15, -11.5, 5 * Math.PI / 4]];
 const rows = [];
 for (const size of [75, 150]) {
 	H.setMapSize(size);
-	for (const mode of [1, 2, '2f', '2f34']) {
+	for (const mode of [1, 2, '2f', '4f']) {
 		const row = { map: size, mode: String(mode) };
 		for (const [name, spec] of [['one', ONE], ['two', TWO]]) for (const amr of [true, false]) {
 			const r = H.fleet(mode, spec, { frames: 300, amr, timing: true });
