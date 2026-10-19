@@ -577,7 +577,7 @@
       }
     </style>
   
-    <script type="module" crossorigin src="/fields/pr-preview/pr-73/assets/index-DLIGCA6f.js"></script>
+    <script type="module" crossorigin src="/fields/pr-preview/pr-73/assets/index-DjmYi0ZH.js"></script>
   </head>
   <body>
 
@@ -626,6 +626,13 @@
         <label><input id="tracers" autocomplete="off" type="number" min="10" max="20000" step="50" inputmode="numeric" style="width: 80px;" placeholder="auto">tracers</label><br>
         <label><input id="tracerLife" autocomplete="off" type="number" min="0.5" max="30" step="0.5" inputmode="decimal" style="width: 46px;" value="6">s life</label>
         <label><input id="tracerTail" autocomplete="off" type="number" min="0" max="10" step="0.25" inputmode="decimal" style="width: 46px;" value="1.5">s tail</label></span>
+      <br>
+      <label class="setting-row"><input id="boat_trails" autocomplete="off" type="checkbox" checked title="A dot at each boat's position every interval of sim time, fading over the kept duration. Reset on scenario change. Also ?boat_trails=0">Boat trails</label>
+      <br>
+      <span class="setting-row setting-field" id="trail_controls" title="Boat trails: a dot every N s of sim time (?trailInterval=s), kept for N s (?trailDuration=s), dot size in m (?trailSize=m). Applied live.">
+        <label><input id="trailInterval" autocomplete="off" type="number" min="0.1" max="30" step="0.1" inputmode="decimal" style="width: 46px;" value="1">s dot</label>
+        <label><input id="trailDuration" autocomplete="off" type="number" min="1" max="1200" step="10" inputmode="decimal" style="width: 52px;" value="60">s kept</label><br>
+        <label><input id="trailSize" autocomplete="off" type="number" min="0.05" max="5" step="0.1" inputmode="decimal" style="width: 46px;" value="0.4">m dot size</label></span>
       <br>
       <label class="setting-row" id="field_plane_row" hidden title="Server mode only: the field plot. Off, the server sends this page no field data. Also ?field_plane=0"><input id="field_plane" autocomplete="off" type="checkbox" checked>Show field (server)</label>
       <br id="field_plane_br" hidden>
