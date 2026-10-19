@@ -35,7 +35,7 @@ jobs:
       - name: Test
         run: npm test
 
-scenario-checks:
+  scenario-checks:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
