@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { FixedStepLoop } from './loop.js';
 
-import { initRenderer, startAnimation, renderNow, getCamera, setFluidPlaneSize, setFieldVisible, setFlowGrid, setTracerParams, getTracerParams, updateBoatTrails, setTrailParams, setBoatTrailsOn } from './renderer.js';
+import { initRenderer, startAnimation, renderNow, getCamera, setFluidPlaneSize, setFieldVisible, setFlowGrid, setTracerParams, getTracerParams, updateBoatTrails, setTrailParams, setBoatTrailsOn, setGhostParams } from './renderer.js';
 import { setupControls, heldCommands, onHeldChange, deferUiToFrames, flushFrameUi, showRoomError } from './controls.js';
 import { LocalHost } from './host.js';
 import { buildScene } from './scene-build.js';
@@ -198,6 +198,17 @@ function startClient() {
       if (el) { el.addEventListener('change', applyTrails); el.addEventListener('input', applyTrails); }
     }
     applyTrails();
+  }
+  // Ghost boat toggle and lookahead (?ghost=0, ?ghostAhead=s): live.
+  {
+    const box = document.getElementById('ghost');
+    const ahead = document.getElementById('ghostAhead');
+    const applyGhost = () => {
+      const v = ahead ? parseFloat(ahead.value) : NaN;
+      setGhostParams({ on: !box || box.checked, ahead: Number.isFinite(v) ? v : undefined });
+    };
+    for (const el of [box, ahead]) if (el) { el.addEventListener('change', applyGhost); el.addEventListener('input', applyGhost); }
+    applyGhost();
   }
   // Simulation resolution (#simRes, ?simRes=2 / 4). Rebuilds the root lattice
   // in place (every module keeps the same bm), drops the refinement windows,
