@@ -125,6 +125,9 @@ export class Sim {
     for (const p of this.players) p.physics_model_deinit();
     for (const m of this.marks) m.physics_model_deinit();
     this._reset();
+    // Bumped on every clear (scenario load): clients reset per-scenario
+    // visuals such as boat trails (boat-trails.js) on a new epoch.
+    this.epoch = (this.epoch || 0) + 1;
     resetContacts();
     resetMarkTouches();
     this.emit({ type: 'cleared' });

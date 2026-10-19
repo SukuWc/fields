@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { BoatTrails, TRAIL_COLORS, TRAIL_INTERVAL_S, TRAIL_DURATION_S, TRAIL_SIZE_M, colorRgb } from './boat-trails.js';
 import { FlowTracers, tracerCountFor, TRACER_LIFETIME_S, TRACER_TAIL_S, TRACER_SEGMENTS, TRACER_COUNT_LIMIT } from './flow-tracers.js';
 
 let camera, scene, renderer, fluidPlane;
@@ -40,6 +41,7 @@ const labelGroupPool = [];
 // geometry's bounding sphere once, from the first positions, so a segment that
 // moves later is culled by its stale sphere and vanishes in whole arcs.
 const ORDER_TRACERS = 0.5; // flow tracers: over the field, under the hulls
+const ORDER_TRAILS = 0.6; // boat trail dots: over the tracers, under the hulls
 const ORDER_HULL = 1;
 const ORDER_GUIDE = 2;
 const ORDER_RIBBON = 3;
@@ -570,6 +572,85 @@ function renderTracers() {
   g.attributes.color.needsUpdate = true;
 }
 
+// Boat trails (boat-trails.js): one Points buffer, world-size round dots with
+// per-dot RGBA (alpha fades with age). The
+// buffer grows (doubling) to fit the live dot count and is drawn up to it.
+let trailPointsCap = 1024;
+const trails = new BoatTrails({ interval: TRAIL_INTERVAL_S, duration: TRAIL_DURATION_S, size: TRAIL_SIZE_M });
+let trailPoints = null, _trailsOn = true, _trailColors = null;
+export function setBoatTrailsOn(on) { _trailsOn = !!on; }
+export function setTrailParams(p = {}) { trails.set(p); }
+export function getBoatTrails() { return trails; }
+// Called per frame with frame.state (sim time ts, epoch ep, boats, colours bc).
+export function updateBoatTrails(state) {
+  if (!state || !state.boats) return;
+  _trailColors = state.bc || null;
+  trails.update(state.ts, state.boats, state.ep);
+}
+function trailColorOf(i) {
+  const own = _trailColors && _trailColors[i];
+  return colorRgb(Number.isFinite(own) ? own : TRAIL_COLORS[i % TRAIL_COLORS.length]);
+}
+const _trailColorCache = [];
+function trailMaterial() {
+  return new THREE.ShaderMaterial({
+    uniforms: { uSize: { value: TRAIL_SIZE_M }, uScale: { value: 1 } },
+    vertexShader: `
+      attribute vec4 color;
+      uniform float uSize;
+      uniform float uScale;
+      varying vec4 vColor;
+      void main() {
+        vColor = color;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = max(1.5, uSize * uScale / -mv.z);
+      }`,
+    fragmentShader: `
+      varying vec4 vColor;
+      void main() {
+        vec2 d = gl_PointCoord - vec2(0.5);
+        float r = length(d);
+        if (r > 0.5) discard;
+        gl_FragColor = vec4(vColor.rgb, vColor.a * smoothstep(0.5, 0.38, r));
+      }`,
+    transparent: true, depthTest: false, depthWrite: false,
+  });
+}
+function renderTrails() {
+  const want = trails.boats.length * trails.cap;
+  if (trailPoints && want > trailPointsCap) {
+    while (trailPointsCap < want) trailPointsCap *= 2;
+    scene.remove(trailPoints);
+    trailPoints.geometry.dispose();
+    trailPoints.material.dispose();
+    trailPoints = null;
+  }
+  if (!trailPoints) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(trailPointsCap * 3), 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(trailPointsCap * 4), 4).setUsage(THREE.DynamicDrawUsage));
+    trailPoints = new THREE.Points(geo, trailMaterial());
+    trailPoints.renderOrder = ORDER_TRAILS;
+    trailPoints.frustumCulled = false;
+    scene.add(trailPoints);
+  }
+  trailPoints.visible = _trailsOn;
+  if (!_trailsOn) return;
+  const g = trailPoints.geometry;
+  _trailColorCache.length = 0;
+  const n = trails.write(g.attributes.position.array, g.attributes.color.array, (i) => _trailColorCache[i] || (_trailColorCache[i] = trailColorOf(i)));
+  g.setDrawRange(0, n);
+  g.attributes.position.needsUpdate = true;
+  g.attributes.color.needsUpdate = true;
+  // World size → pixels: point size = size × (buffer height / (2 tan(fov/2))) / depth.
+  const h = renderer.getDrawingBufferSize(_trailBuf).y;
+  trailPoints.material.uniforms.uScale.value = h / (2 * Math.tan(camera.fov * Math.PI / 360));
+  trailPoints.material.uniforms.uSize.value = trails.size;
+}
+const _trailBuf = new THREE.Vector2();
+if (typeof window !== 'undefined') window.__trails = () => ({ dots: trails.count(), boats: trails.boats.length, interval: trails.interval, duration: trails.duration, size: trails.size, on: _trailsOn, cap: trails.cap });
+
 export function getCamera() {
   return camera;
 }
@@ -692,6 +773,7 @@ function animation(t) {
   renderContacts(contactMarks);
   renderRuleLabels(ruleLabels);
   renderTracers();
+  renderTrails();
 
   renderer.render(scene, camera);
 
