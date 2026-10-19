@@ -11,6 +11,8 @@
 //   t      host clock (ms) for pulses and flash ages
 //   hud    readout / HUD values (hud.js hudState; marked exact: no rounding)
 //   boats  per racing boat: Boat.renderState (boat-draw.js)
+//   ts, ep sim time (Sim.rulesTime) and scenario epoch, for boat trails
+//   bc     own boat colours (spawnBoat color) or null per boat, when any
 //   mk     mark buoy positions [[x, y], ...] (anchors in statics.marks)
 //   start  startGuideState (start.js) for boat 0
 //   course courseGuideState (course.js) for boat 0
@@ -131,6 +133,10 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
   const map = sim.map, bm = sim.bm;
   const racing = sim.players;
   const s = { t: nowMs, boats: racing.map((b) => b.renderState(view)) };
+  // Boat trails (boat-trails.js): sim time, scenario epoch, own boat colours.
+  s.ts = sim.rulesTime;
+  s.ep = sim.epoch || 0;
+  if (racing.some((b) => Number.isFinite(b.spawnColor))) s.bc = racing.map((b) => (Number.isFinite(b.spawnColor) ? b.spawnColor : null));
   s.hud = markExact(hudState(sim, rec));
   if (sim.marks.length) s.mk = sim.marks.map((m) => { const p = m.physics_model.getPosition(); return [p.x, p.y]; });
   const seq = sim.startSequence;
