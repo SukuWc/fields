@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { FixedStepLoop } from './loop.js';
 
 import { initRenderer, startAnimation, renderNow, getCamera, setFluidPlaneSize, setFieldVisible, setFlowGrid, setTracerParams, getTracerParams, updateBoatTrails, setTrailParams, setBoatTrailsOn, setGhostParams } from './renderer.js';
-import { setupControls, heldCommands, onHeldChange, deferUiToFrames, flushFrameUi, showRoomError } from './controls.js';
+import { setupControls, setWindCeiling, heldCommands, onHeldChange, deferUiToFrames, flushFrameUi, showRoomError } from './controls.js';
 import { LocalHost } from './host.js';
 import { buildScene } from './scene-build.js';
 import { WorkerHost } from './worker-host.js';
@@ -17,6 +17,7 @@ import { setInfo, flushInfo } from './info.js';
 import { setupPerfOverlay, isPerfOverlayOn, recordFieldStep, perfOverlayFrame } from './perf-overlay.js';
 import { setupMobileMenu } from './mobile-menu.js';
 import { setupTouchControls } from './touch-controls.js';
+import { windCeilingMps } from './sim-modes.js';
 
 import { MAP_SIZES, DEFAULT_MAP_SIZE, mapSizeFromQuery, fitMapSize, scenarioFits, cameraLimits } from './map-size.js';
 
@@ -258,12 +259,13 @@ function startClient() {
   // in place (every module keeps the same bm), drops the refinement windows,
   // resizes the field plane, and restarts the scenario like the Restart button.
   // Before installUrlSettings so a query value goes through this listener.
-  // Fast-wind options ("2f", "2f34") use the x2 root cell but step it every
-  // frame (or 1.2× per frame): stepsPerFrame is explicit, see Boltzmann._build.
-  // SIM_RES_MODES lives in settings-registry.js.
+  // Fast-wind options ("2f", "4f") use a coarse root cell but step it every
+  // frame: stepsPerFrame is explicit, see Boltzmann._build.
+  // SIM_RES_MODES lives in sim-modes.js (the settings registry's simRes values).
   // Remote: the server rebuilds, restarts and sends the new lattice to
   // every client (the room event above).
   document.getElementById('simRes').addEventListener('change', (e) => {
+    setWindCeiling(windCeilingMps(e.target.value));
     if (remote) { roomCommand(roomCommandFor({ simRes: e.target.value })); return; }
     hostCommand(roomCommandFor({ simRes: e.target.value }), (r) => {
       if (!r.rebuilt) return;
@@ -315,7 +317,7 @@ function startClient() {
   // Refinement budget: target cell updates per root step (domainTrack BUDGET_*).
   // ?cellBudget=N sets it, ?cellBudget=0 (or off) turns it off. The default
   // follows the grid ('default' = defaultCellUpdateTarget(bm): 50k on a 3-level
-  // stack, 100k on x2 / 2f / 2f34, 200k on x4).
+  // stack, 100k on x2 / 2f, 200k on x4 / 4f).
   // Live controls (shown with the Perf overlay, synced by installUrlSettings):
   // #cellBudgetTune (checkbox, default on; off = no budget, scale 1) and
   // #cellBudget (number; empty = the grid default). The legacy ?cellBudget=0 /
@@ -376,6 +378,7 @@ function startClient() {
   // applied by the host at startup (SimCore, a 'simRes' command).
   // Remote: the room settings panel follows the server, not the URL.
   installUrlSettings(undefined, { ids: urlSettingIds({ remote }) });
+  setWindCeiling(windCeilingMps(document.getElementById('simRes').value));
   // After installUrlSettings: show the size in use (a clamp or a legacy
   // ?mapSize) and write it to the URL; equal to mapSizeKey, so no reload.
   if (!remote && (mapSizeSel.value !== mapSizeKey || _query.has('mapSize'))) {

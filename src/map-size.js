@@ -15,8 +15,8 @@
 
 import { DEFAULT_SIM_RES, DEFAULT_MAP_SIZE } from './settings-registry.js';
 
-// simRes: the size's default root cell (the registry default for now; a
-// size may set its own).
+// simRes: the size's default root cell (the registry default, from
+// sim-modes.js, for now; a size may set its own).
 export const MAP_SIZES = {
   '50x100':  { w: 50,  h: 100, simRes: DEFAULT_SIM_RES, label: '50 × 100 m' },
   '100x200': { w: 100, h: 200, simRes: DEFAULT_SIM_RES, label: '100 × 200 m' },

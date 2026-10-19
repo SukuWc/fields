@@ -710,14 +710,13 @@
       <br>
       <label class="setting-row"><input id="boat_energy" autocomplete="off" type="checkbox">Boat energy</label>
       <br>
-      <label class="setting-row setting-field" title="Root lattice cell size. Default is 1 world unit per cell. x2 / x4 use cells 2 / 4 world units wide and step the field every 2nd / 4th frame: same wind speed and map, much cheaper, smoother (more viscous) wakes. x2 fast wind steps the 2 m cell every frame (1.2× per frame for the 35 kn option): the lattice runs a lower U, so the stable wind range doubles (or 2.4×). Changing it restarts the scenario. Also ?simRes=2 / ?simRes=4">Simulation resolution<br>
+      <label class="setting-row setting-field" title="Root lattice cell size. Default is 1 world unit per cell. x2 / x4 use cells 2 / 4 world units wide and step the field every 2nd / 4th frame: same wind speed and map, much cheaper, smoother (more viscous) wakes. 2 m fast wind (default) steps the 2 m cell every frame and 4 m fast wind the 4 m cell: the lattice runs a lower U, so the stable wind range doubles (×4 at 4 m). Changing it restarts the scenario. Also ?simRes=2 / ?simRes=4">Simulation resolution<br>
       <select id="simRes" autocomplete="off">
+        <option value="2f">2 m fast wind (to ~29 kn)</option>
         <option value="4f">4 m fast wind (to ~58 kn)</option>
-        <option value="1">1 m (old Default, to ~15 kn)</option>
+        <option value="1">1 m (to ~15 kn)</option>
         <option value="2">x2 coarser</option>
         <option value="4">x4 coarser</option>
-        <option value="2f">x2 fast wind (to ~29 kn)</option>
-        <option value="2f34">x2 fast wind 1.2× (to ~35 kn)</option>
       </select></label>
       <br>
       <label class="setting-row setting-field" title="Boat refinement layout. Fixed rings: every level has its own disk around the boat. Auto: only the finest 1/8 m disk is fixed; coarser levels are a 3-cell grading shell around it and grow from curl (the wake). Auto is the default. Restarts. ?amrMode=fixed selects the fixed rings">Refinement layout<br>

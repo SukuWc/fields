@@ -224,6 +224,16 @@ function showWindKnots(mps) {
   if (el && Number.isFinite(mps)) el.textContent = "≈ " + (mps * 3600 / 1852).toFixed(1) + " kn";
 }
 
+// Wind input max follows the simulation mode's stable ceiling (sim.js
+// windCeilingMps); a value above it is clamped and re-sent.
+export function setWindCeiling(mps) {
+  const el = document.getElementById("windSpeed");
+  if (!el || !Number.isFinite(mps)) return;
+  el.max = String(mps);
+  el.title = "Stable up to " + mps + " m/s (≈ " + Math.round(mps * 3600 / 1852) + " kn) in this simulation mode";
+  if (parseFloat(el.value) > mps) { el.value = String(mps); applyWindSpeed(); }
+}
+
 function applyWindSpeed() {
   const speed = parseFloat(document.getElementById("windSpeed").value);
   if (!Number.isFinite(speed)) return;

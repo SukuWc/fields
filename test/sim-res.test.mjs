@@ -279,10 +279,10 @@ for (const k of [2, 4]) {
 		`ν=${bm.nu}/${bm.matchedNu} phys=${phys}`);
 }
 
-// --- 8. Fast-wind grids (2 m root cell stepped 1× / 1.2× per frame) and the 150 m map ---
+// --- 8. Fast-wind grid 2f (2 m root cell stepped every frame) and the 150 m map ---
 {
 	const { FluidWind } = await import('../src/wind.js');
-	for (const [mode, steps, vs] of [['2f', 1, 2], ['2f34', 1.2, 2.4]]) {
+	for (const [mode, steps, vs] of [['2f', 1, 2]]) {
 		const { bm } = H.makeWorld(mode, 4.5);
 		let n = 0;
 		for (let f = 0; f < 10; f++) n += bm.advance_frame();
@@ -296,7 +296,7 @@ for (const k of [2, 4]) {
 			r.twa < -45 && r.twa > -54 && r.twaSpread < 3 && r.bs > 2.4 && r.bs < 3.1 && r.bad === 0 && r.finestStep === 0.125,
 			`twa=${r.twa.toFixed(2)} bs=${r.bs.toFixed(3)}`);
 	}
-	for (const [mode, wind] of [['2f', 13.5], ['2f34', 17.4]]) {
+	for (const [mode, wind] of [['2f', 15]]) {
 		const r = H.barrier(mode, wind, { frames: 1500, amr: true });
 		check(`${mode} barrier at ${wind} m/s (refine-anywhere) stable for 1500 frames`,
 			r.diverge === null && r.bad === 0 && r.worstU < 0.6 && r.worstDr < 0.3,
@@ -311,9 +311,9 @@ for (const k of [2, 4]) {
 
 // --- 9. Holds in seconds, and ?amrMode=auto (finest disk + grading shell + curl) ---
 {
-	const holds = [[1, 1, 6], [0.5, 0.5, 3], [0.25, 0.25, 2], [0.5, 1, 6], [0.5, 1.2, 7]]
+	const holds = [[1, 1, 6], [0.5, 0.5, 3], [0.25, 0.25, 2], [0.5, 1, 6]]
 		.map(([res, spf, want]) => ({ want, got: amrParams({ cellSize: 1 / res, stepsPerFrame: spf }).hold, secs: amrParams({ cellSize: 1 / res, stepsPerFrame: spf }).hold / (30 * spf) }));
-	check('curl hold is ~0.2 s on every setting (Default / x2 / x4 / 2f / 2f34)',
+	check('curl hold is ~0.2 s on every setting (Default / x2 / x4 / 2f)',
 		holds.every(h => h.got === h.want && h.secs >= 0.19 && h.secs <= 0.27), holds.map(h => `${h.got} (${h.secs.toFixed(3)} s)`).join(' / '));
 	const a1 = amrParams({ cellSize: 1, amrMode: 'auto' });
 	const a2 = amrParams({ cellSize: 2, stepsPerFrame: 0.5, amrMode: 'auto' });
@@ -340,7 +340,7 @@ for (const k of [2, 4]) {
 		return worst;
 	};
 	H.setAmrMode('auto');
-	for (const k of [1, 2, '2f34']) {
+	for (const k of [1, 2, '2f']) {
 		const r = H.fleet(k, [[10, -9, 5 * Math.PI / 4]], { frames: 400 });
 		const w = shellOk(r.bm);
 		const reach = H.stackReach(r.bm, r.boats[0].x, r.boats[0].y);

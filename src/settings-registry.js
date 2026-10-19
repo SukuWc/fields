@@ -22,25 +22,19 @@
 //   url        false: never written to the URL (default true; remote mode
 //              leaves every room setting out: the room has its own values)
 //   ui         number inputs: { min, max } spinner hints when they differ
-//              from the validation range (null: no attribute)
+//              from the validation range (null: no attribute); the wind
+//              speed max then follows the mode (controls.js setWindCeiling)
 //   devModeDisabled  disabled while dev mode is on (no fluid)
 //   markDefault  the default option's label says so ("(default, ...)")
 //
 // No DOM here: the server (room.js) and the sim (host.js) read it too.
+// Its only import is sim-modes.js, which imports nothing.
 
-// Simulation resolution modes (sim.js applies them): root cell resolution
-// and an explicit stepsPerFrame for the fast-wind modes ("2f", "2f34", "4f"
-// use a coarse root cell but step it every frame, or 1.2× per frame).
-export const SIM_RES_MODES = {
-  '1': { resolution: 1 }, '2': { resolution: 0.5 }, '4': { resolution: 0.25 },
-  '2f': { resolution: 0.5, stepsPerFrame: 1 }, '2f34': { resolution: 0.5, stepsPerFrame: 1.2 },
-  // App default: 4 m root cell stepped once per 30 Hz tick (velScale 4, x4
-  // ring layout, 5 levels down to 1/8 m, matchedNu floored like 2f).
-  '4f': { resolution: 0.25, stepsPerFrame: 1 },
-};
-// The one place for the simulation resolution default: the panel, every
-// map size (map-size.js), the server's new rooms.
-export const DEFAULT_SIM_RES = '4f';
+// Simulation resolution modes, their default and wind ceilings: sim-modes.js
+// (no imports either). The simRes setting's values and default come from
+// there: the panel, every map size (map-size.js), the server's new rooms.
+import { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps } from './sim-modes.js';
+export { SIM_RES_MODES, DEFAULT_SIM_RES };
 export const DEFAULT_MAP_SIZE = '100x200';
 export const MAX_WIND_MPS = 30;
 
@@ -74,7 +68,7 @@ export const SETTINGS = [
     command: { type: 'restart', field: 'scenario', required: true }, invalid: (v) => 'no scenario ' + v },
   { id: 'windAngle', scope: 'room', panel: 'room', type: 'number', default: 90, ui: { min: 0, max: 360 },
     command: { type: 'wind', field: 'angle' }, state: 'wind.angle', normalize: (v) => ((v % 360) + 360) % 360, invalid: () => 'bad wind angle' },
-  { id: 'windSpeed', scope: 'room', panel: 'room', type: 'number', default: 4.5, min: 0, max: MAX_WIND_MPS, ui: { min: 0, max: 12 },
+  { id: 'windSpeed', scope: 'room', panel: 'room', type: 'number', default: 4.5, min: 0, max: MAX_WIND_MPS, ui: { min: 0, max: windCeilingMps(DEFAULT_SIM_RES) },
     command: { type: 'wind', field: 'speed' }, state: 'wind.speed', invalid: () => 'wind speed must be 0..' + MAX_WIND_MPS + ' m/s' },
   { id: 'devmode', scope: 'room', panel: 'room', type: 'bool', default: false, command: { type: 'devMode', field: 'on', required: true }, state: 'devMode' },
   { id: 'amr', scope: 'room', panel: 'room', type: 'bool', default: true, command: { type: 'options', field: 'amr', key: true }, state: 'amr', devModeDisabled: true },

@@ -207,13 +207,13 @@ export function buildScenarios(sim) {
     const heading = 5 * Math.PI / 4;
     const fx = Math.sin(heading);
     const fy = -Math.cos(heading);
-    // Opens on Rule 12. At 0.25 m abeam the bow meets the leader on the
+    // (Opens on Rule 12. At 0.1 m abeam the bow meets the leader on the
     // same station where the overlap begins, so the contact is inside the
-    // Rule 15 window and she is still the leeward boat. (0.35 before 4f ran
-    // near-matched viscosity: the leader's stronger wake slowed the trailer
-    // and pushed the contact past the Rule 15 window.)
+    // Rule 15 window and she is still the leeward boat. 0.1 m works on both
+    // 2f (default) and 4f. History: 0.35 m slowed the trailer too much once
+    // 4f ran near-matched viscosity; 0.25 m gave no contact at all on 2f.)
     const along = 4.4;
-    const abeam = 0.25;
+    const abeam = 0.1;
     const lx = -fy;
     const ly = fx;
     sim.players.push(new Boat(sim.map, 0, 0, heading));

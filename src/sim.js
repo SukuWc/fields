@@ -18,7 +18,7 @@ import {
 import { markRoomTarget } from './course.js';
 import { buildScenarios } from './scenarios.js';
 import { Boat } from './boat.js';
-import { SIM_RES_MODES, settingDefault } from './settings-registry.js';
+import { settingDefault } from './settings-registry.js';
 
 const perfNow = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : () => Date.now();
 
@@ -27,12 +27,10 @@ const perfNow = (typeof performance !== 'undefined' && performance.now) ? () => 
 // counter advances by SCENARIO_FRAMES_PER_TICK.
 export const SCENARIO_FRAMES_PER_TICK = 3;
 
-// Simulation resolution modes (#simRes / ?simRes). Fast-wind options ("2f",
-// "2f34", "4f") use a coarse root cell but step it every frame (or 1.2× per
-// frame): stepsPerFrame is explicit, see Boltzmann._build.
-// SIM_RES_MODES (resolution and stepsPerFrame per mode) lives in the
-// settings registry, with the simRes setting it validates.
-export { SIM_RES_MODES };
+// Simulation resolution modes: sim-modes.js (the settings registry's simRes
+// values and default).
+import { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps } from './sim-modes.js';
+export { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps };
 
 // Boat input commands, applied with sim.command() (one-shot) or passed to
 // step() (held: rudder and heading-target keys, applied once per tick).
@@ -159,9 +157,11 @@ export class Sim {
           map.constantWind.setAngle(c.angle);
         }
         if (Number.isFinite(c.speed)) {
-          map.wind_speed = c.speed;
-          if (bm.setWindSpeed) bm.setWindSpeed(c.speed); else bm.speed = c.speed / 30;
-          map.constantWind.setSpeed(c.speed);
+          // Clamp to the current mode's stable ceiling (7.5 m/s · velScale).
+          const speed = Math.max(0, bm.velScale > 0 ? Math.min(c.speed, 7.5 * bm.velScale) : c.speed);
+          map.wind_speed = speed;
+          if (bm.setWindSpeed) bm.setWindSpeed(speed); else bm.speed = speed / 30;
+          map.constantWind.setSpeed(speed);
         }
         return undefined;
       case 'devMode': map.setDevMode(c.on); return undefined;
@@ -171,11 +171,14 @@ export class Sim {
         if ('boatEnergy' in c) this.options.boatEnergy = !!c.boatEnergy;
         return undefined;
       case 'simRes': {
-        const mode = SIM_RES_MODES[c.mode] || SIM_RES_MODES['1'];
+        const mode = SIM_RES_MODES[c.mode] || SIM_RES_MODES[DEFAULT_SIM_RES];
         const steps = mode.stepsPerFrame ?? mode.resolution;
         if (mode.resolution === bm.resolution && steps === bm.stepsPerFrame) return false;
         resetTracking(bm, this.players);
         bm.setResolution(mode.resolution, mode.stepsPerFrame);
+        // A slower mode lowers the ceiling: clamp the wind to it.
+        map.wind_speed = Math.min(map.wind_speed, 7.5 * bm.velScale);
+        map.constantWind.setSpeed(map.wind_speed);
         bm.setWindSpeed(map.wind_speed);
         return true;
       }

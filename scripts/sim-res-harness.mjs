@@ -44,11 +44,11 @@ function frame(map, bm, boats, opts) {
 	return { ms: now() - t0, steps };
 }
 
-// k is 1 / 2 / 4, or a fast-wind mode: '2f' (2 m cell, 1 step per frame),
-// '2f34' (2 m cell, 1.2 steps per frame). Same table as main.js SIM_RES_MODES.
+// k is 1 / 2 / 4, or a fast-wind mode: '2f' / '4f' (2 / 4 m cell, 1 step
+// per frame). Same table as src/sim-modes.js SIM_RES_MODES.
 export const MODES = {
 	1: { resolution: 1 }, 2: { resolution: 0.5 }, 4: { resolution: 0.25 },
-	'2f': { resolution: 0.5, stepsPerFrame: 1 }, '2f34': { resolution: 0.5, stepsPerFrame: 1.2 }, '4f': { resolution: 0.25, stepsPerFrame: 1 },
+	'2f': { resolution: 0.5, stepsPerFrame: 1 }, '4f': { resolution: 0.25, stepsPerFrame: 1 },
 };
 // Map side for every world made after this call (75 = main.js default).
 let MAP_SIDE = 75;
