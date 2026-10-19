@@ -57,7 +57,7 @@ Last updated: 2026-10-19
 - [x] Room settings panel (room-wide, validated), own-boat-only controls (spectators steer nothing, 1 boat per client, 8 per room), per-client readouts and flow/perf subscriptions, joining never resets the room: [#73](https://github.com/SukuWc/fields/pull/73)
 - [ ] Soft physical collisions (bump and slow)
 - [ ] Server-authoritative collisions
-- [ ] Reconnect
+- [ ] Reconnect (in progress, [#75](https://github.com/SukuWc/fields/pull/75))
 
 ### 4. Core race loop
 - [ ] Course: start line, marks, finish, boundary (partial: [#27](https://github.com/SukuWc/fields/pull/27) adds anchored mark buoy physics and scenario 11; [#28](https://github.com/SukuWc/fields/pull/28) adds anticlockwise triangle course progress, mark rounding, and scenario 12; [#31](https://github.com/SukuWc/fields/pull/31) adds gate marks and windward-leeward scenario 13; [#33](https://github.com/SukuWc/fields/pull/33) adds start line, RRS 26 start sequence, and scenario 14; [#38](https://github.com/SukuWc/fields/pull/38) adds the finish line and scenario 16; [#45](https://github.com/SukuWc/fields/pull/45) adds SailGP-style virtual boundaries, boundary room, crossing penalty, and scenario 19; still open: wider course use of the boundary)
@@ -107,3 +107,4 @@ Last updated: 2026-10-19
 - [x] URL-synced settings controls: [#7](https://github.com/SukuWc/fields/pull/7)
 - [x] Scenario description panel: [#12](https://github.com/SukuWc/fields/pull/12)
 - [x] Overlay lines drawn above the wind-field heatmap: [#13](https://github.com/SukuWc/fields/pull/13)
+
