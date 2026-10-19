@@ -24,11 +24,13 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol;
 	const fs = await import('node:fs');
 	const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 	const sel = html.match(/<select id="amrMode"[^>]*>([\s\S]*?)<\/select>/);
-	const selected = sel && (sel[1].match(/<option value="(\w+)" selected>/) || [])[1];
-	// The app's host (host.js SimCore) sends the 'auto' amrMode command at startup.
+	// The default is the settings registry's (the dropdown and host.js SimCore,
+	// which sends that amrMode command at startup, both take it from there).
+	const { settingDefault } = await import('../src/settings-registry.js');
+	const selected = settingDefault('amrMode');
 	const hostJs = fs.readFileSync(new URL('../src/host.js', import.meta.url), 'utf8');
-	check('app default refinement layout is auto (dropdown + host.js); fixed stays selectable',
-		selected === 'auto' && /<option value="fixed">/.test(sel[1]) && /type: 'amrMode', mode: 'auto'/.test(hostJs) && H.amrMode() === 'auto',
+	check('app default refinement layout is auto (registry: dropdown + host.js); fixed stays selectable',
+		selected === 'auto' && /<option value="auto">/.test(sel[1]) && /<option value="fixed">/.test(sel[1]) && /type: 'amrMode', mode: settingDefault\('amrMode'\)/.test(hostJs) && H.amrMode() === 'auto',
 		`selected=${selected} harness=${H.amrMode()}`);
 	const eng = new Boltzmann(75, 75, 1, 90, 4.5, undefined, 1);
 	const engFixed = new Boltzmann(75, 75, 1, 90, 4.5, undefined, 1);

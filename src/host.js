@@ -30,6 +30,7 @@ import { FieldPainter } from './fieldPainter.js';
 import { Map } from './map.js';
 import { FluidWind, ConstantWind } from './wind.js';
 import { Sim, SIM_RES_MODES, DEFAULT_SIM_RES } from './sim.js';
+import { settingDefault } from './settings-registry.js';
 import { bodyOutlines, perfStats } from './present.js';
 import { sceneFrame } from './scene-state.js';
 import { eventForClient } from './host-protocol.js';
@@ -39,7 +40,7 @@ import { sampleFlowGrid, FLOW_GRID_EVERY } from './flow-tracers.js';
 // the worker). texture: the painter target, a three.js DataTexture or a plain
 // { image: { data, width, height } }.
 export class SimCore {
-  constructor({ mapW, mapH, windAngle = 90, windSpeed = 4.5, simRes = DEFAULT_SIM_RES, texture, oversampling = 8 }) {
+  constructor({ mapW, mapH, windAngle = settingDefault('windAngle'), windSpeed = settingDefault('windSpeed'), simRes = DEFAULT_SIM_RES, texture, oversampling = 8 }) {
     this.plot = { plotType: 3, contrastExp: 0 };
     this.perf = false;
     this.texture = texture;
@@ -60,14 +61,14 @@ export class SimCore {
     // what a server room reports to joining clients and broadcasts on change.
     this.settings = {
       devMode: false, wind: { angle: windAngle, speed: windSpeed }, barrier: false,
-      simRes: SIM_RES_MODES[simRes] ? simRes : DEFAULT_SIM_RES, amrMode: 'auto', cellBudget: { tune: true, target: null },
+      simRes: SIM_RES_MODES[simRes] ? simRes : DEFAULT_SIM_RES, amrMode: settingDefault('amrMode'), cellBudget: { tune: settingDefault('cellBudgetTune'), target: settingDefault('cellBudget') },
       amr: this.sim.options.amr, boatEnergy: this.sim.options.boatEnergy,
     };
     // The constructor only took the root resolution; the mode's explicit
     // stepsPerFrame (fast-wind defaults such as '4f') applies before anything runs.
     this.sim.command({ type: 'simRes', mode: simRes });
     // Refinement layout: the app default is "auto" (the engine default too).
-    this.sim.command({ type: 'amrMode', mode: 'auto' });
+    this.sim.command({ type: 'amrMode', mode: settingDefault('amrMode') });
   }
 
   lattice() { return { w: this.bm.latticeWorldWidth, h: this.bm.latticeWorldHeight }; }

@@ -27,7 +27,8 @@
 // as text (state.hud, penalty badges, finish labels) stay exact.
 import { SimCore } from '../../src/host.js';
 import { answer, eventForClient, EXACT_JSON } from '../../src/host-protocol.js';
-import { BOAT_ACTIONS, SIM_RES_MODES, DEFAULT_SIM_RES } from '../../src/sim.js';
+import { BOAT_ACTIONS } from '../../src/sim.js';
+import { MAX_WIND_MPS, ROOM_COMMANDS, SIM_RES_MODES, validateRoomSettingCommand, settingDefault } from '../../src/settings-registry.js';
 import { encodeFieldGrids } from '../../src/fieldPainter.js';
 import { scenarioExtent, WALL_INSET_M } from '../../src/map-size.js';
 
@@ -49,8 +50,8 @@ import { scenarioExtent, WALL_INSET_M } from '../../src/map-size.js';
 // (1 with an own boat, else 0; the scenario's own bindControls is not sent
 // on the server clock).
 //
-// Room-wide settings (ROOM_COMMANDS: restart, wind, devMode, barrier,
-// simRes, amrMode, cellBudget, options): any client may send them (no owner
+// Room-wide settings (ROOM_COMMANDS, from src/settings-registry.js: restart,
+// wind, devMode, barrier, simRes, amrMode, options, cellBudget): any client may send them (no owner
 // for now); each is validated (validateRoomCommand) and refused with
 // { error } when invalid. After a change every client gets
 // { type: 'event', ev: { type: 'room', room } } (room: SimCore.roomState(),
@@ -83,57 +84,24 @@ export const TOKEN_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
 export const MAX_BOATS_PER_CLIENT = 1;
 export const MAX_PLAYER_BOATS = 8;
-export const MAX_WIND_MPS = 30;
-export const ROOM_COMMANDS = new Set(['restart', 'wind', 'devMode', 'barrier', 'simRes', 'amrMode', 'cellBudget', 'options']);
+// Room-wide settings come from the settings registry
+// (src/settings-registry.js): which commands are room commands, and each
+// field's type, range or allowed values. Only the room-dependent part (the
+// scenario exists and fits this room's map) is checked here.
+export { MAX_WIND_MPS, ROOM_COMMANDS };
 
 // A room-wide command checked against the room: { c } (normalised) or
 // { error }.
 export function validateRoomCommand(c, core) {
-  const bool = (v) => typeof v === 'boolean';
-  switch (c.type) {
-    case 'restart': {
-      const n = Number(c.scenario);
+  return validateRoomSettingCommand(c, {
+    scenario: (n, raw) => {
       const sc = core.sim.scenarios;
-      if (!Number.isInteger(n) || n < 0 || n >= sc.length || !sc[n]) return { error: 'no scenario ' + c.scenario };
+      if (n >= sc.length || !sc[n]) return 'no scenario ' + raw;
       const e = scenarioExtent(n);
-      if (e.x > core.map.width / 2 - WALL_INSET_M || e.y > core.map.height / 2 - WALL_INSET_M) return { error: 'scenario ' + n + ' does not fit this ' + core.map.width + ' x ' + core.map.height + ' m room' };
-      return { c: { type: 'restart', scenario: n } };
-    }
-    case 'wind': {
-      const out = { type: 'wind' };
-      if (c.angle !== undefined) {
-        if (!Number.isFinite(c.angle)) return { error: 'bad wind angle' };
-        out.angle = ((c.angle % 360) + 360) % 360;
-      }
-      if (c.speed !== undefined) {
-        if (!Number.isFinite(c.speed) || c.speed < 0 || c.speed > MAX_WIND_MPS) return { error: 'wind speed must be 0..' + MAX_WIND_MPS + ' m/s' };
-        out.speed = c.speed;
-      }
-      if (!('angle' in out) && !('speed' in out)) return { error: 'wind needs angle or speed' };
-      return { c: out };
-    }
-    case 'devMode': case 'barrier':
-      return bool(c.on) ? { c: { type: c.type, on: c.on } } : { error: c.type + ' needs on: true | false' };
-    case 'simRes':
-      return Object.prototype.hasOwnProperty.call(SIM_RES_MODES, c.mode) ? { c: { type: 'simRes', mode: c.mode } } : { error: 'unknown simRes ' + c.mode };
-    case 'amrMode':
-      return c.mode === 'auto' || c.mode === 'fixed' ? { c: { type: 'amrMode', mode: c.mode } } : { error: 'amrMode must be auto or fixed' };
-    case 'cellBudget': {
-      if (!bool(c.tune)) return { error: 'cellBudget needs tune: true | false' };
-      if (c.target !== null && c.target !== undefined && !(Number.isFinite(c.target) && c.target >= 1000 && c.target <= 1e8)) return { error: 'cellBudget target must be 1000..1e8 or null' };
-      return { c: { type: 'cellBudget', tune: c.tune, target: c.target ?? null } };
-    }
-    case 'options': {
-      const out = { type: 'options' };
-      for (const k of ['amr', 'boatEnergy']) {
-        if (!(k in c)) continue;
-        if (!bool(c[k])) return { error: k + ' must be true | false' };
-        out[k] = c[k];
-      }
-      return Object.keys(out).length > 1 ? { c: out } : { error: 'options needs amr or boatEnergy' };
-    }
-    default: return { error: 'unknown command ' + c.type };
-  }
+      if (e.x > core.map.width / 2 - WALL_INSET_M || e.y > core.map.height / 2 - WALL_INSET_M) return 'scenario ' + n + ' does not fit this ' + core.map.width + ' x ' + core.map.height + ' m room';
+      return null;
+    },
+  });
 }
 
 export const TICK_HZ = 30;
@@ -195,8 +163,8 @@ export class Room {
   _create(opts) {
     const o = opts || {};
     const core = new SimCore({
-      mapW: o.mapW || 100, mapH: o.mapH || 200, windAngle: o.windAngle ?? 90, windSpeed: o.windSpeed ?? 4.5,
-      simRes: Object.prototype.hasOwnProperty.call(SIM_RES_MODES, o.simRes) ? o.simRes : DEFAULT_SIM_RES,
+      mapW: o.mapW || 100, mapH: o.mapH || 200, windAngle: o.windAngle ?? settingDefault('windAngle'), windSpeed: o.windSpeed ?? settingDefault('windSpeed'),
+      simRes: Object.prototype.hasOwnProperty.call(SIM_RES_MODES, o.simRes) ? o.simRes : settingDefault('simRes'),
       // No texture: the server never paints RGBA (the painter is inert);
       // field messages are encoded from the lattice when due (_fieldMessages).
       texture: undefined,

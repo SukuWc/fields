@@ -18,6 +18,7 @@ import {
 import { markRoomTarget } from './course.js';
 import { buildScenarios } from './scenarios.js';
 import { Boat } from './boat.js';
+import { settingDefault } from './settings-registry.js';
 
 const perfNow = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : () => Date.now();
 
@@ -26,6 +27,8 @@ const perfNow = (typeof performance !== 'undefined' && performance.now) ? () => 
 // counter advances by SCENARIO_FRAMES_PER_TICK.
 export const SCENARIO_FRAMES_PER_TICK = 3;
 
+// Simulation resolution modes: sim-modes.js (the settings registry's simRes
+// values and default).
 import { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps } from './sim-modes.js';
 export { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps };
 
@@ -64,7 +67,7 @@ export const BOAT_ACTIONS = {
 
 export class Sim {
   // map: Map (map.js) with physics_model_init() done; bm: its Boltzmann.
-  constructor(map, { amr = true, boatEnergy = true } = {}) {
+  constructor(map, { amr = settingDefault('amr'), boatEnergy = settingDefault('boat_energy') } = {}) {
     this.map = map;
     this.bm = map.bm;
     this.options = { amr, boatEnergy };

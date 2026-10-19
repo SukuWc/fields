@@ -13,19 +13,24 @@
 //   200 × 400      4 m root,  4.7k:            13.7 ms (x2: 14.8, 1 m: 26.7)
 // 100 × 200 keeps the 1 m root so the field behaves as on the old map.
 
+import { DEFAULT_SIM_RES, DEFAULT_MAP_SIZE } from './settings-registry.js';
+
+// simRes: the size's default root cell (the registry default, from
+// sim-modes.js, for now; a size may set its own).
 export const MAP_SIZES = {
-  '50x100':  { w: 50,  h: 100, simRes: '2f', label: '50 × 100 m' },
-  '100x200': { w: 100, h: 200, simRes: '2f', label: '100 × 200 m' },
-  '200x400': { w: 200, h: 400, simRes: '2f', label: '200 × 400 m' },
+  '50x100':  { w: 50,  h: 100, simRes: DEFAULT_SIM_RES, label: '50 × 100 m' },
+  '100x200': { w: 100, h: 200, simRes: DEFAULT_SIM_RES, label: '100 × 200 m' },
+  '200x400': { w: 200, h: 400, simRes: DEFAULT_SIM_RES, label: '200 × 400 m' },
   // Legacy squares (?mapSize=75 / 150 from before the dropdown). Not in the
   // dropdown, still accepted from the URL.
-  '75x75':   { w: 75,  h: 75,  simRes: '2f', label: '75 × 75 m (legacy)', legacy: true },
-  '150x150': { w: 150, h: 150, simRes: '2f', label: '150 × 150 m (legacy)', legacy: true },
+  '75x75':   { w: 75,  h: 75,  simRes: DEFAULT_SIM_RES, label: '75 × 75 m (legacy)', legacy: true },
+  '150x150': { w: 150, h: 150, simRes: DEFAULT_SIM_RES, label: '150 × 150 m (legacy)', legacy: true },
 };
 // Dropdown order, smallest first. fitMapSize grows along this list.
 export const MAP_SIZE_ORDER = ['50x100', '100x200', '200x400'];
 // Contains the old 75 m square, so every scenario keeps its layout.
-export const DEFAULT_MAP_SIZE = '100x200';
+// (settings-registry.js, with the map_size setting.)
+export { DEFAULT_MAP_SIZE };
 // Walls sit 2 m inside the map edge (map.js).
 export const WALL_INSET_M = 2;
 

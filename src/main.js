@@ -11,6 +11,8 @@ import { hostChoice } from './host-choice.js';
 import { setupOwnBoat } from './own-boat.js';
 import { View } from './view.js';
 import { installUrlSettings } from './url-settings.js';
+import { roomCommandFor, settingDefault, urlSettingIds, SUBSCRIPTION_IDS } from './settings-registry.js';
+import { applySettingDefaults } from './settings-panel.js';
 import { setInfo, flushInfo } from './info.js';
 import { setupPerfOverlay, isPerfOverlayOn, recordFieldStep, perfOverlayFrame } from './perf-overlay.js';
 import { setupMobileMenu } from './mobile-menu.js';
@@ -36,8 +38,11 @@ let map_h = MAP_SIZES[mapSizeKey].h;
 // UI wind, and the uniform wind used while dev mode is on.
 // Angle is where the wind comes from: 0 = from +X, 90 = from +Y (blows toward −Y).
 // Speed is true-wind speed (the value boats report as TWS).
-const wind_angle = 90;
-const wind_speed = 4.5; // m/s (old UI 15)
+// Defaults: settings-registry.js.
+const wind_angle = settingDefault('windAngle');
+const wind_speed = settingDefault('windSpeed'); // m/s (old UI 15)
+// Control defaults and ranges from the registry, before anything reads them.
+applySettingDefaults();
 const bm_resolution = 1;
 // Level 3 cells are dx = 0.125. The speed plot stamps oversampling*dx pixels,
 // and a fractional stamp collapses several fine nodes onto one texel (the
@@ -162,7 +167,7 @@ function startClient() {
   initRenderer({ width: map_w, height: map_h }, planeMat, view);
   // Room commands answer { error } when a server refuses them.
   const roomCommand = (c) => host.command(c).then((r) => { if (r && r.error) showRoomError(r.error); return r; });
-  document.getElementById('barrier').addEventListener('change', e => roomCommand({ type: 'barrier', on: e.target.checked }));
+  document.getElementById('barrier').addEventListener('change', e => roomCommand(roomCommandFor({ barrier: e.target.checked })));
   let lattice = remote && host.room ? host.room.lattice : host.info.lattice;
   setFluidPlaneSize(lattice.w, lattice.h);
   if (remote) {
@@ -256,13 +261,13 @@ function startClient() {
   // Before installUrlSettings so a query value goes through this listener.
   // Fast-wind options ("2f", "4f") use a coarse root cell but step it every
   // frame: stepsPerFrame is explicit, see Boltzmann._build.
-  // SIM_RES_MODES lives in sim.js.
+  // SIM_RES_MODES lives in sim-modes.js (the settings registry's simRes values).
   // Remote: the server rebuilds, restarts and sends the new lattice to
   // every client (the room event above).
   document.getElementById('simRes').addEventListener('change', (e) => {
     setWindCeiling(windCeilingMps(e.target.value));
-    if (remote) { roomCommand({ type: 'simRes', mode: e.target.value }); return; }
-    hostCommand({ type: 'simRes', mode: e.target.value }, (r) => {
+    if (remote) { roomCommand(roomCommandFor({ simRes: e.target.value })); return; }
+    hostCommand(roomCommandFor({ simRes: e.target.value }), (r) => {
       if (!r.rebuilt) return;
       setFluidPlaneSize(r.lattice.w, r.lattice.h);
       dataTextureMaterial.needsUpdate = true;
@@ -330,7 +335,7 @@ function startClient() {
     const num = document.getElementById('cellBudget');
     const apply = () => {
       const n = Number(String(num.value).trim());
-      roomCommand({ type: 'cellBudget', tune: tune.checked, target: num.value.trim() !== '' && Number.isFinite(n) && n > 0 ? n : null });
+      roomCommand(roomCommandFor({ cellBudgetTune: tune.checked, cellBudget: num.value.trim() !== '' && Number.isFinite(n) && n > 0 ? n : null }));
     };
     tune.addEventListener('change', apply);
     num.addEventListener('change', apply);
@@ -348,8 +353,8 @@ function startClient() {
       history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
     }
     sel.addEventListener('change', (e) => {
-      if (remote) { roomCommand({ type: 'amrMode', mode: e.target.value }); return; }
-      hostCommand({ type: 'amrMode', mode: e.target.value }, (r) => {
+      if (remote) { roomCommand(roomCommandFor({ amrMode: e.target.value })); return; }
+      hostCommand(roomCommandFor({ amrMode: e.target.value }), (r) => {
         if (!r.rebuilt) return;
         dataTextureMaterial.needsUpdate = true;
         document.getElementById('scenario_restart').click();
@@ -363,7 +368,7 @@ function startClient() {
   // server frame instead of running its own rAF loop.
   const remoteDriven = host.kind === 'remote' && host.mode !== 'client';
   setupPerfOverlay(() => (host.perfStats ? host.perfStats() : lastFrame && lastFrame.perf) || null, { external: remoteDriven });
-  document.getElementById('perf').addEventListener('change', (e) => host.setPerf(e.target.checked));
+  document.getElementById(SUBSCRIPTION_IDS.perf).addEventListener('change', (e) => host.setPerf(e.target.checked));
   // Before installUrlSettings: the device default must be the checkbox default.
   setupTouchControls();
   // simRes default follows the map size (map-size.js). Set before
@@ -372,7 +377,7 @@ function startClient() {
   // The mode's explicit stepsPerFrame (fast-wind defaults such as '4f') was
   // applied by the host at startup (SimCore, a 'simRes' command).
   // Remote: the room settings panel follows the server, not the URL.
-  installUrlSettings(undefined, remote ? { exclude: '#admin_panel' } : undefined);
+  installUrlSettings(undefined, { ids: urlSettingIds({ remote }) });
   setWindCeiling(windCeilingMps(document.getElementById('simRes').value));
   // After installUrlSettings: show the size in use (a clamp or a legacy
   // ?mapSize) and write it to the URL; equal to mapSizeKey, so no reload.
@@ -390,15 +395,15 @@ function startClient() {
   // simulation pass never touches the DOM. Kept current by change listeners
   // (url-settings dispatches change events, so query values land here too).
   // Remote: only on an edit (the room has its own values).
-  for (const [key, id] of [['amr', 'amr'], ['boatEnergy', 'boat_energy']]) {
+  for (const id of ['amr', 'boat_energy']) {
     const el = document.getElementById(id);
-    if (!remote) host.command({ type: 'options', [key]: el.checked });
-    el.addEventListener('change', () => { roomCommand({ type: 'options', [key]: el.checked }); });
+    if (!remote) host.command(roomCommandFor({ [id]: el.checked }));
+    el.addEventListener('change', () => { roomCommand(roomCommandFor({ [id]: el.checked })); });
   }
   // Flow tracers: a per-client subscription in a server room (the server
   // samples the wind grid only for clients showing them).
   if (host.setFlow) {
-    const box = document.getElementById('show_field');
+    const box = document.getElementById(SUBSCRIPTION_IDS.flow);
     host.setFlow(box.checked);
     box.addEventListener('change', () => host.setFlow(box.checked));
   }
@@ -492,7 +497,7 @@ function startClient() {
     // Field: the server sends field messages only while this page shows the
     // field (Show field box on and dev mode off); the plot choice was sent
     // with the 'plot' command above.
-    const fieldBox = document.getElementById('field_plane');
+    const fieldBox = document.getElementById(SUBSCRIPTION_IDS.field);
     document.getElementById('field_plane_row').hidden = false;
     document.getElementById('field_plane_br').hidden = false;
     let fieldOn = null;
