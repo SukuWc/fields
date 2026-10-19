@@ -1,14 +1,14 @@
 // Authoritative sim server: WebSocket, one Room (room.js) per ?room= name.
 //
-//   node dist-server/server.mjs [--port 8787] [--lockstep] [--field-hz 2] [--verbose]
+//   node dist-server/server.mjs [--port 8787] [--lockstep] [--field-hz 2] [--grace-s 30] [--verbose]
 //   (npm run server builds and starts it; PORT env works too)
 //
 // GET / answers a small JSON status (rooms, clients, tick cost) for health checks.
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
-import { Room, FIELD_HZ } from './room.js';
+import { Room, FIELD_HZ, GRACE_MS } from './room.js';
 
-export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, fieldHz = FIELD_HZ } = {}) {
+export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, fieldHz = FIELD_HZ, graceMs = GRACE_MS } = {}) {
   const rooms = new Map();
   const server = http.createServer((req, res) => {
     const status = {
@@ -22,7 +22,11 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
   wss.on('connection', (ws, req) => {
     const name = new URL(req.url || '/', 'http://x').searchParams.get('room') || 'default';
     let room = rooms.get(name);
-    if (!room) { room = new Room(name, { lockstep, fieldHz }); rooms.set(name, room); }
+    if (!room) {
+      room = new Room(name, { lockstep, fieldHz, graceMs });
+      room.onDispose = (r) => { if (rooms.get(name) === r) rooms.delete(name); };
+      rooms.set(name, room);
+    }
     room.join(ws);
     ws.on('message', (data, isBinary) => {
       if (isBinary) return;
@@ -30,15 +34,13 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
       try { m = JSON.parse(String(data)); } catch { return; }
       try { room.message(ws, m); } catch (e) { console.error('room', name, e); }
     });
-    ws.on('close', () => {
-      room.leave(ws);
-      if (room.clients.size === 0) rooms.delete(name);
-    });
+    // An empty room stays for graceMs (Room.leave), then onDispose drops it.
+    ws.on('close', () => room.leave(ws));
   });
   return new Promise((resolve) => {
     server.listen(port, host, () => resolve({
       port: server.address().port, rooms,
-      close: () => new Promise((r) => { for (const c of wss.clients) c.terminate(); for (const room of rooms.values()) room.stop(); wss.close(); server.close(() => r()); }),
+      close: () => new Promise((r) => { for (const c of wss.clients) c.terminate(); for (const room of rooms.values()) { room.graceMs = 0; room._dispose(); room.stop(); } wss.close(); server.close(() => r()); }),
     }));
   });
 }
@@ -59,6 +61,7 @@ if (isMain) {
     port: Number(arg('port', process.env.PORT || 8787)),
     lockstep: !!arg('lockstep', false),
     fieldHz: Number(arg('field-hz', FIELD_HZ)),
+    graceMs: Number(arg('grace-s', GRACE_MS / 1000)) * 1000,
   });
   console.info(`sim server listening on ws://localhost:${s.port}${arg('lockstep', false) ? ' (lockstep)' : ''}`);
 }

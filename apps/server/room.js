@@ -67,6 +67,20 @@ import { scenarioExtent, WALL_INSET_M } from '../../src/map-size.js';
 // only to those clients) and { type: 'perf', on } (perf counters, sent as
 // { type: 'perf', perf }). The broadcast frame carries neither.
 
+// Reconnect: a client that sends a token in init ({ type: 'init', opts,
+// token }) is known again on a later connection. When it disconnects, its
+// boats stay in the room for graceMs (GRACE_MS, server --grace-s) instead of
+// being removed: they keep sailing (on autopilot if they were) and nobody can
+// steer them. An init with the same token within that time gets them back
+// (same ids, ownership and key binding, in its welcome); a different token
+// cannot. After graceMs they are removed. A room-wide restart in between
+// spawns them again for the absent owner too. Without a token a disconnect
+// removes the boats at once, as before. An empty room is kept (its clock
+// paused) for graceMs too, so a reload or a short drop of the last client
+// finds it as it was; then it is dropped (onDispose).
+export const GRACE_MS = 30000;
+export const TOKEN_RE = /^[A-Za-z0-9_-]{8,64}$/;
+
 export const MAX_BOATS_PER_CLIENT = 1;
 export const MAX_PLAYER_BOATS = 8;
 export const MAX_WIND_MPS = 30;
@@ -136,8 +150,15 @@ export function roundJson(m) { return JSON.stringify(m, roundNum); }
 export const FIELD_HZ = 2;
 
 export class Room {
-  constructor(name, { lockstep = false, fieldHz = FIELD_HZ, now = () => performance.now() } = {}) {
+  constructor(name, { lockstep = false, fieldHz = FIELD_HZ, now = () => performance.now(), graceMs = GRACE_MS } = {}) {
     this.name = name;
+    this.graceMs = graceMs;
+    // Per client: its token (init). Per absent token: { boats, timer, until }.
+    this.tokens = new Map();
+    this.parked = new Map();
+    this._emptyTimer = null;
+    // Called once the room is empty for good (index.js drops it).
+    this.onDispose = null;
     this.lockstep = lockstep;
     this.fieldHz = fieldHz;
     // Per client: { on, plotType, contrastExp } (absent = field off).
@@ -198,19 +219,72 @@ export class Room {
 
   info() { return { ...this.core.info(), mode: this.lockstep ? 'client' : 'server', room: this.name }; }
 
-  join(client) { this.clients.add(client); }
+  join(client) {
+    this.clients.add(client);
+    if (this._emptyTimer) { clearTimeout(this._emptyTimer); this._emptyTimer = null; }
+    // Back from empty: the clock runs again.
+    if (this.core && !this.lockstep && !this.timer) this._start();
+  }
 
   leave(client) {
-    for (const b of this.owned.get(client) || []) this.core.command({ type: 'removeBoat', id: b.id });
+    const token = this.tokens.get(client);
+    const list = this.owned.get(client) || [];
+    const specs = this._respawn && this._respawn.get(client);
+    if (token && this.graceMs > 0 && this.core && (list.length || specs)) {
+      // Keep the boats for the owner's return (see GRACE_MS).
+      const prev = this.parked.get(token);
+      if (prev) clearTimeout(prev.timer);
+      const entry = { parked: true, token, boats: list, until: this.now() + this.graceMs };
+      entry.timer = setTimeout(() => this._expire(token), this.graceMs);
+      this.parked.set(token, entry);
+      if (specs) { this._respawn.delete(client); this._respawn.set(entry, specs); }
+    } else {
+      for (const b of list) this.core.command({ type: 'removeBoat', id: b.id });
+      if (this._respawn) this._respawn.delete(client);
+    }
+    this.tokens.delete(client);
     this.owned.delete(client);
-    if (this._respawn) this._respawn.delete(client);
     this.clients.delete(client);
     this.inputs.delete(client);
     this.fieldSubs.delete(client);
     this.flowSubs.delete(client);
     this.perfSubs.delete(client);
     this.staticsSent.delete(client);
-    if (this.clients.size === 0) this.stop();
+    if (this.clients.size === 0) {
+      // Paused while empty (no CPU), kept for graceMs, then dropped.
+      this.stop();
+      if (this.graceMs > 0 && this.core) this._emptyTimer = setTimeout(() => this._dispose(), this.graceMs);
+      else this._dispose();
+    }
+  }
+
+  // Grace period over: the absent owner's boats go.
+  _expire(token) {
+    const e = this.parked.get(token);
+    if (!e) return;
+    this.parked.delete(token);
+    if (this._respawn) this._respawn.delete(e);
+    for (const b of e.boats) this.core.command({ type: 'removeBoat', id: b.id });
+  }
+
+  // A returning client (same token): its boats, ownership and binding back.
+  _reclaim(client, token) {
+    const e = this.parked.get(token);
+    if (!e) return;
+    clearTimeout(e.timer);
+    this.parked.delete(token);
+    this.owned.set(client, e.boats);
+    if (this._respawn && this._respawn.has(e)) { this._respawn.set(client, this._respawn.get(e)); this._respawn.delete(e); }
+  }
+
+  _dispose() {
+    if (this._emptyTimer) clearTimeout(this._emptyTimer);
+    this._emptyTimer = null;
+    if (this.clients.size > 0) return;
+    for (const e of this.parked.values()) clearTimeout(e.timer);
+    this.parked.clear();
+    this.stop();
+    if (this.onDispose) this.onDispose(this);
   }
 
   send(client, m) { client.send(JSON.stringify(m)); }
@@ -225,6 +299,10 @@ export class Room {
   message(client, m) {
     if (m.type === 'init') {
       if (!this.core) this._create(m.opts);
+      if (typeof m.token === 'string' && TOKEN_RE.test(m.token) && !this.tokens.has(client)) {
+        this.tokens.set(client, m.token);
+        this._reclaim(client, m.token);
+      }
       this.send(client, { type: 'welcome', info: this.info(), room: this.core.roomState(), own: this._ownList(client), bindings: this._bindings(client) });
       return;
     }
@@ -299,10 +377,12 @@ export class Room {
   _restart(n) {
     const keep = new Map();
     for (const [client, list] of this.owned) if (list.length) keep.set(client, list.map((b) => ({ name: b.name, color: b.color })));
+    // Absent owners' boats (grace period) come back too.
+    for (const e of this.parked.values()) if (e.boats.length) { keep.set(e, e.boats.map((b) => ({ name: b.name, color: b.color }))); }
     this._restarting = true;
     let r;
     try { r = this.core.command({ type: 'restart', scenario: n }); } finally { this._restarting = false; }
-    for (const client of keep.keys()) this.owned.set(client, []);
+    for (const key of keep.keys()) { if (key.parked) key.boats = []; else this.owned.set(key, []); }
     if (keep.size) this._respawn = keep;
     return r;
   }
@@ -320,10 +400,15 @@ export class Room {
     if (!this._respawn || this.core.sim.frame < 3) return;
     const due = this._respawn;
     this._respawn = null;
-    for (const [client, specs] of due) {
-      if (!this.clients.has(client)) continue;
-      for (const sp of specs) this._spawn(client, sp);
-      this._sendOwn(client);
+    for (const [key, specs] of due) {
+      if (key.parked) {
+        if (this.parked.get(key.token) !== key) continue;
+        for (const sp of specs) { const r = this.core.command({ type: 'spawnBoat', name: sp.name, color: sp.color }); key.boats.push({ id: r.id, name: r.name, color: sp.color }); }
+        continue;
+      }
+      if (!this.clients.has(key)) continue;
+      for (const sp of specs) this._spawn(key, sp);
+      this._sendOwn(key);
     }
   }
 

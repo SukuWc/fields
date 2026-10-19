@@ -17,6 +17,15 @@
 // for the page to start from, and kept current by the 'room', 'ownBoats' and
 // 'bindControls' events, which also go to on() listeners.
 //
+// Reconnect: with a token (main.js keeps one per server URL in
+// localStorage) the server knows this client again after a drop or a page
+// reload: within its grace period it hands back the same boats (welcome
+// own / bindings). With reconnect: true a dropped connection is retried with
+// backoff (backoffMs); onStatus(fn) reports connected / reconnecting /
+// disconnected for the page's banner, commands in flight resolve
+// { error: 'disconnected' }, and the new welcome is applied as room, ownBoats
+// and bindControls events. Subscriptions and held keys are sent again.
+//
 // Per-client subscriptions: setField (below), setFlow(on) (flow tracer
 // grids, arriving as frame.flow) and setPerf(on) (perf counters, as
 // frame.perf); the server sends each only to clients that asked.
@@ -43,7 +52,7 @@ import { plainView } from './host-protocol.js';
 import { FieldPainter, decodeFieldGrids } from './fieldPainter.js';
 
 export class RemoteHost {
-  constructor(url, opts, texture, { maxInFlight = 0, WebSocketImpl, coalesce = true } = {}) {
+  constructor(url, opts, texture, { maxInFlight = 0, WebSocketImpl, coalesce = true, token = null, reconnect = false, backoffMs = [500, 1000, 2000, 4000, 8000] } = {}) {
     this.kind = 'remote';
     this.url = url;
     this.texture = texture;
@@ -87,40 +96,107 @@ export class RemoteHost {
     this._nextId = 1;
     this._idle = [];
     this._lastInput = '';
-    const WS = WebSocketImpl || globalThis.WebSocket;
-    if (typeof WS !== 'function') throw new Error('WebSocket is not available');
-    const ws = new WS(url);
-    ws.binaryType = 'arraybuffer';
-    this.ws = ws;
+    this._WS = WebSocketImpl || globalThis.WebSocket;
+    if (typeof this._WS !== 'function') throw new Error('WebSocket is not available');
+    // Reconnect (see the header): token names this client to the room across
+    // connections; reconnect retries with backoff after a drop.
+    this.token = typeof token === 'string' && token ? token : null;
+    this.reconnect = !!reconnect;
+    this.backoffMs = backoffMs;
+    this.status = 'connecting';
+    this.attempt = 0;
+    this._statusListeners = [];
+    this._retryTimer = null;
+    this._closed = false;
+    this.reconnects = 0;
     this.ready = new Promise((resolve, reject) => {
       this._resolveReady = resolve;
       this._rejectReady = reject;
     });
     const { texture: _t, ...plain } = opts;
+    this._initOpts = plain;
+    this._connect();
+  }
+
+  _connect() {
+    const ws = new this._WS(this.url);
+    ws.binaryType = 'arraybuffer';
+    this.ws = ws;
+    const url = this.url;
     ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'init', opts: plain }));
+      const init = { type: 'init', opts: this._initOpts };
+      if (this.token) init.token = this.token;
+      ws.send(JSON.stringify(init));
       if (this._field.on) ws.send(JSON.stringify({ type: 'field', ...this._field }));
       if (this._flowOn) ws.send(JSON.stringify({ type: 'flow', on: true }));
       if (this._perfOn) ws.send(JSON.stringify({ type: 'perf', on: true }));
     };
     ws.onerror = () => { if (!this.info) this._rejectReady(new Error('cannot connect to ' + url)); };
     ws.onclose = () => {
-      if (!this.info) this._rejectReady(new Error('connection to ' + url + ' closed'));
-      else console.warn('sim server connection closed');
+      if (this.ws !== ws) return;
+      if (!this.info) { this._rejectReady(new Error('connection to ' + url + ' closed')); return; }
+      // Commands in flight will get no answer on this connection.
+      for (const [id, p] of this._pending) { this._pending.delete(id); p({ error: 'disconnected' }); }
+      this.inFlight = 0;
+      this._latest = null;
+      if (this._closed || !this.reconnect) {
+        this._setStatus('disconnected');
+        if (!this._closed) console.warn('sim server connection closed');
+        return;
+      }
+      this._scheduleRetry();
     };
     ws.onmessage = (e) => {
+      if (this.ws !== ws) return;
       if (typeof e.data === 'string') this._onMessage(JSON.parse(e.data));
       else this._onField(e.data);
     };
   }
 
+  // Backoff: backoffMs[attempt] (the last value repeats).
+  _scheduleRetry() {
+    const wait = this.backoffMs[Math.min(this.attempt, this.backoffMs.length - 1)];
+    this.attempt++;
+    this._setStatus('reconnecting', { inMs: wait });
+    this._retryTimer = setTimeout(() => {
+      this._retryTimer = null;
+      if (this._closed) return;
+      this._connect();
+    }, wait);
+  }
+
+  // Connection state for the page's banner: 'connecting' | 'connected' |
+  // 'reconnecting' (extra: inMs, the wait before the next try; attempt) |
+  // 'disconnected' (closed for good).
+  onStatus(fn) { this._statusListeners.push(fn); }
+  _setStatus(status, extra = {}) {
+    this.status = status;
+    const s = { status, attempt: this.attempt, ...extra };
+    for (const fn of this._statusListeners) fn(s);
+  }
+
   _onMessage(m) {
     switch (m.type) {
-      case 'welcome':
+      case 'welcome': {
+        const again = !!this.info;
         this.room = m.room || null;
         this.own = m.own || [];
         this.bindings = m.bindings || 0;
-        // falls through
+        this.info = m.info;
+        this.mode = m.info.mode;
+        this._lastInput = '';
+        if (again) {
+          // A reconnect: the page applies the snapshot as it applies events.
+          this.reconnects++;
+          for (const ev of [{ type: 'room', room: this.room }, { type: 'ownBoats', boats: this.own }, { type: 'bindControls', boats: this.bindings }]) {
+            for (const fn of this._listeners) fn(ev);
+          }
+        }
+        this.attempt = 0;
+        this._resolveReady(m.info);
+        this._setStatus('connected', { again });
+        break;
+      }
       case 'info':
         this.info = m.info;
         this.mode = m.info.mode;
@@ -259,6 +335,8 @@ export class RemoteHost {
   }
 
   terminate() {
+    this._closed = true;
+    if (this._retryTimer) { clearTimeout(this._retryTimer); this._retryTimer = null; }
     try { this.ws.close(); } catch { /* closed */ }
     if (this._channel) this._channel.port1.close();
   }
