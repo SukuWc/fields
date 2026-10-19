@@ -15,6 +15,7 @@ Options: `node dist-server/server.mjs --port 8787 --field-hz 2 --lockstep --verb
 
 - `--lockstep`: each tick is driven by a client `tick` message instead of the server clock. Runs are reproducible; `test/server.test.mjs` uses it from Node (`RemoteHost.tick`). It is test-only: the browser page is frame-driven in remote mode and never sends `tick`, so a page against a lockstep server stays on the restart frame.
 - `--field-hz N`: a field message every 30/N ticks (default 2, i.e. every 15 ticks: 2 per second when the room keeps real time; 0 = no field). `--field-scale` is gone: the server sends the lattice at full resolution (see Field streaming).
+- `--grace-s N`: how long a disconnected client's boats, and an empty room, are kept for it to come back (default 30; 0 = remove at once). See Reconnect.
 - `GET http://localhost:8787/`: JSON status (rooms, clients, ticks, last tick ms).
 
 Rooms: `?room=name` on the server URL (`server=ws://localhost:8787/?room=race1`). The first client's map size, simRes and scenario (its `?scenario_selector`) create the room. Later clients join the same Sim as it is: joining or reloading never restarts the room or sends settings (see Room state). The room is dropped when its last client leaves.
@@ -64,13 +65,21 @@ In a remote room, the settings panel (the ☰ menu on phones) shows a name field
 - the camera follows it;
 - it has a name badge and a hull colour picked from the name.
 
-**Leave** (`removeBoat`, own boats only) or closing the page removes the boat. One boat per client (`MAX_BOATS_PER_CLIENT`), at most 8 player boats per room (`MAX_PLAYER_BOATS`); a refused spawn answers `{ error }`.
+**Leave** (`removeBoat`, own boats only) removes the boat; closing the page removes it after the grace period (see Reconnect). One boat per client (`MAX_BOATS_PER_CLIENT`), at most 8 player boats per room (`MAX_PLAYER_BOATS`); a refused spawn answers `{ error }`.
 
 A client without a boat is **spectating**: the server drops its boat commands and held keys (never applied to scenario boats or other players' boats), it has no key binding (the server sends each client `bindControls` with its own boat count, not the scenario's), and the player panel and the touch panel say "Spectating: join with your boat to sail". After **Leave** it is a spectator again. Each boat has one owner, so keys from several clients never combine on one boat. (A `--lockstep` room, tests only, still lets a client without a boat drive scenario boats 0/1, so lockstep runs match LocalHost.)
 
 A room-wide restart (or a simRes / refinement layout change, which restarts) keeps player boats: after the new scenario's first tick, each is spawned again with the same name and colour and owned by the same client (new id; `ownBoats` and `bindControls` are sent again).
 
 The readout, start panel and course progress show your own boat (`state.hud.own`, per player boat: telemetry, start status, course progress; `hudFromState(hud, ownId)`). A spectator, like the local and worker pages, sees the scenario's (the last boat's telemetry, boat 0's start and course).
+
+## Reconnect
+
+- **Token.** The page keeps a random client token per server URL (the room is in the URL) in `localStorage` (`fields.clientToken:<server>`) and sends it in `init` (`{ type: 'init', opts, token }`).
+- **Grace period.** When a client with a token disconnects, the room keeps its boats for `--grace-s` seconds (default 30, `GRACE_MS`): they stay in the race (on autopilot if they were) and nobody can steer them. An `init` with the same token within that time gets them back: the same boat ids, ownership and key binding, in the welcome snapshot. That covers a dropped connection and a page reload. A different token cannot take them. After the grace period they are removed. A room-wide restart in the meantime spawns them again for the absent owner. A client without a token loses its boats at once, as before.
+- **Empty rooms** are kept for the same grace period with the clock paused, so a reload or a short drop of the last client finds the room as it was; then the room is dropped.
+- **Auto-reconnect.** `RemoteHost` (`reconnect: true` from the page) retries a dropped connection with backoff (0.5, 1, 2, 4, then 8 s). Commands in flight resolve `{ error: 'disconnected' }`. On success the new welcome is applied like events (room, ownBoats, bindControls) and the subscriptions (field, flow, perf) and held keys are sent again. The page shows a banner (`#conn_banner`): "Disconnected from the sim server · reconnecting in N s (attempt k)", then "Reconnected" for 1.5 s.
+- A server restart loses every room (state is in memory): the page reconnects to a new room, without its boat.
 
 ## Room state and settings panels
 

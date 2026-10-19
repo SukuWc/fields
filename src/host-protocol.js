@@ -3,9 +3,10 @@
 // (apps/server ↔ remote-host.js). Plain objects only.
 //
 // Client → host (both)
-//   { type: 'init', opts }          SimCore options (mapW, mapH, simRes, ...;
+//   { type: 'init', opts, token? }  SimCore options (mapW, mapH, simRes, ...;
 //                                     server: plus scenario, used only by the
-//                                     client that creates the room)
+//                                     client that creates the room; token: the
+//                                     client's id across reconnects, room.js GRACE_MS)
 //   { type: 'command', id, c }      → { type: 'result', id, r }
 //                                     (server: r = { error } when refused)
 //   { type: 'query', id, q }        → { type: 'result', id, r }
