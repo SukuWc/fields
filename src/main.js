@@ -85,13 +85,30 @@ if (_hostChoice.drop.length) {
 }
 const _workerQueue = Number(_query.get('workerQueue'));
 function makeLocalHost() { return new LocalHost(_hostOpts); }
+// A random token per server URL (the room is in the URL), kept in
+// localStorage so a reload is the same client to the server.
+function clientToken(server) {
+  const key = 'fields.clientToken:' + server;
+  try {
+    let t = localStorage.getItem(key);
+    if (!t || !/^[A-Za-z0-9_-]{8,64}$/.test(t)) {
+      t = (globalThis.crypto && crypto.randomUUID) ? crypto.randomUUID() : Array.from({ length: 4 }, () => Math.random().toString(36).slice(2, 10)).join('');
+      localStorage.setItem(key, t);
+    }
+    return t;
+  } catch {
+    return null;
+  }
+}
 let host = null;
 try {
   if (_hostChoice.kind === 'worker') {
     host = new WorkerHost(_hostOpts, dataTextureMaterial, { maxInFlight: Number.isInteger(_workerQueue) && _workerQueue >= 0 && _query.has('workerQueue') ? _workerQueue : 4 });
   } else if (_hostChoice.kind === 'remote') {
     // scenario: loaded by the server only if this page creates the room.
-    host = new RemoteHost(_hostChoice.server, { ..._hostOpts, scenario: _scenarioParam }, dataTextureMaterial);
+    // token: this page's id in the room across drops and reloads (the
+    // server keeps its boat for a grace period); reconnect: retry with backoff.
+    host = new RemoteHost(_hostChoice.server, { ..._hostOpts, scenario: _scenarioParam }, dataTextureMaterial, { token: clientToken(_hostChoice.server), reconnect: true });
   }
 } catch (e) {
   console.warn('sim ' + _hostChoice.kind + ' host unavailable, running on the main thread', e);
@@ -148,6 +165,28 @@ function startClient() {
   let lattice = remote && host.room ? host.room.lattice : host.info.lattice;
   setFluidPlaneSize(lattice.w, lattice.h);
   if (remote) {
+    // Connection banner: shown while the server connection is down and
+    // being retried; "Reconnected" briefly once the welcome is back.
+    const banner = document.getElementById('conn_banner');
+    let hideTimer = null;
+    host.onStatus((st) => {
+      if (!banner) return;
+      if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+      if (st.status === 'reconnecting') {
+        banner.classList.remove('ok');
+        banner.textContent = 'Disconnected from the sim server · reconnecting in ' + Math.max(1, Math.round(st.inMs / 1000)) + ' s (attempt ' + st.attempt + ')';
+        banner.hidden = false;
+      } else if (st.status === 'disconnected') {
+        banner.classList.remove('ok');
+        banner.textContent = 'Disconnected from the sim server';
+        banner.hidden = false;
+      } else if (st.status === 'connected' && st.again) {
+        banner.classList.add('ok');
+        banner.textContent = 'Reconnected';
+        banner.hidden = false;
+        hideTimer = setTimeout(() => { banner.hidden = true; }, 1500);
+      }
+    });
     document.getElementById('admin_scope').hidden = false;
     // The map size is the room's (set when it was created).
     document.getElementById('map_size_row').hidden = true;
