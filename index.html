@@ -115,6 +115,23 @@
         border-radius: 4px;
         pointer-events: none;
       }
+      #conn_banner {
+        position: absolute;
+        top: 50px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 200;
+        color: #ffe2a0;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 15px;
+        background: rgba(60, 20, 10, 0.88);
+        border: 1px solid #d96;
+        padding: 8px 14px;
+        pointer-events: none;
+        text-align: center;
+      }
+      #conn_banner[hidden] { display: none; }
+      #conn_banner.ok { color: #c8f5c8; background: rgba(10, 50, 20, 0.88); border-color: #6c6; }
       #devmode_banner {
         display: none;
         position: absolute;
@@ -577,7 +594,7 @@
       }
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-96adxyoz.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-DZPiFQMQ.js"></script>
   </head>
   <body>
 
@@ -591,6 +608,7 @@
     </div>
     <div id="info"></div>
     <div id="rule_labels"></div>
+    <div id="conn_banner" role="status" aria-live="polite" hidden></div>
     <div id="devmode_banner" title="The angle is where the wind comes from. The arrow points downwind, the way it blows.">DEV MODE · fluid off · wind <span id="dev_wind_label"></span><span id="dev_wind_arrow">➤</span></div>
     <div id="start_hud" hidden></div>
     <div id="finish_results" hidden></div>
