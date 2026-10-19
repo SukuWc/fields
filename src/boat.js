@@ -702,6 +702,7 @@ export class Boat{
     for (const force of this.forces) f.push(force.point.x, force.point.y, force.vector.x, force.vector.y);
     const s = {
       x: this.x, y: this.y, px: p.x, py: p.y, pa: body.getAngle(), ha: this.hull_angle,
+      vx: body.getLinearVelocity().x, vy: body.getLinearVelocity().y, w: body.getAngularVelocity(),
       awa: this.awa, tw: Math.atan2(this.wind_vy_smooth, this.wind_vx_smooth),
       ap: this.autopilot_enabled ? 1 : 0, wd: this.wind_direction, aht: this.autopilot_heading_target,
       ra: this.rudder_angle, mba: this.mainsail_boom_angle_actual, jba: this.jib_boom_angle_actual,
