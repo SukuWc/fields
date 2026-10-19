@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { FixedStepLoop } from './loop.js';
 
 import { initRenderer, startAnimation, renderNow, getCamera, setFluidPlaneSize, setFieldVisible, setFlowGrid, setTracerParams, getTracerParams, updateBoatTrails, setTrailParams, setBoatTrailsOn, setGhostParams } from './renderer.js';
-import { setupControls, heldCommands, onHeldChange, deferUiToFrames, flushFrameUi } from './controls.js';
+import { setupControls, heldCommands, onHeldChange, deferUiToFrames, flushFrameUi, showRoomError } from './controls.js';
 import { LocalHost } from './host.js';
 import { buildScene } from './scene-build.js';
 import { WorkerHost } from './worker-host.js';
@@ -28,8 +28,10 @@ const _askedMapSize = mapSizeFromQuery(location.search);
 const _scenarioParam = Number(_query.get('scenario_selector')) || 0;
 const mapSizeKey = fitMapSize(_scenarioParam, _askedMapSize);
 const mapSizeClamped = mapSizeKey !== _askedMapSize;
-const map_w = MAP_SIZES[mapSizeKey].w;
-const map_h = MAP_SIZES[mapSizeKey].h;
+// A server room has its own size (its creator's); the page takes it from
+// host.info once connected (startClient), so these may change there.
+let map_w = MAP_SIZES[mapSizeKey].w;
+let map_h = MAP_SIZES[mapSizeKey].h;
 // UI wind, and the uniform wind used while dev mode is on.
 // Angle is where the wind comes from: 0 = from +X, 90 = from +Y (blows toward −Y).
 // Speed is true-wind speed (the value boats report as TWS).
@@ -42,12 +44,15 @@ const bm_resolution = 1;
 const texture_oversampling = 8;
 
 // Data texture for fluid field visualisation
-const _side1 = texture_oversampling * map_w * bm_resolution;
-const _side2 = texture_oversampling * map_h * bm_resolution;
-const _data1 = new Uint8Array(_side1 * _side2 * 4);
-const dataTextureMaterial = new THREE.DataTexture(_data1, _side1, _side2, THREE.RGBAFormat, THREE.UnsignedByteType);
-dataTextureMaterial.magFilter = THREE.NearestFilter;
-dataTextureMaterial.needsUpdate = true;
+function makeTexture(w, h) {
+  const side1 = texture_oversampling * w * bm_resolution;
+  const side2 = texture_oversampling * h * bm_resolution;
+  const tex = new THREE.DataTexture(new Uint8Array(side1 * side2 * 4), side1, side2, THREE.RGBAFormat, THREE.UnsignedByteType);
+  tex.magFilter = THREE.NearestFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+let dataTextureMaterial = makeTexture(map_w, map_h);
 
 const planeMat = new THREE.MeshBasicMaterial({ map: dataTextureMaterial });
 planeMat.needsUpdate = true;
@@ -85,7 +90,8 @@ try {
   if (_hostChoice.kind === 'worker') {
     host = new WorkerHost(_hostOpts, dataTextureMaterial, { maxInFlight: Number.isInteger(_workerQueue) && _workerQueue >= 0 && _query.has('workerQueue') ? _workerQueue : 4 });
   } else if (_hostChoice.kind === 'remote') {
-    host = new RemoteHost(_hostChoice.server, _hostOpts, dataTextureMaterial);
+    // scenario: loaded by the server only if this page creates the room.
+    host = new RemoteHost(_hostChoice.server, { ..._hostOpts, scenario: _scenarioParam }, dataTextureMaterial);
   }
 } catch (e) {
   console.warn('sim ' + _hostChoice.kind + ' host unavailable, running on the main thread', e);
@@ -112,6 +118,17 @@ else host.ready.then(startClient, (e) => {
 });
 
 function startClient() {
+  // Remote: a server room (host.info: the size it was created with), its
+  // room settings (host.room) and this client's role come from the server.
+  const remote = host.kind === 'remote';
+  if (remote && (host.info.mapW !== map_w || host.info.mapH !== map_h)) {
+    map_w = host.info.mapW;
+    map_h = host.info.mapH;
+    dataTextureMaterial = makeTexture(map_w, map_h);
+    planeMat.map = dataTextureMaterial;
+    planeMat.needsUpdate = true;
+    host.setTexture(dataTextureMaterial);
+  }
   // Camera and drawing toggles (view.js), client side.
   const view = new View();
   {
@@ -125,8 +142,22 @@ function startClient() {
   // Renderer and controls — must init renderer before controls (controls needs getCamera).
   // The barrier listener has to exist before URL settings dispatch change events.
   initRenderer({ width: map_w, height: map_h }, planeMat, view);
-  document.getElementById('barrier').addEventListener('change', e => host.command({ type: 'barrier', on: e.target.checked }));
-  setFluidPlaneSize(host.info.lattice.w, host.info.lattice.h);
+  // Room commands answer { error } when a server refuses them.
+  const roomCommand = (c) => host.command(c).then((r) => { if (r && r.error) showRoomError(r.error); return r; });
+  document.getElementById('barrier').addEventListener('change', e => roomCommand({ type: 'barrier', on: e.target.checked }));
+  let lattice = remote && host.room ? host.room.lattice : host.info.lattice;
+  setFluidPlaneSize(lattice.w, lattice.h);
+  if (remote) {
+    document.getElementById('admin_scope').hidden = false;
+    // The map size is the room's (set when it was created).
+    document.getElementById('map_size_row').hidden = true;
+    // A room-wide change (any client's): the grid may have been rebuilt.
+    host.on((ev) => {
+      if (ev.type !== 'room' || !ev.room.lattice) return;
+      const l = ev.room.lattice;
+      if (l.w !== lattice.w || l.h !== lattice.h) { lattice = l; setFluidPlaneSize(l.w, l.h); dataTextureMaterial.needsUpdate = true; }
+    });
+  }
   // Field plot options (#plotSelect, #contrastSlider) go to the host's painter.
   {
     const plotSelect = document.getElementById('plotSelect');
@@ -186,7 +217,10 @@ function startClient() {
   // Fast-wind options ("2f", "2f34") use the x2 root cell but step it every
   // frame (or 1.2× per frame): stepsPerFrame is explicit, see Boltzmann._build.
   // SIM_RES_MODES lives in sim.js.
+  // Remote: the server rebuilds, restarts and sends the new lattice to
+  // every client (the room event above).
   document.getElementById('simRes').addEventListener('change', (e) => {
+    if (remote) { roomCommand({ type: 'simRes', mode: e.target.value }); return; }
     hostCommand({ type: 'simRes', mode: e.target.value }, (r) => {
       if (!r.rebuilt) return;
       setFluidPlaneSize(r.lattice.w, r.lattice.h);
@@ -216,6 +250,7 @@ function startClient() {
   let mapSizeLive = false;
   mapSizeSel.addEventListener('change', (e) => {
     const v = e.target.value;
+    if (remote) return;
     if (!mapSizeLive || v === mapSizeKey || !MAP_SIZES[v]) return;
     reloadWithMapSize(v);
   });
@@ -223,6 +258,8 @@ function startClient() {
   // smallest size that fits (course scenarios 12-17 need 100 × 200).
   document.getElementById('scenario_selector').addEventListener('change', (e) => {
     const n = Number(e.target.value) || 0;
+    // Remote: the server refuses a scenario that does not fit the room.
+    if (remote) return;
     if (scenarioFits(n, mapSizeKey)) return;
     reloadWithMapSize(fitMapSize(n, mapSizeKey), { scenario_selector: String(n) });
   });
@@ -252,12 +289,12 @@ function startClient() {
     const num = document.getElementById('cellBudget');
     const apply = () => {
       const n = Number(String(num.value).trim());
-      host.command({ type: 'cellBudget', tune: tune.checked, target: num.value.trim() !== '' && Number.isFinite(n) && n > 0 ? n : null });
+      roomCommand({ type: 'cellBudget', tune: tune.checked, target: num.value.trim() !== '' && Number.isFinite(n) && n > 0 ? n : null });
     };
     tune.addEventListener('change', apply);
     num.addEventListener('change', apply);
-    num.addEventListener('input', apply);
-    apply();
+    // Remote: one command per edit, not per keystroke; nothing on join.
+    if (!remote) { num.addEventListener('input', apply); apply(); }
   }
   {
     const sel = document.getElementById('amrMode');
@@ -270,6 +307,7 @@ function startClient() {
       history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
     }
     sel.addEventListener('change', (e) => {
+      if (remote) { roomCommand({ type: 'amrMode', mode: e.target.value }); return; }
       hostCommand({ type: 'amrMode', mode: e.target.value }, (r) => {
         if (!r.rebuilt) return;
         dataTextureMaterial.needsUpdate = true;
@@ -292,10 +330,11 @@ function startClient() {
   document.getElementById('simRes').value = MAP_SIZES[mapSizeKey].simRes;
   // The mode's explicit stepsPerFrame (fast-wind defaults such as '4f') was
   // applied by the host at startup (SimCore, a 'simRes' command).
-  installUrlSettings();
+  // Remote: the room settings panel follows the server, not the URL.
+  installUrlSettings(undefined, remote ? { exclude: '#admin_panel' } : undefined);
   // After installUrlSettings: show the size in use (a clamp or a legacy
   // ?mapSize) and write it to the URL; equal to mapSizeKey, so no reload.
-  if (mapSizeSel.value !== mapSizeKey || _query.has('mapSize')) {
+  if (!remote && (mapSizeSel.value !== mapSizeKey || _query.has('mapSize'))) {
     const u = new URLSearchParams(location.search);
     if (u.has('mapSize')) { u.delete('mapSize'); history.replaceState(history.state, '', location.pathname + (u.toString() ? '?' + u : '') + location.hash); }
     mapSizeSel.value = mapSizeKey;
@@ -308,10 +347,18 @@ function startClient() {
   // Sim options the loop reads, mirrored from the settings checkboxes so the
   // simulation pass never touches the DOM. Kept current by change listeners
   // (url-settings dispatches change events, so query values land here too).
+  // Remote: only on an edit (the room has its own values).
   for (const [key, id] of [['amr', 'amr'], ['boatEnergy', 'boat_energy']]) {
     const el = document.getElementById(id);
-    host.command({ type: 'options', [key]: el.checked });
-    el.addEventListener('change', () => { host.command({ type: 'options', [key]: el.checked }); });
+    if (!remote) host.command({ type: 'options', [key]: el.checked });
+    el.addEventListener('change', () => { roomCommand({ type: 'options', [key]: el.checked }); });
+  }
+  // Flow tracers: a per-client subscription in a server room (the server
+  // samples the wind grid only for clients showing them).
+  if (host.setFlow) {
+    const box = document.getElementById('show_field');
+    host.setFlow(box.checked);
+    box.addEventListener('change', () => host.setFlow(box.checked));
   }
 
   let currentGuides = [];
@@ -358,7 +405,8 @@ function startClient() {
   }
 
   // Camera follow target: boat 0 as of the last step (the old code read
-  // sim.players[0], whose position a step sets). Cleared with the scenario.
+  // sim.players[0], whose position a step sets), or this client's own boat
+  // in a server room. Cleared with the scenario.
   let followTarget;
   let ownBoatId = null;
   setupOwnBoat(host, (ids) => { ownBoatId = ids[0] || null; });
@@ -371,7 +419,8 @@ function startClient() {
     followTarget = mine || (ownBoatId ? undefined : frame.boat0) || undefined;
     if (frame.fieldSteps > 0 && isPerfOverlayOn()) recordFieldStep(frame.fieldMs);
     if (frame.state && frame.statics) {
-      const scene = buildScene(frame.state, frame.statics, view);
+      // The readout shows this client's own boat in a server room.
+      const scene = buildScene(frame.state, frame.statics, view, ownBoatId);
       if (scene.hud) applyHud(scene.hud);
       currentGuides = scene.guides;
       frameBodies = scene.bodies;
@@ -386,7 +435,7 @@ function startClient() {
     // (handled above: readout, HUD, guides, perf counters, field texture)
     // moves the camera, closes a perf-overlay frame and draws once; held keys
     // and the camera go to the server when they change.
-    const sendInput = () => host.sendInput({ held: heldCommands(), view });
+    const sendInput = () => host.sendInput({ held: heldCommands() });
     onHeldChange(sendInput);
     deferUiToFrames(true);
     host.onFrame(() => {

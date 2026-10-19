@@ -54,7 +54,7 @@ Last updated: 2026-10-19
 
 ### 3. Multiplayer open water
 - [x] Shared world and shared wind: [#60](https://github.com/SukuWc/fields/pull/60) (server rooms + streamed wind); [#61](https://github.com/SukuWc/fields/pull/61) (Join with my boat: each client owns a named boat, steers only that boat, removed on leave or disconnect)
-- [ ] Room settings panel (room-wide, validated), own-boat-only controls (spectators steer nothing, 1 boat per client, 8 per room), per-client readouts and flow/perf subscriptions, joining never resets the room (in progress, [#73](https://github.com/SukuWc/fields/pull/73))
+- [x] Room settings panel (room-wide, validated), own-boat-only controls (spectators steer nothing, 1 boat per client, 8 per room), per-client readouts and flow/perf subscriptions, joining never resets the room: [#73](https://github.com/SukuWc/fields/pull/73)
 - [ ] Soft physical collisions (bump and slow)
 - [ ] Server-authoritative collisions
 - [ ] Reconnect
