@@ -592,7 +592,7 @@ export function updateBoatTrails(state) {
 
 // Ghost boats (ghost-boat.js): each boat's hull outline moved along the
 // constant turn-rate prediction, lookahead s ahead. Pooled THREE.Lines.
-let _ghostOn = true, _ghostAhead = GHOST_AHEAD_S, _ghostBoats = null;
+let _ghostOn = false, _ghostAhead = GHOST_AHEAD_S, _ghostBoats = null;
 const ghostPool = [];
 export function setGhostParams({ on, ahead } = {}) {
   if (on !== undefined) _ghostOn = !!on;

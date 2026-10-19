@@ -4,7 +4,7 @@
 // body velocity (vx, vy) and angular velocity w (Boat.renderState): the
 // velocity vector rotates with the heading, heading(t) = a0 + w t, so
 //   p(t) = p0 + ∫0..t R(w s) v ds
-// which is a straight line when w ≈ 0. UI / URL: Ghost boat box (?ghost=0),
+// which is a straight line when w ≈ 0. UI / URL: Ghost boat box, off by default (?ghost=1 on, ?ghost=0 off),
 // lookahead s (?ghostAhead=s).
 export const GHOST_AHEAD_S = 2;
 export const GHOST_OPACITY = 0.45;
