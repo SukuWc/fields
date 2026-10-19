@@ -13,6 +13,8 @@
 //   boats  per racing boat: Boat.renderState (boat-draw.js)
 //   ts, ep sim time (Sim.rulesTime) and scenario epoch, for boat trails
 //   bc     own boat colours (spawnBoat color) or null per boat, when any
+//   aw     per boat: whole seconds until an absent owner's boat is removed
+//          (server grace period, apps/server/room.js) or null, when any
 //   mk     mark buoy positions [[x, y], ...] (anchors in statics.marks)
 //   start  startGuideState (start.js) for boat 0
 //   course courseGuideState (course.js) for boat 0
@@ -137,6 +139,7 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
   s.ts = sim.rulesTime;
   s.ep = sim.epoch || 0;
   if (racing.some((b) => Number.isFinite(b.spawnColor))) s.bc = racing.map((b) => (Number.isFinite(b.spawnColor) ? b.spawnColor : null));
+  if (racing.some((b) => b.awayUntil != null)) s.aw = racing.map((b) => (b.awayUntil != null ? Math.max(0, Math.ceil((b.awayUntil - nowMs) / 1000)) : null));
   s.hud = markExact(hudState(sim, rec));
   if (sim.marks.length) s.mk = sim.marks.map((m) => { const p = m.physics_model.getPosition(); return [p.x, p.y]; });
   const seq = sim.startSequence;

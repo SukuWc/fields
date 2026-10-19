@@ -78,7 +78,7 @@ import { scenarioExtent, WALL_INSET_M } from '../../src/map-size.js';
 // removes the boats at once, as before. An empty room is kept (its clock
 // paused) for graceMs too, so a reload or a short drop of the last client
 // finds it as it was; then it is dropped (onDispose).
-export const GRACE_MS = 30000;
+export const GRACE_MS = 10000;
 export const TOKEN_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
 export const MAX_BOATS_PER_CLIENT = 1;
@@ -237,6 +237,7 @@ export class Room {
       const entry = { parked: true, token, boats: list, until: this.now() + this.graceMs };
       entry.timer = setTimeout(() => this._expire(token), this.graceMs);
       this.parked.set(token, entry);
+      this._markAway(entry);
       if (specs) { this._respawn.delete(client); this._respawn.set(entry, specs); }
     } else {
       for (const b of list) this.core.command({ type: 'removeBoat', id: b.id });
@@ -273,8 +274,20 @@ export class Room {
     if (!e) return;
     clearTimeout(e.timer);
     this.parked.delete(token);
+    this._markAway(e, false);
     this.owned.set(client, e.boats);
     if (this._respawn && this._respawn.has(e)) { this._respawn.set(client, this._respawn.get(e)); this._respawn.delete(e); }
+  }
+
+  // Countdown over an absent owner's boats (scene-state.js aw): the boat
+  // carries its removal time on the clock sceneFrame is given
+  // (performance.now(), host.js), whatever clock this room runs on.
+  _markAway(e, away = true) {
+    const until = away ? performance.now() + Math.max(0, e.until - this.now()) : undefined;
+    for (const b of e.boats) {
+      const boat = this.core.sim.players.find((p) => p.spawnId === b.id);
+      if (boat) boat.awayUntil = until;
+    }
   }
 
   _dispose() {
@@ -404,6 +417,7 @@ export class Room {
       if (key.parked) {
         if (this.parked.get(key.token) !== key) continue;
         for (const sp of specs) { const r = this.core.command({ type: 'spawnBoat', name: sp.name, color: sp.color }); key.boats.push({ id: r.id, name: r.name, color: sp.color }); }
+        this._markAway(key);
         continue;
       }
       if (!this.clients.has(key)) continue;

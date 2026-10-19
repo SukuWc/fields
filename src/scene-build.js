@@ -148,6 +148,12 @@ export function buildGuides(state, statics, view) {
     const name = defs[i] && defs[i].name;
     if (name) guides.push({ type: 'label', badge: true, x: boats[i].x, y: boats[i].y + 4, lines: [{ text: name, role: 'markno', id: 'name' }] });
   }
+  // Owner disconnected (server grace period, state.aw): whole seconds until
+  // the boat is removed, in red above the name badge.
+  const aw = state.aw || [];
+  for (let i = 0; i < boats.length && i < aw.length; i++) {
+    if (aw[i] > 0) guides.push({ type: 'label', badge: true, x: boats[i].x, y: boats[i].y + 5.6, lines: [{ text: String(aw[i]), role: 'badge', id: 'away' }] });
+  }
   const b0 = boats[0] ? { x: boats[0].x, y: boats[0].y } : null;
   if (state.start && statics.start) guides.push(...startGuidesFromState(statics.start, state.start, b0, now));
   if (state.course && statics.course) guides.push(...courseGuidesFromState(statics.course, state.course, now));

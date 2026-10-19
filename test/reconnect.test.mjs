@@ -2,10 +2,13 @@
 // src/remote-host.js token / reconnect): a client that comes back with its
 // token within the grace period gets the same boat back; after it the boat
 // is gone; another token cannot take it; RemoteHost reconnects on its own
-// after a drop; an empty room is kept for the grace period.
+// after a drop; an empty room is kept for the grace period; the others see a
+// countdown over an absent owner's boat (state.aw); default grace 10 s.
 import { WebSocket } from 'ws';
 import { startServer } from '../apps/server/index.js';
 import { RemoteHost } from '../src/remote-host.js';
+import { buildScene } from '../src/scene-build.js';
+import { GRACE_MS } from '../apps/server/room.js';
 
 let failed = 0;
 const quiet = console.log;
@@ -118,6 +121,50 @@ const TA = 'token-aaaa-1111', TX = 'token-xxxx-9999';
   A.terminate();
   await until(() => room.clients.size === 0);
   check('without a token the boat goes at once', !room.core.sim.players.some((p) => p.spawnId === r.id));
+}
+
+// 7. Countdown over an absent owner's boat (state.aw), seen by the others;
+// cleared when the owner is back. Then the default grace period (10 s).
+const view = { camera_position_x: 0, camera_position_y: 0, show_forces: false, show_fields: false };
+const awayLabels = (f) => buildScene(f.state, f.statics, view).guides.filter((g) => g.type === 'label' && g.lines[0].id === 'away').map((g) => g.lines[0].text);
+const awOf = (h, room, id) => { const f = h.lastFrame; const i = room.core.sim.players.findIndex((p) => p.spawnId === id); return f && f.state.aw && i >= 0 ? f.state.aw[i] : null; };
+const tickFor = async (h, ms) => { const t = Date.now(); while (Date.now() - t < ms) { h.tick({ dt: 1 / 30, held: [], present: true, view }); await sleep(33); } };
+{
+  const srv2 = await startServer({ port: 0, fieldHz: 0 });
+  const url2 = `ws://127.0.0.1:${srv2.port}/?room=cd`;
+  const conn2 = async (token) => { const h = new RemoteHost(url2, { ...opts, scenario: 0 }, tex(), { WebSocketImpl: WebSocket, token }); await h.ready; return h; };
+  check('default grace period is 10 s', GRACE_MS === 10000 && srv2.rooms.size === 0);
+  const A = await conn2(TX);
+  const room = srv2.rooms.get('cd');
+  const B = await conn2(TA);
+  const rb = await B.command({ type: 'spawnBoat', name: 'Bo' });
+  await until(() => B.own.length === 1);
+  await tickFor(A, 400);
+  check('no countdown while the owner is connected', A.lastFrame && !A.lastFrame.state.aw && awayLabels(A.lastFrame).length === 0);
+  B.terminate();
+  await until(() => room.parked.has(TA));
+  await tickFor(A, 500);
+  const c0 = awOf(A, room, rb.id);
+  const l0 = awayLabels(A.lastFrame);
+  check('the state carries the countdown for the absent owner\'s boat (10 s)', c0 === 10 || c0 === 9, `aw ${JSON.stringify(A.lastFrame.state.aw)}`);
+  check('…drawn as a label above that boat', l0.length === 1 && l0[0] === String(c0), JSON.stringify(l0));
+  await tickFor(A, 2200);
+  const c1 = awOf(A, room, rb.id);
+  check('it counts down', Number.isInteger(c1) && c1 >= 6 && c1 <= c0 - 2, `${c0} → ${c1}`);
+  const B2 = await conn2(TA);
+  await tickFor(A, 400);
+  check('it clears when the owner reconnects (same boat)', B2.own[0] && B2.own[0].id === rb.id && !A.lastFrame.state.aw && awayLabels(A.lastFrame).length === 0);
+  B2.terminate();
+  await until(() => room.parked.has(TA));
+  const tDrop2 = Date.now();
+  await tickFor(A, 9000);
+  check('still there at 9 s', room.core.sim.players.some((p) => p.spawnId === rb.id) && awOf(A, room, rb.id) >= 1, `aw ${awOf(A, room, rb.id)}`);
+  await until(() => !room.core.sim.players.some((p) => p.spawnId === rb.id), 3000);
+  const gone = Date.now() - tDrop2;
+  await tickFor(A, 300);
+  check('removed after 10 s by default (and the countdown with it)', !room.core.sim.players.some((p) => p.spawnId === rb.id) && gone >= 9900 && gone < 11500 && !A.lastFrame.state.aw, `${gone} ms`);
+  A.terminate();
+  await srv2.close();
 }
 
 await srv.close();
