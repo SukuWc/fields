@@ -85,8 +85,8 @@ const tex = () => ({ image: { data: new Uint8Array(0) } });
   check('scenario boat 0 is not steered by players (still on autopilot)', core.sim.players[0].autopilot_enabled === true, `d0 ${(core.sim.players[0].physics_model.getAngle() - h0S).toFixed(2)}`);
   check('removeBoat of another client\'s boat is refused', (await A.command({ type: 'removeBoat', id: rb.id })) === false && !!byId(rb.id));
   B.terminate();
-  for (let i = 0; i < 50 && byId(rb.id); i++) await sleep(100);
-  await sleep(100);
+  // Wait for the removal on the server and for a frame at A that shows it (under load frames lag).
+  for (let i = 0; i < 100 && (byId(rb.id) || A.lastFrame?.spawned?.length !== 1); i++) await sleep(100);
   check('disconnect removes the client\'s boat', !byId(rb.id) && !!byId(ra.id) && A.lastFrame.spawned.length === 1);
   await A.command({ type: 'restart', scenario: 0 });
   for (let i = 0; i < 50 && !(ownA.at(-1).length === 1 && ownA.at(-1)[0].id !== ra.id); i++) await sleep(50);
