@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { predictPose, moveOutline, assignBodies, GHOST_AHEAD_S, GHOST_OPACITY, GHOST_MAX_AHEAD_S } from './ghost-boat.js';
+import { ghostOutlines, GHOST_AHEAD_S, GHOST_OPACITY, GHOST_MAX_AHEAD_S } from './ghost-boat.js';
 import { BoatTrails, TRAIL_COLORS, TRAIL_INTERVAL_S, TRAIL_DURATION_S, TRAIL_SIZE_M, colorRgb } from './boat-trails.js';
 import { FlowTracers, tracerCountFor, TRACER_LIFETIME_S, TRACER_TAIL_S, TRACER_SEGMENTS, TRACER_COUNT_LIMIT } from './flow-tracers.js';
 
@@ -583,7 +583,8 @@ export function setBoatTrailsOn(on) { _trailsOn = !!on; }
 export function setTrailParams(p = {}) { trails.set(p); }
 export function getBoatTrails() { return trails; }
 // Called per frame with frame.state (sim time ts, epoch ep, boats, colours bc).
-export function updateBoatTrails(state) {
+export function updateBoatTrails(state, statics) {
+  if (statics) _ghostHulls = statics.hulls || null;
   if (!state || !state.boats) return;
   _trailColors = state.bc || null;
   trails.update(state.ts, state.boats, state.ep);
@@ -592,50 +593,41 @@ export function updateBoatTrails(state) {
 
 // Ghost boats (ghost-boat.js): each boat's hull outline moved along the
 // constant turn-rate prediction, lookahead s ahead. Pooled THREE.Lines.
-let _ghostOn = false, _ghostAhead = GHOST_AHEAD_S, _ghostBoats = null;
+let _ghostOn = false, _ghostAhead = GHOST_AHEAD_S, _ghostBoats = null, _ghostHulls = null;
 const ghostPool = [];
 export function setGhostParams({ on, ahead } = {}) {
   if (on !== undefined) _ghostOn = !!on;
   if (ahead >= 0 && ahead <= GHOST_MAX_AHEAD_S) _ghostAhead = ahead;
 }
-function renderGhosts(bodies) {
+function renderGhosts() {
   let k = 0;
-  const boats = _ghostBoats;
-  if (_ghostOn && boats && boats.length && _ghostAhead > 0) {
-    const owner = assignBodies(bodies, boats);
-    for (let j = 0; j < bodies.length; j++) {
-      const i = owner[j];
-      if (i < 0) continue;
-      const b = boats[i], body = bodies[j];
-      if (!Number.isFinite(b.vx)) continue;
-      const n = body.pts.length / 2;
-      let line = ghostPool[k];
-      if (!line || line.geometry.attributes.position.count < n) {
-        if (line) { scene.remove(line); line.geometry.dispose(); line.material.dispose(); }
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(Math.max(n, 16) * 3), 3).setUsage(THREE.DynamicDrawUsage));
-        line = new THREE.Line(geo, new THREE.LineBasicMaterial({ transparent: true, opacity: GHOST_OPACITY, depthTest: false, depthWrite: false }));
-        line.renderOrder = ORDER_HULL;
-        line.frustumCulled = false;
-        scene.add(line);
-        ghostPool[k] = line;
-      }
-      const pose = predictPose(b.vx, b.vy, b.w, _ghostAhead);
-      const moved = moveOutline(body.pts, b.px, b.py, pose, _ghostTmp);
-      const pos = line.geometry.attributes.position.array;
-      for (let q = 0; q < n; q++) { pos[q * 3] = moved[q * 2]; pos[q * 3 + 1] = moved[q * 2 + 1]; pos[q * 3 + 2] = 0; }
-      line.geometry.setDrawRange(0, n);
-      line.geometry.attributes.position.needsUpdate = true;
-      const rgb = trailColorOf(i) || [1, 1, 1];
-      line.material.color.setRGB(rgb[0], rgb[1], rgb[2]);
-      line.visible = true;
-      k++;
+  const list = _ghostOn && _ghostAhead > 0 ? ghostOutlines(_ghostBoats, _ghostHulls, _ghostAhead) : [];
+  for (const g of list) {
+    const n = g.pts.length / 2;
+    let line = ghostPool[k];
+    if (!line || line.geometry.attributes.position.count < n) {
+      if (line) { scene.remove(line); line.geometry.dispose(); line.material.dispose(); }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(Math.max(n, 16) * 3), 3).setUsage(THREE.DynamicDrawUsage));
+      line = new THREE.Line(geo, new THREE.LineBasicMaterial({ transparent: true, opacity: GHOST_OPACITY, depthTest: false, depthWrite: false }));
+      line.renderOrder = ORDER_HULL;
+      line.frustumCulled = false;
+      scene.add(line);
+      ghostPool[k] = line;
     }
+    const pos = line.geometry.attributes.position.array;
+    for (let q = 0; q < n; q++) { pos[q * 3] = g.pts[q * 2]; pos[q * 3 + 1] = g.pts[q * 2 + 1]; pos[q * 3 + 2] = 0; }
+    line.geometry.setDrawRange(0, n);
+    line.geometry.attributes.position.needsUpdate = true;
+    const rgb = trailColorOf(g.i) || [1, 1, 1];
+    line.material.color.setRGB(rgb[0], rgb[1], rgb[2]);
+    line.visible = true;
+    k++;
   }
   for (; k < ghostPool.length; k++) ghostPool[k].visible = false;
-  if (typeof window !== 'undefined') window.__ghosts = { drawn: ghostPool.filter((l) => l.visible).length, on: _ghostOn, ahead: _ghostAhead };
+  if (typeof window !== 'undefined') window.__ghosts = { drawn: list.length, ids: list.map((g) => g.id), boats: _ghostBoats ? _ghostBoats.length : 0, on: _ghostOn, ahead: _ghostAhead };
 }
-const _ghostTmp = [];
+
 function trailColorOf(i) {
   const own = _trailColors && _trailColors[i];
   return colorRgb(Number.isFinite(own) ? own : TRAIL_COLORS[i % TRAIL_COLORS.length]);
@@ -754,7 +746,7 @@ function animation(t) {
     }
   }
 
-  renderGhosts(sceneData.bodies);
+  renderGhosts();
 
   for (const [id, line] of fixtureLines) {
     if (!seenFixtures.has(id)) {
