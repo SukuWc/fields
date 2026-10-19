@@ -60,7 +60,7 @@ export class SimCore {
     // what a server room reports to joining clients and broadcasts on change.
     this.settings = {
       devMode: false, wind: { angle: windAngle, speed: windSpeed }, barrier: false,
-      simRes, amrMode: 'auto', cellBudget: { tune: true, target: null },
+      simRes: SIM_RES_MODES[simRes] ? simRes : DEFAULT_SIM_RES, amrMode: 'auto', cellBudget: { tune: true, target: null },
       amr: this.sim.options.amr, boatEnergy: this.sim.options.boatEnergy,
     };
     // The constructor only took the root resolution; the mode's explicit
@@ -108,7 +108,7 @@ export class SimCore {
       case 'wind':
         st.wind = { angle: this.map.wind_direction, speed: this.map.wind_speed };
         break;
-      case 'simRes': st.simRes = SIM_RES_MODES[c.mode] ? c.mode : '1'; break;
+      case 'simRes': st.simRes = SIM_RES_MODES[c.mode] ? c.mode : DEFAULT_SIM_RES; break;
       case 'amrMode': st.amrMode = c.mode === 'auto' ? 'auto' : 'fixed'; break;
       case 'cellBudget': st.cellBudget = { tune: !!c.tune, target: c.tune && Number.isFinite(c.target) && c.target > 0 ? c.target : null }; break;
       case 'options':
