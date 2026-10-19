@@ -19,6 +19,8 @@ import { markRoomTarget } from './course.js';
 import { buildScenarios } from './scenarios.js';
 import { Boat } from './boat.js';
 
+const perfNow = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : () => Date.now();
+
 // Scenario frame indexes count the old 90 Hz passes (3 per 30 Hz tick), so
 // the scripts keep their timing: one tick runs indexes f .. f+2 and the
 // counter advances by SCENARIO_FRAMES_PER_TICK.
@@ -271,6 +273,7 @@ export class Sim {
   // loop read the keys. Returns a record of what the step saw, for the client
   // readout (Sim.last).
   step(simDt, held) {
+    const tickT0 = perfNow();
     this.activate();
     const map = this.map, bm = this.bm;
     const stepped = typeof simDt === 'number' && Number.isFinite(simDt) && simDt > 0;
@@ -391,13 +394,16 @@ export class Sim {
     // Refinement windows follow the boats (and curl islands). Tracking reads
     // curl, which only changes on a lattice step, so it runs on stepping
     // frames. Dev mode leaves the lattice frozen.
+    const trackT0 = perfNow();
     if (!map.devMode && this.options.amr && bm.stepsDueThisFrame() > 0) trackBoats(bm, players);
+    const trackMs = perfNow() - trackT0;
     // AMR off: a restart that removed a boat would keep drawing a ring.
     if (!map.devMode && !this.options.amr && bm.domains.length > players.length) {
       bm.domains.length = players.length;
       bm._rebuildInteriorCells();
     }
     if (!map.devMode) rec.fieldSteps = bm.advance_frame();
+    if (bm.levelPerf) bm.levelPerf.side(trackMs, perfNow() - tickT0);
 
     this.frame += SCENARIO_FRAMES_PER_TICK;
     if (stepped) this.ticks++;
