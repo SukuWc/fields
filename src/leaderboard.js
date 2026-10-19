@@ -24,6 +24,8 @@
 // has been ahead for LEADERBOARD_SWAP_S of sim time; a change of group or of
 // legs done swaps at once.
 
+import { penaltyNameText, unservedCodes } from './rule-text.js';
+
 export const BEAT_ANGLE_DEG = 50;
 export const LEADERBOARD_SWAP_S = 1;
 const COS_BEAT = Math.cos(BEAT_ANGLE_DEG * Math.PI / 180);
@@ -210,14 +212,15 @@ const LABEL_CODE = { '–': '-', Fin: 'F', Start: 'S', OCS: 'O', Finish: 'E' };
 const LABEL_TEXT = { '-': '–', F: 'Fin', S: 'Start', O: 'OCS', E: 'Finish' };
 
 // The rows as data (hud.js): rows() with the label as a code ('L' = "Leg
-// n/m" from leg and legs) and the finish entry reduced to what is shown.
+// n/m" from leg and legs) and the finish entry reduced to what is shown
+// (unserved: penalty codes, rule-text.js penaltyNameText).
 export function leaderboardState(lb) {
   return lb.rows().map((r) => ({
     position: r.position, boat: r.boat, status: r.status,
     label: r.label in LABEL_CODE ? LABEL_CODE[r.label] : (r.label === legLabel(r.leg, r.legs) ? 'L' : r.label),
     leg: r.leg, legs: Number.isFinite(r.legs) ? r.legs : null, kind: r.kind, legM: Number.isFinite(r.legM) ? r.legM : null,
     gapM: r.gapM === null || !Number.isFinite(r.gapM) ? null : r.gapM,
-    entry: r.entry ? { elapsed: r.entry.elapsed, unserved: r.entry.unserved.slice(), dsq: r.entry.dsq ? 1 : 0, penaltyS: r.entry.penaltyS } : null,
+    entry: r.entry ? { elapsed: r.entry.elapsed, unserved: unservedCodes(r.entry), dsq: r.entry.dsq ? 1 : 0, penaltyS: r.entry.penaltyS } : null,
   }));
 }
 
@@ -228,6 +231,7 @@ function legLabel(leg, legs) {
 export function leaderboardHtmlOf(rowsState, highlightBoat = 0) {
   const rows = rowsState.map((r) => ({
     ...r,
+    entry: r.entry ? { ...r.entry, unserved: r.entry.unserved.map(penaltyNameText) } : r.entry,
     label: r.label === 'L' ? legLabel(r.leg, r.legs) : (r.label in LABEL_TEXT ? LABEL_TEXT[r.label] : r.label),
     legM: r.legM === null ? Infinity : r.legM,
   }));

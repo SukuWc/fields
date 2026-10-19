@@ -31,6 +31,7 @@
 
 import { activeRulesState, chargePendingPenalty, hullVerticesWorld, isMarkRoomEntitled } from './rules.js';
 import { isGate } from './course.js';
+import { incidentCode, incidentReason, incidentLabel } from './rule-text.js';
 
 export const MARK_TOUCH_M = 0.02;
 export const MARK_TOUCH_REARM_M = 0.25;
@@ -150,14 +151,17 @@ export function recordMarkTouches(boats, marks, opts = {}) {
             faultBoat: boat,
             mark,
             markName: name,
-            reason: 'Rule 31: touched ' + name,
-            label: 'Rule 31 · touched ' + name,
             x: c.x,
             y: c.y,
           };
-          if (exonerate(boat)) {
+          // ic: the incident code (rule-text.js); the reason and label are
+          // written from it (the client writes its own from the code).
+          const exonerated = !!exonerate(boat);
+          t.ic = incidentCode.markTouch(name, exonerated);
+          t.reason = incidentReason(t.ic);
+          t.label = incidentLabel(t.ic);
+          if (exonerated) {
             t.exonerated = true;
-            t.reason += ' (exonerated, rule 21: mark-room)';
             T().touches.push(t);
           } else {
             T().touches.push(t);

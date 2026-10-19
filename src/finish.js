@@ -38,7 +38,8 @@
 //   marks; here it is the moment she finishes.
 
 import { boatStartGeometry } from './start.js';
-import { finishBoatPenalties, penaltyRuleName } from './rules.js';
+import { finishBoatPenalties, penaltyCode } from './rules.js';
+import { penaltyNameText, unservedCodes } from './rule-text.js';
 
 export const FINISH_UNSERVED_PENALTY_S = 20;
 export const UNSERVED_PENALTY_MODE = 'time';
@@ -157,7 +158,10 @@ export class RaceResults {
 
   // Record a finish at race clock t (also usable directly by tests).
   record(boat, index, t) {
-    const unserved = finishBoatPenalties(boat).map((q) => penaltyRuleName(q.incident));
+    // uc: the unserved penalties as codes (rule-text.js penaltyNameText);
+    // unserved: their names.
+    const uc = finishBoatPenalties(boat).map((q) => penaltyCode(q.incident));
+    const unserved = uc.map(penaltyNameText);
     const n = unserved.length;
     const dsq = n > 0 && this.mode === 'dsq';
     const added = !dsq && n > 0 ? n * this.penaltyS : 0;
@@ -167,6 +171,7 @@ export class RaceResults {
       finishTime: t,
       elapsed: t,
       unserved,
+      uc,
       penaltyS: added,
       corrected: dsq ? Infinity : t + added,
       dsq,
@@ -232,7 +237,8 @@ export function finishGuideState(course, progress, results, boats, clock) {
       const boat = boats ? boats[e.index] : e.boat;
       if (!boat) continue;
       // The result as data; finishGuidesFromState writes the text.
-      labels.push({ x: boat.x, y: boat.y, dsq: e.dsq ? 1 : 0, position: e.position, unserved: e.unserved.slice(), penaltyS: e.penaltyS });
+      // unserved: penalty codes (rule-text.js penaltyNameText).
+      labels.push({ x: boat.x, y: boat.y, dsq: e.dsq ? 1 : 0, position: e.position, unserved: unservedCodes(e), penaltyS: e.penaltyS });
     }
   }
   return { next, labels };
@@ -252,7 +258,7 @@ export function finishGuidesFromState(line, s, nowMs = 0) {
   const m = line.mid;
   g.push({ type: 'label', badge: true, x: m.x, y: m.y + 1.6, lines: [{ text: next ? 'NEXT FINISH' : 'FINISH', role: next ? 'next' : 'markno', id: 'finish' }] });
   for (const l of s.labels) {
-    const text = (l.dsq ? 'Finished · DSQ' : 'Finished P' + l.position) + (l.unserved.length ? ' · ' + penaltyNote(l) : '');
+    const text = (l.dsq ? 'Finished · DSQ' : 'Finished P' + l.position) + (l.unserved.length ? ' · ' + penaltyNote({ ...l, unserved: l.unserved.map(penaltyNameText) }) : '');
     g.push({ type: 'label', badge: true, x: l.x, y: l.y + 3.3, lines: [{ text, role: l.unserved.length ? 'turn' : 'cleared', id: 'fin' }] });
   }
   return g;

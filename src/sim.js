@@ -13,7 +13,7 @@ import { resetMarkTouches, recordMarkTouches } from './mark-touch.js';
 import {
   beginRule15Step, createRulesState, evaluateAllPairs, penaltyAutopilotRemainingDeg,
   penaltyJustCleared, penaltyManeuverText, penaltyManeuverView, pendingPenaltyCount,
-  pendingPenaltyReason, recordContacts, resetContacts, trueWindAngleDeg, useRulesState,
+  pendingPenaltyReason, pendingPenaltyCode, recordContacts, resetContacts, trueWindAngleDeg, useRulesState,
 } from './rules.js';
 import { markRoomTarget } from './course.js';
 import { buildScenarios } from './scenarios.js';
@@ -374,6 +374,7 @@ export class Sim {
         justCleared: penaltyJustCleared(b),
         penaltyTurn: steered ? { dir: steered.dir, remainingDeg: penaltyAutopilotRemainingDeg(b) } : null,
         reason: pending > 0 ? pendingPenaltyReason(b) : null,
+        ic: pending > 0 ? pendingPenaltyCode(b) : null,
         maneuvers: pending > 0 ? penaltyManeuverText(penaltyManeuverView(b)) : null,
         maneuverView: pending > 0 ? penaltyManeuverView(b) : null,
       });
