@@ -104,5 +104,30 @@ const w = await host.query({ type: 'wind', x: 0, y: 0 });
 check('queries answer with plain numbers', Number.isFinite(v.x) && Number.isFinite(w.speed));
 check('SimCore is exported for other hosts', typeof SimCore === 'function');
 
+
+// Default simRes is 2f (sim-modes.js DEFAULT_SIM_RES), and the wind command
+// clamps to the mode's stable ceiling (7.5 m/s · velScale).
+{
+  const d = new LocalHost({ mapW: W, mapH: H, texture: texture() });
+  const b = d.core.bm;
+  check('default simRes is 2f (2 m root, one step per tick)', b.resolution === 0.5 && b.stepsPerFrame === 1 && b.velScale === 2);
+  d.commandSync({ type: 'wind', speed: 40 });
+  const w2f = b.windMps;
+  d.commandSync({ type: 'simRes', mode: '4f' });
+  d.commandSync({ type: 'wind', speed: 40 });
+  const w4f = b.windMps;
+  d.commandSync({ type: 'simRes', mode: '1' });
+  check('wind clamps to the mode ceiling: 2f 15, 4f 30, 1 m 7.5 m/s', w2f === 15 && w4f === 30 && b.windMps === 7.5, `${w2f} / ${w4f} / ${b.windMps}`);
+}
+// The removed 2f34 mode (and any unknown key) falls back to the default 2f.
+{
+  const d = new LocalHost({ mapW: W, mapH: H, simRes: '2f34', texture: texture() });
+  const b = d.core.bm;
+  d.commandSync({ type: 'simRes', mode: '4f' });
+  d.commandSync({ type: 'simRes', mode: '2f34' });
+  const b2 = d.core.bm;
+  check('?simRes=2f34 falls back to 2f', b.resolution === 0.5 && b.velScale === 2 && b2.resolution === 0.5 && b2.velScale === 2 && d.core.settings.simRes === '2f',
+    `${b.velScale} / ${b2.velScale} / ${d.core.settings.simRes}`);
+}
 if (failed) { console.log(failed + ' FAILED'); process.exit(1); }
 console.log('all host checks passed');

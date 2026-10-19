@@ -29,7 +29,7 @@ import { Boltzmann } from './boltzmann.js';
 import { FieldPainter } from './fieldPainter.js';
 import { Map } from './map.js';
 import { FluidWind, ConstantWind } from './wind.js';
-import { Sim, SIM_RES_MODES } from './sim.js';
+import { Sim, SIM_RES_MODES, DEFAULT_SIM_RES } from './sim.js';
 import { bodyOutlines, perfStats } from './present.js';
 import { sceneFrame } from './scene-state.js';
 import { eventForClient } from './host-protocol.js';
@@ -39,11 +39,11 @@ import { sampleFlowGrid, FLOW_GRID_EVERY } from './flow-tracers.js';
 // the worker). texture: the painter target, a three.js DataTexture or a plain
 // { image: { data, width, height } }.
 export class SimCore {
-  constructor({ mapW, mapH, windAngle = 90, windSpeed = 4.5, simRes = '1', texture, oversampling = 8 }) {
+  constructor({ mapW, mapH, windAngle = 90, windSpeed = 4.5, simRes = DEFAULT_SIM_RES, texture, oversampling = 8 }) {
     this.plot = { plotType: 3, contrastExp: 0 };
     this.perf = false;
     this.texture = texture;
-    const rootRes = { '1': 1, '2': 0.5, '4': 0.25, '2f': 0.5, '2f34': 0.5, '4f': 0.25 }[simRes] || 1;
+    const rootRes = { '1': 1, '2': 0.5, '4': 0.25, '2f': 0.5, '4f': 0.25 }[simRes] || 0.5;
     this.painter = new FieldPainter(texture, oversampling, () => this.plot);
     const bm = new Boltzmann(mapW, mapH, rootRes, windAngle, windSpeed, this.painter);
     const map = new Map(mapW, mapH, windAngle, windSpeed, bm, new FluidWind(bm), new ConstantWind(windAngle, windSpeed));
@@ -60,7 +60,7 @@ export class SimCore {
     // what a server room reports to joining clients and broadcasts on change.
     this.settings = {
       devMode: false, wind: { angle: windAngle, speed: windSpeed }, barrier: false,
-      simRes, amrMode: 'auto', cellBudget: { tune: true, target: null },
+      simRes: SIM_RES_MODES[simRes] ? simRes : DEFAULT_SIM_RES, amrMode: 'auto', cellBudget: { tune: true, target: null },
       amr: this.sim.options.amr, boatEnergy: this.sim.options.boatEnergy,
     };
     // The constructor only took the root resolution; the mode's explicit
@@ -108,7 +108,7 @@ export class SimCore {
       case 'wind':
         st.wind = { angle: this.map.wind_direction, speed: this.map.wind_speed };
         break;
-      case 'simRes': st.simRes = SIM_RES_MODES[c.mode] ? c.mode : '1'; break;
+      case 'simRes': st.simRes = SIM_RES_MODES[c.mode] ? c.mode : DEFAULT_SIM_RES; break;
       case 'amrMode': st.amrMode = c.mode === 'auto' ? 'auto' : 'fixed'; break;
       case 'cellBudget': st.cellBudget = { tune: !!c.tune, target: c.tune && Number.isFinite(c.target) && c.target > 0 ? c.target : null }; break;
       case 'options':

@@ -27,7 +27,7 @@
 // as text (state.hud, penalty badges, finish labels) stay exact.
 import { SimCore } from '../../src/host.js';
 import { answer, eventForClient, EXACT_JSON } from '../../src/host-protocol.js';
-import { BOAT_ACTIONS, SIM_RES_MODES } from '../../src/sim.js';
+import { BOAT_ACTIONS, SIM_RES_MODES, DEFAULT_SIM_RES } from '../../src/sim.js';
 import { encodeFieldGrids } from '../../src/fieldPainter.js';
 import { scenarioExtent, WALL_INSET_M } from '../../src/map-size.js';
 
@@ -196,7 +196,7 @@ export class Room {
     const o = opts || {};
     const core = new SimCore({
       mapW: o.mapW || 100, mapH: o.mapH || 200, windAngle: o.windAngle ?? 90, windSpeed: o.windSpeed ?? 4.5,
-      simRes: Object.prototype.hasOwnProperty.call(SIM_RES_MODES, o.simRes) ? o.simRes : '4f',
+      simRes: Object.prototype.hasOwnProperty.call(SIM_RES_MODES, o.simRes) ? o.simRes : DEFAULT_SIM_RES,
       // No texture: the server never paints RGBA (the painter is inert);
       // field messages are encoded from the lattice when due (_fieldMessages).
       texture: undefined,

@@ -17,7 +17,7 @@ const check = (name, cond, detail) => { if (!cond) failed++; console.log(`${cond
 	for (let i = 0; i < 1000; i++) r = D.updateBudgetScale(r, 100, T);
 	check('well under target the scale relaxes to exactly 1', r.scale === 1, r.scale);
 	const bm = H.makeWorld(1).bm;
-	check('default target 50k per 3-level stack (100k on 2f34)', D.defaultCellUpdateTarget(bm) === 50000 && D.defaultCellUpdateTarget(H.makeWorld('2f34').bm) === 100000);
+	check('default target 50k per 3-level stack (100k on 2f, 200k on 4f)', D.defaultCellUpdateTarget(bm) === 50000 && D.defaultCellUpdateTarget(H.makeWorld('2f').bm) === 100000 && D.defaultCellUpdateTarget(H.makeWorld('4f').bm) === 200000);
 }
 
 // 2. Single boat under the default target: bit-identical to no budget.

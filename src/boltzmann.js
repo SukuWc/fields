@@ -2079,7 +2079,7 @@ export class Boltzmann {
 		// u_phys = U·Δx/Δt unchanged). advance_frame accumulates the fraction.
 		//
 		// stepsPerFrame may be given explicitly ("fast wind": a 2-unit root
-		// cell stepped every frame, or 1.2× per frame). Then Δt_phys is shorter
+		// cell stepped every frame). Then Δt_phys is shorter
 		// than the cell needs to keep U fixed, so the lattice runs a lower U
 		// for the same physical wind. velScale = cellSize · stepsPerFrame is
 		// world units per frame per unit of lattice velocity, relative to
@@ -2098,16 +2098,16 @@ export class Boltzmann {
 		// the unrefined root stays more viscous. At Default both are 0.025.
 		// In general ν_phys ∝ ν_lat · cellSize² / Δt ∝ ν_lat · cellSize² · stepsPerFrame,
 		// so matchedNu = baseNu / (cellSize² · stepsPerFrame): 1/k at x2/x4,
-		// 0.00625 for the 2-unit cell stepped every frame, 0.0052 at 1.2/frame.
+		// 0.00625 for the 2-unit cell stepped every frame.
 		this.matchedNu = (this.baseNu ?? 0.025) * Math.min(1, 1 / (this.cellSize * this.cellSize * this.stepsPerFrame));
 		// Fast-wind grids run lattice U up to 0.25 on a 2 m cell, so level 1
 		// (1 m cells) would sit at ν_lat 0.0125 (τ 0.5375) for a matched 0.00625
-		// and the barrier diverges at UI wind 50 / 55 (2f / 2f34) once a field
+		// and the barrier diverges at UI wind 50 (2f) once a field
 		// island opens. matchedNu ≥ FAST_MATCHED_NU_FLOOR keeps level 1 at
-		// ν_lat ≥ 0.025, the τ Default's root is proven at, and both modes then
-		// hold lattice U 0.25 like Default. Physically the boat stack is 2× /
-		// 2.4× Default's viscosity. x2 / x4 (steps = resolution) are untouched.
-		// 4f (4 m root stepped every frame) is the app default and gets its own,
+		// ν_lat ≥ 0.025, the τ Default's root is proven at, and 2f then holds
+		// lattice U 0.25 like Default. Physically the boat stack is 2×
+		// Default's viscosity. x2 / x4 (steps = resolution) are untouched.
+		// 4f (4 m root stepped every frame) gets its own,
 		// much lower floor: FAST4_NU_FLOOR (0.003125, τ 0.509) on the root and
 		// the boat stack, i.e. 2× Default's physical viscosity instead of the
 		// 8× (stack) / 16× (root) that the 0.0125 / 0.025 floors gave, which
@@ -2115,8 +2115,8 @@ export class Boltzmann {
 		// matched (0.0015625) holds at UI wind 25 but diverges with the
 		// barrier at UI 58 (34 kn); 0.0021 diverges at UI 100 (the 4f
 		// ceiling, lattice U 0.25); 0.003125 holds there and the root runs at
-		// it too. 2f / 2f34 keep FAST_MATCHED_NU_FLOOR and the root floor:
-		// matched ν there diverges at UI 50 / 62.
+		// it too. 2f keeps FAST_MATCHED_NU_FLOOR and the root floor:
+		// matched ν there diverges at UI 50.
 		const fast = this.stepsPerFrame > resolution;
 		const fast4 = fast && this.cellSize >= 4;
 		if (fast4) this.matchedNu = Math.max(this.matchedNu, FAST4_NU_FLOOR);

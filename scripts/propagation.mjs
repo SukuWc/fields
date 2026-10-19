@@ -15,7 +15,7 @@ const { trackBoats } = await import('../src/domainTrack.js');
 
 export const MODES = {
 	1: { resolution: 1 }, 2: { resolution: 0.5 }, 4: { resolution: 0.25 },
-	'2f': { resolution: 0.5, stepsPerFrame: 1 }, '2f34': { resolution: 0.5, stepsPerFrame: 1.2 }, '4f': { resolution: 0.25, stepsPerFrame: 1 },
+	'2f': { resolution: 0.5, stepsPerFrame: 1 }, '4f': { resolution: 0.25, stepsPerFrame: 1 },
 };
 const FRAMES = 30;
 

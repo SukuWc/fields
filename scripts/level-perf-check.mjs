@@ -1,4 +1,4 @@
-// Per-level cell updates vs time, 4f default, auto refinement, wind 4.5 m/s.
+// Per-level cell updates vs time, 2f (default) and 4f, auto refinement, wind 4.5 m/s.
 // node --import ./test/register.mjs scripts/level-perf-check.mjs
 import '../test/dom-stub.mjs';
 const H = await import('./sim-res-harness.mjs');
@@ -7,9 +7,9 @@ const { Boat, SAIL_LATTICE_COUPLING } = await import('../src/boat.js');
 const { perfStats } = await import('../src/present.js');
 const { levelTableLines } = await import('../src/perf-overlay.js');
 const now = () => performance.now();
-for (const n of [1, 4]) {
+for (const mode of ['2f', '4f']) for (const n of [1, 4]) {
 	H.setBudget('default');
-	const { bm, map } = H.makeWorld('4f', 4.5);
+	const { bm, map } = H.makeWorld(mode, 4.5);
 	const boats = H.FLEET4.slice(0, n).map(([x, y]) => new Boat(map, x, y, 5 * Math.PI / 4));
 	for (let f = 0; f < 450; f++) {
 		const t0 = now();
@@ -27,7 +27,7 @@ for (const n of [1, 4]) {
 		bm.levelPerf.side(t2 - t1, now() - t0);
 	}
 	const st = perfStats(bm, map), lp = st.levelPerf;
-	console.log(`\n${n} boat(s), 4f, auto, 4.5 m/s`);
+	console.log(`\n${n} boat(s), ${mode}, auto, 4.5 m/s`);
 	console.log(levelTableLines(st).join('\n'));
 	const U = lp.updates.reduce((a, v) => a + v, 0), T = lp.ms.reduce((a, v) => a + v, 0);
 	const xs = lp.updates.map((u) => u / U), ys = lp.ms.map((m) => m / T);
