@@ -577,7 +577,7 @@
       }
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-1mLx0aDM.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-96adxyoz.js"></script>
   </head>
   <body>
 
@@ -633,6 +633,10 @@
         <label><input id="trailInterval" autocomplete="off" type="number" min="0.1" max="30" step="0.1" inputmode="decimal" style="width: 46px;" value="1">s dot</label>
         <label><input id="trailDuration" autocomplete="off" type="number" min="1" max="1200" step="10" inputmode="decimal" style="width: 52px;" value="60">s kept</label><br>
         <label><input id="trailSize" autocomplete="off" type="number" min="0.05" max="5" step="0.1" inputmode="decimal" style="width: 46px;" value="0.4">m dot size</label></span>
+      <br>
+      <label class="setting-row"><input id="ghost" autocomplete="off" type="checkbox" title="Ghost hull outline at each boat's predicted position, lookahead s ahead (constant turn-rate arc from current velocity and turn rate). Off by default; ?ghost=1 turns it on, ?ghost=0 off">Ghost boat</label>
+      <span class="setting-row setting-field" id="ghost_controls" title="Ghost boat lookahead in s (?ghostAhead=s). Applied live.">
+        <label><input id="ghostAhead" autocomplete="off" type="number" min="0" max="30" step="0.5" inputmode="decimal" style="width: 46px;" value="2">s ahead</label></span>
       <br>
       <label class="setting-row" id="field_plane_row" hidden title="Server mode only: the field plot. Off, the server sends this page no field data. Also ?field_plane=0"><input id="field_plane" autocomplete="off" type="checkbox" checked>Show field (server)</label>
       <br id="field_plane_br" hidden>
