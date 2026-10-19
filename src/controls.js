@@ -12,6 +12,7 @@
 // restarts the room or changes its settings. A user edit sends the command;
 // the server validates it, applies it and broadcasts the new room state.
 import * as THREE from 'three';
+import { ROOM_SETTINGS, DEV_MODE_DISABLED, roomCommandFor, roomStateValue, settingDefault } from './settings-registry.js';
 
 let _host, _view, _getCamera;
 let _remote = false;
@@ -190,7 +191,8 @@ function mouse_monitor(e) {
   });
 }
 
-const DEV_MODE_FLUID_CONTROLS = ["amr", "barrier", "boat_energy", "plotSelect", "contrastSlider"];
+// Controls with no meaning without the fluid (registry devModeDisabled).
+const DEV_MODE_FLUID_CONTROLS = DEV_MODE_DISABLED;
 
 function syncDevModeUi() {
   const on = _devMode;
@@ -210,7 +212,7 @@ function syncDevModeUi() {
 function applyWindAngle() {
   const angle = parseInt(document.getElementById("windAngle").value, 10);
   if (!Number.isFinite(angle)) return;
-  _host.command({ type: "wind", angle }).then((r) => { if (r && r.error) showRoomError(r.error); });
+  _host.command(roomCommandFor({ windAngle: angle })).then((r) => { if (r && r.error) showRoomError(r.error); });
   if (_remote) return;
   _wind.angle = angle;
   syncDevModeUi();
@@ -226,7 +228,7 @@ function applyWindSpeed() {
   const speed = parseFloat(document.getElementById("windSpeed").value);
   if (!Number.isFinite(speed)) return;
   showWindKnots(speed);
-  _host.command({ type: "wind", speed }).then((r) => { if (r && r.error) showRoomError(r.error); });
+  _host.command(roomCommandFor({ windSpeed: speed })).then((r) => { if (r && r.error) showRoomError(r.error); });
   if (_remote) return;
   _wind.speed = speed;
   syncDevModeUi();
@@ -259,7 +261,7 @@ function renderScenarioCard(scenario) {
 }
 
 function scenario_start(index) {
-  _host.command({ type: "restart", scenario: _remote ? Number(index) : index }).then((r) => {
+  _host.command(roomCommandFor({ scenario_selector: _remote ? Number(index) : index })).then((r) => {
     if (r && r.error) { showRoomError(r.error); return; }
     if (!_remote) renderScenarioCard(r);
   });
@@ -277,28 +279,27 @@ export function showRoomError(msg) {
 // (no change events: nothing is sent back). room: SimCore.roomState().
 export function applyRoomState(room) {
   if (!room) return;
-  const set = (id, prop, v) => { const el = document.getElementById(id); if (el && v !== undefined && v !== null) el[prop] = v; };
   const st = room.settings || {};
-  if (room.scenario && room.scenario.index !== null) set("scenario_selector", "value", String(room.scenario.index));
+  if (room.scenario && room.scenario.index !== null) document.getElementById("scenario_selector").value = String(room.scenario.index);
   renderScenarioCard(room.scenario && room.scenario.index !== null ? room.scenario : null);
+  // Every room setting with a place in the room state (registry state).
+  // A checkbox the state leaves out shows its default; other controls keep
+  // their value.
+  for (const s of ROOM_SETTINGS) {
+    if (!s.state) continue;
+    const el = document.getElementById(s.id);
+    if (!el) continue;
+    const v = roomStateValue(s, st);
+    if (s.type === "bool") el.checked = v === undefined ? !!s.default : !!v;
+    else if (v === null && s.nullable) el.value = "";
+    else if (v !== undefined && v !== null) el.value = String(v);
+  }
   if (st.wind) {
     _wind.angle = st.wind.angle;
     _wind.speed = st.wind.speed;
-    set("windAngle", "value", String(st.wind.angle));
-    set("windSpeed", "value", String(st.wind.speed));
     showWindKnots(st.wind.speed);
   }
   _devMode = !!st.devMode;
-  set("devmode", "checked", _devMode);
-  set("amr", "checked", st.amr !== false);
-  set("barrier", "checked", !!st.barrier);
-  set("boat_energy", "checked", st.boatEnergy !== false);
-  set("simRes", "value", st.simRes);
-  set("amrMode", "value", st.amrMode);
-  if (st.cellBudget) {
-    set("cellBudgetTune", "checked", !!st.cellBudget.tune);
-    set("cellBudget", "value", st.cellBudget.target === null ? "" : String(st.cellBudget.target));
-  }
   syncDevModeUi();
 }
 
@@ -317,11 +318,11 @@ export function setupControls(host, view, getCamera) {
   document.onkeydown = checkKeyPress;
   document.onkeyup = checkKeyRelease;
 
-  document.getElementById("camera_follow").checked = false;
-  document.getElementById("show_forces").checked = false;
-  // Flow tracers on by default (flow-tracers.js), drawn over the field plot.
-  document.getElementById("show_field").checked = true;
-  view.input_show_fields(true);
+  // Registry defaults (flow tracers on, drawn over the field plot).
+  document.getElementById("camera_follow").checked = settingDefault("camera_follow");
+  document.getElementById("show_forces").checked = settingDefault("show_forces");
+  document.getElementById("show_field").checked = settingDefault("show_field");
+  view.input_show_fields(settingDefault("show_field"));
 
   document.getElementById("windAngle").value = info.wind.from;
   document.getElementById("windSpeed").value = info.wind.speed;
@@ -329,13 +330,13 @@ export function setupControls(host, view, getCamera) {
   // Query-string settings, including ?devmode=1, are applied by installUrlSettings
   // after these listeners exist. Leave the checkbox at its default so that
   // default can be captured; the change listener below turns dev mode on.
-  _devMode = false;
-  if (!_remote) host.command({ type: "devMode", on: false });
+  _devMode = settingDefault("devmode");
+  if (!_remote) host.command(roomCommandFor({ devmode: _devMode }));
   syncDevModeUi();
 
   document.getElementById("devmode").addEventListener("change", () => {
     const on = document.getElementById("devmode").checked;
-    host.command({ type: "devMode", on }).then((r) => { if (r && r.error) showRoomError(r.error); });
+    host.command(roomCommandFor({ devmode: on })).then((r) => { if (r && r.error) showRoomError(r.error); });
     // Remote: the room event sets it (and the banner) for every client.
     if (!_remote) { _devMode = on; syncDevModeUi(); }
   });

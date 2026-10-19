@@ -12,7 +12,7 @@ const SIM_MODULES = [
   'course.js', 'start.js', 'finish.js', 'mark-touch.js', 'rules.js',
   'race-bot.js', 'leaderboard.js', 'utils.js', 'loop.js',
   'boundary.js', 'boundary-scenario.js', 'scenarios.js', 'sim.js', 'map-size.js',
-  'present.js', 'host.js', 'fieldPainter.js', 'info.js',
+  'present.js', 'host.js', 'fieldPainter.js', 'info.js', 'settings-registry.js',
 ];
 const mods = {};
 for (const f of SIM_MODULES) {

@@ -21,7 +21,7 @@
 //                                     messages (fieldPainter.js) or stop
 //   { type: 'flow', on }            send this client flow tracer grids or stop
 // Commands, server: per client (plot, spawnBoat, removeBoat, boat actions
-// on its own boats) or room-wide (apps/server/room.js ROOM_COMMANDS: restart,
+// on its own boats) or room-wide (settings-registry.js ROOM_COMMANDS, validated by apps/server/room.js: restart,
 // wind, devMode, barrier, simRes, amrMode, cellBudget, options; validated).
 //
 // Host → client

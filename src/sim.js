@@ -18,6 +18,7 @@ import {
 import { markRoomTarget } from './course.js';
 import { buildScenarios } from './scenarios.js';
 import { Boat } from './boat.js';
+import { SIM_RES_MODES, settingDefault } from './settings-registry.js';
 
 const perfNow = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : () => Date.now();
 
@@ -29,13 +30,9 @@ export const SCENARIO_FRAMES_PER_TICK = 3;
 // Simulation resolution modes (#simRes / ?simRes). Fast-wind options ("2f",
 // "2f34", "4f") use a coarse root cell but step it every frame (or 1.2× per
 // frame): stepsPerFrame is explicit, see Boltzmann._build.
-export const SIM_RES_MODES = {
-  '1': { resolution: 1 }, '2': { resolution: 0.5 }, '4': { resolution: 0.25 },
-  '2f': { resolution: 0.5, stepsPerFrame: 1 }, '2f34': { resolution: 0.5, stepsPerFrame: 1.2 },
-  // App default: 4 m root cell stepped once per 30 Hz tick (velScale 4, x4
-  // ring layout, 5 levels down to 1/8 m, matchedNu floored like 2f).
-  '4f': { resolution: 0.25, stepsPerFrame: 1 },
-};
+// SIM_RES_MODES (resolution and stepsPerFrame per mode) lives in the
+// settings registry, with the simRes setting it validates.
+export { SIM_RES_MODES };
 
 // Boat input commands, applied with sim.command() (one-shot) or passed to
 // step() (held: rudder and heading-target keys, applied once per tick).
@@ -72,7 +69,7 @@ export const BOAT_ACTIONS = {
 
 export class Sim {
   // map: Map (map.js) with physics_model_init() done; bm: its Boltzmann.
-  constructor(map, { amr = true, boatEnergy = true } = {}) {
+  constructor(map, { amr = settingDefault('amr'), boatEnergy = settingDefault('boat_energy') } = {}) {
     this.map = map;
     this.bm = map.bm;
     this.options = { amr, boatEnergy };

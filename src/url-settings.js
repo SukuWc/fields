@@ -108,15 +108,16 @@ function replaceQuery(params) {
   window.history.replaceState(window.history.state, "", next);
 }
 
-export function installUrlSettings(root, { exclude = null } = {}) {
+export function installUrlSettings(root, { ids = null } = {}) {
   const panel = root || document.getElementById("settings");
   if (!panel || !window.history || typeof window.history.replaceState !== "function") return;
 
-  // exclude: a selector for a part of the panel left out (remote mode: the
-  // room settings come from the server, not the URL).
-  const skip = exclude ? Array.from(panel.querySelectorAll(exclude)) : [];
+  // ids: the settings kept in the URL (settings-registry.js urlSettingIds:
+  // in remote mode not the room settings, which come from the server).
+  // Without it, every control on the panel. Panel order either way.
+  const keep = ids ? new Set(ids) : null;
   const controls = Array.from(panel.querySelectorAll("input, select, textarea"))
-    .filter(isSettingsControl).filter((el) => !skip.some((root) => root.contains(el)));
+    .filter(isSettingsControl).filter((el) => !keep || keep.has(el.id));
   // Firefox restores form state on reload (autocomplete="off" in index.html
   // opts out). If a checkbox still came back from the browser, put it back to
   // its markup state so it can't become the "default": otherwise a restored

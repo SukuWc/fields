@@ -637,25 +637,25 @@
         <div id="own_boat_status"></div>
       </div>
       <div id="spectating_note" class="setting-row" hidden>Spectating: join with your boat to sail.</div>
-      <label class="setting-row"><input id="show_field" autocomplete="off" type="checkbox" checked title="Wind flow tracers: short streaks carried by the local wind, denser where it blows harder, each with a tail along its own path. Drawn on top of the colour field plot; independent of it.">Flow tracers</label>
+      <label class="setting-row"><input id="show_field" autocomplete="off" type="checkbox" title="Wind flow tracers: short streaks carried by the local wind, denser where it blows harder, each with a tail along its own path. Drawn on top of the colour field plot; independent of it.">Flow tracers</label>
       <br>
       <span class="setting-row setting-field" id="tracer_controls" title="Flow tracers: how many (empty = auto for the map size and device; ?tracers=N), how long each lives (?tracerLife=s) and how long a tail of its past path it draws (?tracerTail=s). Applied live.">
-        <label><input id="tracers" autocomplete="off" type="number" min="10" max="20000" step="50" inputmode="numeric" style="width: 80px;" placeholder="auto">tracers</label><br>
-        <label><input id="tracerLife" autocomplete="off" type="number" min="0.5" max="30" step="0.5" inputmode="decimal" style="width: 46px;" value="6">s life</label>
-        <label><input id="tracerTail" autocomplete="off" type="number" min="0" max="10" step="0.25" inputmode="decimal" style="width: 46px;" value="1.5">s tail</label></span>
+        <label><input id="tracers" autocomplete="off" type="number" step="50" inputmode="numeric" style="width: 80px;" placeholder="auto">tracers</label><br>
+        <label><input id="tracerLife" autocomplete="off" type="number" step="0.5" inputmode="decimal" style="width: 46px;">s life</label>
+        <label><input id="tracerTail" autocomplete="off" type="number" step="0.25" inputmode="decimal" style="width: 46px;">s tail</label></span>
       <br>
-      <label class="setting-row"><input id="boat_trails" autocomplete="off" type="checkbox" checked title="A dot at each boat's position every interval of sim time, fading over the kept duration. Reset on scenario change. Also ?boat_trails=0">Boat trails</label>
+      <label class="setting-row"><input id="boat_trails" autocomplete="off" type="checkbox" title="A dot at each boat's position every interval of sim time, fading over the kept duration. Reset on scenario change. Also ?boat_trails=0">Boat trails</label>
       <br>
       <span class="setting-row setting-field" id="trail_controls" title="Boat trails: a dot every N s of sim time (?trailInterval=s), kept for N s (?trailDuration=s), dot size in m (?trailSize=m). Applied live.">
-        <label><input id="trailInterval" autocomplete="off" type="number" min="0.1" max="30" step="0.1" inputmode="decimal" style="width: 46px;" value="1">s dot</label>
-        <label><input id="trailDuration" autocomplete="off" type="number" min="1" max="1200" step="10" inputmode="decimal" style="width: 52px;" value="60">s kept</label><br>
-        <label><input id="trailSize" autocomplete="off" type="number" min="0.05" max="5" step="0.1" inputmode="decimal" style="width: 46px;" value="0.4">m dot size</label></span>
+        <label><input id="trailInterval" autocomplete="off" type="number" step="0.1" inputmode="decimal" style="width: 46px;">s dot</label>
+        <label><input id="trailDuration" autocomplete="off" type="number" step="10" inputmode="decimal" style="width: 52px;">s kept</label><br>
+        <label><input id="trailSize" autocomplete="off" type="number" step="0.1" inputmode="decimal" style="width: 46px;">m dot size</label></span>
       <br>
       <label class="setting-row"><input id="ghost" autocomplete="off" type="checkbox" title="Ghost hull outline at each boat's predicted position, lookahead s ahead (constant turn-rate arc from current velocity and turn rate). Off by default; ?ghost=1 turns it on, ?ghost=0 off">Ghost boat</label>
       <span class="setting-row setting-field" id="ghost_controls" title="Ghost boat lookahead in s (?ghostAhead=s). Applied live.">
-        <label><input id="ghostAhead" autocomplete="off" type="number" min="0" max="30" step="0.5" inputmode="decimal" style="width: 46px;" value="2">s ahead</label></span>
+        <label><input id="ghostAhead" autocomplete="off" type="number" step="0.5" inputmode="decimal" style="width: 46px;">s ahead</label></span>
       <br>
-      <label class="setting-row" id="field_plane_row" hidden title="Server mode only: the field plot. Off, the server sends this page no field data. Also ?field_plane=0"><input id="field_plane" autocomplete="off" type="checkbox" checked>Show field (server)</label>
+      <label class="setting-row" id="field_plane_row" hidden title="Server mode only: the field plot. Off, the server sends this page no field data. Also ?field_plane=0"><input id="field_plane" autocomplete="off" type="checkbox">Show field (server)</label>
       <br id="field_plane_br" hidden>
       <label class="setting-row"><input id="show_forces" autocomplete="off" type="checkbox">Toggle Forces</label>
       <br>
@@ -679,11 +679,11 @@
           <option>Plot density</option>
           <option>Plot x velocity</option>
           <option>Plot y velocity</option>
-          <option selected="selected">Plot speed</option>
+          <option>Plot speed</option>
           <option>Plot curl</option>
         </select>
         &nbsp;&nbsp;Contrast:
-        <input id="contrastSlider" autocomplete="off" type="range" min="-10" max="10" step="1" value="0">
+        <input id="contrastSlider" autocomplete="off" type="range" step="1">
       </div>
       <div id="wind_info"></div>
       <div style="color:red;" id="dist_info"></div>
@@ -693,26 +693,26 @@
       <div id="admin_panel" class="settings-section">
       <div class="settings-heading" title="Room-wide settings: the scenario, wind and simulation. In a server room they apply to everyone in the room.">Room settings<span id="admin_scope" hidden> · everyone in the room</span></div>
       <span class="setting-row setting-field">Select Scenario<br>
-      <input id="scenario_selector" autocomplete="off" type="number" min="0" max="19" value="0" style="width: 50px;" title="Scenario 6: Rule 13 tack. Scenario 7: leeward boat tacks into a Rule 10 collision. Scenario 8: Rule 15 overlap. Scenario 9: contact during Rule 15. Scenario 10: penalty turn, a tack and a gybe in a row (Q counter-clockwise, E clockwise autopilot circle). Scenario 11: anchored mark buoy, boat hits it. Scenario 12: anticlockwise triangle course, marks to port, next mark highlighted. Scenario 13: windward mark and leeward gate. Scenario 14: start sequence countdown, OCS individual recall, then windward mark and leeward gate. Scenario 15: Rule 18.2 mark-room, two boats overlapped at the leeward gate. Scenario 16: finish line and results list, unserved penalty becomes a time penalty. Scenario 17: three-boat test race with the live leaderboard. Scenario 18: fleet of four upwind (refinement budget). Scenario 19: virtual boundary, room to tack away from the boundary. Use with Dev mode.">
+      <input id="scenario_selector" autocomplete="off" type="number" style="width: 50px;" title="Scenario 6: Rule 13 tack. Scenario 7: leeward boat tacks into a Rule 10 collision. Scenario 8: Rule 15 overlap. Scenario 9: contact during Rule 15. Scenario 10: penalty turn, a tack and a gybe in a row (Q counter-clockwise, E clockwise autopilot circle). Scenario 11: anchored mark buoy, boat hits it. Scenario 12: anticlockwise triangle course, marks to port, next mark highlighted. Scenario 13: windward mark and leeward gate. Scenario 14: start sequence countdown, OCS individual recall, then windward mark and leeward gate. Scenario 15: Rule 18.2 mark-room, two boats overlapped at the leeward gate. Scenario 16: finish line and results list, unserved penalty becomes a time penalty. Scenario 17: three-boat test race with the live leaderboard. Scenario 18: fleet of four upwind (refinement budget). Scenario 19: virtual boundary, room to tack away from the boundary. Use with Dev mode.">
       <input id="scenario_restart" type="button" style="width: 50px;" value="Restart"></span>
       <br>
       <label class="setting-row setting-field">Wind angle<br>
-      <input id="windAngle" autocomplete="off" type="number" min="0" max="360" step="5" value="90"></label>
+      <input id="windAngle" autocomplete="off" type="number" step="5"></label>
       <br>
       <label class="setting-row setting-field">Wind speed (m/s) <span id="windSpeedKn"></span><br>
-      <input id="windSpeed" autocomplete="off" type="number" min="0" max="12" step="0.5" value="4.5"></label>
+      <input id="windSpeed" autocomplete="off" type="number" step="0.5"></label>
       <br>
       <label class="setting-row"><input id="devmode" autocomplete="off" type="checkbox" title="Constant wind, no fluid simulation. Also enabled by ?devmode=1">Dev mode</label>
       <br>
-      <label class="setting-row"><input id="amr" autocomplete="off" type="checkbox" checked>Mesh refinement</label>
+      <label class="setting-row"><input id="amr" autocomplete="off" type="checkbox">Mesh refinement</label>
       <br>
       <label class="setting-row"><input id="barrier" autocomplete="off" type="checkbox" title="Circular obstacle at the map centre. Off by default. Check it and set wind speed to about 25 to shed waves that refine on their own, away from the boat.">Barrier</label>
       <br>
-      <label class="setting-row"><input id="boat_energy" autocomplete="off" type="checkbox" checked>Boat energy</label>
+      <label class="setting-row"><input id="boat_energy" autocomplete="off" type="checkbox">Boat energy</label>
       <br>
       <label class="setting-row setting-field" title="Root lattice cell size. Default is 1 world unit per cell. x2 / x4 use cells 2 / 4 world units wide and step the field every 2nd / 4th frame: same wind speed and map, much cheaper, smoother (more viscous) wakes. x2 fast wind steps the 2 m cell every frame (1.2× per frame for the 35 kn option): the lattice runs a lower U, so the stable wind range doubles (or 2.4×). Changing it restarts the scenario. Also ?simRes=2 / ?simRes=4">Simulation resolution<br>
       <select id="simRes" autocomplete="off">
-        <option value="4f" selected>4 m fast wind (default, to ~58 kn)</option>
+        <option value="4f">4 m fast wind (to ~58 kn)</option>
         <option value="1">1 m (old Default, to ~15 kn)</option>
         <option value="2">x2 coarser</option>
         <option value="4">x4 coarser</option>
@@ -722,18 +722,18 @@
       <br>
       <label class="setting-row setting-field" title="Boat refinement layout. Fixed rings: every level has its own disk around the boat. Auto: only the finest 1/8 m disk is fixed; coarser levels are a 3-cell grading shell around it and grow from curl (the wake). Auto is the default. Restarts. ?amrMode=fixed selects the fixed rings">Refinement layout<br>
       <select id="amrMode" autocomplete="off">
-        <option value="auto" selected>Auto (finest disk + curl)</option>
+        <option value="auto">Auto (finest disk + curl)</option>
         <option value="fixed">Fixed rings</option>
       </select></label>
       <br>
       <span id="map_size_row"><label class="setting-row setting-field" title="Map width × length in metres; the length runs along the wind. Each size has its own default simulation resolution (50 × 100 and 100 × 200: Default, 200 × 400: x4 coarser) so the field cost stays near the old 75 m map. Course scenarios 12-17 need 100 × 200 and pick it if a smaller size is set. Changing it reloads the page. Also ?map_size=100x200">Map size<br>
       <select id="map_size" autocomplete="off">
         <option value="50x100">50 × 100 m</option>
-        <option value="100x200" selected>100 × 200 m</option>
+        <option value="100x200">100 × 200 m</option>
         <option value="200x400">200 × 400 m</option>
       </select></label>
       <br></span>
-      <span id="budget_controls" class="setting-row" title="Refinement budget: target cell updates per root step. Tuning raises the curl threshold (×scale) when the load nears the target. Also ?cellBudgetTune=0 / ?cellBudget=N"><label><input id="cellBudgetTune" autocomplete="off" type="checkbox" checked>Threshold tuning</label> <input id="cellBudget" autocomplete="off" type="number" min="1000" step="5000" style="width: 70px;" placeholder="default">cells/step</span>
+      <span id="budget_controls" class="setting-row" title="Refinement budget: target cell updates per root step. Tuning raises the curl threshold (×scale) when the load nears the target. Also ?cellBudgetTune=0 / ?cellBudget=N"><label><input id="cellBudgetTune" autocomplete="off" type="checkbox">Threshold tuning</label> <input id="cellBudget" autocomplete="off" type="number" step="5000" style="width: 70px;" placeholder="default">cells/step</span>
       <br id="budget_controls_br">
       <div id="admin_status" class="setting-row" hidden></div>
       </div>
