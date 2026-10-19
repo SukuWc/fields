@@ -2,28 +2,55 @@
 // (sim.worker.js ↔ worker-host.js) and the WebSocket server
 // (apps/server ↔ remote-host.js). Plain objects only.
 //
-// Client → host
-//   { type: 'init', opts }          SimCore options (mapW, mapH, simRes, ...)
+// Client → host (both)
+//   { type: 'init', opts }          SimCore options (mapW, mapH, simRes, ...;
+//                                     server: plus scenario, used only by the
+//                                     client that creates the room)
 //   { type: 'command', id, c }      → { type: 'result', id, r }
+//                                     (server: r = { error } when refused)
 //   { type: 'query', id, q }        → { type: 'result', id, r }
 //   { type: 'tick', req }           → { type: 'frame', frame }  (client-driven ticks:
 //                                     the worker, or a server started with --lockstep)
-//   { type: 'input', held, view }   held keys and camera for a server that ticks on
-//                                     its own clock (remote, authoritative)
-//   { type: 'perf', on }
-//   { type: 'field', on, plotType, contrastExp }  server: send this client field grid
+//   { type: 'perf', on }            perf counters in this client's frames
+// Client → server only
+//   { type: 'input', held }         held keys for a server that ticks on its own
+//                                     clock (remote, authoritative); applied to
+//                                     this client's own boats only
+//   { type: 'field', on, plotType, contrastExp }  send this client field grid
 //                                     messages (fieldPainter.js) or stop
+//   { type: 'flow', on }            send this client flow tracer grids or stop
+// Commands, server: per client (plot, spawnBoat, removeBoat, boat actions
+// on its own boats) or room-wide (apps/server/room.js ROOM_COMMANDS: restart,
+// wind, devMode, barrier, simRes, amrMode, cellBudget, options; validated).
+//
 // Host → client
-//   { type: 'info', info }          info also carries mode: 'client' | 'server' (who ticks)
-//   { type: 'event', ev }           Sim events; bindControls carries boats
+//   { type: 'info', info }          worker: the start info
+//   { type: 'welcome', info, room, own, bindings }
+//                                   server: the reply to init. info also carries
+//                                     mode: 'client' | 'server' (who ticks);
+//                                     room: { scenario: { index, title,
+//                                     description }, settings, lattice }
+//                                     (host.js SimCore.roomState); own: this
+//                                     client's boats; bindings: boats its keys drive
+//   { type: 'event', ev }           Sim events (bindControls carries boats), plus
+//                                     server: { type: 'room', room } after every
+//                                     room-wide change (to all), and per client
+//                                     { type: 'ownBoats', boats } and
+//                                     { type: 'bindControls', boats }
 //   { type: 'frame', frame }        plus the field texture: transferred (worker) or a
 //                                     binary field grid message to clients
 //                                     showing the field (server, apps/server/room.js)
 //                                   frame.state: compact scene state (scene-state.js);
-//                                     frame.statics only when they changed (worker)
+//                                     frame.statics only when they changed (worker);
+//                                     frame.flow / frame.perf (worker; from the
+//                                     server as the messages below)
 //   { type: 'statics', sv, statics } server: shapes and layouts for frame.state,
 //                                     sent to a client before the first frame of
 //                                     version sv it gets (join, restart, new boat)
+//   { type: 'flow', flow }          server: flow tracer grid for the next frame,
+//                                     to clients subscribed with 'flow'
+//   { type: 'perf', perf }          server: perf counters for the next frame,
+//                                     to clients subscribed with 'perf'
 // Frames and statics from the server have numbers rounded to 1e-4 (room.js).
 
 // Objects marked here (and everything inside them) keep their numbers exact

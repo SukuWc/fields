@@ -175,7 +175,8 @@ export function buildGuides(state, statics, view) {
 }
 
 // { guides, bodies, hud } (hud: hud.js hudFromState, null without HUD state).
-export function buildScene(state, statics, view) {
+// ownId: this client's player boat in a server room (its readout), or null.
+export function buildScene(state, statics, view, ownId = null) {
   if (!state || !statics) return { guides: [], bodies: [], hud: null };
-  return { guides: buildGuides(state, statics, view), bodies: buildBodies(statics.bodies, state.bt), hud: state.hud ? hudFromState(state.hud) : null };
+  return { guides: buildGuides(state, statics, view), bodies: buildBodies(statics.bodies, state.bt), hud: state.hud ? hudFromState(state.hud, ownId) : null };
 }

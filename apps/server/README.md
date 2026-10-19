@@ -17,7 +17,7 @@ Options: `node dist-server/server.mjs --port 8787 --field-hz 2 --lockstep --verb
 - `--field-hz N`: a field message every 30/N ticks (default 2, i.e. every 15 ticks: 2 per second when the room keeps real time; 0 = no field). `--field-scale` is gone: the server sends the lattice at full resolution (see Field streaming).
 - `GET http://localhost:8787/`: JSON status (rooms, clients, ticks, last tick ms).
 
-Rooms: `?room=name` on the server URL (`server=ws://localhost:8787/?room=race1`). The first client's map size and simRes create the room. Later clients join the same Sim, and the room is dropped when its last client leaves.
+Rooms: `?room=name` on the server URL (`server=ws://localhost:8787/?room=race1`). The first client's map size, simRes and scenario (its `?scenario_selector`) create the room. Later clients join the same Sim as it is: joining or reloading never restarts the room or sends settings (see Room state). The room is dropped when its last client leaves.
 
 ## Choosing the host in the client (`src/host-choice.js`)
 
@@ -32,7 +32,7 @@ Params equal to the build default are removed from the URL. If the server can't 
 
 ## Protocol
 
-`src/host-protocol.js` is shared with the worker. It uses JSON text messages: `init`, `command`/`query` → `result`, `event`, `frame`, `statics`, `input` (held keys + camera, sent only when they change), `tick` in lockstep, and `field` (`{ on, plotType, contrastExp }`: whether this client shows the field and which plot). Field data is a binary field grid message (layout in `src/fieldPainter.js`, above `encodeFieldGrids`).
+`src/host-protocol.js` is shared with the worker. It uses JSON text messages: `init` → `welcome`, `command`/`query` → `result` (`{ error }` when the server refuses a command), `event`, `frame`, `statics`, `input` (held keys only, sent when they change), `tick` in lockstep, and the per-client subscriptions `field` (`{ on, plotType, contrastExp }`: whether this client shows the field and which plot), `flow` (`{ on }`: flow tracer grids) and `perf` (`{ on }`: perf counters). Field data is a binary field grid message (layout in `src/fieldPainter.js`, above `encodeFieldGrids`); flow grids and perf counters arrive as `{ type: 'flow', flow }` / `{ type: 'perf', perf }` just before the frame they belong to, to subscribers only.
 
 ## Field streaming
 
@@ -46,14 +46,14 @@ Params equal to the build default are removed from the URL. If the server can't 
 
 - The room ticks on a fixed 30 Hz clock (`Room._start`). Each tick is computed at the start of its 33.3 ms slot and broadcast at the slot's end, so a cheap tick waits for its slot: the server never sends faster than 30 Hz and never runs ahead of real time. A tick slower than 33 ms is broadcast as soon as it finishes, and the next slot starts then: no catch-up burst, the room just runs slower than real time.
 - Every frame goes to every client in the room (a due field message is sent first, to the clients showing the field, then the `frame` JSON with its `tick` number). The server doesn't wait for clients; `ws` buffers per socket.
-- The page is event-driven in remote mode (`src/main.js`, `remoteDriven`): no `requestAnimationFrame` loop (renderer `setAnimationLoop` off, perf overlay updated per frame), no local tick loop, no interpolation or prediction. Each arriving frame updates the camera, HUD, readout, guides, cursor wind readout, perf overlay and field texture, then renders once (`renderNow`). Keys and touch send `input` when they change; the camera position (rounded to 0.1 m) is resent when it moves after a frame.
+- The page is event-driven in remote mode (`src/main.js`, `remoteDriven`): no `requestAnimationFrame` loop (renderer `setAnimationLoop` off, perf overlay updated per frame), no local tick loop, no interpolation or prediction. Each arriving frame updates the camera, HUD, readout, guides, cursor wind readout, perf overlay and field texture, then renders once (`renderNow`). Keys and touch send `input` when they change. The camera is not sent (nothing on the server uses it).
 - Slow client: `RemoteHost` counts every frame on arrival (`framesReceived`, `onFrameArrival`) but hands frames to the page from a posted task. If several arrive before the page gets to run, only the newest is rendered and the rest are counted in `framesDropped`. Pass `coalesce: false` to deliver every frame (the lockstep tests do).
 - `test/remote-frames.test.mjs` checks this: two clients receive every frame with consecutive matching ticks and identical content, cheap ticks on a 20 × 20 m grid broadcast at ≤ 30 Hz without bursts, 60 ms ticks go out every ~61 ms and return to 30 Hz without a burst, and a client that falls behind renders only the newest frame.
 
 ## Decisions
 
 - **Field streaming:** see above (per-level 1-byte grids, coloured on the client, only to clients showing the field). It replaced a flattened RGBA texture (80 KB per message at 1 m/texel).
-- **Authority:** the server's clock is authoritative. All clients' held keys are merged, and every client controls boats 0/1 (no boat assignment yet). Any client's restart or settings change applies to the whole room. Each page restarts its URL's scenario when it connects.
+- **Authority:** the server's clock is authoritative. Each client steers only its own boat; scenario boats are the scenario's. Room-wide settings can be changed by any client (no owner or admin role yet), are validated by the server and broadcast to every client. A page loads its URL's scenario only when it creates the room.
 - **No npm workspaces:** the server sources live in `apps/server` (with a tiny `package.json` that only sets `"type": "module"`). `ws` and `esbuild` are root dependencies, and `npm run build:server` bundles everything, including planck, into one file. Splitting into `packages/sim-core`, `apps/web` and `apps/server` would move every `src/` import, the Vite config and the test paths, for no runtime gain yet. Revisit when the server gets its own deploy (Docker).
 - **CPU:** one 4f room with a single boat costs ~30 ms per tick on the dev box, which is right at the 33 ms budget. Heavier scenarios (two-boat rule scenarios) drop below 30 Hz. A slow tick is broadcast when done and the room simply runs slower than real time (no catch-up). This answers plan Q2 for now: a room per core, or a coarser server grid.
 
@@ -64,13 +64,28 @@ In a remote room, the settings panel (the ☰ menu on phones) shows a name field
 - the camera follows it;
 - it has a name badge and a hull colour picked from the name.
 
-**Leave** (`removeBoat`, own boats only) or closing the page removes the boat. A client that hasn't joined still drives scenario boats 0/1 as before.
+**Leave** (`removeBoat`, own boats only) or closing the page removes the boat. One boat per client (`MAX_BOATS_PER_CLIENT`), at most 8 player boats per room (`MAX_PLAYER_BOATS`); a refused spawn answers `{ error }`.
 
-Room-wide: a scenario restart or a settings change from any client applies to everyone, and a restart removes every player boat (clients get `ownBoats: []` and can join again). The readout panel shows the scenario's telemetry boat, not necessarily your own.
+A client without a boat is **spectating**: the server drops its boat commands and held keys (never applied to scenario boats or other players' boats), it has no key binding (the server sends each client `bindControls` with its own boat count, not the scenario's), and the player panel and the touch panel say "Spectating: join with your boat to sail". After **Leave** it is a spectator again. Each boat has one owner, so keys from several clients never combine on one boat. (A `--lockstep` room, tests only, still lets a client without a boat drive scenario boats 0/1, so lockstep runs match LocalHost.)
+
+A room-wide restart (or a simRes / refinement layout change, which restarts) keeps player boats: after the new scenario's first tick, each is spawned again with the same name and colour and owned by the same client (new id; `ownBoats` and `bindControls` are sent again).
+
+The readout, start panel and course progress show your own boat (`state.hud.own`, per player boat: telemetry, start status, course progress; `hudFromState(hud, ownId)`). A spectator, like the local and worker pages, sees the scenario's (the last boat's telemetry, boat 0's start and course).
+
+## Room state and settings panels
+
+The settings panel has two parts. **Player** (`#player_panel`): this page only (join / leave, flow tracers and their inputs, show field, forces, camera follow and moves, zoom, perf overlay, touch controls, plot and contrast). **Room settings** (`#admin_panel`): scenario select and restart, wind angle and speed, dev mode, mesh refinement, barrier, boat energy, simulation resolution, refinement layout, refinement budget, and (local and worker only) map size.
+
+In a server room:
+- The reply to `init` is one **welcome** snapshot: `{ info, room: { scenario: { index, title, description }, settings, lattice }, own, bindings }` (`SimCore.roomState()`). The page starts from it: the room panel shows the room's values, the field plane and texture take the room's lattice and map size (`host.info`), and nothing is sent back. URL values for room settings are not applied (`installUrlSettings(…, { exclude: '#admin_panel' })`); the map size select is hidden.
+- Any client may change room settings (no owner yet). The server validates each command (`validateRoomCommand`: scenario index that exists and fits the room's map, wind angle finite and speed 0–30 m/s, booleans for dev mode / barrier / options, a known simRes, `auto` or `fixed` layout, budget target 1000–1e8 or null) and refuses bad ones with `{ error }` (shown in the room panel). After each change every client gets `{ type: 'event', ev: { type: 'room', room } }` and applies it: scenario card and select, wind, checkboxes, selects, dev-mode banner, and the field plane size when the lattice was rebuilt.
+- Player settings stay per client: field plot (`field`, `plot`), flow tracers (`flow`: the server samples the wind grid only while some client shows them, and sends it only to those), perf counters (`perf`), camera, forces, touch.
+
+Local and worker pages show both panels and work as before (the page loads its scenario and pushes its settings, URL values included).
 
 ## Frames: compact state
 
-A `frame` carries a compact scene `state` (`src/scene-state.js`): per boat position, body angle, hull angle, AWA, true wind direction, autopilot, rudder, drawn boom angles, sail flap, forces (and the wind grid while the room view shows fields); mark positions; start / course / finish / boundary state (sequence clock and flags, next mark, rounded marks, finish labels); rule overlays (mark and boundary room badges, contacts, mark touches, penalties, and the two-boat encounter overlays as `rules.js` `pairGuideState`: kind, the two boat positions, rule codes, Rule 15 progress, stern-mark points, label stack); the readout / HUD values (`state.hud`, `src/hud.js`: telemetry, start sequence clock and signal id, course progress, leaderboard rows, per-boat rules status); the refinement domains (rectangle, disk, mask as base-36 run lengths); and the transforms of moving bodies. Every client builds its guides, body outlines and the readout / start HUD / leaderboard panels from it with `src/scene-build.js` `buildScene(state, statics, view)`, the same code the local and worker pages use.
+A `frame` carries a compact scene `state` (`src/scene-state.js`): per boat position, body angle, hull angle, AWA, true wind direction, autopilot, rudder, drawn boom angles, sail flap, forces; mark positions; start / course / finish / boundary state (sequence clock and flags, next mark, rounded marks, finish labels); rule overlays (mark and boundary room badges, contacts, mark touches, penalties, and the two-boat encounter overlays as `rules.js` `pairGuideState`: kind, the two boat positions, rule codes, Rule 15 progress, stern-mark points, label stack); the readout / HUD values (`state.hud`, `src/hud.js`: telemetry, start sequence clock and signal id, course progress, leaderboard rows, per-boat rules status); the refinement domains (rectangle, disk, mask as base-36 run lengths); and the transforms of moving bodies. Every client builds its guides, body outlines and the readout / start HUD / leaderboard panels from it with `src/scene-build.js` `buildScene(state, statics, view, ownId)`, the same code the local and worker pages use.
 
 Statics (boat hull/rudder/sail numbers and names, body shapes, mark anchors, course, start and finish layout, boundary, lattice size) are not in frames. The room sends `{ type: 'statics', sv, statics }` to a client before the first frame it needs them for: on join, and to everyone again when they change (restart, a spawned or removed boat). `state.sv` names the version a frame was built against. Numbers in server JSON are rounded to 1e-4 (multiples of 1/4096 such as cell sizes are kept exact); the built scene stays within 1e-3 m of the local one (`test/scene-state.test.mjs`).
 

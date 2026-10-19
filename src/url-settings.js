@@ -87,9 +87,8 @@ function writeControl(el, value) {
 }
 
 function dispatchControl(el) {
-  // input then change matches a real edit. Inline handlers (the legacy
-  // resetTimer() on the animation controls) can throw; the value is already
-  // on the element, and one bad handler must not skip the rest.
+  // input then change matches a real edit. A handler can throw; the value is
+  // already on the element, and one bad handler must not skip the rest.
   try {
     el.dispatchEvent(new Event("input", { bubbles: true }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
@@ -109,18 +108,15 @@ function replaceQuery(params) {
   window.history.replaceState(window.history.state, "", next);
 }
 
-export function installUrlSettings(root) {
+export function installUrlSettings(root, { exclude = null } = {}) {
   const panel = root || document.getElementById("settings");
   if (!panel || !window.history || typeof window.history.replaceState !== "function") return;
 
-  // The animation sliders call resetTimer() from an inline handler. That
-  // function is not defined; a real edit already throws. Define a no-op so
-  // applying the query string or resetting those controls does not throw.
-  if (typeof window.resetTimer !== "function") {
-    window.resetTimer = function resetTimer() {};
-  }
-
-  const controls = Array.from(panel.querySelectorAll("input, select, textarea")).filter(isSettingsControl);
+  // exclude: a selector for a part of the panel left out (remote mode: the
+  // room settings come from the server, not the URL).
+  const skip = exclude ? Array.from(panel.querySelectorAll(exclude)) : [];
+  const controls = Array.from(panel.querySelectorAll("input, select, textarea"))
+    .filter(isSettingsControl).filter((el) => !skip.some((root) => root.contains(el)));
   // Firefox restores form state on reload (autocomplete="off" in index.html
   // opts out). If a checkbox still came back from the browser, put it back to
   // its markup state so it can't become the "default": otherwise a restored

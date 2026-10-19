@@ -16,6 +16,11 @@
 //         reason, mv (penalty tack/gybe view); default fields omitted
 //   bd    boundary distances { z: zone, d: [[side, dist], ...] }
 //   br, mr boundary room / mark-room: [[giveWay, rightOfWay, basis, decisive]]
+//   own   only with player boats (spawnBoat): per player boat id
+//         { tel, st: [start status, startTime] (with a start sequence),
+//           co (with a course) }, so each client reads its own boat
+//         (hudFromState(h, ownId)); a client without one, and the local and
+//         worker modes, read tel / st / co above
 // }
 // Numbers here travel exactly (no rounding on the server), so the text is
 // the same in every host mode.
@@ -92,13 +97,26 @@ export function hudState(sim, rec) {
   if (br.length) h.br = br;
   const mr = room('markRoom');
   if (mr.length) h.mr = mr;
+  for (const b of racing) {
+    if (!b.spawnId) continue;
+    const o = {};
+    if (b.telemetry) o.tel = telemetryState(b.telemetry);
+    if (seq) { const st = seq.statusOf(b); o.st = [st, st === 'started' ? seq.stateFor(b).startTime : null]; }
+    if (course) o.co = courseTextState(course.progressFor(b));
+    (h.own || (h.own = {}))[b.spawnId] = o;
+  }
   return h;
 }
 
 // { dist: string | null (null = leave as is), info: string,
 //   startHud: { html, flash } | null (null = hidden),
 //   results: string | null (null = hidden) }.
-export function hudFromState(h) {
+// ownId: this client's player boat (spawnBoat id): the telemetry, start
+// status and course progress shown are that boat's (h.own); without one, the
+// scenario's (tel / st / co).
+export function hudFromState(h0, ownId = null) {
+  const mine = ownId && h0.own && h0.own[ownId];
+  const h = mine ? { ...h0, tel: mine.tel, co: mine.co, st: h0.st && mine.st ? { ...h0.st, st: mine.st[0], t0: mine.st[1] } : h0.st } : h0;
   const out = { dist: null, info: '', startHud: null, results: null };
   if (h.d !== undefined && h.d !== null) out.dist = 'Dist: ' + Math.floor(h.d * 100) / 100 + '<br>';
   // Each boat's step used to reset the readout and append "Phys Time", so the
