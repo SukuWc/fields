@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { FixedStepLoop } from './loop.js';
 
-import { initRenderer, startAnimation, renderNow, getCamera, setFluidPlaneSize, setFieldVisible, setFlowGrid, setTracerParams, getTracerParams } from './renderer.js';
+import { initRenderer, startAnimation, renderNow, getCamera, setFluidPlaneSize, setFieldVisible, setFlowGrid, setTracerParams, getTracerParams, updateBoatTrails, setTrailParams, setBoatTrailsOn } from './renderer.js';
 import { setupControls, heldCommands, onHeldChange, deferUiToFrames, flushFrameUi, showRoomError } from './controls.js';
 import { LocalHost } from './host.js';
 import { buildScene } from './scene-build.js';
@@ -183,6 +183,21 @@ function startClient() {
       if (el) { el.addEventListener('change', applyTracers); el.addEventListener('input', applyTracers); }
     }
     applyTracers();
+  }
+  // Boat trail toggle and inputs (dot interval, kept duration, dot size):
+  // live, before installUrlSettings like the tracer inputs.
+  {
+    const num = (id) => { const el = document.getElementById(id); const v = el ? parseFloat(el.value) : NaN; return Number.isFinite(v) ? v : undefined; };
+    const box = document.getElementById('boat_trails');
+    const applyTrails = () => {
+      setBoatTrailsOn(!box || box.checked);
+      setTrailParams({ interval: num('trailInterval'), duration: num('trailDuration'), size: num('trailSize') });
+    };
+    for (const id of ['boat_trails', 'trailInterval', 'trailDuration', 'trailSize']) {
+      const el = document.getElementById(id);
+      if (el) { el.addEventListener('change', applyTrails); el.addEventListener('input', applyTrails); }
+    }
+    applyTrails();
   }
   // Simulation resolution (#simRes, ?simRes=2 / 4). Rebuilds the root lattice
   // in place (every module keeps the same bm), drops the refinement windows,
@@ -401,6 +416,7 @@ function startClient() {
     }
     if (frame.fieldReady) dataTextureMaterial.needsUpdate = true;
     if (frame.flow) setFlowGrid(frame.flow);
+    if (frame.state) updateBoatTrails(frame.state);
   });
 
   if (remoteDriven) {
