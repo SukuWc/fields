@@ -63,11 +63,45 @@ for (const b of ['overlapped', 'clear ahead', 'east boundary', 'west boundary', 
 check('basis null', T.basisCode(null) === null && T.basisText(null) === 'null');
 check('tack codes', T.tackCode('port') === 'p' && T.tackCode('starboard') === 's' && T.tackText('p') === 'port' && T.tackText('s') === 'starboard');
 for (const [code, text] of Object.entries(T.RULE_TEXT)) check('rule code ' + code, T.ruleText(code) === text && T.ruleCode(text) === code);
+// Unknown codes: a numeric one reads "Rule <code>", literals carry '='.
+check('unknown numeric rule code', T.ruleText('14') === 'Rule 14' && T.ruleText('16') === 'Rule 16' && T.ruleText(14) === 'Rule 14', T.ruleText('14'));
+check('literal rule name', T.ruleCode('Rule 99 experimental') === '=Rule 99 experimental' && T.ruleText('=Rule 99 experimental') === 'Rule 99 experimental' && T.ruleText('=14') === '14');
+check('unknown non-numeric code shows as it is', T.ruleText('X1') === 'X1' && T.ruleText(undefined) === 'Rule ?');
+check('roles: known and unknown', T.roleText('f') === 'final' && T.roleText('i') === 'inhibited' && T.roleText('o') === 'other' && T.roleText('zz') === 'other' && T.roleText(undefined) === 'other' && T.roleText('toString') === 'other');
+{
+  const boats = [{ id: 's1', x: 0, y: 0, px: 0, py: 0, pa: 0, ha: 0 }, { id: 's2', x: 4, y: 2, px: 4, py: 2, pa: 0, ha: 0 }];
+  const g = R.pairGuidesFromState({ k: 'o', a: 's1', b: 's2', r: '14', ln: [['14', 'q', '14'], ['=Custom', 'f', 'x']] }, R.pairBoatsFromState(boats, {}));
+  const lab = g.find((x) => x.type === 'label');
+  check('pair label: unknown codes and role', lab && lab.text === 'Rule 14' && lab.lines[0].text === 'Rule 14' && lab.lines[0].role === 'other' && lab.lines[1].text === 'Custom' && lab.lines[1].role === 'final', JSON.stringify(lab && lab.lines));
+}
+
+// Robustness: stale or missing boat ids skip the overlay, never throw.
+{
+  const boats = [{ id: 's1', x: 0, y: 0, px: 0, py: 0, pa: 0, ha: 0 }];
+  const at = R.pairBoatsFromState(boats, {});
+  check('pos of a missing boat is null', at.pos('s9') === null && at.pos(undefined) === null && at.stern('s9') === null && JSON.stringify(at.pos('s1')) === '[0,0]');
+  check('pos of an index-like id is null', at.pos(0) === null);
+  const state = {
+    t: 0, boats, bt: [],
+    pair: [{ k: 'o', a: 's1', b: 'gone', r: '12', sm: ['s1', 'gone'], ln: [['12', 'f', '12']] }, { k: 'b', a: 'x', b: 'y', r: '13b', ln: [] }],
+    br: [['s1', 'gone']], mr: [['gone', 's1']],
+    pen: { boats: [{ i: 'gone', c: 1, ic: ['31', 'g2'], t: null, mv: null }], cleared: [{ i: 'gone', c: 0 }] },
+    hud: { b: [{ twa: 10 }], br: [['gone', 's1', 'e', 1]] },
+  };
+  let scene = null, err = null;
+  try { scene = buildScene(state, { bodies: [], defs: [{}], hulls: {} }, view0(), null); } catch (e) { err = e; }
+  check('buildScene with stale ids does not throw', !err, err ? err.message : '');
+  const texts = scene ? scene.guides.filter((x) => x.type === 'label').map((x) => x.text || x.lines.map((l) => l.text).join('/')) : [];
+  check('stale overlays are skipped', scene && !texts.some((t) => /Rule|ROOM|FAULT|CLEARED/.test(t)) && !scene.guides.some((x) => x.type === 'rule' || x.type === 'abeam'), JSON.stringify(texts));
+  check('HUD room line with a stale id still writes', scene && /Boundary room: boat -1 gives boat 0/.test(scene.hud.info), scene && scene.hud.info);
+}
+function view0() { return { camera_position_x: 0, camera_position_y: 0, camera_zoom: 20, show_forces: false, show_fields: false }; }
 
 // 2. and 3. Live frames.
 const RULE_CODES = new Set(Object.keys(T.RULE_TEXT));
 const IC_RULES = new Set(['31', '18', 'BR', 'Bd']);
-const isIdx = (i, n) => Number.isInteger(i) && i >= 0 && i < n;
+// Boat ids (state.boats[i].id), not positions in the list.
+const isId = (id, boats) => typeof id === 'string' && boats.some((b) => b.id === id);
 const validIc = (ic) => Array.isArray(ic) && IC_RULES.has(ic[0]) && (ic[0] !== '31' || (typeof ic[1] === 'string' && (ic.length === 2 || ic[2] === 1))) && (ic[0] === '31' || ic.length === 1);
 const validPen = (c) => typeof c === 'string' && (c === '' || c[0] === '=' || /^[0-9A-Za-z]{1,3}$/.test(c));
 // Strings that may appear in a state: codes and enum ids, never sentences.
@@ -111,16 +145,16 @@ for (const [n, ticks, fin] of [[8, 300], [9, 300], [15, 300], [19, 450], [16, 15
         if (p.k === '15') seen.k15++;
         if (p.k === 'b') seen.kb++;
         const keys = Object.keys(p).filter((k) => !['k', 'a', 'b', 'r', 'bl', 'pr', 'sm', 'ln'].includes(k));
-        if (keys.length || !['o', '15', 'b'].includes(p.k) || !isIdx(p.a, nb) || !isIdx(p.b, nb) || p.a === p.b) bad.push(['pair', n, t, p]);
+        if (keys.length || !['o', '15', 'b'].includes(p.k) || !isId(p.a, s.boats) || !isId(p.b, s.boats) || p.a === p.b) bad.push(['pair', n, t, p]);
         if (p.k !== '15' && !RULE_CODES.has(p.r)) bad.push(['pair.r', n, t, p.r]);
         if (p.k === '15' && (!RULE_CODES.has(p.bl) || !(p.pr >= 0 && p.pr <= 1))) bad.push(['pair.15', n, t, p]);
-        if (p.sm && !p.sm.every((i) => isIdx(i, nb))) bad.push(['pair.sm', n, t, p.sm]);
+        if (p.sm && !p.sm.every((i) => isId(i, s.boats))) bad.push(['pair.sm', n, t, p.sm]);
         if (p.sm) seen.sm += p.sm.length;
         if (!Array.isArray(p.ln) || !p.ln.every((l) => l.length === 3 && RULE_CODES.has(l[0]) && ['f', 'i', 'o'].includes(l[1]))) bad.push(['pair.ln', n, t, p.ln]);
       }
       for (const e of (s.pen && s.pen.boats) || []) {
         seen.pen++;
-        if (!isIdx(e.i, nb) || !(e.c >= 0) || 'lb' in e) bad.push(['pen', n, t, e]);
+        if (!isId(e.i, s.boats) || !(e.c >= 0) || 'lb' in e) bad.push(['pen', n, t, e]);
         if (e.ic !== null) { seen.penIc++; if (!validIc(e.ic)) bad.push(['pen.ic', n, t, e.ic]); }
       }
       for (const b of s.hud.b || []) {
@@ -129,14 +163,14 @@ for (const [n, ticks, fin] of [[8, 300], [9, 300], [15, 300], [19, 450], [16, 15
         if (b.onto && !['p', 's'].includes(b.onto)) bad.push(['hud.onto', n, t, b.onto]);
       }
       for (const k of ['mr', 'br']) {
-        for (const m of s[k] || []) { seen[k]++; if (!Array.isArray(m) || m.length !== 2 || !isIdx(m[0], nb) || !isIdx(m[1], nb)) bad.push([k, n, t, m]); }
-        for (const m of s.hud[k] || []) if (!isIdx(m[0], nb) || !isIdx(m[1], nb) || !(m[2] === null || ['o', 'a', 'e', 'w'].includes(m[2]) || m[2][0] === '=') || ![0, 1].includes(m[3])) bad.push(['hud.' + k, n, t, m]);
+        for (const m of s[k] || []) { seen[k]++; if (!Array.isArray(m) || m.length !== 2 || !isId(m[0], s.boats) || !isId(m[1], s.boats)) bad.push([k, n, t, m]); }
+        for (const m of s.hud[k] || []) if (!isId(m[0], s.boats) || !isId(m[1], s.boats) || !(m[2] === null || ['o', 'a', 'e', 'w'].includes(m[2]) || m[2][0] === '=') || ![0, 1].includes(m[3])) bad.push(['hud.' + k, n, t, m]);
       }
       for (const l of (s.finish && s.finish.labels) || []) { seen.fin++; if (l.unserved.length) seen.finPen++; if (!l.unserved.every(validPen)) bad.push(['finish', n, t, l]); }
       for (const r of (s.hud.lb || [])) if (r.entry && r.entry.unserved.length) { seen.lbPen++; if (!r.entry.unserved.every(validPen)) bad.push(['lb', n, t, r.entry]); }
       for (const [path, str] of stringsOf(s, 's', [])) if (RULE_WORDS.test(str)) wordy.push(n + ' ' + path + ' ' + str);
       // Client geometry vs the host's own (from the boat objects).
-      const at = R.pairBoatsFromState(s.boats, statics.defs);
+      const at = R.pairBoatsFromState(s.boats, statics.hulls);
       const players = sim.players;
       let k = 0;
       for (const r of rec.resolutions) {
@@ -154,7 +188,7 @@ for (const [n, ticks, fin] of [[8, 300], [9, 300], [15, 300], [19, 450], [16, 15
         if (sceneDiff(R.roomGuidesFromState(s[key] || [], kind, s.boats), host) !== 0) hostSame = false;
       }
       for (const e of (s.pen && s.pen.boats) || []) {
-        if (e.c > 0 && R.faultText(e.c, T.incidentLabel(e.ic)) !== R.faultBadgeText(players[e.i])) badgeSame = false;
+        if (e.c > 0 && R.faultText(e.c, T.incidentLabel(e.ic)) !== R.faultBadgeText(players.find((b) => b.boatId === e.i))) badgeSame = false;
       }
       s.hud.b.forEach((b, i) => { if ((T.incidentReason(b.ic) || null) !== (rec.boats[i].reason || null)) reasonSame = false; });
       // From the server's rounded JSON: same text, geometry within 1e-3.
@@ -176,6 +210,48 @@ check('FAULT badges: client text = host text', badgeSame);
 check('readout reasons: client text = host text', reasonSame);
 check('from the server JSON: same text', textSame);
 check('from the server JSON: geometry within 1e-3', maxRemote <= 1e-3, maxRemote.toExponential(2));
+
+// 4. Boat ids across spawnBoat / removeBoat: scenario 0 with two player
+// boats; removing the first shifts the second's position in the list but
+// not her id, and every rule field keeps naming the right boat.
+{
+  const core = new SimCore({ mapW: 100, mapH: 200, simRes: '4f' });
+  mute(() => core.command({ type: 'restart', scenario: 0 }));
+  const sim = core.sim;
+  let rec = null;
+  const step = sim.step.bind(sim);
+  sim.step = (...a) => (rec = step(...a));
+  const b1 = mute(() => core.command({ type: 'spawnBoat', name: 'P1' }));
+  const b2 = mute(() => core.command({ type: 'spawnBoat', name: 'P2' }));
+  let statics = null, ok = true, pairs = 0, pairsAfter = 0, idBefore = null, idxBefore = null, idAfter = null, idxAfter = null, staleOk = true, oldStatics = null;
+  mute(() => {
+    for (let t = 0; t < 480; t++) {
+      if (t === 240) { oldStatics = statics; core.command({ type: 'removeBoat', id: b1.id }); }
+      const f = core.tick({ dt: 1 / 30, held: [], present: true, view });
+      if (f.statics) statics = f.statics;
+      const s = f.state;
+      const ids = s.boats.map((b) => b.id);
+      if (new Set(ids).size !== ids.length || !s.boats.every((b, i) => b.id === sim.players[i].boatId)) ok = false;
+      const k = ids.indexOf(b2.id);
+      if (t === 239) { idBefore = s.boats[k] && s.boats[k].id; idxBefore = k; }
+      if (t === 240) { idAfter = s.boats[k] && s.boats[k].id; idxAfter = k; }
+      for (const p of s.pair || []) { if (t < 240) pairs++; else pairsAfter++; if (!ids.includes(p.a) || !ids.includes(p.b) || (p.sm || []).some((i) => !ids.includes(i))) ok = false; }
+      if (t >= 240 && (s.pair || []).some((p) => p.a === b1.id || p.b === b1.id)) ok = false;
+      // Client geometry from the boats' ids = the host's from the boat objects.
+      const at = R.pairBoatsFromState(s.boats, statics.hulls);
+      let j = 0;
+      for (const r of rec.resolutions) {
+        if (!r.pairState) continue;
+        if (sceneDiff(R.pairGuidesFromState(s.pair[j++], at), r.guides) > 1e-12) ok = false;
+      }
+      // The frame right after the removal drawn with the old statics: no throw.
+      if (t === 240) { try { buildScene(s, oldStatics, view, null); } catch { staleOk = false; } }
+    }
+  });
+  check('ids keyed across spawn / remove', ok && pairs > 0 && pairsAfter > 0, JSON.stringify({ pairs, pairsAfter }));
+  check('removing a boat shifts the index, not the id', idBefore === b2.id && idAfter === b2.id && idxAfter === idxBefore - 1, JSON.stringify({ idBefore, idxBefore, idAfter, idxAfter }));
+  check('old statics after a removal still build', staleOk);
+}
 
 console.info(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);

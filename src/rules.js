@@ -180,7 +180,7 @@
 // the 12 m pair gate with one boat in the zone (pairs further apart are not
 // evaluated); "rounding" a gate mark ends at the gate line.
 
-import { RULE_TEXT, ruleCode, ruleText, ROLE_CODE, ROLE_TEXT, incidentCode, incidentReason, incidentLabel, penaltyNameText } from './rule-text.js';
+import { RULE_TEXT, ruleCode, ruleText, ROLE_CODE, roleText, incidentCode, incidentReason, incidentLabel, penaltyNameText } from './rule-text.js';
 
 export const BOAT_LENGTH_M = 4;
 export const RULE18_ZONE_M = 3 * BOAT_LENGTH_M;
@@ -643,7 +643,7 @@ export function sternAbeamPoint(boat) {
 
 // The same from a boat's scene state (boat-draw.js renderState: px, py body
 // position, pa body angle, ha hull angle) and her local hull vertices
-// (statics.defs[i].hv, flat): the client's stern marks (scene-build.js),
+// (statics.hulls[id].v, flat): the client's stern marks (scene-build.js),
 // computed as planck's getWorldPoint does.
 export function sternAbeamPointOf(bs, hv) {
   if (!bs || !Array.isArray(hv)) return null;
@@ -665,17 +665,6 @@ export function sternAbeamPointOf(bs, hv) {
     if ((a.x - b.x) ** 2 + (a.y - b.y) ** 2 < 1e-12) pts.pop();
   }
   return sternFromHull(pts, bs.ha);
-}
-
-// Local hull vertices of a boat, flat [x0, y0, ...] (Boat.renderDef hv).
-export function hullLocalVertices(boat) {
-  const shape = boat && boat.hull_shape;
-  const verts = shape && shape.m_vertices;
-  if (!verts) return [];
-  const count = shape.m_count > 0 ? shape.m_count : verts.length;
-  const out = [];
-  for (let i = 0; i < count && verts[i]; i++) out.push(verts[i].x, verts[i].y);
-  return out;
 }
 
 function sternFromHull(poly, hullAngle) {
@@ -817,6 +806,13 @@ export function activeRulesState() {
 }
 
 
+// The boat's id as state.boats carries it (Boat.boatId); stand-ins without
+// one (test/script mocks) get the resolver's per-object id instead.
+export function stateId(boat) {
+  if (!boat) return null;
+  return boat.boatId != null ? boat.boatId : '#' + boatId(boat);
+}
+
 function boatId(boat) {
   if (!boat) return 0;
   if (Number.isInteger(boat.id) && Array.isArray(boat._ruleHull)) return boat.id;
@@ -951,6 +947,7 @@ function evaluateRule15(ctx, state) {
         owesId: nextRowId,
         blockedRule: obligation.rule,
         blockedId: obligation.id,
+        blockedBoth: !!obligation.bothGiveWay,
         startedAt: simTime,
       };
     }
@@ -977,6 +974,7 @@ function evaluateRule15(ctx, state) {
     giveWay: obligation.giveWay,
     blockedId: active.blockedId,
     blockedRule: active.blockedRule,
+    blockedBoth: !!active.blockedBoth,
     progress,
     label: 'Rule 15 (blocks ' + active.blockedRule + ')',
   };
@@ -1309,6 +1307,7 @@ export function resolveRuleOutputs(results) {
       boats: result.boats || null,
       blockedId: result.blockedId || null,
       blockedRule: result.blockedRule || null,
+      blockedBoth: !!result.blockedBoth,
       decisive: result.decisive !== false,
       basis: result.basis || null,
       progress: result.progress,
@@ -1394,13 +1393,21 @@ export { RULE_TEXT, ruleCode, ruleText };
 
 // Label stack, highest layer first, so an inhibitor sits above the rule it
 // blocks: [[rule code, role code, id]].
+// Rule code of a resolver output: its registry id, '13b' for Rule 13 with
+// both boats tacking (rule-text.js RULE_TEXT).
+function ruleIdCode(o) {
+  if (!o) return '';
+  if (o.id === '13' && o.bothGiveWay) return '13b';
+  return o.id != null ? String(o.id) : ruleCode(o.rule);
+}
+
 function labelLinesState(resolution) {
   const lines = [];
   const items = resolution.applicable || [];
   for (let i = items.length - 1; i >= 0; i--) {
     const item = items[i];
     const isFinal = !!(resolution.final && item.id === resolution.final.id && !item.inhibited);
-    lines.push([ruleCode(item.id === '15' ? 'Rule 15' : item.rule), ROLE_CODE[item.inhibited ? 'inhibited' : (isFinal ? 'final' : 'other')], item.id]);
+    lines.push([ruleIdCode(item), ROLE_CODE[item.inhibited ? 'inhibited' : (isFinal ? 'final' : 'other')], item.id]);
   }
   return lines;
 }
@@ -1410,7 +1417,7 @@ function labelLinesState(resolution) {
 //     a, b: the boats (right-of-way, give-way; both boats for 'b'),
 //     r: rule code (label), bl, pr: blocked rule code and progress (15),
 //     sm: boats with a stern mark, ln: label stack lines }.
-// scene-state.js sends it with boat indices (pairStateFor); the client takes
+// scene-state.js sends it with boat ids (pairStateFor); the client takes
 // positions and stern marks from the boats' own state (pairGuidesFromState).
 export function pairGuideState(resolution) {
   const final = resolution.final;
@@ -1419,16 +1426,16 @@ export function pairGuideState(resolution) {
   if (final.bothGiveWay) {
     const boats = final.boats;
     if (!boats || boats.length < 2) return null;
-    p = { k: 'b', a: boats[0], b: boats[1], r: ruleCode(final.rule) };
+    p = { k: 'b', a: boats[0], b: boats[1], r: ruleIdCode(final) };
   } else if (final.id === '15') {
     const current = resolution.sectionA && resolution.sectionA.final;
     if (!current || !final.rightOfWay || !final.giveWay) return null;
     // Stern marks follow the rule she is sailing under now. The label names
     // the rule she acquired right of way under, which is the blocked one.
-    p = { k: '15', a: final.rightOfWay, b: final.giveWay, bl: ruleCode(final.blockedRule), pr: final.progress,
+    p = { k: '15', a: final.rightOfWay, b: final.giveWay, bl: final.blockedId == null ? ruleCode(final.blockedRule) : (final.blockedBoth && final.blockedId === '13' ? '13b' : String(final.blockedId)), pr: final.progress,
       sm: sternBoats({ rule: current.rule, rightOfWay: final.rightOfWay, giveWay: final.giveWay }) };
   } else {
-    p = { k: 'o', a: final.rightOfWay, b: final.giveWay, r: ruleCode(final.rule),
+    p = { k: 'o', a: final.rightOfWay, b: final.giveWay, r: ruleIdCode(final),
       sm: sternBoats({ rule: final.rule, rightOfWay: final.rightOfWay, giveWay: final.giveWay }) };
   }
   p.ln = labelLinesState(resolution);
@@ -1438,27 +1445,33 @@ export function pairGuideState(resolution) {
 // pairGuideState with the boats as indices into `boats` (state.pair entry,
 // host-protocol.js), or null when a boat is not in the list.
 export function pairStateFor(p, boats) {
-  const a = boats.indexOf(p.a), b = boats.indexOf(p.b);
-  if (a < 0 || b < 0) return null;
-  const out = { k: p.k, a, b };
+  if (!boats.includes(p.a) || !boats.includes(p.b)) return null;
+  const out = { k: p.k, a: stateId(p.a), b: stateId(p.b) };
   if (p.r !== undefined) out.r = p.r;
   if (p.bl !== undefined) { out.bl = p.bl; out.pr = p.pr; }
   if (p.sm) {
     out.sm = [];
-    for (const m of p.sm) { const i = boats.indexOf(m); if (i >= 0) out.sm.push(i); }
+    for (const m of p.sm) if (boats.includes(m)) out.sm.push(stateId(m));
   }
   out.ln = p.ln;
   return out;
 }
 
 // Where pairGuidesFromState reads the boats: on the host the boat objects
-// (resolution.guides, the headless checks), on the client the indices into
-// state.boats with the hull vertices from statics.defs.
-const LIVE_BOATS = { pos: (b) => [b.x, b.y], stern: sternAbeamPoint };
-export function pairBoatsFromState(boats, defs) {
+// (resolution.guides, the headless checks), on the client the boat ids,
+// looked up in state.boats (by id) with the hull outlines from
+// statics.hulls[id]. pos is null for a boat that is not there (stale id).
+const LIVE_BOATS = { pos: (b) => (b ? [b.x, b.y] : null), stern: sternAbeamPoint };
+export function boatsById(boats) {
+  const m = new Map();
+  for (const b of boats || []) if (b && b.id != null) m.set(b.id, b);
+  return m;
+}
+export function pairBoatsFromState(boats, hulls) {
+  const byId = boatsById(boats);
   return {
-    pos: (i) => [boats[i].x, boats[i].y],
-    stern: (i) => (boats[i] && defs && defs[i] ? sternAbeamPointOf(boats[i], defs[i].hv) : null),
+    pos: (id) => { const b = byId.get(id); return b && Number.isFinite(b.x) && Number.isFinite(b.y) ? [b.x, b.y] : null; },
+    stern: (id) => { const b = byId.get(id), h = hulls && hulls[id]; return b && h ? sternAbeamPointOf(b, h.v) : null; },
   };
 }
 
@@ -1468,7 +1481,10 @@ export function pairBoatsFromState(boats, defs) {
 // room-owed bar; cyan stern marks for Rules 11 and 12; Rule 13 with both
 // boats tacking draws two red halves.
 export function pairGuidesFromState(p, at = LIVE_BOATS) {
-  const [ax, ay] = at.pos(p.a), [bx, by] = at.pos(p.b);
+  const pa = at.pos(p.a), pb = at.pos(p.b);
+  // A boat that is not in this frame (stale id): no overlay.
+  if (!pa || !pb) return [];
+  const [ax, ay] = pa, [bx, by] = pb;
   const mx = (ax + bx) / 2;
   const my = (ay + by) / 2;
   const sterns = () => {
@@ -1499,7 +1515,7 @@ export function pairGuidesFromState(p, at = LIVE_BOATS) {
       ...sterns(),
     ];
   }
-  const lines = p.ln.map(([r, o, id]) => ({ text: ruleText(r), role: ROLE_TEXT[o], id }));
+  const lines = p.ln.map(([r, o, id]) => ({ text: ruleText(r), role: roleText(o), id }));
   for (let i = 0; i < guides.length; i++) {
     if (guides[i].type !== 'label') continue;
     guides[i].lines = lines;
@@ -2115,37 +2131,44 @@ export function penaltyAutopilotRemainingDeg(boat) {
 // `boats`, as in the info panel).
 // GETS / GIVES BOUNDARY ROOM badges, like markRoomGuides.
 export function boundaryRoomGuides(resolutions, boats) {
-  return roomGuidesFromState(roomGuideState(resolutions, boats, 'boundaryRoom'), 'boundaryRoom', boats);
+  return roomGuidesFromState(roomGuideState(resolutions, boats, 'boundaryRoom'), 'boundaryRoom', boatViews(boats));
 }
 
 export function markRoomGuides(resolutions, boats) {
-  return roomGuidesFromState(roomGuideState(resolutions, boats, 'markRoom'), 'markRoom', boats);
+  return roomGuidesFromState(roomGuideState(resolutions, boats, 'markRoom'), 'markRoom', boatViews(boats));
+}
+
+// The boats as the client sees them in state.boats ({ id, x, y, ha }).
+function boatViews(boats) {
+  return (boats || []).map((b) => (b ? { id: stateId(b), x: b.x, y: b.y, ha: b.hull_angle } : null));
 }
 
 // Live room obligations of one kind ('markRoom' | 'boundaryRoom') as
-// [[r, g]]: the entitled and the giving boat's indices in boats (pairs with
-// a boat not in boats are left out).
+// [[r, g]]: the entitled and the giving boat's ids (pairs with a boat not
+// in boats are left out).
 export function roomGuideState(resolutions, boats, kind) {
   const out = [];
   const list = boats || [];
   for (const r of resolutions || []) {
     const m = r && r[kind];
     if (!m || !m.rightOfWay || !m.giveWay) continue;
-    const ri = list.indexOf(m.rightOfWay), gi = list.indexOf(m.giveWay);
-    if (ri < 0 || gi < 0) continue;
-    out.push([ri, gi]);
+    if (!list.includes(m.rightOfWay) || !list.includes(m.giveWay)) continue;
+    out.push([stateId(m.rightOfWay), stateId(m.giveWay)]);
   }
   return out;
 }
 
 // GETS / GIVES badges, stacked above the higher boat so they never overlap.
-// boats[i] = { x, y } (state.boats on the client).
+// boats: state.boats ({ id, x, y }); "→ boat n" names the entitled boat by
+// her position in boats, as the readout does. A stale id: no badge.
 export function roomGuidesFromState(list, kind, boats) {
   const g = [];
   const mark = kind === 'markRoom';
-  for (const [n, gi] of list) {
+  const index = (id) => (boats || []).findIndex((b) => b && b.id === id);
+  for (const [rid, gid] of list) {
+    const n = index(rid), gi = index(gid);
+    if (n < 0 || gi < 0) continue;
     const rb = boats[n], gb = boats[gi];
-    if (!rb || !gb) continue;
     const top = Math.max(rb.y, gb.y) + 3.3;
     if (mark) {
       g.push({ type: 'label', badge: true, x: rb.x, y: top + 1.3, lines: [{ text: 'GETS MARK-ROOM', role: 'cleared', id: 'mr' }] });
@@ -2197,10 +2220,10 @@ export function pendingPenaltyReason(boat) {
 export function penaltyGuides(boats, nowMs) {
   const now = typeof nowMs === 'number' ? nowMs : performance.now();
   const list = boats || [];
-  return penaltyGuidesFromState(penaltyGuideState(list, now), list.map((b) => (b ? { x: b.x, y: b.y, ha: b.hull_angle } : null)));
+  return penaltyGuidesFromState(penaltyGuideState(list, now), boatViews(list));
 }
 
-// Penalty overlay state (scene-state.js), per boat index i:
+// Penalty overlay state (scene-state.js), per boat (i: boat id):
 //   boats: [{ i, c (pending count), ic (the oldest penalty's incident code,
 //           rule-text.js; FAULT badge label) | null, t: { sh, pd, dir, left }
 //           (Q/E circle) | null, mv: { first, remainingS } (tack/gybe
@@ -2217,7 +2240,7 @@ export function penaltyGuideState(boats, nowMs) {
     const turn = boat.penalty_turn;
     // ic: the oldest penalty's incident code (FAULT badge label); mv: the
     // penalty tack/gybe progress (penaltyManeuverView) while one is waiting.
-    const e = { i, c, ic: c > 0 ? pendingPenaltyCode(boat) : null, t: null, mv: null };
+    const e = { i: stateId(boat), c, ic: c > 0 ? pendingPenaltyCode(boat) : null, t: null, mv: null };
     if (turn && Number.isFinite(turn.startHeading)) {
       e.t = { sh: turn.startHeading, pd: turn.progressDeg || 0, dir: turn.dir, left: Math.max(0, Math.ceil(penaltyAutopilotRemainingDeg(boat))) };
     } else if (c > 0) {
@@ -2235,7 +2258,7 @@ export function penaltyGuideState(boats, nowMs) {
     }
     const boat = flash.boat;
     if (!boat || !Number.isFinite(boat.x) || !Number.isFinite(boat.y)) continue;
-    out.cleared.push({ i: list.indexOf(boat), c: pendingPenaltyCount(boat) });
+    out.cleared.push({ i: stateId(boat), c: pendingPenaltyCount(boat) });
   }
   return out;
 }
@@ -2245,8 +2268,9 @@ export function penaltyGuideState(boats, nowMs) {
 // Q/E autopilot circles, and a short CLEARED flash. boats[i] = { x, y, ha }.
 export function penaltyGuidesFromState(s, boats) {
   const guides = [];
+  const byId = boatsById(boats);
   for (const e of s.boats) {
-    const b = boats[e.i];
+    const b = byId.get(e.i);
     if (!b) continue;
     const boat = { x: b.x, y: b.y, hull_angle: b.ha };
     if (e.c > 0) {
@@ -2267,7 +2291,7 @@ export function penaltyGuidesFromState(s, boats) {
     guides.push({ type: 'label', badge: true, x: boat.x + ahead.x, y: boat.y + ahead.y, lines: [{ text: mt, role: 'turn', id: 'turn' }] });
   }
   for (const f of s.cleared) {
-    const b = boats[f.i];
+    const b = byId.get(f.i);
     if (!b) continue;
     const boat = { x: b.x, y: b.y, hull_angle: b.ha };
     const at = sternOffset(boat, f.c > 0 ? 4.4 : 2.5);

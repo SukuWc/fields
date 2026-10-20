@@ -89,17 +89,27 @@ export function unservedCodes(e) {
   return Array.isArray(e.uc) ? e.uc.slice() : e.unserved.map((n) => '=' + n);
 }
 
-// Pair overlay rule codes (state.pair r / bl / ln): rules.js resolver rule
-// names. Anything not listed travels as its own text.
+// Pair overlay rule codes (state.pair r / bl / ln): the resolver's rule id
+// (rules.js ruleRegistry), '13b' for Rule 13 with both boats tacking. An
+// unlisted numeric code reads "Rule <code>"; a rule with no id travels as
+// '=' + its name.
 export const RULE_TEXT = {
   10: 'Rule 10', 11: 'Rule 11', 12: 'Rule 12', 13: 'Rule 13', '13b': 'Rule 13 both',
   15: 'Rule 15', 18: 'Rule 18.2 mark-room', BR: 'Boundary room',
 };
 const RULE_CODE = Object.fromEntries(Object.entries(RULE_TEXT).map(([k, v]) => [v, k]));
-export const ruleCode = (text) => (text in RULE_CODE ? RULE_CODE[text] : text);
-export const ruleText = (code) => (code in RULE_TEXT ? RULE_TEXT[code] : code);
+export const ruleCode = (text) => (text in RULE_CODE ? RULE_CODE[text] : '=' + text);
+export function ruleText(code) {
+  if (typeof code !== 'string' && typeof code !== 'number') return 'Rule ?';
+  code = String(code);
+  if (code in RULE_TEXT) return RULE_TEXT[code];
+  if (code[0] === '=') return code.slice(1);
+  return /^\d/.test(code) ? 'Rule ' + code : code;
+}
 export const ROLE_CODE = { inhibited: 'i', final: 'f', other: 'o' };
 export const ROLE_TEXT = { i: 'inhibited', f: 'final', o: 'other' };
+// Unknown roles read as 'other'.
+export const roleText = (code) => (Object.prototype.hasOwnProperty.call(ROLE_TEXT, code) ? ROLE_TEXT[code] : 'other');
 
 // Basis of a mark-room / boundary-room obligation (state.hud.mr / br):
 // 'o' overlapped, 'a' clear ahead (Rule 18 at the zone), 'e' / 'w' east /

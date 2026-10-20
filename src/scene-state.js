@@ -20,10 +20,10 @@
 //   start  startGuideState (start.js) for boat 0
 //   course courseGuideState (course.js) for boat 0
 //   finish finishGuideState (finish.js)
-//   br, mr boundary-room / mark-room badges: [[entitled, giving boat index]]
+//   br, mr boundary-room / mark-room badges: [[entitled, giving boat id]]
 //          (rules.js roomGuideState)
 //   pair   rule-resolver pair overlays: [rules.js pairStateFor] (only
-//          during encounters; boat indices and rule codes, host-protocol.js)
+//          during encounters; boat ids and rule codes, host-protocol.js)
 //   mt, cf mark-touch and contact flashes ([{ ..., age }])
 //   pen    penaltyGuideState (rules.js)
 //   amr    refinement domains (outline only): { mode, d: [domain] } with
@@ -34,10 +34,10 @@
 //   bt     transforms of the moving bodies, flat, in statics.bodies order
 // sceneStatics(sim) → statics:
 //   lat    { w, h, res } root lattice (for the refinement outlines)
-//   defs   per racing boat: Boat.renderDef (hv: local hull vertices, for
-//          the stern marks) + name (spawned boats)
+//   defs   per racing boat: Boat.renderDef + name (spawned boats)
 //   marks  mark anchors [[x, y], ...]
 //   hulls  { [boat id]: { v (local hull vertices), com } } for ghost boats
+//          and the rule overlays' stern marks
 //   start, finish  line geometry; course courseStatics; boundary { x, zone, yMin, yMax }
 //   bodies [{ id, kind, stroke, pts }] (static bodies: final outline) or
 //          { id, kind, stroke, r | v (local vertices), com? } (moving bodies)

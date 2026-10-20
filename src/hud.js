@@ -16,7 +16,7 @@
 //         ic (the oldest pending penalty's incident code, rule-text.js; the
 //         readout reason), mv (penalty tack/gybe view); default fields omitted
 //   bd    boundary distances { z: zone, d: [[side, dist], ...] }
-//   br, mr boundary room / mark-room: [[giveWay, rightOfWay, basis code
+//   br, mr boundary room / mark-room: [[giveWay id, rightOfWay id, basis code
 //         (rule-text.js basisCode), decisive]]
 //   own   only with player boats (spawnBoat): per player boat id
 //         { tel, st: [start status, startTime] (with a start sequence),
@@ -29,7 +29,7 @@
 import { courseTextState, courseTextOf } from './course.js';
 import { leaderboardState, leaderboardHtmlOf } from './leaderboard.js';
 import { startHudState, startHudHtmlOf, startStatusTextOf } from './start.js';
-import { penaltyManeuverText } from './rules.js';
+import { penaltyManeuverText, stateId } from './rules.js';
 import { incidentReason, basisCode, basisText, tackCode, tackText } from './rule-text.js';
 
 // Telemetry as the readout shows it (info.js boatTelemetryHtml): values it
@@ -92,7 +92,7 @@ export function hudState(sim, rec) {
     const out = [];
     for (const r of rec.resolutions) {
       const m = r[kind];
-      if (m) out.push([racing.indexOf(m.giveWay), racing.indexOf(m.rightOfWay), basisCode(m.basis), m.decisive ? 1 : 0]);
+      if (m) out.push([stateId(m.giveWay), stateId(m.rightOfWay), basisCode(m.basis), m.decisive ? 1 : 0]);
     }
     return out;
   };
@@ -117,7 +117,10 @@ export function hudState(sim, rec) {
 // ownId: this client's player boat (spawnBoat id): the telemetry, start
 // status and course progress shown are that boat's (h.own); without one, the
 // scenario's (tel / st / co).
-export function hudFromState(h0, ownId = null) {
+// boats: state.boats ({ id }); the room lines name boats by their position
+// in it ("boat 1").
+export function hudFromState(h0, ownId = null, boats = null) {
+  const index = (id) => (boats || []).findIndex((b) => b && b.id === id);
   const mine = ownId && h0.own && h0.own[ownId];
   const h = mine ? { ...h0, tel: mine.tel, co: mine.co, st: h0.st && mine.st ? { ...h0.st, st: mine.st[0], t0: mine.st[1] } : h0.st } : h0;
   const out = { dist: null, info: '', startHud: null, results: null };
@@ -165,10 +168,10 @@ export function hudFromState(h0, ownId = null) {
     });
   }
   for (const [g, r, basis, dec] of h.br || []) {
-    info += 'Boundary room: boat ' + g + ' gives boat ' + r + ' room to tack or gybe away (' + basisText(basis) + ')' + (dec ? ' · decides fault' : '') + '<br>';
+    info += 'Boundary room: boat ' + index(g) + ' gives boat ' + index(r) + ' room to tack or gybe away (' + basisText(basis) + ')' + (dec ? ' · decides fault' : '') + '<br>';
   }
   for (const [g, r, basis, dec] of h.mr || []) {
-    info += 'Rule 18.2: boat ' + g + ' gives mark-room to boat ' + r + ' (' + basisText(basis) + ' at the zone)' + (dec ? ' · decides fault' : '') + '<br>';
+    info += 'Rule 18.2: boat ' + index(g) + ' gives mark-room to boat ' + index(r) + ' (' + basisText(basis) + ' at the zone)' + (dec ? ' · decides fault' : '') + '<br>';
   }
   out.info = info;
   return out;

@@ -162,7 +162,7 @@ export function buildGuides(state, statics, view) {
   if (state.br) guides.push(...roomGuidesFromState(state.br, 'boundaryRoom', boats));
   if (state.mr) guides.push(...roomGuidesFromState(state.mr, 'markRoom', boats));
   if (state.pair) {
-    const at = pairBoatsFromState(state.boats, statics.defs);
+    const at = pairBoatsFromState(state.boats, statics.hulls);
     for (const p of state.pair) guides.push(...pairGuidesFromState(p, at));
   }
   if (state.mt) guides.push(...markTouchGuidesFromState(state.mt));
@@ -187,5 +187,5 @@ export function buildGuides(state, statics, view) {
 // ownId: this client's player boat in a server room (its readout), or null.
 export function buildScene(state, statics, view, ownId = null) {
   if (!state || !statics) return { guides: [], bodies: [], hud: null };
-  return { guides: buildGuides(state, statics, view), bodies: buildBodies(statics.bodies, state.bt), hud: state.hud ? hudFromState(state.hud, ownId) : null };
+  return { guides: buildGuides(state, statics, view), bodies: buildBodies(statics.bodies, state.bt), hud: state.hud ? hudFromState(state.hud, ownId, state.boats) : null };
 }

@@ -1,6 +1,6 @@
 import planck from 'planck-js';
 import { aeroCoefficients } from './utils.js';
-import { resetPenaltyManeuvers, updatePenaltyManeuvers, updateTackingState, hullLocalVertices } from './rules.js';
+import { resetPenaltyManeuvers, updatePenaltyManeuvers, updateTackingState } from './rules.js';
 import { WIND_UNIT_MPS } from './wind.js';
 import { boatGuides } from './boat-draw.js';
 
@@ -737,7 +737,6 @@ export class Boat{
       rp: this.rudder_position, rl: this.rudder_lenght, cp: this.centerboard_position, cl: this.centerboard_length,
       mle: this.mainsail_leading_edge_position, mbl: this.mainsail_boom_length,
       jle: this.jib_leading_edge_position, jbl: this.jib_boom_length,
-      hv: hullLocalVertices(this),
     };
   }
 
