@@ -1,7 +1,7 @@
 // RemoteHost (?host=remote&server=ws://..., or a VITE_SIM_HOST=remote build):
 // the SimHost interface (host.js) over a WebSocket to the Node server
 // (apps/server). Same message schema as the worker (host-protocol.js), JSON
-// text messages, plus binary messages for the field texture.
+// text messages only (the field too: src/field-codec.js).
 //
 // The server says in its info who ticks:
 //   mode 'server'  (default) the server runs the Sim on its own 30 Hz clock
@@ -43,13 +43,15 @@
 //
 // Field: only while this client shows it (setField({ on, plotType,
 // contrastExp }); the 'plot' command sets the plot). The server then sends,
-// every TICK_HZ / fieldHz ticks, a binary field grid message: the root grid
-// and each refinement domain, one byte per cell (fieldPainter.js
-// encodeFieldGrids). It is painted here into the page's texture with the
-// local palette and layering (FieldPainter.paintGrids), so remote looks like
-// local; the page shows it on the next frame.
+// every TICK_HZ / fieldHz ticks, a field text message (src/field-codec.js):
+// the root grid and each refinement domain, one byte per cell, as a
+// keyframe or as a delta against the previous one. It is painted here into
+// the page's texture with the local palette and layering
+// (FieldPainter.paintGrids), so remote looks like local; the page shows it
+// on the next frame.
 import { plainView } from './host-protocol.js';
-import { FieldPainter, decodeFieldGrids } from './fieldPainter.js';
+import { FieldPainter } from './fieldPainter.js';
+import { decodeFieldText } from './field-codec.js';
 
 export class RemoteHost {
   constructor(url, opts, texture, { maxInFlight = 0, WebSocketImpl, coalesce = true, token = null, reconnect = false, backoffMs = [500, 1000, 2000, 4000, 8000] } = {}) {
@@ -75,6 +77,8 @@ export class RemoteHost {
     }
     this.fieldsReceived = 0;
     this.fieldBytes = 0;
+    this.fieldResyncs = 0;
+    this._fieldHeld = null;
     this.lastField = null;
     this._oversampling = opts.oversampling || 8;
     this._painter = texture ? new FieldPainter(texture, this._oversampling) : null;
@@ -127,6 +131,7 @@ export class RemoteHost {
       const init = { type: 'init', opts: this._initOpts };
       if (this.token) init.token = this.token;
       ws.send(JSON.stringify(init));
+      this._fieldHeld = null;
       if (this._field.on) ws.send(JSON.stringify({ type: 'field', ...this._field }));
       if (this._flowOn) ws.send(JSON.stringify({ type: 'flow', on: true }));
       if (this._perfOn) ws.send(JSON.stringify({ type: 'perf', on: true }));
@@ -148,8 +153,10 @@ export class RemoteHost {
     };
     ws.onmessage = (e) => {
       if (this.ws !== ws) return;
-      if (typeof e.data === 'string') this._onMessage(JSON.parse(e.data));
-      else this._onField(e.data);
+      if (typeof e.data !== 'string') return;
+      const m = JSON.parse(e.data);
+      if (m.type === 'field') this._onField(m, e.data.length);
+      else this._onMessage(m);
     };
   }
 
@@ -257,14 +264,27 @@ export class RemoteHost {
     this._painter = texture ? new FieldPainter(texture, this._oversampling) : null;
   }
 
-  _onField(buf) {
-    if (!(buf instanceof ArrayBuffer)) return;
-    const msg = decodeFieldGrids(buf);
-    if (!msg) return;
+  // A field text message (src/field-codec.js): a keyframe, or a delta on
+  // top of the one held. A delta against another message (one missed, e.g.
+  // across a reconnect) is dropped and a keyframe asked for.
+  _onField(m, bytes) {
+    this.fieldBytes += bytes;
+    const r = decodeFieldText(m, this._fieldHeld);
+    if (!r) {
+      // Once per gap: the deltas still in flight are dropped quietly.
+      if (this._fieldHeld || !this._fieldAsked) {
+        this.fieldResyncs++;
+        this._fieldAsked = true;
+        if (this._field.on) this._send({ type: 'field', ...this._field });
+      }
+      this._fieldHeld = null;
+      return;
+    }
+    this._fieldHeld = r;
+    this._fieldAsked = false;
     this.fieldsReceived++;
-    this.fieldBytes += buf.byteLength;
-    this.lastField = msg;
-    if (this._painter) this._painter.paintGrids(msg);
+    this.lastField = r.msg;
+    if (this._painter) this._painter.paintGrids(r.msg);
   }
 
   _send(m) { if (this.ws.readyState === 1) this.ws.send(JSON.stringify(m)); }

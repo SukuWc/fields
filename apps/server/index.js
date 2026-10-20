@@ -1,19 +1,19 @@
 // Authoritative sim server: WebSocket, one Room (room.js) per ?room= name.
 //
-//   node dist-server/server.mjs [--port 8787] [--lockstep] [--field-hz 2] [--grace-s 10] [--verbose]
+//   node dist-server/server.mjs [--port 8787] [--lockstep] [--field-hz 30] [--field-tol 1] [--grace-s 10] [--verbose]
 //   (npm run server builds and starts it; PORT env works too)
 //
 // GET / answers a small JSON status (rooms, clients, tick cost) for health checks.
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
-import { Room, FIELD_HZ, GRACE_MS } from './room.js';
+import { Room, FIELD_HZ, FIELD_TOL, GRACE_MS } from './room.js';
 
-export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, fieldHz = FIELD_HZ, graceMs = GRACE_MS } = {}) {
+export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, fieldHz = FIELD_HZ, fieldTol = FIELD_TOL, graceMs = GRACE_MS } = {}) {
   const rooms = new Map();
   const server = http.createServer((req, res) => {
     const status = {
       ok: true, lockstep,
-      rooms: [...rooms.values()].map((r) => ({ name: r.name, clients: r.clients.size, ticks: r.ticks, tickMs: Math.round(r.tickMs * 10) / 10, fieldEncodes: r.fieldEncodes, fieldBytesSent: r.fieldBytesSent })),
+      rooms: [...rooms.values()].map((r) => ({ name: r.name, clients: r.clients.size, ticks: r.ticks, tickMs: Math.round(r.tickMs * 10) / 10, fieldEncodes: r.fieldEncodes, fieldKeys: r.fieldKeys, fieldBytesSent: r.fieldBytesSent, fieldEncodeMs: Math.round(r.fieldEncodeMs * 100) / 100 })),
     };
     res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
     res.end(JSON.stringify(status));
@@ -23,7 +23,7 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
     const name = new URL(req.url || '/', 'http://x').searchParams.get('room') || 'default';
     let room = rooms.get(name);
     if (!room) {
-      room = new Room(name, { lockstep, fieldHz, graceMs });
+      room = new Room(name, { lockstep, fieldHz, fieldTol, graceMs });
       room.onDispose = (r) => { if (rooms.get(name) === r) rooms.delete(name); };
       rooms.set(name, room);
     }
@@ -61,6 +61,7 @@ if (isMain) {
     port: Number(arg('port', process.env.PORT || 8787)),
     lockstep: !!arg('lockstep', false),
     fieldHz: Number(arg('field-hz', FIELD_HZ)),
+    fieldTol: Number(arg('field-tol', FIELD_TOL)),
     graceMs: Number(arg('grace-s', GRACE_MS / 1000)) * 1000,
   });
   console.info(`sim server listening on ws://localhost:${s.port}${arg('lockstep', false) ? ' (lockstep)' : ''}`);
