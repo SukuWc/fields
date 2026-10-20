@@ -39,8 +39,10 @@
 //                                     { type: 'ownBoats', boats } and
 //                                     { type: 'bindControls', boats }
 //   { type: 'frame', frame }        plus the field texture: transferred (worker) or a
-//                                     binary field grid message to clients
-//                                     showing the field (server, apps/server/room.js)
+//                                     { type: 'field' } text message (keyframe or
+//                                     delta, src/field-codec.js) just before it, to
+//                                     clients showing the field (server,
+//                                     apps/server/room.js)
 //                                   frame.state: compact scene state (scene-state.js);
 //                                     frame.statics only when they changed (worker);
 //                                     frame.flow / frame.perf (worker; from the

@@ -153,6 +153,7 @@ export class Room {
     this.fieldEncodes = 0;
     this.fieldBytesSent = 0;
     this.fieldEncodeMs = 0;
+    this.fieldEncodeMsTotal = 0;
     this.now = now;
     this.core = null;
     this.clients = new Set();
@@ -466,6 +467,7 @@ export class Room {
       st.shown = e.shown;
       const msg = JSON.stringify(e.m);
       this.fieldEncodeMs = this.now() - t0;
+      this.fieldEncodeMsTotal += this.fieldEncodeMs;
       this.fieldEncodes++;
       for (const c of g.clients) this.fieldHave.set(c, { key: g.key, seq });
       out.push({ clients: g.clients, msg });
