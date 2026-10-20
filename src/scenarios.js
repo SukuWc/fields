@@ -13,6 +13,7 @@ import { FinishLine, RaceResults, FINISH_COURSE_LAYOUT, FINISH_UNSERVED_PENALTY_
 import { setupTestRace } from './race-bot.js';
 import { setupBoundaryTest } from './boundary-scenario.js';
 import { chargePendingPenalty, PENALTY_MANEUVER_WINDOW_S } from './rules.js';
+import { incidentCode, incidentReason, incidentLabel } from './rule-text.js';
 import { range_map } from './utils.js';
 
 // Scenario 18 start positions (four boats upwind, the refinement-budget case).
@@ -457,7 +458,7 @@ export function buildScenarios(sim) {
       sim.startSequence.seedStarted(boat, 0);
       sim.course.progressFor(boat).seed(sim.course.totalRoundings);
     }
-    chargePendingPenalty(sim.players[1], { time: 0, rule: '31', finalRule: '31', kind: 'mark', faultBoat: sim.players[1], markName: 'gate 2', reason: 'Rule 31: touched gate 2', label: 'Rule 31 · touched gate 2' });
+    chargePendingPenalty(sim.players[1], { time: 0, rule: '31', finalRule: '31', kind: 'mark', faultBoat: sim.players[1], markName: 'gate 2', ic: incidentCode.markTouch('gate 2'), reason: incidentReason(incidentCode.markTouch('gate 2')), label: incidentLabel(incidentCode.markTouch('gate 2')) });
   };
   scenarios[16].frames[1] = () => {
     sim.emit({ type: 'bindControls' });

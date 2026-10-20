@@ -18,6 +18,7 @@
 
 import { chargePendingPenalty, hullVerticesWorld } from './rules.js';
 import { WALL_INSET_M } from './map-size.js';
+import { incidentCode, incidentReason, incidentLabel } from './rule-text.js';
 
 export const BOUNDARY_ZONE_M = 20; // 5 boat lengths
 export const BOUNDARY_INSET_M = 8; // boundary line inside the wall
@@ -77,7 +78,8 @@ export class Boundary {
         const incident = {
           time: simTime, rule: 'Boundary', finalRule: 'Boundary', kind: 'boundary',
           faultBoat: boat, side: d.side,
-          reason: 'Boundary: crossed', label: 'Boundary · crossed',
+          ic: incidentCode.boundaryCrossed(),
+          reason: incidentReason(incidentCode.boundaryCrossed()), label: incidentLabel(incidentCode.boundaryCrossed()),
         };
         this.crossings.push(incident);
         chargePendingPenalty(boat, incident);

@@ -4,6 +4,7 @@
 // No DOM or three.js; runs wherever the Sim runs (main thread for LocalHost, the worker for WorkerHost), so the client never
 // touches Sim, planck or Boltzmann objects.
 import { hudState, hudFromState } from './hud.js';
+import { stateId } from './rules.js';
 import { defaultCellUpdateTarget } from './domainTrack.js';
 import { sceneFrame, bodyScene } from './scene-state.js';
 import { buildGuides, buildBodies, pushRefinementGuides } from './scene-build.js';
@@ -16,7 +17,7 @@ const now = () => performance.now();
 // as the client writes it from the HUD state (hud.js).
 export function presentHud(sim, rec) {
   sim.activate();
-  return hudFromState(hudState(sim, rec));
+  return hudFromState(hudState(sim, rec), null, sim.players.map((b) => ({ id: stateId(b) })));
 }
 
 
@@ -25,7 +26,7 @@ export function presentHud(sim, rec) {
 export function presentStep(sim, rec, view, nowMs = now()) {
   const ids = sim._sceneIds || (sim._sceneIds = new WeakMap());
   const { state, statics } = sceneFrame(sim, rec, view, nowMs, ids);
-  const out = hudFromState(state.hud);
+  const out = hudFromState(state.hud, null, state.boats);
   out.guides = buildGuides(state, statics, view);
   return out;
 }

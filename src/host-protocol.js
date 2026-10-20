@@ -53,6 +53,63 @@
 //   { type: 'perf', perf }          server: perf counters for the next frame,
 //                                     to clients subscribed with 'perf'
 // Frames and statics from the server have numbers rounded to 1e-4 (room.js).
+//
+// Rule data (frame.state; the rules engine is rules.js, mark-touch.js,
+// boundary.js, finish.js in the sim; every client writes the text and builds
+// the geometry with scene-build.js / hud.js and rule-text.js). No rule text
+// or overlay geometry travels: rule ids / codes, boat ids (state.boats[i].id:
+// 's<n>' scenario boats, the spawn id for player boats; stable across
+// spawnBoat / removeBoat, unlike positions in the list) and the numbers the
+// text needs. A boat id not in this frame's state.boats (stale) draws no
+// overlay.
+//   Rule codes (r, bl, ln[0]): the resolver's rule id (rules.js
+//     ruleRegistry): '10', '11', '12', '13', '13b' (Rule 13, both tacking),
+//     '15', '18' (Rule 18.2 mark-room), 'BR' (boundary room); another
+//     numeric id reads "Rule <id>" (e.g. '14'); '=' + name for a rule with
+//     no id (rule-text.js ruleText).
+//   state.pair: [{ k, a, b, r?, bl?, pr?, sm?, ln }] one per encounter in
+//     range (rules.js pairStateFor):
+//       k   'o' one boat keeps clear | '15' Rule 15 (room after acquiring
+//           right of way) | 'b' Rule 13, both tacking (both keep clear)
+//       a, b boat ids: right-of-way, give-way ('b': the two boats); the
+//           lines run from their midpoint to those boats' x, y
+//       r   label rule code ('o', 'b')
+//       bl, pr  ('15') the blocked rule's code (label "Rule 15 (blocks
+//           Rule 11)") and the room-owed progress 0..1
+//       sm  boat ids with a stern mark (Rules 11, 12: the rule she sails
+//           under now): the client takes the aftermost hull station from
+//           the boat's state (px, py, pa, ha) and statics.hulls[id].v (local
+//           hull vertices, flat [x0, y0, ...])
+//       ln  label stack, highest layer first: [[rule code, role, rule id]],
+//           role 'f' final | 'i' inhibited | 'o' other applicable (an
+//           unknown role reads as 'o')
+//   Incident codes (ic; rule-text.js incidentReason / incidentLabel):
+//       ['31', mark, ex?] Rule 31 mark touch; mark: 'g<n>' gate n,
+//                         'm<n>' mark n, 'fb' / 'fp' finish boat / pin,
+//                         'rc' / 'pin' start line ends, 'mk' unnamed,
+//                         '=' + name otherwise; ex 1: exonerated (rule 21)
+//       ['18']            Rule 18.2: did not give mark-room
+//       ['BR']            boundary room: did not give room
+//       ['Bd']            boundary crossed
+//     (a boat-boat penalty decided by Rules 10-15 has none: plain FAULT)
+//   state.pen.boats[]: { i boat id, c pending count, ic of the oldest
+//     penalty | null (FAULT badge "FAULT x2 · Rule 31 · touched gate 2"),
+//     t: { sh start heading, pd degrees turned, dir, left } (Q / E circle)
+//     | null, mv: { first 'tack' | 'gybe', remainingS } | null };
+//     cleared: [{ i (boat id), c }] CLEARED flashes
+//   state.hud.b[]: ic (oldest pending penalty, readout reason "Rule 31:
+//     touched gate 2"), onto 'p' / 's' (tacking onto port / starboard)
+//   state.hud.br / mr: [[give-way, right-of-way (boat ids), basis,
+//     decisive 0 | 1]], basis 'o' overlapped | 'a' clear ahead (mark-room at
+//     the zone) | 'e' / 'w' east / west boundary | '=' + text
+//   state.br / mr: room badges [[r, g]] (rules.js roomGuideState): boat
+//     ids of the boat that gets mark-room / boundary room and the one that
+//     gives it ("GIVES MARK-ROOM → boat n", n her position in state.boats,
+//     above the higher boat)
+//   Penalty names (state.finish.labels[].unserved,
+//     state.hud.lb[].entry.unserved; rule-text.js penaltyNameText): '31'
+//     Rule 31, '18' Rule 18.2, 'Bd' Boundary, 'BR' Boundary room, another
+//     rule id "Rule <id>", '' penalty, '=' + text otherwise
 
 // Objects marked here (and everything inside them) keep their numbers exact
 // in the server's rounded JSON (apps/server/room.js roundJson): values that

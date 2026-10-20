@@ -15,7 +15,7 @@ import { startGuidesFromState } from './start.js';
 import { courseGuidesFromState } from './course.js';
 import { finishGuidesFromState } from './finish.js';
 import { boundaryGuides } from './boundary.js';
-import { roomGuidesFromState, contactGuidesFromState, penaltyGuidesFromState, pairGuidesFromState } from './rules.js';
+import { roomGuidesFromState, contactGuidesFromState, penaltyGuidesFromState, pairGuidesFromState, pairBoatsFromState } from './rules.js';
 import { hudFromState } from './hud.js';
 import { markTouchGuidesFromState } from './mark-touch.js';
 
@@ -159,9 +159,12 @@ export function buildGuides(state, statics, view) {
   if (state.course && statics.course) guides.push(...courseGuidesFromState(statics.course, state.course, now));
   if (state.finish && statics.finish) guides.push(...finishGuidesFromState(statics.finish, state.finish, now));
   if (statics.boundary) guides.push(...boundaryGuides(statics.boundary));
-  if (state.br) guides.push(...roomGuidesFromState(state.br, 'boundaryRoom'));
-  if (state.mr) guides.push(...roomGuidesFromState(state.mr, 'markRoom'));
-  if (state.pair) for (const p of state.pair) guides.push(...pairGuidesFromState(p));
+  if (state.br) guides.push(...roomGuidesFromState(state.br, 'boundaryRoom', boats));
+  if (state.mr) guides.push(...roomGuidesFromState(state.mr, 'markRoom', boats));
+  if (state.pair) {
+    const at = pairBoatsFromState(state.boats, statics.hulls);
+    for (const p of state.pair) guides.push(...pairGuidesFromState(p, at));
+  }
   if (state.mt) guides.push(...markTouchGuidesFromState(state.mt));
   if (state.cf) guides.push(...contactGuidesFromState(state.cf));
   if (state.pen) guides.push(...penaltyGuidesFromState(state.pen, boats));
@@ -184,5 +187,5 @@ export function buildGuides(state, statics, view) {
 // ownId: this client's player boat in a server room (its readout), or null.
 export function buildScene(state, statics, view, ownId = null) {
   if (!state || !statics) return { guides: [], bodies: [], hud: null };
-  return { guides: buildGuides(state, statics, view), bodies: buildBodies(statics.bodies, state.bt), hud: state.hud ? hudFromState(state.hud, ownId) : null };
+  return { guides: buildGuides(state, statics, view), bodies: buildBodies(statics.bodies, state.bt), hud: state.hud ? hudFromState(state.hud, ownId, state.boats) : null };
 }

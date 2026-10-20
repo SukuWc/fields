@@ -20,9 +20,10 @@
 //   start  startGuideState (start.js) for boat 0
 //   course courseGuideState (course.js) for boat 0
 //   finish finishGuideState (finish.js)
-//   br, mr boundary-room / mark-room badges (rules.js roomGuideState)
-//   pair   rule-resolver pair overlays: [rules.js pairGuideState] (only
-//          during encounters)
+//   br, mr boundary-room / mark-room badges: [[entitled, giving boat id]]
+//          (rules.js roomGuideState)
+//   pair   rule-resolver pair overlays: [rules.js pairStateFor] (only
+//          during encounters; boat ids and rule codes, host-protocol.js)
 //   mt, cf mark-touch and contact flashes ([{ ..., age }])
 //   pen    penaltyGuideState (rules.js)
 //   amr    refinement domains (outline only): { mode, d: [domain] } with
@@ -36,13 +37,14 @@
 //   defs   per racing boat: Boat.renderDef + name (spawned boats)
 //   marks  mark anchors [[x, y], ...]
 //   hulls  { [boat id]: { v (local hull vertices), com } } for ghost boats
+//          and the rule overlays' stern marks
 //   start, finish  line geometry; course courseStatics; boundary { x, zone, yMin, yMax }
 //   bodies [{ id, kind, stroke, pts }] (static bodies: final outline) or
 //          { id, kind, stroke, r | v (local vertices), com? } (moving bodies)
 import { lineState, startGuideState } from './start.js';
 import { courseStatics, courseGuideState } from './course.js';
 import { finishLineState, finishGuideState } from './finish.js';
-import { roomGuideState, contactFlashState, penaltyGuideState } from './rules.js';
+import { roomGuideState, contactFlashState, penaltyGuideState, pairStateFor } from './rules.js';
 import { markTouchState } from './mark-touch.js';
 import { hudState } from './hud.js';
 import { markExact } from './host-protocol.js';
@@ -164,7 +166,10 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
   const mr = roomGuideState(res, racing, 'markRoom');
   if (mr.length) s.mr = mr;
   const pair = [];
-  for (let i = 0; i < res.length; i++) if (res[i].pairState) pair.push(res[i].pairState);
+  for (let i = 0; i < res.length; i++) {
+    const p = res[i].pairState && pairStateFor(res[i].pairState, racing);
+    if (p) pair.push(p);
+  }
   if (pair.length) s.pair = pair;
   const mt = markTouchState(nowMs);
   if (mt.length) s.mt = mt;

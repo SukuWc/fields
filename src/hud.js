@@ -12,10 +12,12 @@
 //   st    start HUD state (start.js startHudState) for boat 0
 //   co    courseTextState (course.js) for boat 0
 //   lb    leaderboard rows (leaderboard.js leaderboardState)
-//   b     per boat: twa (rounded, as shown), tacking, onto, pending, cleared, turn { dir, rem },
-//         reason, mv (penalty tack/gybe view); default fields omitted
+//   b     per boat: twa (rounded, as shown), tacking, onto ('p' / 's'), pending, cleared, turn { dir, rem },
+//         ic (the oldest pending penalty's incident code, rule-text.js; the
+//         readout reason), mv (penalty tack/gybe view); default fields omitted
 //   bd    boundary distances { z: zone, d: [[side, dist], ...] }
-//   br, mr boundary room / mark-room: [[giveWay, rightOfWay, basis, decisive]]
+//   br, mr boundary room / mark-room: [[giveWay id, rightOfWay id, basis code
+//         (rule-text.js basisCode), decisive]]
 //   own   only with player boats (spawnBoat): per player boat id
 //         { tel, st: [start status, startTime] (with a start sequence),
 //           co (with a course) }, so each client reads its own boat
@@ -27,7 +29,8 @@
 import { courseTextState, courseTextOf } from './course.js';
 import { leaderboardState, leaderboardHtmlOf } from './leaderboard.js';
 import { startHudState, startHudHtmlOf, startStatusTextOf } from './start.js';
-import { penaltyManeuverText } from './rules.js';
+import { penaltyManeuverText, stateId } from './rules.js';
+import { incidentReason, basisCode, basisText, tackCode, tackText } from './rule-text.js';
 
 // Telemetry as the readout shows it (info.js boatTelemetryHtml): values it
 // floors to whole units or tenths are sent as Math.floor(v) / Math.floor(v * 10);
@@ -75,11 +78,11 @@ export function hudState(sim, rec) {
   if (course) h.lb = leaderboardState(sim.leaderboard);
   h.b = rec.boats.map((b) => {
     const o = { twa: b.twa === null ? null : Math.round(b.twa) };
-    if (b.tacking) { o.tacking = 1; if (b.tackingOnto) o.onto = b.tackingOnto; }
+    if (b.tacking) { o.tacking = 1; if (b.tackingOnto) o.onto = tackCode(b.tackingOnto); }
     if (b.pending) o.pending = b.pending;
     if (b.justCleared) o.cleared = 1;
     if (b.penaltyTurn) o.turn = { dir: b.penaltyTurn.dir, rem: b.penaltyTurn.remainingDeg };
-    if (b.reason) o.reason = b.reason;
+    if (b.ic) o.ic = b.ic;
     if (b.maneuverView && b.maneuverView.first) o.mv = { first: b.maneuverView.first, remainingS: b.maneuverView.remainingS };
     return o;
   });
@@ -89,7 +92,7 @@ export function hudState(sim, rec) {
     const out = [];
     for (const r of rec.resolutions) {
       const m = r[kind];
-      if (m) out.push([racing.indexOf(m.giveWay), racing.indexOf(m.rightOfWay), m.basis, m.decisive ? 1 : 0]);
+      if (m) out.push([stateId(m.giveWay), stateId(m.rightOfWay), basisCode(m.basis), m.decisive ? 1 : 0]);
     }
     return out;
   };
@@ -114,7 +117,10 @@ export function hudState(sim, rec) {
 // ownId: this client's player boat (spawnBoat id): the telemetry, start
 // status and course progress shown are that boat's (h.own); without one, the
 // scenario's (tel / st / co).
-export function hudFromState(h0, ownId = null) {
+// boats: state.boats ({ id }); the room lines name boats by their position
+// in it ("boat 1").
+export function hudFromState(h0, ownId = null, boats = null) {
+  const index = (id) => (boats || []).findIndex((b) => b && b.id === id);
   const mine = ownId && h0.own && h0.own[ownId];
   const h = mine ? { ...h0, tel: mine.tel, co: mine.co, st: h0.st && mine.st ? { ...h0.st, st: mine.st[0], t0: mine.st[1] } : h0.st } : h0;
   const out = { dist: null, info: '', startHud: null, results: null };
@@ -135,7 +141,7 @@ export function hudFromState(h0, ownId = null) {
   (h.b || []).forEach((b, i) => {
     const pending = b.pending || 0;
     const twaText = b.twa === null || b.twa === undefined ? '?' : String(b.twa);
-    info += 'Boat ' + i + ' TWA ' + twaText + (b.tacking ? ' tacking' + (b.onto ? ' onto ' + b.onto : '') : '') + '<br>';
+    info += 'Boat ' + i + ' TWA ' + twaText + (b.tacking ? ' tacking' + (b.onto ? ' onto ' + tackText(b.onto) : '') : '') + '<br>';
     if (pending > 0 || b.turn) {
       showPenaltyKeys = true;
       let line = 'Boat ' + i + (pending === 0 && b.cleared ? ' CLEARED' : ' penalty ' + pending);
@@ -143,7 +149,8 @@ export function hudFromState(h0, ownId = null) {
         const left = Math.max(0, Math.ceil(b.turn.rem));
         line += ' · ' + (b.turn.dir < 0 ? 'CW ' : 'CCW ') + left + '°';
       }
-      if (b.reason) line += ' · ' + b.reason;
+      const reason = incidentReason(b.ic);
+      if (reason) line += ' · ' + reason;
       const mv = b.mv ? penaltyManeuverText(b.mv) : null;
       if (mv) line += ' · ' + mv;
       else if (pending > 0) line += ' · needs tack + gybe';
@@ -161,10 +168,10 @@ export function hudFromState(h0, ownId = null) {
     });
   }
   for (const [g, r, basis, dec] of h.br || []) {
-    info += 'Boundary room: boat ' + g + ' gives boat ' + r + ' room to tack or gybe away (' + basis + ')' + (dec ? ' · decides fault' : '') + '<br>';
+    info += 'Boundary room: boat ' + index(g) + ' gives boat ' + index(r) + ' room to tack or gybe away (' + basisText(basis) + ')' + (dec ? ' · decides fault' : '') + '<br>';
   }
   for (const [g, r, basis, dec] of h.mr || []) {
-    info += 'Rule 18.2: boat ' + g + ' gives mark-room to boat ' + r + ' (' + basis + ' at the zone)' + (dec ? ' · decides fault' : '') + '<br>';
+    info += 'Rule 18.2: boat ' + index(g) + ' gives mark-room to boat ' + index(r) + ' (' + basisText(basis) + ' at the zone)' + (dec ? ' · decides fault' : '') + '<br>';
   }
   out.info = info;
   return out;
