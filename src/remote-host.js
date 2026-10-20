@@ -271,12 +271,17 @@ export class RemoteHost {
     this.fieldBytes += bytes;
     const r = decodeFieldText(m, this._fieldHeld);
     if (!r) {
-      this.fieldResyncs++;
+      // Once per gap: the deltas still in flight are dropped quietly.
+      if (this._fieldHeld || !this._fieldAsked) {
+        this.fieldResyncs++;
+        this._fieldAsked = true;
+        if (this._field.on) this._send({ type: 'field', ...this._field });
+      }
       this._fieldHeld = null;
-      if (this._field.on) this._send({ type: 'field', ...this._field });
       return;
     }
     this._fieldHeld = r;
+    this._fieldAsked = false;
     this.fieldsReceived++;
     this.lastField = r.msg;
     if (this._painter) this._painter.paintGrids(r.msg);
