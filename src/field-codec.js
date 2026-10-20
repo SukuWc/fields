@@ -26,9 +26,11 @@
 // above: small changes either way give small z) and written as symbols of
 // 6 bits, one base64url character ('A'..'Z', 'a'..'z', '0'..'9', '-', '_')
 // each:
-//   1..47        one cell, z = symbol
-//   48 a b       one cell, z = a·64 + b (any z)
-//   49..63       a run of symbol − 48 (1..15) zero cells
+//   1..32        a run of q = (symbol − 1) >> 2 (0..7) zero cells, then one
+//                cell with z = ((symbol − 1) & 3) + 1 (1..4)
+//   33..43       one cell, z = symbol − 28 (5..15)
+//   44 a b       one cell, z = a·64 + b (any z)
+//   45..63       a run of symbol − 44 (1..19) zero cells
 //   0 a b c      a run of a·4096 + b·64 + c zero cells (longer runs)
 // The base64url alphabet needs no JSON escaping, so the payload is plain
 // text inside the JSON message.
@@ -36,6 +38,7 @@ const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
 const SYM = new Int8Array(128).fill(-1);
 for (let k = 0; k < 64; k++) SYM[ALPHA.charCodeAt(k)] = k;
 const MAX_RUN = 64 * 64 * 64 - 1;
+const ESC = 44, RUN0 = 45, RUN_SYMS = 64 - RUN0;
 
 // Reference of grid g in the previous message's grids: same dx, w, h and a
 // whole-cell shift that still overlaps. Returns [k, di, dj] or null.
@@ -55,13 +58,15 @@ function findRef(g, prev, used) {
 }
 
 // Code one grid's values (Uint8Array, w·h) against ref values (or null).
-function encodeValues(v, w, h, refV, di, dj) {
+function encodeValues(v, w, h, refV, di, dj, tol = 0, shown = null) {
   const out = [];
   let run = 0;
-  const flush = () => {
-    while (run > 0) {
-      const n = Math.min(run, MAX_RUN);
-      if (n <= 15) out.push(ALPHA[48 + n]);
+  // Zero runs before a cell: a short one (0..7) rides in the cell's symbol
+  // when z ≤ 4; longer ones go out on their own first.
+  const flushTo = (keep) => {
+    while (run > keep) {
+      const n = Math.min(run - keep, MAX_RUN);
+      if (n <= RUN_SYMS) out.push(ALPHA[RUN0 + n - 1]);
       else out.push(ALPHA[0], ALPHA[n >> 12], ALPHA[(n >> 6) & 63], ALPHA[n & 63]);
       run -= n;
     }
@@ -70,16 +75,24 @@ function encodeValues(v, w, h, refV, di, dj) {
     const rj = j + dj, rowIn = refV && rj >= 0 && rj < h;
     for (let i = 0; i < w; i++) {
       const ri = i + di;
-      const pred = rowIn && ri >= 0 && ri < w ? refV[ri + rj * w] : i > 0 ? v[i - 1 + j * w] : 0;
-      const r = (v[i + j * w] - pred) & 255;
+      const fromRef = rowIn && ri >= 0 && ri < w;
+      const src = shown || v;
+      const pred = fromRef ? refV[ri + rj * w] : i > 0 ? src[i - 1 + j * w] : 0;
+      const val = v[i + j * w];
+      // Deadband (tol > 0, delta cells only): a value within tol of what the
+      // client shows stays as it is; barrier / hidden always go out exactly.
+      const keep = tol > 0 && fromRef && val < 254 && pred < 254 && Math.abs(val - pred) <= tol;
+      if (shown) shown[i + j * w] = keep ? pred : val;
+      const r = keep ? 0 : (val - pred) & 255;
       if (r === 0) { run++; continue; }
-      if (run) flush();
       const z = r < 128 ? 2 * r : 2 * (256 - r) - 1;
-      if (z <= 47) out.push(ALPHA[z]);
-      else out.push(ALPHA[48], ALPHA[z >> 6], ALPHA[z & 63]);
+      if (z <= 4) { flushTo(7); out.push(ALPHA[1 + run * 4 + z - 1]); run = 0; continue; }
+      flushTo(0);
+      if (z <= 15) out.push(ALPHA[33 + z - 5]);
+      else out.push(ALPHA[ESC], ALPHA[z >> 6], ALPHA[z & 63]);
     }
   }
-  flush();
+  flushTo(0);
   return out.join('');
 }
 
@@ -96,15 +109,14 @@ function decodeValues(s, w, h, refV, di, dj) {
     const r = z & 1 ? 256 - (z + 1) / 2 : z / 2;
     v[k++] = (pred + r) & 255;
   };
+  const zeros = (m) => { for (let q = 0; q < m; q++) put(0); };
   while (p < s.length) {
     const x = sym();
-    if (x >= 1 && x <= 47) put(x);
-    else if (x === 48) { const a = sym(); put(a * 64 + sym()); }
-    else {
-      let run = x > 48 ? x - 48 : 0;
-      if (x === 0) { const a = sym(), b = sym(); run = a * 4096 + b * 64 + sym(); }
-      for (let q = 0; q < run; q++) put(0);
-    }
+    if (x >= 1 && x <= 32) { zeros((x - 1) >> 2); put(((x - 1) & 3) + 1); }
+    else if (x <= 43 && x >= 33) put(x - 33 + 5);
+    else if (x === ESC) { const a = sym(); put(a * 64 + sym()); }
+    else if (x >= RUN0) zeros(x - RUN0 + 1);
+    else { const a = sym(), b = sym(); zeros(a * 4096 + b * 64 + sym()); }
   }
   if (k !== n) throw new Error('field data too short');
   return v;
@@ -112,17 +124,24 @@ function decodeValues(s, w, h, refV, di, dj) {
 
 // Encode msg (decoded field grids) as a keyframe (prev null) or a delta
 // against prev ({ seq, msg }: the message the receiver holds). Returns the
-// JSON-able object.
-export function encodeFieldText(msg, seq, prev = null) {
+// JSON-able message as m, and as shown the grids the client will hold.
+// tol (bytes, default 0 = lossless): delta cells that moved by at most tol
+// since what the client shows are not sent; then the result's shown is
+// what the client will hold (pass it as prev.msg next time).
+export function encodeFieldText(msg, seq, prev = null, tol = 0) {
   const used = [];
   const pg = prev && prev.msg && prev.msg.plotType === msg.plotType && prev.msg.scale === msg.scale && prev.msg.offset === msg.offset && prev.msg.base === msg.base ? prev.msg.grids : null;
+  const shownGrids = [];
   const g = msg.grids.map((gr) => {
     const ref = findRef(gr, pg, used);
-    if (!ref) return [gr.x0, gr.y0, gr.dx, gr.w, gr.h, -1, encodeValues(gr.values, gr.w, gr.h, null, 0, 0)];
+    if (!ref) { shownGrids.push(gr); return [gr.x0, gr.y0, gr.dx, gr.w, gr.h, -1, encodeValues(gr.values, gr.w, gr.h, null, 0, 0)]; }
     const [k, di, dj] = ref;
-    return [gr.x0, gr.y0, gr.dx, gr.w, gr.h, k, di, dj, encodeValues(gr.values, gr.w, gr.h, pg[k].values, di, dj)];
+    const sv = tol > 0 ? new Uint8Array(gr.w * gr.h) : null;
+    shownGrids.push(sv ? { ...gr, values: sv } : gr);
+    return [gr.x0, gr.y0, gr.dx, gr.w, gr.h, k, di, dj, encodeValues(gr.values, gr.w, gr.h, pg[k].values, di, dj, tol, sv)];
   });
-  return { type: 'field', seq, base: pg ? prev.seq : 0, p: msg.plotType, rw: msg.rootW, rh: msg.rootH, res: msg.resolution, sc: msg.scale, of: msg.offset, ba: msg.base, g };
+  const shown = { ...msg, grids: shownGrids };
+  return { shown, m: { type: 'field', seq, base: pg ? prev.seq : 0, p: msg.plotType, rw: msg.rootW, rh: msg.rootH, res: msg.resolution, sc: msg.scale, of: msg.offset, ba: msg.base, g } };
 }
 
 // Decode a field text message on top of prev ({ seq, msg } or null).
