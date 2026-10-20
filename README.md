@@ -53,7 +53,7 @@ Last updated: 2026-10-20
 - [x] Wind speed in true m/s everywhere (UI, sim, telemetry, scenarios) with perturbation propagation tests: [#67](https://github.com/SukuWc/fields/pull/67)
 - [x] 45° and 22.5° wind propagation tests, root-grid wind read fixed by half a cell (no more 2 m wind jump at refinement edges on 4f), node-based vortex centroid: [#69](https://github.com/SukuWc/fields/pull/69)
 - [x] Wind flow tracers replace the per-boat wind-arrow grid: particles carried by the local wind with fading tails, denser where wind is stronger, drawn over the colour field plot, live count/life/tail inputs (`?tracers`, `?tracerLife`, `?tracerTail`): [#68](https://github.com/SukuWc/fields/pull/68)
-- [ ] Wind-sweep check (3 to 15 m/s on 2f, 400 m map) and harness edge gap, so a boat pinned on the map edge is no longer mistaken for a high-wind stall (in progress, [#83](https://github.com/SukuWc/fields/pull/83))
+- [x] Wind-sweep check (3 to 15 m/s on 2f, 400 m map) and harness edge gap, so a boat pinned on the map edge is no longer mistaken for a high-wind stall: [#83](https://github.com/SukuWc/fields/pull/83)
 - [ ] Strategy tuning
 
 ### 3. Multiplayer open water
