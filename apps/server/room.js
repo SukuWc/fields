@@ -10,12 +10,15 @@
 //
 // Field streaming: each client says whether it shows the field and which
 // plot ({ type: 'field', on, plotType, contrastExp }; a 'plot' command sets
-// the plot too). Every TICK_HZ / fieldHz ticks (default FIELD_HZ, fieldHz 0 =
-// no field) the room encodes the lattice once per distinct plot among the
-// clients that show it (fieldPainter.js encodeFieldGrids: the root grid and
-// every refinement domain as its own grid, one byte per cell) and sends it as
-// one binary message to those clients only. Nobody showing it, or dev mode
-// (frozen lattice, the page hides the field): nothing is encoded.
+// the plot too). Every TICK_HZ / fieldHz ticks (default FIELD_HZ = every
+// tick, fieldHz 0 = no field) the room encodes the lattice once per distinct
+// plot among the clients that show it (fieldPainter.js encodeFieldGrids: the
+// root grid and every refinement domain as its own grid, one byte per cell)
+// and sends it to those clients only, as a JSON text message
+// (src/field-codec.js): a keyframe, or a delta against the previous message
+// (changed cells only; refinement windows that moved are matched by their
+// shift). See _fieldMessages for when each is sent. Nobody showing it, or
+// dev mode (frozen lattice, the page hides the field): nothing is encoded.
 //
 // Frames carry compact scene state (src/scene-state.js), not geometry; each
 // client builds its guides and body outlines (src/scene-build.js). Statics
@@ -29,7 +32,8 @@ import { SimCore } from '../../src/host.js';
 import { answer, eventForClient, EXACT_JSON } from '../../src/host-protocol.js';
 import { BOAT_ACTIONS } from '../../src/sim.js';
 import { MAX_WIND_MPS, ROOM_COMMANDS, SIM_RES_MODES, validateRoomSettingCommand, settingDefault } from '../../src/settings-registry.js';
-import { encodeFieldGrids } from '../../src/fieldPainter.js';
+import { encodeFieldGrids, decodeFieldGrids } from '../../src/fieldPainter.js';
+import { encodeFieldText } from '../../src/field-codec.js';
 import { scenarioExtent, WALL_INSET_M } from '../../src/map-size.js';
 
 // Player boats: a client may spawn boats ({ type: 'spawnBoat', name?, color? },
@@ -115,10 +119,16 @@ function roundNum(_k, v) {
   return typeof v === 'number' && !Number.isInteger(v * 4096) && !this[EXACT_JSON] ? Math.round(v * 1e4) / 1e4 : v;
 }
 export function roundJson(m) { return JSON.stringify(m, roundNum); }
-export const FIELD_HZ = 2;
+export const FIELD_HZ = 30;
+// Field deadband in field bytes (src/field-codec.js tol): a delta leaves a
+// cell alone while it is within this of what the client shows. 0 = lossless.
+export const FIELD_TOL = 1;
+// A keyframe for everyone on a plot stream at least this often (resync;
+// joining, a plot change or a client's request get one at once).
+export const FIELD_KEY_S = 10;
 
 export class Room {
-  constructor(name, { lockstep = false, fieldHz = FIELD_HZ, now = () => performance.now(), graceMs = GRACE_MS } = {}) {
+  constructor(name, { lockstep = false, fieldHz = FIELD_HZ, fieldTol = FIELD_TOL, now = () => performance.now(), graceMs = GRACE_MS } = {}) {
     this.name = name;
     this.graceMs = graceMs;
     // Per client: its token (init). Per absent token: { boats, timer, until }.
@@ -129,6 +139,12 @@ export class Room {
     this.onDispose = null;
     this.lockstep = lockstep;
     this.fieldHz = fieldHz;
+    this.fieldTol = fieldTol;
+    // Per plot stream (key plotType|contrastExp): { seq, shown (the grids
+    // its clients hold), keyTick }. Per client: { key, seq } last received.
+    this.fieldStreams = new Map();
+    this.fieldHave = new Map();
+    this.fieldKeys = 0;
     // Per client: { on, plotType, contrastExp } (absent = field off).
     this.fieldSubs = new Map();
     // Clients that asked for flow tracer grids / perf counters.
@@ -137,6 +153,7 @@ export class Room {
     this.fieldEncodes = 0;
     this.fieldBytesSent = 0;
     this.fieldEncodeMs = 0;
+    this.fieldEncodeMsTotal = 0;
     this.now = now;
     this.core = null;
     this.clients = new Set();
@@ -216,6 +233,7 @@ export class Room {
     this.clients.delete(client);
     this.inputs.delete(client);
     this.fieldSubs.delete(client);
+    this.fieldHave.delete(client);
     this.flowSubs.delete(client);
     this.perfSubs.delete(client);
     this.staticsSent.delete(client);
@@ -406,6 +424,9 @@ export class Room {
   }
 
   _setField(client, m) {
+    // Any field message (plot change, resubscribe, a client's resync
+    // request) gets this client a keyframe next.
+    this.fieldHave.delete(client);
     const prev = this.fieldSubs.get(client) || { on: false, plotType: 3, contrastExp: 0 };
     this.fieldSubs.set(client, {
       on: 'on' in m ? !!m.on : prev.on,
@@ -414,8 +435,12 @@ export class Room {
     });
   }
 
-  // Field messages due this tick: [{ clients, buf }] per distinct plot among
-  // the clients showing the field; [] (and no encoding) if none does.
+  // Field messages due this tick: [{ clients, msg }] per distinct plot
+  // among the clients showing the field; [] (and no encoding) if none does.
+  // Each plot is a stream (src/field-codec.js): a delta against the last
+  // message when every client on it holds that one, else (a client joined,
+  // changed plot or asked to resync, or FIELD_KEY_S passed) a keyframe for
+  // all of them, so they all hold the same grids.
   _fieldMessages() {
     if (this.core.map.devMode) return [];
     const groups = new Map();
@@ -423,16 +448,29 @@ export class Room {
       if (!sub.on || !this.clients.has(client)) continue;
       const key = sub.plotType + '|' + sub.contrastExp;
       let g = groups.get(key);
-      if (!g) { g = { plot: sub, clients: [] }; groups.set(key, g); }
+      if (!g) { g = { key, plot: sub, clients: [] }; groups.set(key, g); }
       g.clients.push(client);
     }
+    for (const k of this.fieldStreams.keys()) if (!groups.has(k)) this.fieldStreams.delete(k);
     const out = [];
+    const keyEvery = Math.max(1, Math.round(FIELD_KEY_S * TICK_HZ));
     for (const g of groups.values()) {
       const t0 = this.now();
-      const u8 = encodeFieldGrids(this.core.bm, g.plot);
+      const grids = decodeFieldGrids(encodeFieldGrids(this.core.bm, g.plot));
+      let st = this.fieldStreams.get(g.key);
+      if (!st) { st = { seq: 0, shown: null, keyTick: -Infinity }; this.fieldStreams.set(g.key, st); }
+      const all = st.shown && this.ticks - st.keyTick < keyEvery && g.clients.every((c) => { const h = this.fieldHave.get(c); return h && h.key === g.key && h.seq === st.seq; });
+      const seq = st.seq + 1;
+      const e = encodeFieldText(grids, seq, all ? { seq: st.seq, msg: st.shown } : null, this.fieldTol);
+      if (!all) { st.keyTick = this.ticks; this.fieldKeys++; }
+      st.seq = seq;
+      st.shown = e.shown;
+      const msg = JSON.stringify(e.m);
       this.fieldEncodeMs = this.now() - t0;
+      this.fieldEncodeMsTotal += this.fieldEncodeMs;
       this.fieldEncodes++;
-      out.push({ clients: g.clients, buf: Buffer.from(u8.buffer, u8.byteOffset, u8.byteLength) });
+      for (const c of g.clients) this.fieldHave.set(c, { key: g.key, seq });
+      out.push({ clients: g.clients, msg });
     }
     return out;
   }
@@ -497,15 +535,15 @@ export class Room {
   }
 
   // Every client in the room gets every frame; the server never waits on a
-  // client (ws buffers per socket). The field (binary) goes first so a
+  // client (ws buffers per socket). The field message goes first so a
   // client drawing on the frame message already has the new texture, and
   // so does a statics message a client has not had yet.
   _publish({ frame, fields, statics, flow, perf }) {
     for (const f of fields || []) {
       for (const c of f.clients) {
         if (!this.clients.has(c)) continue;
-        c.send(f.buf);
-        this.fieldBytesSent += f.buf.length;
+        c.send(f.msg);
+        this.fieldBytesSent += f.msg.length;
       }
     }
     if (statics && statics.statics) {

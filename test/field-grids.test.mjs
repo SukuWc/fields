@@ -105,7 +105,7 @@ async function measure(label, boats, secs) {
   h.terminate();
   await srv.close();
   check(`bytes/s per client, ${label}`, r.msgs > 0 && r.per < 80008,
-    `${Math.round(r.bps)} B/s field (${r.msgs} msgs, ${Math.round(r.per)} B each, encode ${r.encodeMs.toFixed(1)} ms, room at ${r.tickHz.toFixed(1)} ticks/s; per 2 Hz at real time: ${Math.round(r.per * 2)} B/s)`);
+    `${Math.round(r.bps)} B/s field (${r.msgs} msgs, ${Math.round(r.per)} B each, encode ${r.encodeMs.toFixed(1)} ms, room at ${r.tickHz.toFixed(1)} ticks/s; at 30 Hz real time: ${Math.round(r.per * 30)} B/s)`);
 }
 await measure('scenario 0, 4f, 1 boat', 1, 5);
 await measure('scenario 0, 4f, 3 boats', 3, 5);
@@ -129,7 +129,7 @@ await measure('scenario 0, 4f, 3 boats', 3, 5);
   B.ws.onmessage = (e) => { if (typeof e.data !== 'string') bin++; orig(e); };
   await sleep(1500);
   check('client with the field on gets field messages', A.fieldsReceived >= 3, `A=${A.fieldsReceived}`);
-  check('client with the field off gets no field messages', B.fieldsReceived === 0 && bin === 0 && B.framesReceived > 10, `B fields=${B.fieldsReceived} binary=${bin} frames=${B.framesReceived}`);
+  check('client with the field off gets no field messages', B.fieldsReceived === 0 && B.fieldBytes === 0 && bin === 0 && B.framesReceived > 10, `B fields=${B.fieldsReceived} binary=${bin} frames=${B.framesReceived}`);
   // Different plots: one message per plot, each client gets its own.
   B.setField({ on: true, plotType: 0 });
   const e0 = room.fieldEncodes;
