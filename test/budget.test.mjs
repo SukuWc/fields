@@ -1,5 +1,7 @@
 // Refinement budget: bm.cellUpdateTarget (cell updates per root step).
 import './dom-stub.mjs';
+// Pins the full pre-#86 stack: main-parity numbers and stack structure.
+await import('./full-stack.mjs');
 const H = await import('../scripts/sim-res-harness.mjs');
 const D = await import('../src/domainTrack.js');
 let failed = 0;

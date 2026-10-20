@@ -33,7 +33,7 @@
 // Simulation resolution modes, their default and wind ceilings: sim-modes.js
 // (no imports either). The simRes setting's values and default come from
 // there: the panel, every map size (map-size.js), the server's new rooms.
-import { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps } from './sim-modes.js';
+import { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps, DEFAULT_MAX_LEVEL, DEFAULT_BOAT_REFINE_RADIUS } from './sim-modes.js';
 export { SIM_RES_MODES, DEFAULT_SIM_RES };
 export const DEFAULT_MAP_SIZE = '100x200';
 export const MAX_WIND_MPS = 30;
@@ -78,12 +78,13 @@ export const SETTINGS = [
     command: { type: 'simRes', field: 'mode', required: true }, state: 'simRes', invalid: (v) => 'unknown simRes ' + v },
   { id: 'amrMode', scope: 'room', panel: 'room', type: 'enum', default: 'auto', values: ['auto', 'fixed'],
     command: { type: 'amrMode', field: 'mode', required: true }, state: 'amrMode', invalid: () => 'amrMode must be auto or fixed' },
-  // Boat refinement stack (domainTrack amrParams). Empty = the mode default:
-  // every level (2f 4, 4f 5, 1 m 3, x2 4, x4 5) and the level's own finest
-  // disk (2 m). Clamped per mode by the engine. Restarts.
-  { id: 'maxLevel', scope: 'room', panel: 'room', type: 'int', default: null, nullable: true, min: 1, max: 5,
+  // Boat refinement stack (domainTrack amrParams). Default 3 levels and a
+  // 3 m finest disk (sim-modes.js). Empty = the mode's full stack (2f 4,
+  // 4f 5, 1 m 3, x2 4, x4 5) / the level's own disk (2 m on a full stack).
+  // Clamped per mode by the engine. Restarts.
+  { id: 'maxLevel', scope: 'room', panel: 'room', type: 'int', default: DEFAULT_MAX_LEVEL, nullable: true, min: 1, max: 5,
     command: { type: 'refine', field: 'maxLevel' }, state: 'refine.maxLevel', invalid: () => 'maxLevel must be 1..5 or null', devModeDisabled: true },
-  { id: 'boatRefineRadius', scope: 'room', panel: 'room', type: 'number', default: null, nullable: true, min: 0.5, max: 16,
+  { id: 'boatRefineRadius', scope: 'room', panel: 'room', type: 'number', default: DEFAULT_BOAT_REFINE_RADIUS, nullable: true, min: 0.5, max: 16,
     command: { type: 'refine', field: 'boatRefineRadius' }, state: 'refine.boatRefineRadius', invalid: () => 'boatRefineRadius must be 0.5..16 m or null', devModeDisabled: true },
   // Set when the room is created (the creator's init options); no command.
   // Values: map-size.js MAP_SIZES.

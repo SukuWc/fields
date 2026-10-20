@@ -1,3 +1,4 @@
+import { DEFAULT_MAX_LEVEL, DEFAULT_BOAT_REFINE_RADIUS } from './sim-modes.js';
 
 // No DOM here: plot type and contrast come from the client's FieldPainter
 // (fieldPainter.js), which owns the texture.
@@ -2054,6 +2055,9 @@ export class Boltzmann {
 		// Boat refinement layout read by domainTrack.amrParams: 'auto' (finest
 		// disk + grading shells + curl, the default) or 'fixed' (per-level rings).
 		this.amrMode = 'auto';
+		// Boat refinement stack (sim-modes.js defaults; null = full stack / level radius).
+		this.maxLevel = Boltzmann.defaultRefine.maxLevel;
+		this.boatRefineRadius = Boltzmann.defaultRefine.boatRefineRadius;
 		// Refinement budget (domainTrack): target cell updates per root step,
 		// Infinity = off. curlScale is the controller's τ multiplier.
 		this.cellUpdateTarget = Infinity;
@@ -2708,3 +2712,8 @@ export class Boltzmann {
 		walk(this.domains);
 	}
 }
+
+// Refinement settings a new Boltzmann starts with (sim-modes.js defaults:
+// 3 levels, 3 m finest disk). Engine tests that pin the old full stack set
+// { maxLevel: null, boatRefineRadius: null } here (test/full-stack.mjs).
+Boltzmann.defaultRefine = { maxLevel: DEFAULT_MAX_LEVEL, boatRefineRadius: DEFAULT_BOAT_REFINE_RADIUS };

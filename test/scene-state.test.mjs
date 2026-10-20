@@ -32,6 +32,9 @@ const view = { camera_position_x: 0, camera_position_y: 0, camera_zoom: 20, show
 const seen = new Set();
 for (const [n, ticks] of [[0, 90], [11, 400], [15, 300], [19, 300], [17, 150], [18, 150]]) {
   const core = new SimCore({ ...opts, texture: undefined });
+  // Pinned to the pre-#86 full refinement stack: at the 3-level / 3 m default
+  // scenario 15's boats no longer reach the zone overlapped (no mark-room).
+  core.command({ type: 'refine', maxLevel: null, boatRefineRadius: null });
   mute(() => core.command({ type: 'restart', scenario: n }));
   let max = 0, pure = true, statics = null, rstatics = null, guides = 0, hudSame = true, prebuilt = null;
   mute(() => {

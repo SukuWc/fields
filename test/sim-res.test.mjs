@@ -2,6 +2,8 @@
 // Scaling: lattice U and ν fixed, root cell k = 1/resolution world units,
 // resolution lattice steps per frame. See Boltzmann.setResolution.
 import './dom-stub.mjs';
+// Pins the full pre-#86 stack: main-parity numbers and stack structure.
+await import('./full-stack.mjs');
 
 const H = await import('../scripts/sim-res-harness.mjs');
 const { Boltzmann, amrParams } = H;

@@ -11,12 +11,23 @@ let failed = 0;
 const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  ' + detail : ''}`); if (!ok) failed++; };
 const wr = (p) => p.levels.map((l) => l.worldRadius).join('/');
 
-// 1. Defaults: the stack before the settings existed (sim-res.test pins the same values).
+// 1. Null settings: the full stack from before the settings existed (still reachable).
 const WANT = { auto: { 1: '4.25/2.75/2', 2: '7.25/4.25/2.75/2', 4: '13.25/7.25/4.25/2.75/2' }, fixed: { 1: '8/4/2', 2: '12/8/4/2', 4: '20/12/8/4/2' } };
 for (const amrMode of ['auto', 'fixed']) for (const k of [1, 2, 4]) {
 	const a = amrParams({ cellSize: k, amrMode });
 	const b = amrParams({ cellSize: k, amrMode, maxLevel: null, boatRefineRadius: null });
-	check(`${amrMode} cell ${k}: default stack unchanged`, wr(a) === WANT[amrMode][k] && JSON.stringify(a) === JSON.stringify(b), wr(a));
+	check(`${amrMode} cell ${k}: null = old full stack`, wr(a) === WANT[amrMode][k] && JSON.stringify(a) === JSON.stringify(b), wr(a));
+}
+
+// 1b. Defaults: 3 levels, 3 m finest disk on every mode (Boltzmann and registry).
+{
+	const { settingDefault } = await import('../src/settings-registry.js');
+	check('registry defaults: maxLevel 3, boatRefineRadius 3 m', settingDefault('maxLevel') === 3 && settingDefault('boatRefineRadius') === 3);
+	for (const mode of ['2f', '4f', 1, 2, 4]) {
+		const { bm } = H.makeWorld(mode, 4.5);
+		const p = amrParams(bm);
+		check(`${mode}: engine default is 3 levels, 3 m finest disk`, bm.maxLevel === 3 && p.levels.length === 3 && p.boatRefineRadius === 3, wr(p));
+	}
 }
 
 // 2. Clamping per mode.
@@ -42,9 +53,11 @@ function run(mode, set) {
 }
 for (const mode of ['2f', '4f']) {
 	const full = amrParams({ cellSize: mode === '4f' ? 4 : 2 }).levels.length;
-	const d0 = run(mode, {}), d2 = run(mode, { maxLevel: 2 });
-	check(`${mode}: default builds ${full} levels, maxLevel 2 builds 2 and costs less`, d0.depth === full && d2.depth === 2 && d2.cells < d0.cells, `${d0.depth}/${d2.depth} cells ${d0.cells}/${d2.cells}`);
-	const r4 = run(mode, { boatRefineRadius: 4 });
+	const df = run(mode, {});
+	const d0 = run(mode, { maxLevel: null, boatRefineRadius: null }), d2 = run(mode, { maxLevel: 2, boatRefineRadius: null });
+	check(`${mode}: default builds 3 levels`, df.depth === 3, `${df.depth}`);
+	check(`${mode}: null builds the full ${full} levels, maxLevel 2 builds 2 and costs less`, d0.depth === full && d2.depth === 2 && d2.cells < d0.cells, `${d0.depth}/${d2.depth} cells ${d0.cells}/${d2.cells}`);
+	const r4 = run(mode, { maxLevel: null, boatRefineRadius: 4 });
 	check(`${mode}: radius 4 m refines about 4x the finest area of 2 m`, r4.area > 3 * d0.area && r4.area < 5 * d0.area && r4.cells > d0.cells, `${d0.area.toFixed(1)} → ${r4.area.toFixed(1)} m²`);
 }
 
@@ -54,9 +67,11 @@ for (const mode of ['2f', '4f']) {
 	const st0 = JSON.stringify(core.settings.refine);
 	const r = core.command({ type: 'refine', maxLevel: 2, boatRefineRadius: 3 });
 	const same = core.command({ type: 'refine', maxLevel: 2 });
-	const back = core.command({ type: 'refine', maxLevel: null, boatRefineRadius: null });
-	check('SimCore refine: default null, rebuilds, in settings, idempotent, resets', st0 === '{"maxLevel":null,"boatRefineRadius":null}' && r.rebuilt && !same.rebuilt && back.rebuilt
-		&& JSON.stringify(core.settings.refine) === st0 && amrParams(core.bm).levels.length === 4, JSON.stringify(core.settings.refine));
+	const full = core.command({ type: 'refine', maxLevel: null, boatRefineRadius: null });
+	const fullDepth = amrParams(core.bm).levels.length;
+	const back = core.command({ type: 'refine', maxLevel: 3, boatRefineRadius: 3 });
+	check('SimCore refine: default 3 / 3 m, rebuilds, in settings, idempotent, null = full stack', st0 === '{"maxLevel":3,"boatRefineRadius":3}' && r.rebuilt && !same.rebuilt && full.rebuilt && fullDepth === 4 && back.rebuilt
+		&& JSON.stringify(core.settings.refine) === st0 && amrParams(core.bm).levels.length === 3, JSON.stringify(core.settings.refine));
 }
 if (failed) { console.log(`${failed} check(s) failed`); process.exit(1); }
 console.log('all refine-settings checks passed');

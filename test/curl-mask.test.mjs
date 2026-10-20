@@ -12,6 +12,8 @@ globalThis.document = {
 globalThis.window = globalThis;
 globalThis.addEventListener = globalThis.addEventListener || (() => {});
 
+// Pins the full pre-#86 stack (mechanics tests use the DISK constants).
+await import('./full-stack.mjs');
 const { Boltzmann, buildClosedDiskMask, fineIndex } = await import('../src/boltzmann.js');
 const {
 	trackBoats, stepCurlMask, normalizedCurl, amrParams,

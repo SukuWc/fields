@@ -69,6 +69,8 @@ export class SimCore {
     this.sim.command({ type: 'simRes', mode: simRes });
     // Refinement layout: the app default is "auto" (the engine default too).
     this.sim.command({ type: 'amrMode', mode: settingDefault('amrMode') });
+    // Boat refinement stack: the registry defaults (3 levels, 3 m).
+    this.sim.command({ type: 'refine', maxLevel: settingDefault('maxLevel'), boatRefineRadius: settingDefault('boatRefineRadius') });
   }
 
   lattice() { return { w: this.bm.latticeWorldWidth, h: this.bm.latticeWorldHeight }; }
