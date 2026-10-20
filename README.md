@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -43,6 +43,7 @@ Last updated: 2026-10-19
 - [x] Run `npm test` in CI (test + server smoke workflow in `.github/workflows/test.yml`): [#63](https://github.com/SukuWc/fields/pull/63)
 - [x] Default fluid grid `simRes=2f` (2 m root, 1 step per tick, about 15.6 ms field time per tick with one boat vs about 47 ms on 4f), wind clamped to each mode's stable ceiling (15 m/s on 2f), and the `2f34` mode removed: [#77](https://github.com/SukuWc/fields/pull/77)
 - [x] Settings registry: one list of every setting (scope, type, default, validation, room command) read by the settings panel, URL sync and the server: [#79](https://github.com/SukuWc/fields/pull/79)
+- [ ] Rule data: sim sends rule codes and boat indices, every client writes the rule text and builds the overlay geometry (sim/client split) (in progress, [#82](https://github.com/SukuWc/fields/pull/82))
 
 ### 2. Wind and boat feel
 - [x] Fluid sim on, stable from wind 5 through 25 with the sail wake on the fine grid: [#9](https://github.com/SukuWc/fields/pull/9)
@@ -101,6 +102,7 @@ Last updated: 2026-10-19
 - [x] Jib downwind shadow flap only while eased (× depower ramp, visual only): [#58](https://github.com/SukuWc/fields/pull/58)
 - [x] Boat trails: fading dot per boat every 1 s of sim time in the boat's colour, live interval/duration/size settings (`?boat_trails`, `?trailInterval`, `?trailDuration`, `?trailSize`, visual only): [#71](https://github.com/SukuWc/fields/pull/71)
 - [x] Ghost boat: predicted hull outline 2 s ahead on a constant turn-rate arc, off by default (`?ghost`, `?ghostAhead`, visual only): [#74](https://github.com/SukuWc/fields/pull/74)
+- [x] Ghost boat follow-up: ghost hulls matched by boat id, hull shapes sent once in `statics.hulls`, per-boat frame data trimmed to id and rounded velocities (works in local, worker and remote hosts): [#81](https://github.com/SukuWc/fields/pull/81)
 
 ### Other
 - [x] SailZone logo: [#14](https://github.com/SukuWc/fields/pull/14)

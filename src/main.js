@@ -474,7 +474,7 @@ function startClient() {
     }
     if (frame.fieldReady) dataTextureMaterial.needsUpdate = true;
     if (frame.flow) setFlowGrid(frame.flow);
-    if (frame.state) updateBoatTrails(frame.state);
+    if (frame.state) updateBoatTrails(frame.state, frame.statics);
   });
 
   if (remoteDriven) {

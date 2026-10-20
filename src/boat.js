@@ -31,6 +31,8 @@ export const SAIL_LATTICE_COUPLING = 0.0003 * SAIL_WAKE_GAIN;
 
 
 let pl = planck, Vec2 = pl.Vec2;
+// Stable boat id (scenario boats 's<n>'); a spawned boat uses its spawnId.
+let _nextBoatUid = 1;
 
 // Q/E penalty-turn autopilot. The rudder is a PD on the degrees left to a
 // full circle (and the yaw rate), so it eases off as she comes round and
@@ -49,6 +51,8 @@ let pl = planck, Vec2 = pl.Vec2;
 // per-pass term to one pass per tick with the same per-second behaviour.
 export const LEGACY_PASSES_PER_TICK = 3;
 const N = LEGACY_PASSES_PER_TICK;
+// Ghost prediction inputs are sent at 1 mm/s, 1 mrad/s (small frames).
+const r3 = (x) => Math.round(x * 1000) / 1000;
 // Per-pass exponential blend a, applied N times: 1 - (1 - a)^N.
 const blendN = (a) => 1 - Math.pow(1 - a, N);
 export const WIND_SMOOTH_ALPHA = blendN(0.2);          // 0.488
@@ -101,6 +105,7 @@ export class Boat{
   constructor(map, x, y, hull_angle){
 
     this.map = map;
+    this.uid = 's' + (_nextBoatUid++);
 
     this.x = x;
     this.y = y;
@@ -190,6 +195,20 @@ export class Boat{
 
     this.physics_model_init()
 
+  }
+
+  // Id the client matches per-boat statics by (ghost hull): spawnId or uid.
+  get boatId() { return this.spawnId || this.uid; }
+
+  // Hull outline in body-local coordinates (static: sent once in statics.hulls).
+  hullDef() {
+    const body = this.physics_model;
+    const f = body && body.getFixtureList();
+    if (!f) return null;
+    const v = [];
+    for (const q of f.getShape().m_vertices) v.push(q.x, q.y);
+    const c = body.getLocalCenter();
+    return { v, com: [c.x, c.y] };
   }
 
   physics_model_init(){
@@ -700,9 +719,10 @@ export class Boat{
     this.jib_boom_angle_actual += (this.jib_boom_angle - this.jib_boom_angle_actual) / 20;
     const f = [];
     for (const force of this.forces) f.push(force.point.x, force.point.y, force.vector.x, force.vector.y);
+    const lv = body.getLinearVelocity();
     const s = {
       x: this.x, y: this.y, px: p.x, py: p.y, pa: body.getAngle(), ha: this.hull_angle,
-      vx: body.getLinearVelocity().x, vy: body.getLinearVelocity().y, w: body.getAngularVelocity(),
+      id: this.boatId, vx: r3(lv.x), vy: r3(lv.y), w: r3(body.getAngularVelocity()),
       awa: this.awa, tw: Math.atan2(this.wind_vy_smooth, this.wind_vx_smooth),
       ap: this.autopilot_enabled ? 1 : 0, wd: this.wind_direction, aht: this.autopilot_heading_target,
       ra: this.rudder_angle, mba: this.mainsail_boom_angle_actual, jba: this.jib_boom_angle_actual,
