@@ -43,7 +43,7 @@ Last updated: 2026-10-20
 - [x] Run `npm test` in CI (test + server smoke workflow in `.github/workflows/test.yml`): [#63](https://github.com/SukuWc/fields/pull/63)
 - [x] Default fluid grid `simRes=2f` (2 m root, 1 step per tick, about 15.6 ms field time per tick with one boat vs about 47 ms on 4f), wind clamped to each mode's stable ceiling (15 m/s on 2f), and the `2f34` mode removed: [#77](https://github.com/SukuWc/fields/pull/77)
 - [x] Settings registry: one list of every setting (scope, type, default, validation, room command) read by the settings panel, URL sync and the server: [#79](https://github.com/SukuWc/fields/pull/79)
-- [ ] Rule data: sim sends rule codes and boat indices, every client writes the rule text and builds the overlay geometry (sim/client split) (in progress, [#82](https://github.com/SukuWc/fields/pull/82))
+- [x] Rule data: sim sends rule codes and boat indices, every client writes the rule text and builds the overlay geometry (sim/client split; about 4.7% fewer bytes per frame in scenario 18): [#82](https://github.com/SukuWc/fields/pull/82)
 
 ### 2. Wind and boat feel
 - [x] Fluid sim on, stable from wind 5 through 25 with the sail wake on the fine grid: [#9](https://github.com/SukuWc/fields/pull/9)
