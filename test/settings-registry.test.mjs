@@ -74,7 +74,8 @@ const core = new SimCore({ mapW: 50, mapH: 100, simRes: '4' });
 {
   const vals = [undefined, null, true, false, 0, 1, -1, 3, 4, 12, 19, 20, 999, 45.5, 361, -90, 30, 30.01, 1000, 1e8, 1e9, NaN, Infinity, '', '1', '4', '4f', '2f', '2f34', 'auto', 'fixed', 'bogus', 'yes', '12', '3.0', {}, []];
   const fields = ['scenario', 'angle', 'speed', 'on', 'mode', 'tune', 'target', 'amr', 'boatEnergy'];
-  const types = [...ROOM_COMMANDS, 'plot', 'spawnBoat', 'bogus'];
+  // 'refine' came after the old validator (its own checks below).
+  const types = [...ROOM_COMMANDS].filter((t) => t !== 'refine').concat(['plot', 'spawnBoat', 'bogus']);
   const cmds = [];
   for (const type of types) {
     cmds.push({ type });
@@ -89,7 +90,7 @@ const core = new SimCore({ mapW: 50, mapH: 100, simRes: '4' });
     if (a !== b) diff.push(JSON.stringify(c) + ' old ' + a + ' new ' + b);
   }
   check('registry validator answers exactly as the old room.js validator', diff.length === 0, `${cmds.length} commands` + (diff.length ? '; ' + diff.slice(0, 5).join(' | ') : ''));
-  check('ROOM_COMMANDS: the registry\'s, the same set as before', SERVER_ROOM_COMMANDS === ROOM_COMMANDS && [...ROOM_COMMANDS].sort().join() === ['restart', 'wind', 'devMode', 'barrier', 'simRes', 'amrMode', 'cellBudget', 'options'].sort().join(), [...ROOM_COMMANDS].join());
+  check('ROOM_COMMANDS: the registry\'s, the same set as before', SERVER_ROOM_COMMANDS === ROOM_COMMANDS && [...ROOM_COMMANDS].sort().join() === ['restart', 'wind', 'devMode', 'barrier', 'simRes', 'amrMode', 'refine', 'cellBudget', 'options'].sort().join(), [...ROOM_COMMANDS].join());
 }
 
 // 2. Every room setting is validated by the server through the registry:
@@ -126,6 +127,13 @@ for (const s of ROOM_SETTINGS) {
   const no = command(roomCommandFor({ ...base, [s.id]: bad }));
   check(`${s.id}: ${JSON.stringify(bad)} refused with an error, nothing broadcast`, !!(no.r && no.r.error) && !no.room, JSON.stringify(no.r));
   if (s.state) command(roomCommandFor({ ...base, [s.id]: s.default }));
+}
+{
+  const v = (c) => JSON.stringify(validateRoomCommand(c, core));
+  check('refine: needs maxLevel or boatRefineRadius; null resets; out of range refused',
+    /needs/.test(v({ type: 'refine' })) && v({ type: 'refine', maxLevel: null }) === JSON.stringify({ c: { type: 'refine', maxLevel: null, boatRefineRadius: null } })
+    && v({ type: 'refine', maxLevel: 3 }) === JSON.stringify({ c: { type: 'refine', maxLevel: 3, boatRefineRadius: null } })
+    && /error/.test(v({ type: 'refine', maxLevel: 0 })) && /error/.test(v({ type: 'refine', maxLevel: 2.5 })) && /error/.test(v({ type: 'refine', boatRefineRadius: 0.1 })) && /error/.test(v({ type: 'refine', boatRefineRadius: 17 })));
 }
 check('the wind speed limit is the registry\'s', JSON.stringify(command({ type: 'wind', speed: MAX_WIND_MPS + 1 }).r) === JSON.stringify({ error: 'wind speed must be 0..' + MAX_WIND_MPS + ' m/s' }));
 check('a scenario that does not fit the room is refused (room-dependent check)', /does not fit/.test((command({ type: 'restart', scenario: 12 }).r || {}).error || ''));

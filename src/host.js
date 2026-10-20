@@ -61,7 +61,7 @@ export class SimCore {
     // what a server room reports to joining clients and broadcasts on change.
     this.settings = {
       devMode: false, wind: { angle: windAngle, speed: windSpeed }, barrier: false,
-      simRes: SIM_RES_MODES[simRes] ? simRes : DEFAULT_SIM_RES, amrMode: settingDefault('amrMode'), cellBudget: { tune: settingDefault('cellBudgetTune'), target: settingDefault('cellBudget') },
+      simRes: SIM_RES_MODES[simRes] ? simRes : DEFAULT_SIM_RES, amrMode: settingDefault('amrMode'), refine: { maxLevel: settingDefault('maxLevel'), boatRefineRadius: settingDefault('boatRefineRadius') }, cellBudget: { tune: settingDefault('cellBudgetTune'), target: settingDefault('cellBudget') },
       amr: this.sim.options.amr, boatEnergy: this.sim.options.boatEnergy,
     };
     // The constructor only took the root resolution; the mode's explicit
@@ -96,7 +96,7 @@ export class SimCore {
     const r = this.sim.command(c);
     this._trackSetting(c, r);
     if (c.type === 'restart') return r ? { title: r.title, description: r.description } : null;
-    if (c.type === 'simRes' || c.type === 'amrMode') return { rebuilt: !!r, lattice: this.lattice() };
+    if (c.type === 'simRes' || c.type === 'amrMode' || c.type === 'refine') return { rebuilt: !!r, lattice: this.lattice() };
     return r;
   }
 
@@ -111,6 +111,7 @@ export class SimCore {
         break;
       case 'simRes': st.simRes = SIM_RES_MODES[c.mode] ? c.mode : DEFAULT_SIM_RES; break;
       case 'amrMode': st.amrMode = c.mode === 'auto' ? 'auto' : 'fixed'; break;
+      case 'refine': st.refine = { maxLevel: this.bm.maxLevel ?? null, boatRefineRadius: this.bm.boatRefineRadius ?? null }; break;
       case 'cellBudget': st.cellBudget = { tune: !!c.tune, target: c.tune && Number.isFinite(c.target) && c.target > 0 ? c.target : null }; break;
       case 'options':
         st.amr = this.sim.options.amr;

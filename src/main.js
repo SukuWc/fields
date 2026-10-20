@@ -361,6 +361,24 @@ function startClient() {
       });
     });
   }
+  // Boat refinement stack (#maxLevel, #boatRefineRadius; empty = the mode
+  // default). One 'refine' command per edit; a rebuilt lattice restarts.
+  {
+    const ml = document.getElementById('maxLevel');
+    const rr = document.getElementById('boatRefineRadius');
+    const num = (el) => { const t = String(el.value).trim(); const n = Number(t); return t !== '' && Number.isFinite(n) ? n : null; };
+    const apply = () => {
+      const c = roomCommandFor({ maxLevel: num(ml) === null ? null : Math.round(num(ml)), boatRefineRadius: num(rr) });
+      if (remote) { roomCommand(c); return; }
+      hostCommand(c, (r) => {
+        if (!r || !r.rebuilt) return;
+        dataTextureMaterial.needsUpdate = true;
+        document.getElementById('scenario_restart').click();
+      });
+    };
+    ml.addEventListener('change', apply);
+    rr.addEventListener('change', apply);
+  }
   // Before installUrlSettings so ?perf=1 turns the overlay on through its change listener.
   // Counters: live from the main-thread host, else the latest frame's.
   let lastFrame = null;

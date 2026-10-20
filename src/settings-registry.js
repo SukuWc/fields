@@ -78,6 +78,13 @@ export const SETTINGS = [
     command: { type: 'simRes', field: 'mode', required: true }, state: 'simRes', invalid: (v) => 'unknown simRes ' + v },
   { id: 'amrMode', scope: 'room', panel: 'room', type: 'enum', default: 'auto', values: ['auto', 'fixed'],
     command: { type: 'amrMode', field: 'mode', required: true }, state: 'amrMode', invalid: () => 'amrMode must be auto or fixed' },
+  // Boat refinement stack (domainTrack amrParams). Empty = the mode default:
+  // every level (2f 4, 4f 5, 1 m 3, x2 4, x4 5) and the level's own finest
+  // disk (2 m). Clamped per mode by the engine. Restarts.
+  { id: 'maxLevel', scope: 'room', panel: 'room', type: 'int', default: null, nullable: true, min: 1, max: 5,
+    command: { type: 'refine', field: 'maxLevel' }, state: 'refine.maxLevel', invalid: () => 'maxLevel must be 1..5 or null', devModeDisabled: true },
+  { id: 'boatRefineRadius', scope: 'room', panel: 'room', type: 'number', default: null, nullable: true, min: 0.5, max: 16,
+    command: { type: 'refine', field: 'boatRefineRadius' }, state: 'refine.boatRefineRadius', invalid: () => 'boatRefineRadius must be 0.5..16 m or null', devModeDisabled: true },
   // Set when the room is created (the creator's init options); no command.
   // Values: map-size.js MAP_SIZES.
   { id: 'map_size', scope: 'room', panel: 'room', type: 'enum', default: DEFAULT_MAP_SIZE },
@@ -159,7 +166,7 @@ export function validateRoomSettingCommand(c, checks = {}) {
   }
   // Commands whose fields are all optional need at least one of them.
   if (!fields.some((s) => s.command.required)) {
-    const given = fields.filter((s) => !s.nullable && out[s.command.field] !== undefined);
+    const given = fields.filter((s) => (s.nullable ? s.command.field in c : out[s.command.field] !== undefined));
     if (!given.length) return { error: c.type + ' needs ' + fields.map((s) => s.command.field).join(' or ') };
   }
   return { c: out };

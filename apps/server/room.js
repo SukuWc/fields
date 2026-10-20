@@ -55,7 +55,7 @@ import { scenarioExtent, WALL_INSET_M } from '../../src/map-size.js';
 // on the server clock).
 //
 // Room-wide settings (ROOM_COMMANDS, from src/settings-registry.js: restart,
-// wind, devMode, barrier, simRes, amrMode, options, cellBudget): any client may send them (no owner
+// wind, devMode, barrier, simRes, amrMode, refine, options, cellBudget): any client may send them (no owner
 // for now); each is validated (validateRoomCommand) and refused with
 // { error } when invalid. After a change every client gets
 // { type: 'event', ev: { type: 'room', room } } (room: SimCore.roomState(),
@@ -365,7 +365,7 @@ export class Room {
     if (c.type === 'restart') return this._restart(c.scenario);
     const r = this.core.command(c);
     // A rebuilt lattice restarts the scenario (the page used to click Restart).
-    if ((c.type === 'simRes' || c.type === 'amrMode') && r && r.rebuilt && Number.isInteger(this.core.sim.scenarioIndex)) {
+    if ((c.type === 'simRes' || c.type === 'amrMode' || c.type === 'refine') && r && r.rebuilt && Number.isInteger(this.core.sim.scenarioIndex)) {
       this._restart(this.core.sim.scenarioIndex);
     }
     return r;
