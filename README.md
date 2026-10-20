@@ -60,6 +60,7 @@ Last updated: 2026-10-20
 ### 3. Multiplayer open water
 - [x] Shared world and shared wind: [#60](https://github.com/SukuWc/fields/pull/60) (server rooms + streamed wind); [#61](https://github.com/SukuWc/fields/pull/61) (Join with my boat: each client owns a named boat, steers only that boat, removed on leave or disconnect)
 - [x] Room settings panel (room-wide, validated), own-boat-only controls (spectators steer nothing, 1 boat per client, 8 per room), per-client readouts and flow/perf subscriptions, joining never resets the room: [#73](https://github.com/SukuWc/fields/pull/73)
+- [ ] Bandwidth: field streamed every tick (30 Hz) as JSON keyframes + deltas (shifted-window prediction, base64url residuals, deadband 1), about 54 KB/s per client with one boat vs 42 KB/s at 2 Hz before (in progress, [#85](https://github.com/SukuWc/fields/pull/85))
 - [ ] Soft physical collisions (bump and slow)
 - [ ] Server-authoritative collisions
 - [x] Reconnect: boats kept for a 10 s grace period (`--grace-s`) with a countdown for others, auto-reconnect with backoff, connection banner: [#75](https://github.com/SukuWc/fields/pull/75)
