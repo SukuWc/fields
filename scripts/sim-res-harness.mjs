@@ -27,7 +27,7 @@ export function fieldStats(bm) {
 
 // One frame of main.js: boats, sail kicks (coupling × resolution²), tracking
 // on stepping frames, advance_frame. Returns lattice ms and steps.
-function frame(map, bm, boats, opts) {
+export function frame(map, bm, boats, opts) {
 	map.world.step(1 / 30);
 	for (const boat of boats) {
 		boat.physics_model_step();
@@ -127,10 +127,12 @@ export function scenario0(k, { frames = 600, amr = true, energy = true } = {}) {
 	const { bm, map } = makeWorld(k);
 	const boat = new Boat(map, 10, -9, 5 * Math.PI / 4);
 	let ms = 0, steps = 0, bsAt500 = 0, twaMin = Infinity, twaMax = -Infinity, tws = 0, twsN = 0;
+	let edgeGap = Infinity; // closest approach to the map edge (m): a boat at the wall reads as head to wind and stopped
 	for (let f = 0; f < frames; f++) {
 		if (f === 1) boat.input_autopilot_enabled_toggle();
 		const r = frame(map, bm, [boat], { amr, energy });
 		ms += r.ms; steps += r.steps;
+		edgeGap = Math.min(edgeGap, MAP_SIDE / 2 - Math.abs(boat.x), MAP_SIDE / 2 - Math.abs(boat.y));
 		if (f === 500) bsAt500 = speedOf(boat);
 		if (f >= frames - 100) {
 			twaMin = Math.min(twaMin, boat.twa); twaMax = Math.max(twaMax, boat.twa);
@@ -144,7 +146,7 @@ export function scenario0(k, { frames = 600, amr = true, energy = true } = {}) {
 	const finestStep = bm._worldStepAt(boat.x, boat.y);
 	return {
 		k, amr, depth, finestStep, twa: boat.twa, twaSpread: twaMax - twaMin, bs: speedOf(boat), bsAt500,
-		tws: tws / twsN, msPerFrame: ms / frames, msPerStep: steps ? ms / steps : 0, steps,
+		edgeGap, tws: tws / twsN, msPerFrame: ms / frames, msPerStep: steps ? ms / steps : 0, steps,
 		cells: bm.width * bm.height, stack: stackCells(bm), ...st, capHits: bm.capHits, domains: bm.domains.length,
 	};
 }
