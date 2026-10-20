@@ -55,6 +55,7 @@ Last updated: 2026-10-20
 - [x] Wind flow tracers replace the per-boat wind-arrow grid: particles carried by the local wind with fading tails, denser where wind is stronger, drawn over the colour field plot, live count/life/tail inputs (`?tracers`, `?tracerLife`, `?tracerTail`): [#68](https://github.com/SukuWc/fields/pull/68)
 - [x] Wind-sweep check (3 to 15 m/s on 2f, 400 m map) and harness edge gap, so a boat pinned on the map edge is no longer mistaken for a high-wind stall: [#83](https://github.com/SukuWc/fields/pull/83)
 - [ ] Strategy tuning
+- [ ] Strong-wind speed cap (heel limit): boat speed keeps climbing with wind (about 0.72× wind speed at 15 m/s) because the sail model has no heel or depower limit; real boats level off. Sweep data in [#83](https://github.com/SukuWc/fields/pull/83) (backlog, not started)
 
 ### 3. Multiplayer open water
 - [x] Shared world and shared wind: [#60](https://github.com/SukuWc/fields/pull/60) (server rooms + streamed wind); [#61](https://github.com/SukuWc/fields/pull/61) (Join with my boat: each client owns a named boat, steers only that boat, removed on leave or disconnect)
