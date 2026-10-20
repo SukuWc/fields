@@ -10,7 +10,8 @@
 // sceneState(sim, rec, view, nowMs) → state:
 //   t      host clock (ms) for pulses and flash ages
 //   hud    readout / HUD values (hud.js hudState; marked exact: no rounding)
-//   boats  per racing boat: Boat.renderState (boat-draw.js)
+//   boats  per racing boat: Boat.renderState (boat-draw.js); id (boat id),
+//          vx, vy, w (ghost prediction, 1e-3)
 //   ts, ep sim time (Sim.rulesTime) and scenario epoch, for boat trails
 //   bc     own boat colours (spawnBoat color) or null per boat, when any
 //   aw     per boat: whole seconds until an absent owner's boat is removed
@@ -34,6 +35,7 @@
 //   lat    { w, h, res } root lattice (for the refinement outlines)
 //   defs   per racing boat: Boat.renderDef + name (spawned boats)
 //   marks  mark anchors [[x, y], ...]
+//   hulls  { [boat id]: { v (local hull vertices), com } } for ghost boats
 //   start, finish  line geometry; course courseStatics; boundary { x, zone, yMin, yMax }
 //   bodies [{ id, kind, stroke, pts }] (static bodies: final outline) or
 //          { id, kind, stroke, r | v (local vertices), com? } (moving bodies)
@@ -113,6 +115,13 @@ export function bodyScene(world, ids) {
   return { statics, bt };
 }
 
+// Ghost hulls (ghost-boat.js): body-local hull outline per boat id.
+export function hullStatics(racing) {
+  const out = {};
+  for (const b of racing) { const h = b.hullDef && b.hullDef(); if (h) out[b.boatId] = h; }
+  return out;
+}
+
 export function sceneStatics(sim, ids, bodies = bodyScene(sim.map.world, ids)) {
   const racing = sim.players;
   const bm = sim.bm;
@@ -121,6 +130,7 @@ export function sceneStatics(sim, ids, bodies = bodyScene(sim.map.world, ids)) {
     defs: racing.map((b) => (b.spawnName ? { ...b.renderDef(), name: b.spawnName } : b.renderDef())),
     marks: sim.marks.map((m) => [m.anchor.x, m.anchor.y]),
     bodies: bodies.statics,
+    hulls: hullStatics(racing),
   };
   if (sim.startSequence) st.start = lineState(sim.startSequence.line);
   const course = sim.course;

@@ -31,21 +31,51 @@ assert(G.GHOST_AHEAD_S === 2, "default lookahead 2 s");
   const full = G.predictPose(v, 0, Math.PI, 2);
   assert(near(full.dx, 0) && near(full.dy, 0), "full circle returns to start");
 }
-// Rigid outline move.
+// Host frames: hull statics keyed by boat id, ghosts matched by id.
 {
-  const pts = [1, 0, 2, 0];
-  const out = G.moveOutline(pts, 1, 0, { dx: 5, dy: 0, da: Math.PI / 2 });
-  assert(near(out[0], 6) && near(out[1], 0) && near(out[2], 6) && near(out[3], 1), "outline rotated about the body origin, then shifted");
+  const { SimCore } = await import("../src/host.js");
+  const { buildBodies } = await import("../src/scene-build.js");
+  const core = new SimCore({ mapW: 100, mapH: 200, simRes: "4f", texture: { image: { data: new Uint8Array(0) } } });
+  core.command({ type: "devMode", on: true });
+  core.command({ type: "restart", scenario: 17 });
+  const view = { camera_position_x: 0, camera_position_y: 0, camera_zoom: 40, show_forces: false, show_fields: false };
+  let statics = null;
+  const tick = () => { const f = core.tick({ dt: 1 / 30, held: [], present: true, view }); if (f.statics) statics = f.statics; return f; };
+  for (let i = 0; i < 60; i++) tick();
+  core.command({ type: "spawnBoat", name: "P" });
+  let f = tick();
+  const st = f.state, boats = st.boats;
+  assert(boats.length >= 4, `scenario 17 + a spawned boat (${boats.length} boats)`);
+  assert(boats.every((b) => typeof b.id === "string" && ["vx", "vy", "w"].every((k) => Number.isFinite(b[k]))), "every boat carries id, vx, vy, w");
+  const ids = boats.map((b) => b.id);
+  assert(new Set(ids).size === ids.length && ids.some((id) => id.startsWith("b")) && ids.some((id) => id.startsWith("s")), `unique ids, scenario and player boats (${ids.join(",")})`);
+  assert(ids.every((id) => statics.hulls[id] && statics.hulls[id].v.length >= 6), "statics.hulls has every boat id");
+  assert(boats.every((b) => ["vx", "vy", "w"].every((k) => Math.abs(b[k] * 1000 - Math.round(b[k] * 1000)) < 1e-6)), "vx, vy, w rounded to 1e-3");
+  // Statics are not resent per frame (hull shapes are static).
+  let resent = 0; for (let i = 0; i < 30; i++) if (tick().statics) resent++;
+  assert(resent === 0, `statics not resent while nothing changes (${resent})`);
+  f = tick();
+  // t = 0 ghost lies on the drawn hull.
+  const drawn = buildBodies(statics.bodies, f.state.bt).filter((b) => b.kind === "polygon");
+  for (const b of f.state.boats) {
+    const g = G.ghostOutline(statics.hulls[b.id], b, 0);
+    const hit = drawn.some((d) => d.pts.length === g.length && d.pts.every((x, k) => Math.abs(x - g[k]) < 1e-3));
+    assert(hit, `t=0 ghost of ${b.id} matches its drawn hull`);
+  }
+  // Matching is by id: reversing boat order (and swapping hulls) keeps each ghost on its id.
+  const rev = [...f.state.boats].reverse();
+  const out = G.ghostOutlines(rev, statics.hulls, 2);
+  assert(out.length === rev.length && out.every((g, k) => g.id === rev[k].id && g.i === k), "ghosts follow boat ids, not order");
+  const fake = { ...statics.hulls, [rev[0].id]: { v: [0, 0, 1, 0, 1, 1], com: [0, 0] } };
+  const out2 = G.ghostOutlines(rev, fake, 2);
+  assert(out2[0].pts.length === 8 && out2[1].pts.length === out[1].pts.length, "a hull change applies only to its id");
+  assert(G.ghostOutlines([{ id: "zz", px: 0, py: 0, pa: 0, vx: 1, vy: 0, w: 0 }], statics.hulls, 2).length === 0, "unknown id: no ghost (no fallback)");
+  // Frame size: ghost fields (id, vx, vy, w) bounded per boat.
+  const full = JSON.stringify(f.state).length;
+  const bare = JSON.stringify({ ...f.state, boats: f.state.boats.map(({ id, vx, vy, w, ...r }) => r) }).length;
+  const per = (full - bare) / f.state.boats.length;
+  console.log(`     frame ${full} B, without ghost fields ${bare} B: +${full - bare} B (+${(100 * (full - bare) / bare).toFixed(1)} %), ${per.toFixed(1)} B per boat`);
+  assert(per <= 50 && (full - bare) / bare < 0.05, "ghost fields add at most 50 B per boat and < 5 % of the frame");
 }
-// Assignment: nearest boat, polygons only, max distance.
-{
-  const bodies = [
-    { kind: 'polygon', pts: [0, 0, 1, 0, 1, 1] },
-    { kind: 'polygon', pts: [20, 0, 21, 0, 21, 1] },
-    { kind: 'circle', pts: [0, 0, 1, 1] },
-    { kind: 'polygon', pts: [100, 100, 101, 100, 101, 101] },
-  ];
-  const own = G.assignBodies(bodies, [{ px: 20, py: 0 }, { px: 0, py: 0 }]);
-  assert(own.join() === "1,0,-1,-1", `assignment ${own.join()}`);
-}
+
 console.log("ghost-check: all passed");

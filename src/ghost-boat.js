@@ -4,8 +4,14 @@
 // body velocity (vx, vy) and angular velocity w (Boat.renderState): the
 // velocity vector rotates with the heading, heading(t) = a0 + w t, so
 //   p(t) = p0 + ∫0..t R(w s) v ds
-// which is a straight line when w ≈ 0. UI / URL: Ghost boat box, off by default (?ghost=1 on, ?ghost=0 off),
+// which is a straight line when w ≈ 0.
+//
+// The hull comes from statics.hulls keyed by boat id (state.boats[i].id),
+// sent once per statics change; never matched by position or player index.
+// UI / URL: Ghost boat box, a player setting, off by default (?ghost=1 on),
 // lookahead s (?ghostAhead=s).
+import { buildBodies } from './scene-build.js';
+
 export const GHOST_AHEAD_S = 2;
 export const GHOST_OPACITY = 0.45;
 export const GHOST_MAX_AHEAD_S = 30;
@@ -19,28 +25,27 @@ export function predictPose(vx, vy, w, t) {
   return { dx: (vx * s - vy * c1) / w, dy: (vy * s + vx * c1) / w, da: a };
 }
 
-// Outline pts [x0, y0, ...] moved rigidly: rotated by da about the body
-// origin (ox, oy) and shifted by (dx, dy). Writes into out (array or typed).
-export function moveOutline(pts, ox, oy, pose, out = new Array(pts.length)) {
-  const c = Math.cos(pose.da), s = Math.sin(pose.da);
-  for (let i = 0; i + 1 < pts.length; i += 2) {
-    const rx = pts[i] - ox, ry = pts[i + 1] - oy;
-    out[i] = ox + pose.dx + rx * c - ry * s;
-    out[i + 1] = oy + pose.dy + rx * s + ry * c;
-  }
-  return out;
+// World outline of the ghost: hull { v, com } (body local) for boat b
+// ({ id, px, py, pa, vx, vy, w }) t seconds ahead. Planck's velocity is the
+// centre of mass's, so the arc moves the world centre c = p + R(pa) com; the
+// outline is built with the same formula as the drawn hull (buildBodies).
+export function ghostOutline(hull, b, t) {
+  const c = Math.cos(b.pa), s = Math.sin(b.pa);
+  const cx = b.px + hull.com[0] * c - hull.com[1] * s;
+  const cy = b.py + hull.com[0] * s + hull.com[1] * c;
+  const pose = predictPose(b.vx, b.vy, b.w, t);
+  return buildBodies([{ id: 0, kind: 'polygon', v: hull.v, com: hull.com, at: [b.pa + pose.da, cx + pose.dx, cy + pose.dy] }])[0].pts;
 }
 
-// Which boat each polygon body belongs to: the nearest boat body origin
-// within maxDist (outline centroid). Returns boat index or -1 per body.
-export function assignBodies(bodies, boats, maxDist = 6) {
-  return bodies.map((b) => {
-    if (b.kind !== 'polygon') return -1;
-    let cx = 0, cy = 0; const n = b.pts.length / 2;
-    for (let i = 0; i < b.pts.length; i += 2) { cx += b.pts[i]; cy += b.pts[i + 1]; }
-    cx /= n; cy /= n;
-    let best = -1, bd = maxDist * maxDist;
-    boats.forEach((bt, i) => { const d = (bt.px - cx) ** 2 + (bt.py - cy) ** 2; if (d < bd) { bd = d; best = i; } });
-    return best;
-  });
+// [{ i, id, pts }] for every boat with a hull in statics (by id) and a velocity.
+export function ghostOutlines(boats, hulls, t) {
+  const out = [];
+  if (!boats || !hulls) return out;
+  for (let i = 0; i < boats.length; i++) {
+    const b = boats[i];
+    const hull = b && b.id != null ? hulls[b.id] : null;
+    if (!hull || !Number.isFinite(b.vx)) continue;
+    out.push({ i, id: b.id, pts: ghostOutline(hull, b, t) });
+  }
+  return out;
 }
