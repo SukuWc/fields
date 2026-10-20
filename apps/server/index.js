@@ -1,6 +1,6 @@
 // Authoritative sim server: WebSocket, one Room (room.js) per ?room= name.
 //
-//   node dist-server/server.mjs [--port 8787] [--lockstep] [--field-hz 2] [--grace-s 10] [--verbose]
+//   node dist-server/server.mjs [--port 8787] [--lockstep] [--field-hz 30] [--field-tol 1] [--grace-s 10] [--verbose]
 //   (npm run server builds and starts it; PORT env works too)
 //
 // GET / answers a small JSON status (rooms, clients, tick cost) for health checks.
