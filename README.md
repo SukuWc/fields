@@ -55,6 +55,7 @@ Last updated: 2026-10-20
 - [x] 45° and 22.5° wind propagation tests, root-grid wind read fixed by half a cell (no more 2 m wind jump at refinement edges on 4f), node-based vortex centroid: [#69](https://github.com/SukuWc/fields/pull/69)
 - [x] Wind flow tracers replace the per-boat wind-arrow grid: particles carried by the local wind with fading tails, denser where wind is stronger, drawn over the colour field plot, live count/life/tail inputs (`?tracers`, `?tracerLife`, `?tracerTail`): [#68](https://github.com/SukuWc/fields/pull/68)
 - [x] Wind-sweep check (3 to 15 m/s on 2f, 400 m map) and harness edge gap, so a boat pinned on the map edge is no longer mistaken for a high-wind stall: [#83](https://github.com/SukuWc/fields/pull/83)
+- [ ] Sail wake gain as a room setting (`?sailWakeGain`, default 16, range 0 to 64, live in local, worker and remote modes, no change at the default) (in progress, [#87](https://github.com/SukuWc/fields/pull/87))
 - [ ] Strategy tuning
 - [ ] Strong-wind speed cap (heel limit): boat speed keeps climbing with wind (about 0.72× wind speed at 15 m/s) because the sail model has no heel or depower limit; real boats level off. Sweep data in [#83](https://github.com/SukuWc/fields/pull/83) (backlog, not started)
 
