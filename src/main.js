@@ -361,6 +361,14 @@ function startClient() {
       });
     });
   }
+  // Sail wake gain (#sailWakeGain): live, no restart. Local: applied at load
+  // (URL values arrive as change events); remote: only on an edit.
+  {
+    const el = document.getElementById('sailWakeGain');
+    const apply = () => { const n = Number(String(el.value).trim()); if (String(el.value).trim() !== '' && Number.isFinite(n)) roomCommand(roomCommandFor({ sailWakeGain: n })); };
+    el.addEventListener('change', apply);
+    if (!remote) apply();
+  }
   // Boat refinement stack (#maxLevel, #boatRefineRadius; empty = the mode
   // default). One 'refine' command per edit; a rebuilt lattice restarts.
   {

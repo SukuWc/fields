@@ -78,6 +78,11 @@ export const SETTINGS = [
     command: { type: 'simRes', field: 'mode', required: true }, state: 'simRes', invalid: (v) => 'unknown simRes ' + v },
   { id: 'amrMode', scope: 'room', panel: 'room', type: 'enum', default: 'auto', values: ['auto', 'fixed'],
     command: { type: 'amrMode', field: 'mode', required: true }, state: 'amrMode', invalid: () => 'amrMode must be auto or fixed' },
+  // Sail → field momentum: multiple of the boat's own sail impulse put into
+  // the lattice (boat.js SAIL_WAKE_GAIN, 16; sim.js sailEfficiency). 0 = no
+  // wake; higher = deeper wake (32 reaches |u| ≈ 0.49 at wind 25).
+  { id: 'sailWakeGain', scope: 'room', panel: 'room', type: 'number', default: 16, min: 0, max: 64,
+    command: { type: 'sailWake', field: 'gain', required: true }, state: 'sailWakeGain', invalid: () => 'sailWake gain must be 0..64', devModeDisabled: true },
   // Boat refinement stack (domainTrack amrParams). Default 3 levels and a
   // 3 m finest disk (sim-modes.js). Empty = the mode's full stack (2f 4,
   // 4f 5, 1 m 3, x2 4, x4 5) / the level's own disk (2 m on a full stack).
