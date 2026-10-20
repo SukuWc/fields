@@ -67,9 +67,3 @@ export function firstTime(log, a, b, pred, from = 0) {
   for (const e of log) { if (e.t < from) continue; const p = pairOf(e, a, b); if (p && pred(p)) return e.t; }
   return null;
 }
-// Known sim bug: XFAIL unless STRICT=1 (then a real FAIL). Prints XPASS once fixed.
-export function knownBug(cond, message) {
-  if (cond) { console.log("XPASS", message, "(known bug fixed? drop the knownBug wrapper)"); return; }
-  if (process.env.STRICT === "1") assert(false, message);
-  console.log("XFAIL", message);
-}

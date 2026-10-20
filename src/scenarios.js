@@ -138,14 +138,19 @@ export function buildScenarios(sim) {
     // close-hauled on starboard, and low enough that the hulls meet.
     sim.players.push(new Boat(sim.map, -18.8, 5.15, heading));
   };
-  scenarios[7].frames[1] = () => {
-    sim.players[0].input_autopilot_enabled_toggle();
-    sim.players[1].input_autopilot_enabled_toggle();
-  };
+  // Autopilot on at frame 3 (the second Sim tick), after one physics step has
+  // set each boat's twa. Frames 0-2 run in one tick before any physics step,
+  // so a frame-1 toggle saw autopilot_heading_target 0 and picked the
+  // starboard target for these port-tack boats: the frame-36 tack then only
+  // undid that, and boat 1's bear-away landed on a starboard reach.
   scenarios[7].frames[2] = () => {
     sim.emit({ type: 'bindControls' });
     sim.emit({ type: 'view', follow: true });
     sim.emit({ type: 'view', zoom: 16 });
+  };
+  scenarios[7].frames[3] = () => {
+    sim.players[0].input_autopilot_enabled_toggle();
+    sim.players[1].input_autopilot_enabled_toggle();
   };
   // Windward boat bears away onto a port beam reach (TWA 90°) so she sails
   // across the leeward boat's starboard course instead of climbing away.
@@ -202,19 +207,18 @@ export function buildScenarios(sim) {
   // ?devmode=1&scenario_selector=9
   scenarios[9] = makeScenario(
     "Contact during Rule 15",
-    "The boats start as in scenario 8, but the trailer is only a fraction of a metre abeam, still clear astern, so the pair opens on Rule 12. She motors up and her bow meets the leader on the same station where the overlap begins, while she is still the leeward boat. That contact falls inside the Rule 15 window. The new right-of-way boat is at fault."
+    "The boats start as in scenario 8, but the trailer is only a fraction of a metre abeam, still clear astern, so the pair opens on Rule 12. She motors up, overlaps to leeward and luffs, and her bow meets the leader just after the overlap begins, while she is still the leeward boat. That contact falls inside the Rule 15 window. The new right-of-way boat is at fault."
   );
   scenarios[9].frames[0] = () => {
     const heading = 5 * Math.PI / 4;
     const fx = Math.sin(heading);
     const fy = -Math.cos(heading);
-    // (Opens on Rule 12. At 0.1 m abeam the bow meets the leader on the
-    // same station where the overlap begins, so the contact is inside the
-    // Rule 15 window and she is still the leeward boat. 0.1 m works on both
-    // 2f (default) and 4f. History: 0.35 m slowed the trailer too much once
-    // 4f ran near-matched viscosity; 0.25 m gave no contact at all on 2f.)
+    // (Opens on Rule 12. At 0.5 m abeam she overlaps from leeward at
+    // ~0.95 s without touching; the luff below brings her bow onto the
+    // leader inside the 1 s Rule 15 window. History: at 0.1 m the bow hit
+    // the transom at ~1 s while still clear astern, so Rule 12 decided it.)
     const along = 4.4;
-    const abeam = 0.1;
+    const abeam = 0.5;
     const lx = -fy;
     const ly = fx;
     sim.players.push(new Boat(sim.map, 0, 0, heading));
@@ -229,8 +233,17 @@ export function buildScenarios(sim) {
     sim.emit({ type: 'view', follow: true });
     sim.emit({ type: 'view', zoom: 14 });
   };
+  // From frame 60 (0.67 s, just before the overlap begins) the trailer luffs
+  // 30° toward the leader, one degree per frame. Without it the leader's wake
+  // (fluid mode) holds her off and the boats never touch, or touch only once
+  // the Rule 15 window has closed. Contact: ~1.1 s dev mode, ~1.4 s fluid,
+  // with the window open from ~0.95 s.
   for (let frame = 8; frame <= 220; frame++) {
-    scenarios[9].frames[frame] = () => { sim.players[1].motor_input = 1; };
+    const luff = frame >= 60 && frame < 90;
+    scenarios[9].frames[frame] = () => {
+      sim.players[1].motor_input = 1;
+      if (luff) sim.players[1].input_autopilot_heading_decrease();
+    };
   }
 
   // One boat, already charged, so the penalty can be sailed without waiting
