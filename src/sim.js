@@ -6,7 +6,7 @@
 //
 // One step() is one 30 Hz tick, run right after world.step(dt) (loop.js).
 // The order of work inside a step is the order of the old main.js simPass.
-import { SAIL_LATTICE_COUPLING } from './boat.js';
+import { SAIL_LATTICE_COUPLING, SAIL_WAKE_GAIN } from './boat.js';
 import { trackBoats, resetTracking } from './domainTrack.js';
 import { Leaderboard } from './leaderboard.js';
 import { resetMarkTouches, recordMarkTouches } from './mark-touch.js';
@@ -53,6 +53,7 @@ export { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps };
 //   { type: 'options', amr?, boatEnergy? }
 //   { type: 'simRes', mode }           SIM_RES_MODES key; returns true if the lattice was rebuilt
 //   { type: 'amrMode', mode }          'auto' | 'fixed'; returns true if the lattice was rebuilt
+//   { type: 'sailWake', gain }         sail → lattice momentum multiple (SAIL_WAKE_GAIN 16)
 //   { type: 'refine', maxLevel?, boatRefineRadius? }  boat refinement levels (int) and
 //                                      finest disk radius (m); null = mode default;
 //                                      returns true if the lattice was rebuilt
@@ -70,10 +71,10 @@ export const BOAT_ACTIONS = {
 
 export class Sim {
   // map: Map (map.js) with physics_model_init() done; bm: its Boltzmann.
-  constructor(map, { amr = settingDefault('amr'), boatEnergy = settingDefault('boat_energy') } = {}) {
+  constructor(map, { amr = settingDefault('amr'), boatEnergy = settingDefault('boat_energy'), sailWakeGain = SAIL_WAKE_GAIN } = {}) {
     this.map = map;
     this.bm = map.bm;
-    this.options = { amr, boatEnergy };
+    this.options = { amr, boatEnergy, sailWakeGain };
     this.rules = createRulesState();
     this.scenarios = buildScenarios(this);
     this.scenarioIndex = null;
@@ -194,6 +195,9 @@ export class Sim {
         bm.setWindSpeed(map.wind_speed);
         return true;
       }
+      case 'sailWake':
+        if (Number.isFinite(c.gain) && c.gain >= 0) this.options.sailWakeGain = c.gain;
+        return undefined;
       case 'refine': {
         // Boat refinement stack (domainTrack amrParams): maxLevel levels below
         // the root, finest disk radius in metres; null = the mode default.
@@ -282,7 +286,9 @@ export class Sim {
   // per unit of physical wind: divide by it.
   sailEfficiency() {
     const bm = this.bm;
-    const e = SAIL_LATTICE_COUPLING * bm.resolution * bm.resolution;
+    // ?sailWakeGain scales the coupling; at the default (SAIL_WAKE_GAIN) it is ×1 exactly.
+    const g = this.options.sailWakeGain;
+    const e = SAIL_LATTICE_COUPLING * (g === SAIL_WAKE_GAIN ? 1 : g / SAIL_WAKE_GAIN) * bm.resolution * bm.resolution;
     return bm.velScale === undefined || bm.velScale === 1 ? e : e / bm.velScale;
   }
 
