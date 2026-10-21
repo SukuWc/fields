@@ -9,7 +9,8 @@
     "build": "vite build",
     "build:server": "esbuild apps/server/index.js --bundle --platform=node --format=esm --target=node20 --outfile=dist-server/server.mjs --log-level=warning \"--banner:js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
     "server": "npm run build:server && node dist-server/server.mjs",
-    "smoke:server": "node scripts/server-smoke.mjs"
+    "smoke:server": "node scripts/server-smoke.mjs",
+    "check:all": "node scripts/check-all.mjs"
   },
   "repository": {
     "type": "git",
