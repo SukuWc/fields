@@ -1,5 +1,7 @@
 // Depower toggle (Boat.input_depower_toggle, X key).
 import './dom-stub.mjs';
+// Pins the full pre-#86 stack: the never-toggled run is a main-parity number.
+await import('./full-stack.mjs');
 const H = await import('../scripts/sim-res-harness.mjs');
 const { trackBoats } = await import('../src/domainTrack.js');
 const { SAIL_LATTICE_COUPLING, Boat, DEPOWER_RAMP_S, SAIL_FLAP_AOA_DEG } = await import('../src/boat.js');

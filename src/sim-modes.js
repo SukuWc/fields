@@ -22,3 +22,10 @@ export function windCeilingMps(mode) {
   return 7.5 * (1 / m.resolution) * (m.stepsPerFrame ?? m.resolution);
 }
 
+
+// Boat refinement defaults (#maxLevel / #boatRefineRadius; domainTrack
+// amrParams): 3 levels below the root (clamped to a mode's depth) and a 3 m
+// finest disk on every mode. null on bm = the mode's full stack / the
+// level's own radius.
+export const DEFAULT_MAX_LEVEL = 3;
+export const DEFAULT_BOAT_REFINE_RADIUS = 3;

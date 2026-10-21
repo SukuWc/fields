@@ -725,6 +725,10 @@
         <option value="fixed">Fixed rings</option>
       </select></label>
       <br>
+      <label class="setting-row setting-field" title="Boat refinement levels below the root grid (finest first to go). Default 3 (clamped to the mode). Empty = every level of the mode (2 m fast wind 4, 4 m fast wind 5, 1 m 3). Restarts. Also ?maxLevel=N">Max refinement level <input id="maxLevel" autocomplete="off" type="number" step="1" style="width: 50px;" placeholder="all"></label>
+      <br>
+      <label class="setting-row setting-field" title="Radius in metres of the fixed refinement disk around each boat (finest level). Default 3 m. Empty = the level's own disk (2 m on a full stack). Coarser levels grow around it. Restarts. Also ?boatRefineRadius=M">Boat refine radius <input id="boatRefineRadius" autocomplete="off" type="number" step="0.5" style="width: 50px;" placeholder="level">m</label>
+      <br>
       <span id="map_size_row"><label class="setting-row setting-field" title="Map width × length in metres; the length runs along the wind. Each size has its own default simulation resolution (50 × 100 and 100 × 200: Default, 200 × 400: x4 coarser) so the field cost stays near the old 75 m map. Course scenarios 12-17 need 100 × 200 and pick it if a smaller size is set. Changing it reloads the page. Also ?map_size=100x200">Map size<br>
       <select id="map_size" autocomplete="off">
         <option value="50x100">50 × 100 m</option>

@@ -13,6 +13,8 @@ globalThis.document = {
 globalThis.window = globalThis;
 globalThis.addEventListener = globalThis.addEventListener || (() => {});
 
+// Pins the full pre-#86 stack (mechanics tests use the DISK constants).
+await import('./full-stack.mjs');
 const { Boltzmann, unionMaskBorderLines, buildClosedDiskMask, fineIndex } = await import('../src/boltzmann.js');
 const { FieldPainter } = await import('../src/fieldPainter.js');
 const { SAIL_LATTICE_COUPLING } = await import('../src/boat.js');

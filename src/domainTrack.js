@@ -188,21 +188,52 @@ export const AUTO_SHELL = 3;
 // seconds on every setting: CURL_HOLD · stepsPerFrame calls, never below 2.
 export const CURL_HOLD_SECONDS = CURL_HOLD / 30;
 
+// Refinement settings (?maxLevel, ?boatRefineRadius; bm.maxLevel /
+// bm.boatRefineRadius, null = the mode's default stack). maxLevel counts
+// refinement levels below the root (2f 4, 4f / x4 5, x2 4, 1 m 3) and is
+// clamped to 1..that. The radius is in metres, clamped to
+// [max(BOAT_REFINE_RADIUS_MIN, 2 parent cells), BOAT_REFINE_RADIUS_MAX].
+export const BOAT_REFINE_RADIUS_MIN = 0.5;
+export const BOAT_REFINE_RADIUS_MAX = 16;
+export function clampMaxLevel(ml, fullDepth) {
+	return Number.isInteger(ml) ? Math.max(1, Math.min(fullDepth, ml)) : fullDepth;
+}
+export function clampBoatRefineRadius(r, finestParentCell) {
+	if (!Number.isFinite(r)) return null;
+	return Math.max(BOAT_REFINE_RADIUS_MIN, 2 * finestParentCell, Math.min(BOAT_REFINE_RADIUS_MAX, r));
+}
+
 export function amrParams(bm) {
 	const k = bm && bm.cellSize > 0 ? bm.cellSize : 1;
 	const spf = bm && bm.stepsPerFrame > 0 ? bm.stepsPerFrame : 1 / k;
 	const auto = !!(bm && bm.amrMode === 'auto');
-	const key = `${k}|${spf}|${auto ? 'auto' : 'fixed'}`;
+	const ml = bm && Number.isInteger(bm.maxLevel) ? bm.maxLevel : null;
+	const rr = bm && Number.isFinite(bm.boatRefineRadius) ? bm.boatRefineRadius : null;
+	const key = `${k}|${spf}|${auto ? 'auto' : 'fixed'}|${ml}|${rr}`;
 	let p = paramCache.get(key);
 	if (p) return p;
 	const extra = Math.max(0, Math.round(Math.log2(k)));
-	const stack = [];
+	let stack = [];
 	// Outer rings, coarsest first: cell size k/2, k/4, … down to 1.
 	for (let e = extra; e >= 1; e--) {
 		const cell = 2 ** (e - 1);
 		stack.push({ ...OUTER_RINGS[cell] || { R: 12 * cell, H: 24 * cell, A: 750 * cell * cell }, ring: true });
 	}
 	for (const lv of BOAT_LEVELS) stack.push({ ...lv, ring: false });
+	const fullDepth = stack.length;
+	// ?maxLevel: drop the finest levels (null = the mode's full stack).
+	const depth = clampMaxLevel(ml, fullDepth);
+	stack = stack.slice(0, depth);
+	// ?boatRefineRadius: the finest disk's radius in metres (null = the
+	// level's own R, 2 m on a full stack). Fixed rings stay at least
+	// AUTO_SHELL own cells outside the next finer disk.
+	const finestR = clampBoatRefineRadius(rr, k / 2 ** (depth - 1));
+	if (finestR !== null) {
+		stack[depth - 1] = { ...stack[depth - 1], R: finestR };
+		if (!auto) for (let i = depth - 2; i >= 0; i--) {
+			stack[i] = { ...stack[i], R: Math.max(stack[i].R, stack[i + 1].R + AUTO_SHELL * k / 2 ** (i + 1)) };
+		}
+	}
 	// Per level, in that level's parent cells. Parent cell of level i is k/2^i.
 	if (auto) {
 		// Finest disk stays; each coarser level is the finer region + AUTO_SHELL
@@ -232,6 +263,9 @@ export function amrParams(bm) {
 		fieldCap: Math.max(SEED_MIN * 2, Math.round(FIELD_CELL_CAP / (k * k))),
 		seedMin: Math.max(2, Math.round(SEED_MIN / (k * k))),
 		auto,
+		fullDepth,
+		maxLevel: depth,
+		boatRefineRadius: stack[depth - 1].R,
 		shell: AUTO_SHELL,
 		hold: Math.max(2, Math.round(CURL_HOLD_SECONDS * 30 * spf)),
 		curlDx: CURL_DX * k,

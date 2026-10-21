@@ -53,6 +53,9 @@ export { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps };
 //   { type: 'options', amr?, boatEnergy? }
 //   { type: 'simRes', mode }           SIM_RES_MODES key; returns true if the lattice was rebuilt
 //   { type: 'amrMode', mode }          'auto' | 'fixed'; returns true if the lattice was rebuilt
+//   { type: 'refine', maxLevel?, boatRefineRadius? }  boat refinement levels (int) and
+//                                      finest disk radius (m); null = mode default;
+//                                      returns true if the lattice was rebuilt
 //   { type: 'cellBudget', tune, target? }  refinement budget: tune false = off (no
 //                                      budget, scale 1); target a positive number, else
 //                                      the grid default (domainTrack defaultCellUpdateTarget)
@@ -187,6 +190,19 @@ export class Sim {
         if ((bm.amrMode || 'fixed') === mode) return false;
         resetTracking(bm, this.players);
         bm.amrMode = mode;
+        bm.setResolution(bm.resolution, bm.stepsPerFrame === bm.resolution ? undefined : bm.stepsPerFrame);
+        bm.setWindSpeed(map.wind_speed);
+        return true;
+      }
+      case 'refine': {
+        // Boat refinement stack (domainTrack amrParams): maxLevel levels below
+        // the root, finest disk radius in metres; null = the mode default.
+        const ml = 'maxLevel' in c ? (Number.isInteger(c.maxLevel) ? c.maxLevel : null) : (bm.maxLevel ?? null);
+        const rr = 'boatRefineRadius' in c ? (Number.isFinite(c.boatRefineRadius) ? c.boatRefineRadius : null) : (bm.boatRefineRadius ?? null);
+        if ((bm.maxLevel ?? null) === ml && (bm.boatRefineRadius ?? null) === rr) return false;
+        resetTracking(bm, this.players);
+        bm.maxLevel = ml;
+        bm.boatRefineRadius = rr;
         bm.setResolution(bm.resolution, bm.stepsPerFrame === bm.resolution ? undefined : bm.stepsPerFrame);
         bm.setWindSpeed(map.wind_speed);
         return true;
