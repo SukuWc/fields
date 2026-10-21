@@ -288,7 +288,8 @@ export class Boat{
 
 
     
-    const wind_raw = this.map.get_wind(this.x, this.y);
+    // True wind at the boat: mean vector of a 1 m, 20-point ring (Map.get_wind_ring).
+    const wind_raw = this.map.get_wind_ring ? this.map.get_wind_ring(this.x, this.y) : this.map.get_wind(this.x, this.y);
     const alpha = WIND_SMOOTH_ALPHA;
     // A single non-finite sample used to latch the smoother (NaN + finite = NaN)
     // and every later force stayed NaN. Keep the last finite wind instead.

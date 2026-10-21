@@ -27,6 +27,29 @@ export function windSample(vx, vy) {
   return { speed, direction, vx, vy };
 }
 
+// Boat true-wind sample: the mean wind VECTOR of n points evenly spaced on
+// a circle of radius r (world m) around (x, y). vx and vy are averaged
+// separately and speed / direction come from the mean vector (angles are
+// never averaged), so opposite samples cancel and directions near 0 / 360
+// wrap correctly. Non-finite samples are skipped; null when none is finite.
+// When every finite sample is identical (ConstantWind, dev mode) that exact
+// sample's vector is returned, bit for bit.
+export const BOAT_WIND_RING_R = 1;
+export const BOAT_WIND_RING_N = 20;
+export function ringWindSample(getWind, x, y, r = BOAT_WIND_RING_R, n = BOAT_WIND_RING_N) {
+  let sx = 0, sy = 0, k = 0, first = null, same = true;
+  for (let i = 0; i < n; i++) {
+    const a = 2 * Math.PI * i / n;
+    const w = getWind(x + r * Math.cos(a), y + r * Math.sin(a));
+    if (!w || !Number.isFinite(w.vx) || !Number.isFinite(w.vy)) continue;
+    if (first === null) first = w;
+    else if (w.vx !== first.vx || w.vy !== first.vy) same = false;
+    sx += w.vx; sy += w.vy; k++;
+  }
+  if (!k) return null;
+  return same ? windSample(first.vx, first.vy) : windSample(sx / k, sy / k);
+}
+
 // Uniform wind. angleDeg and speed use the same units as the wind_angle /
 // wind_speed constants in main.js and the Wind angle / Wind speed inputs.
 export class ConstantWind {

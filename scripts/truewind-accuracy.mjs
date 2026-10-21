@@ -5,7 +5,8 @@
 //   node --import ./test/register.mjs scripts/truewind-accuracy.mjs [mode=2f] [outDir=out/truewind]
 // Plot: scripts/truewind-plot.py <outDir> (needs matplotlib).
 // Columns: smoothed = boat.wind_direction / wind_speed (what the autopilot
-// and sail model use); raw = map.get_wind at the boat centre (HUD / rules);
+// and sail model use); raw = the unsmoothed sample the HUD / rules read at
+// the boat (map.get_wind_ring: 1 m, 20-point vector mean; centre point before #89);
 // amb = map.get_wind 20 m abeam (control: the lattice away from the boat);
 // true = the inlet (map.constantWind, the uniform free stream).
 import './../test/dom-stub.mjs';
@@ -34,7 +35,7 @@ export function runSweep(simRes = '2f', ticks = TICKS) {
 		const v = b.physics_model.getLinearVelocity();
 		const bs = Math.hypot(v.x, v.y);
 		const ax = b.x + (b.x < 0 ? 20 : -20), amb = map.get_wind(ax, b.y);
-		const raw = map.get_wind(b.x, b.y), tru = map.constantWind.getWind(b.x, b.y);
+		const raw = map.get_wind_ring ? map.get_wind_ring(b.x, b.y) : map.get_wind(b.x, b.y), tru = map.constantWind.getWind(b.x, b.y);
 		const acc = prevV === null ? 0 : (bs - prevV) / 0.1;
 		prevV = bs;
 		rows.push({ tick: t, x: b.x, y: b.y, heading: b.angle * 180 / Math.PI, bs, acc, target: b.autopilot_heading_target, twa: b.twa,

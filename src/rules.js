@@ -498,6 +498,13 @@ function beginTacking(boat, onto) {
   boat.tackingOnto = onto;
 }
 
+// The boat's true-wind sample (Map.get_wind_ring, the 1 m 20-point ring
+// mean; plain get_wind on a map without it).
+function boatWind(boat) {
+  const m = boat.map;
+  return typeof m.get_wind_ring === 'function' ? m.get_wind_ring(boat.x, boat.y) : m.get_wind(boat.x, boat.y);
+}
+
 // Per-boat Rule 13 state. Call once per physics step, after hull_angle is
 // current. Reads Map.get_wind so dev mode and the lattice share one path.
 // `boat.tacking` is the flag Section A reads. `boat.tackingOnto` is the tack
@@ -505,7 +512,7 @@ function beginTacking(boat, onto) {
 export function updateTackingState(boat) {
   if (!boat || !boat.map || typeof boat.map.get_wind !== 'function') return;
   if (!Number.isFinite(boat.hull_angle) || !Number.isFinite(boat.x) || !Number.isFinite(boat.y)) return;
-  const from = windFromDeg(boat.map.get_wind(boat.x, boat.y));
+  const from = windFromDeg(boatWind(boat));
   if (from === null) return;
   const twa = trueWindAngleDeg(boat.hull_angle, from);
   if (!Number.isFinite(twa)) return;
@@ -2083,7 +2090,7 @@ export function notePenaltyManeuver(boat, twaDeg, opts) {
 export function updatePenaltyManeuvers(boat, opts) {
   if (!boat || !boat.map || typeof boat.map.get_wind !== 'function') return null;
   if (!Number.isFinite(boat.hull_angle) || !Number.isFinite(boat.x) || !Number.isFinite(boat.y)) return null;
-  const from = windFromDeg(boat.map.get_wind(boat.x, boat.y));
+  const from = windFromDeg(boatWind(boat));
   if (from === null) return null;
   return notePenaltyManeuver(boat, trueWindAngleDeg(boat.hull_angle, from), opts);
 }
