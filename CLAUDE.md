@@ -177,3 +177,5 @@ The `plotSelect` dropdown controls what the `DataTexture` displays: density, x-v
 - Convention: `wind_angle` is the side the wind comes FROM. TW uses `atan2(vy, vx) + π`, AW uses `awa + hull − 90°`. Each chevron therefore sits upwind of the boat and its tip points downwind, along the flow. Renderer: +x right, +y up on screen, no flip. Scenario 0, wind angle 90 = wind from +Y (top of screen).
 - 19357ab used the flow angle for TW, and the first PR #59 commit did the same for AW. That put the chevrons downwind with their tips pointing upwind. Close-hauled, AW sits ~7.5° from TW (= HUD |TWA−AWA|).
 - test/awa-arrow.test.mjs computes each tip direction from the vertices (shared apex minus the midpoint of the wing ends) and checks it against the flow.
+
+- **Scenario 20 / true-wind baseline**: one boat sweeps its TWA target 10°/s (frames are 90 Hz: 90 frames per step) through a full circle on 100 × 200. `scripts/truewind-accuracy.mjs [mode] [outDir]` writes CSV + summary (smoothed boat.wind_direction, raw get_wind at the boat, a 20 m-abeam control, vs the inlet); `scripts/truewind-plot.py outDir` plots it (matplotlib). Measurement only.
