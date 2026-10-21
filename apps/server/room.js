@@ -35,6 +35,21 @@ import { MAX_WIND_MPS, ROOM_COMMANDS, SIM_RES_MODES, validateRoomSettingCommand,
 import { encodeFieldGrids, decodeFieldGrids } from '../../src/fieldPainter.js';
 import { encodeFieldText } from '../../src/field-codec.js';
 import { scenarioExtent, WALL_INSET_M } from '../../src/map-size.js';
+import { TRAIL_COLORS } from '../../src/boat-trails.js';
+
+// Chat ({ type: 'chat', id, text }, answered with { type: 'result', id, r }):
+// the text is trimmed, control characters dropped and cut to CHAT_MAX_LEN;
+// empty is refused, and so is more than CHAT_RATE_N messages per client in
+// CHAT_RATE_MS. Accepted, it goes to everyone in the room as
+// { type: 'event', ev: { type: 'chat', msg } }, msg = { seq, tick, at (ms
+// since epoch), text, from: { name, boatId, n (boat number: index in the
+// race), color } }; system lines (a boat joined, left, disconnected) have
+// sys: true and no from. The last CHAT_HISTORY go in every welcome (chat),
+// so a joiner or a reconnect sees them. Plain text: clients render it as text.
+export const CHAT_MAX_LEN = 200;
+export const CHAT_HISTORY = 50;
+export const CHAT_RATE_N = 5;
+export const CHAT_RATE_MS = 10000;
 
 // Player boats: a client may spawn boats ({ type: 'spawnBoat', name?, color? },
 // at most MAX_BOATS_PER_CLIENT each and MAX_PLAYER_BOATS per room) and owns
@@ -150,6 +165,9 @@ export class Room {
     // Clients that asked for flow tracer grids / perf counters.
     this.flowSubs = new Set();
     this.perfSubs = new Set();
+    this.chat = [];
+    this.chatSeq = 0;
+    this.chatTimes = new Map();
     this.fieldEncodes = 0;
     this.fieldBytesSent = 0;
     this.fieldEncodeMs = 0;
@@ -215,7 +233,9 @@ export class Room {
     const token = this.tokens.get(client);
     const list = this.owned.get(client) || [];
     const specs = this._respawn && this._respawn.get(client);
+    const whos = this.core ? list.map((b) => this._chatBoat(b)) : [];
     if (token && this.graceMs > 0 && this.core && (list.length || specs)) {
+      for (const w of whos) this._chatSystem(`${w.name} disconnected (boat ${w.n} kept ${Math.round(this.graceMs / 1000)} s)`);
       // Keep the boats for the owner's return (see GRACE_MS).
       const prev = this.parked.get(token);
       if (prev) clearTimeout(prev.timer);
@@ -227,7 +247,9 @@ export class Room {
     } else {
       for (const b of list) this.core.command({ type: 'removeBoat', id: b.id });
       if (this._respawn) this._respawn.delete(client);
+      if (this.clients.size > 1) for (const w of whos) this._chatSystem(`${w.name} left (boat ${w.n})`);
     }
+    this.chatTimes.delete(client);
     this.tokens.delete(client);
     this.owned.delete(client);
     this.clients.delete(client);
@@ -251,7 +273,9 @@ export class Room {
     if (!e) return;
     this.parked.delete(token);
     if (this._respawn) this._respawn.delete(e);
+    const whos = e.boats.map((b) => this._chatBoat(b));
     for (const b of e.boats) this.core.command({ type: 'removeBoat', id: b.id });
+    for (const w of whos) this._chatSystem(`${w.name}'s boat ${w.n} was removed (did not come back)`);
   }
 
   // A returning client (same token): its boats, ownership and binding back.
@@ -289,6 +313,43 @@ export class Room {
   send(client, m) { client.send(JSON.stringify(m)); }
   broadcast(m) { const s = JSON.stringify(m); for (const c of this.clients) c.send(s); }
 
+  // Who a boat is in chat: name, id, boat number (race index), colour.
+  _chatBoat(b) {
+    const players = this.core ? this.core.sim.players : [];
+    const n = players.findIndex((p) => p.spawnId === b.id);
+    const boat = players[n];
+    const color = boat && Number.isFinite(boat.spawnColor) ? boat.spawnColor : Number.isInteger(b.color) ? b.color : n >= 0 ? TRAIL_COLORS[n % TRAIL_COLORS.length] : null;
+    return { name: b.name || (n >= 0 ? 'Boat ' + n : 'boat'), boatId: b.id, n: n >= 0 ? n : null, color };
+  }
+
+  _chatPush(msg) {
+    msg.seq = ++this.chatSeq;
+    msg.tick = this.ticks;
+    msg.at = Date.now();
+    this.chat.push(msg);
+    if (this.chat.length > CHAT_HISTORY) this.chat.splice(0, this.chat.length - CHAT_HISTORY);
+    this.broadcast({ type: 'event', ev: { type: 'chat', msg } });
+    return msg;
+  }
+
+  _chatSystem(text) { if (this.core) this._chatPush({ sys: true, text }); }
+
+  _chat(client, text) {
+    if (!this.core) return { error: 'no room' };
+    if (typeof text !== 'string') return { error: 'empty message' };
+    // eslint-disable-next-line no-control-regex
+    const t = text.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, CHAT_MAX_LEN).trim();
+    if (!t) return { error: 'empty message' };
+    const now = this.now();
+    const times = (this.chatTimes.get(client) || []).filter((x) => now - x < CHAT_RATE_MS);
+    if (times.length >= CHAT_RATE_N) { this.chatTimes.set(client, times); return { error: 'slow down: at most ' + CHAT_RATE_N + ' messages per ' + CHAT_RATE_MS / 1000 + ' s' }; }
+    times.push(now);
+    this.chatTimes.set(client, times);
+    const own = (this.owned.get(client) || [])[0];
+    const from = own ? this._chatBoat(own) : { name: 'spectator', boatId: null, n: null, color: null };
+    return { ok: true, seq: this._chatPush({ from, text: t }).seq };
+  }
+
   _ownList(client) { return (this.owned.get(client) || []).map((b) => ({ id: b.id, name: b.name, color: b.color })); }
   _bindings(client) {
     if (this.lockstep) { const own = (this.owned.get(client) || []).length; return own > 0 ? Math.min(own, 2) : this.core.sim.players.length; }
@@ -302,9 +363,10 @@ export class Room {
         this.tokens.set(client, m.token);
         this._reclaim(client, m.token);
       }
-      this.send(client, { type: 'welcome', info: this.info(), room: this.core.roomState(), own: this._ownList(client), bindings: this._bindings(client) });
+      this.send(client, { type: 'welcome', info: this.info(), room: this.core.roomState(), own: this._ownList(client), bindings: this._bindings(client), chat: this.chat });
       return;
     }
+    if (m.type === 'chat') { this.send(client, { type: 'result', id: m.id, r: this._chat(client, m.text) }); return; }
     if (m.type === 'field') { this._setField(client, m); return; }
     if (m.type === 'flow') { if (m.on) this.flowSubs.add(client); else this.flowSubs.delete(client); return; }
     if (m.type === 'perf') { if (m.on) this.perfSubs.add(client); else this.perfSubs.delete(client); return; }
@@ -337,14 +399,17 @@ export class Room {
       const color = Number.isInteger(c.color) && c.color >= 0 && c.color <= 0xffffff ? c.color : undefined;
       const r = this._spawn(client, { name, color });
       this._sendOwn(client);
+      if (r && r.id) { const who = this._chatBoat({ id: r.id, name: r.name, color }); this._chatSystem(`${who.name} joined (boat ${who.n})`); }
       return r;
     }
     if (c.type === 'removeBoat') {
       const list = this.owned.get(client) || [];
       const i = list.findIndex((b) => b.id === c.id);
+      const who = i >= 0 ? this._chatBoat(list[i]) : null;
       const r = i >= 0 && this.core.command({ type: 'removeBoat', id: c.id });
       if (i >= 0) list.splice(i, 1);
       this._sendOwn(client);
+      if (r && who) this._chatSystem(`${who.name} left (boat ${who.n})`);
       return !!r;
     }
     if (BOAT_ACTIONS[c.type]) {

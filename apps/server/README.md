@@ -34,7 +34,7 @@ Params equal to the build default are removed from the URL. If the server can't 
 
 ## Protocol
 
-`src/host-protocol.js` is shared with the worker. It uses JSON text messages: `init` → `welcome`, `command`/`query` → `result` (`{ error }` when the server refuses a command), `event`, `frame`, `statics`, `input` (held keys only, sent when they change), `tick` in lockstep, and the per-client subscriptions `field` (`{ on, plotType, contrastExp }`: whether this client shows the field and which plot), `flow` (`{ on }`: flow tracer grids) and `perf` (`{ on }`: perf counters). Field data is a `{ type: 'field', ... }` JSON text message, a keyframe or a delta (format in `src/field-codec.js`; the grids are those of `encodeFieldGrids` in `src/fieldPainter.js`). Every server message is text; flow grids and perf counters arrive as `{ type: 'flow', flow }` / `{ type: 'perf', perf }` just before the frame they belong to, to subscribers only.
+`src/host-protocol.js` is shared with the worker. It uses JSON text messages: `init` → `welcome`, `command`/`query` → `result` (`{ error }` when the server refuses a command), `event`, `frame`, `statics`, `input` (held keys only, sent when they change), `tick` in lockstep, `chat` (`{ type: 'chat', id, text }` → `result` `{ ok, seq }` or `{ error }`; see Chat below), and the per-client subscriptions `field` (`{ on, plotType, contrastExp }`: whether this client shows the field and which plot), `flow` (`{ on }`: flow tracer grids) and `perf` (`{ on }`: perf counters). Field data is a `{ type: 'field', ... }` JSON text message, a keyframe or a delta (format in `src/field-codec.js`; the grids are those of `encodeFieldGrids` in `src/fieldPainter.js`). Every server message is text; flow grids and perf counters arrive as `{ type: 'flow', flow }` / `{ type: 'perf', perf }` just before the frame they belong to, to subscribers only.
 
 ## Field streaming
 
@@ -122,3 +122,10 @@ Client-built HUD and pair overlays (frame bytes per tick, lockstep room, ticks 3
 | scenario 18, four boats | 8 309 | 6 813 | 345 → 251 | 2 012 → 610 |
 
 Telemetry values the readout floors travel floored (whole units or tenths, as integers); everything else in `state.hud` is exact.
+
+## Chat
+
+- **Send:** `{ type: 'chat', id, text }` (`RemoteHost.sendChat(text)`). The server trims it, turns control characters into spaces, cuts it to 200 characters (`CHAT_MAX_LEN`) and refuses an empty one. Each client may send at most 5 messages per 10 s (`CHAT_RATE_N`, `CHAT_RATE_MS`); beyond that it gets `{ error: 'slow down: ...' }`.
+- **Broadcast:** to everyone in the room as `{ type: 'event', ev: { type: 'chat', msg } }`, `msg = { seq, tick, at, text, from: { name, boatId, n, color } }`: the sender's first own boat (its name, id, boat number = race index as on the HUD, colour), or `spectator` with no boat. System lines (`sys: true`, no `from`) say when a boat joins, leaves, disconnects (kept for the grace period) or is removed after it.
+- **History:** the room keeps the last 50 (`CHAT_HISTORY`) and sends them in every `welcome` (`chat`), so a joiner or a reconnecting client sees recent messages.
+- **Client:** `src/chat-panel.js`, a collapsible box at the bottom left (above the touch helm on phones) with an unread count. Text is set with `textContent` only. Typing in it never steers (focused inputs are ignored by the helm keys, and its pointer/touch/key events stay in the panel). Local and worker modes have no chat panel.
