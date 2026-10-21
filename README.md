@@ -58,6 +58,7 @@ Last updated: 2026-10-21
 - [x] Wind-sweep check (3 to 15 m/s on 2f, 400 m map) and harness edge gap, so a boat pinned on the map edge is no longer mistaken for a high-wind stall: [#83](https://github.com/SukuWc/fields/pull/83)
 - [x] Sail wake gain as a room setting (`?sailWakeGain`, default 16, range 0 to 64, live in local, worker and remote modes, no change at the default): [#87](https://github.com/SukuWc/fields/pull/87)
 - [x] True-wind accuracy baseline: scenario 20 full-circle sweep plus `scripts/truewind-accuracy.mjs` measurement (2f baseline about 2.5° RMS direction error, 0.19 m/s RMS speed error; true-wind computation unchanged): [#88](https://github.com/SukuWc/fields/pull/88)
+- [ ] Boat true wind from a 1 m, 20-point ring vector mean instead of a single centre sample (used for boat smoothing, HUD and rules; slightly lower true-wind error in scenario 20) (in progress, [#90](https://github.com/SukuWc/fields/pull/90))
 - [ ] Strategy tuning
 - [ ] Strong-wind speed cap (heel limit): boat speed keeps climbing with wind (about 0.72× wind speed at 15 m/s) because the sail model has no heel or depower limit; real boats level off. Sweep data in [#83](https://github.com/SukuWc/fields/pull/83) (backlog, not started)
 
@@ -68,6 +69,7 @@ Last updated: 2026-10-21
 - [ ] Soft physical collisions (bump and slow)
 - [ ] Server-authoritative collisions
 - [x] Reconnect: boats kept for a 10 s grace period (`--grace-s`) with a countdown for others, auto-reconnect with backoff, connection banner: [#75](https://github.com/SukuWc/fields/pull/75)
+- [x] Room chat panel in remote mode: validated, rate-limited room chat with join/leave system lines and 50-message history: [#89](https://github.com/SukuWc/fields/pull/89)
 
 ### 4. Core race loop
 - [ ] Course: start line, marks, finish, boundary (partial: [#27](https://github.com/SukuWc/fields/pull/27) adds anchored mark buoy physics and scenario 11; [#28](https://github.com/SukuWc/fields/pull/28) adds anticlockwise triangle course progress, mark rounding, and scenario 12; [#31](https://github.com/SukuWc/fields/pull/31) adds gate marks and windward-leeward scenario 13; [#33](https://github.com/SukuWc/fields/pull/33) adds start line, RRS 26 start sequence, and scenario 14; [#38](https://github.com/SukuWc/fields/pull/38) adds the finish line and scenario 16; [#45](https://github.com/SukuWc/fields/pull/45) adds SailGP-style virtual boundaries, boundary room, crossing penalty, and scenario 19; still open: wider course use of the boundary)

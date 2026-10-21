@@ -80,6 +80,8 @@ export class RemoteHost {
     this.fieldResyncs = 0;
     this._fieldHeld = null;
     this.lastField = null;
+    // Recent chat (welcome history, then each 'chat' event).
+    this.chat = [];
     this._oversampling = opts.oversampling || 8;
     this._painter = texture ? new FieldPainter(texture, this._oversampling) : null;
     this._field = { on: false, plotType: 3, contrastExp: 0 };
@@ -188,6 +190,7 @@ export class RemoteHost {
         const again = !!this.info;
         this.room = m.room || null;
         this.own = m.own || [];
+        this.chat = Array.isArray(m.chat) ? m.chat : [];
         this.bindings = m.bindings || 0;
         this.info = m.info;
         this.mode = m.info.mode;
@@ -195,7 +198,7 @@ export class RemoteHost {
         if (again) {
           // A reconnect: the page applies the snapshot as it applies events.
           this.reconnects++;
-          for (const ev of [{ type: 'room', room: this.room }, { type: 'ownBoats', boats: this.own }, { type: 'bindControls', boats: this.bindings }]) {
+          for (const ev of [{ type: 'room', room: this.room }, { type: 'ownBoats', boats: this.own }, { type: 'bindControls', boats: this.bindings }, { type: 'chatHistory', chat: this.chat }]) {
             for (const fn of this._listeners) fn(ev);
           }
         }
@@ -213,6 +216,7 @@ export class RemoteHost {
         if (m.ev.type === 'room') this.room = m.ev.room;
         else if (m.ev.type === 'ownBoats') this.own = m.ev.boats || [];
         else if (m.ev.type === 'bindControls') this.bindings = m.ev.boats || 0;
+        else if (m.ev.type === 'chat' && m.ev.msg) { this.chat.push(m.ev.msg); if (this.chat.length > 50) this.chat.shift(); }
         for (const fn of this._listeners) fn(m.ev);
         break;
       case 'flow': this._nextFlow = m.flow; break;
@@ -317,6 +321,8 @@ export class RemoteHost {
     this._field = next;
     this._send({ type: 'field', ...next });
   }
+  // Chat (apps/server/room.js): resolves to { ok, seq } or { error }.
+  sendChat(text) { return this._call('chat', 'text', String(text)); }
   query(q) { return this._call('query', 'q', q); }
   // Perf counters in this client's frames (frame.perf), or not.
   setPerf(on) { this._perfOn = !!on; this._send({ type: 'perf', on: !!on }); }
