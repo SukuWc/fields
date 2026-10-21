@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-10-20
+Last updated: 2026-10-21
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -20,7 +20,7 @@ Last updated: 2026-10-20
 - [x] Firefox keeps `?devmode=1` (and other URL settings) across reload: [#25](https://github.com/SukuWc/fields/pull/25)
 - [ ] Robust fluid perf test: `performance.now()`, warm-up, median, opt-in ms limit, and a machine-independent cap of about 4500 ghost injections per step (the 12 ms "scenario 0 step stays cheap" check has failed since [#9](https://github.com/SukuWc/fields/pull/9))
 - [ ] Faster coarse-to-fine ghost injection: decompose each coarse cell once, reuse scratch buffers, read populations by index (about 77% of the step after [#9](https://github.com/SukuWc/fields/pull/9), which took scenario 0 from about 4.5 ms to about 18 ms per step) (partial: [#32](https://github.com/SukuWc/fields/pull/32) caches coarse-cell decomposition once per inject pass; still open: reuse scratch buffers, read populations by index)
-- [ ] Fluid steps fit the 16 ms frame budget again (about 36 ms per frame now at 2 steps per frame)
+- [ ] Fluid steps fit the 16 ms frame budget again (about 36 ms per frame now at 2 steps per frame) (partial: [#86](https://github.com/SukuWc/fields/pull/86) brings one-boat ticks to about 10.6 ms on 2f and 6 ms on 4f at the new refinement default)
 - [x] Simulation resolution setting (Default / x2 / x4 coarser) for cheaper fluid steps: [#36](https://github.com/SukuWc/fields/pull/36)
 - [x] Experimental fast-wind grid modes (2 m cell every frame / 1.2×) and 150 m map: [#40](https://github.com/SukuWc/fields/pull/40)
 - [x] Refinement budget: cell updates per root step (curl-threshold controller, `?cellBudget`, 4-boat scenario): [#43](https://github.com/SukuWc/fields/pull/43)
@@ -44,7 +44,7 @@ Last updated: 2026-10-20
 - [x] Default fluid grid `simRes=2f` (2 m root, 1 step per tick, about 15.6 ms field time per tick with one boat vs about 47 ms on 4f), wind clamped to each mode's stable ceiling (15 m/s on 2f), and the `2f34` mode removed: [#77](https://github.com/SukuWc/fields/pull/77)
 - [x] Settings registry: one list of every setting (scope, type, default, validation, room command) read by the settings panel, URL sync and the server: [#79](https://github.com/SukuWc/fields/pull/79)
 - [x] Rule data: sim sends rule codes and boat indices, every client writes the rule text and builds the overlay geometry (sim/client split; about 4.7% fewer bytes per frame in scenario 18): [#82](https://github.com/SukuWc/fields/pull/82)
-- [ ] Configurable boat refinement: max refinement level and boat refine radius (room setting, settings panel, URL), no physics change at defaults (in progress, [#86](https://github.com/SukuWc/fields/pull/86))
+- [x] Configurable boat refinement: max refinement level and boat refine radius (room setting, settings panel, URL), new default of 3 levels with a 3 m finest disk on every mode (about 10.6 ms per tick on 2f and 6 ms on 4f with one boat, vs about 20 and 38 ms with the full stack): [#86](https://github.com/SukuWc/fields/pull/86)
 
 ### 2. Wind and boat feel
 - [x] Fluid sim on, stable from wind 5 through 25 with the sail wake on the fine grid: [#9](https://github.com/SukuWc/fields/pull/9)
