@@ -1,7 +1,7 @@
 import planck from 'planck-js';
 import { World, Circle } from 'planck-js'
 import { meanAngleDeg } from './utils.js';
-import { FluidWind, ConstantWind } from './wind.js';
+import { FluidWind, ConstantWind, ringWindSample } from './wind.js';
 
 let pl = planck, Vec2 = pl.Vec2;
 
@@ -65,6 +65,11 @@ export class Map{
 	// Single wind seam. Returns { speed, direction, vx, vy } from the active provider.
 	get_wind(x, y){
 		return this.wind.getWind(x, y)
+	}
+
+	// Boat true wind: mean vector of a 1 m, 20-point ring (wind.js ringWindSample).
+	get_wind_ring(x, y, r, n){
+		return ringWindSample((px, py) => this.wind.getWind(px, py), x, y, r, n)
 	}
 
 	// Replace the active provider without changing dev mode. setDevMode resets

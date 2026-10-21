@@ -179,3 +179,5 @@ The `plotSelect` dropdown controls what the `DataTexture` displays: density, x-v
 - test/awa-arrow.test.mjs computes each tip direction from the vertices (shared apex minus the midpoint of the wing ends) and checks it against the flow.
 
 - **Scenario 20 / true-wind baseline**: one boat sweeps its TWA target 10°/s (frames are 90 Hz: 90 frames per step) through a full circle on 100 × 200. `scripts/truewind-accuracy.mjs [mode] [outDir]` writes CSV + summary (smoothed boat.wind_direction, raw get_wind at the boat, a 20 m-abeam control, vs the inlet); `scripts/truewind-plot.py outDir` plots it (matplotlib). Measurement only.
+
+- **Boat true wind = 1 m ring mean** (`wind.js ringWindSample`, `Map.get_wind_ring(x, y, r = 1, n = 20)`): boat.js (smoothing → TWA, autopilot, AWA → sail force), sim.js HUD readout and the rules getWind, rules.js tacking / penalty TWA. Mean of the vx / vy vectors, speed and direction from the mean; non-finite samples skipped (null if none); identical samples (ConstantWind) return that sample bit for bit. Field queries (host query, tracers, scene wind) still use get_wind.
