@@ -712,8 +712,13 @@ export const MARK_ROOM_LAYOUT = (() => {
   const fx = Math.sin(hIn);
   const fy = -Math.cos(hIn);
   const aim = { x: gate[0].x + 2.5, y: gate[0].y };
-  const inside = { x: aim.x - fx * 24, y: aim.y - fy * 24 };
-  const outside = { x: inside.x - fy * 3, y: inside.y + fx * 3 };
+  // Boat 0 starts 19 m up the course from the aim point, boat 1 2.8 m to
+  // leeward (24 m / 3 m before #86). At the 3-level / 3 m refinement default
+  // the old start never reached the zone overlapped (the pair stalled head to
+  // wind). From here mark-room is granted on every mode (2f ~100 ticks, 4f
+  // ~87) and the dev-mode contact is still boat 1's under Rule 18.2.
+  const inside = { x: aim.x - fx * 19, y: aim.y - fy * 19 };
+  const outside = { x: inside.x - fy * 2.8, y: inside.y + fx * 2.8 };
   return {
     gate,
     windward: WINDWARD_LEEWARD_LAYOUT.windward,

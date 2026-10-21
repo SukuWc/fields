@@ -122,9 +122,6 @@ let maxGeom = 0, maxRemote = 0, textSame = true, hostSame = true, badgeSame = tr
 // record on the race clock).
 for (const [n, ticks, fin] of [[8, 300], [9, 300], [15, 300], [19, 450], [16, 150, true]]) {
   const core = new SimCore({ mapW: 100, mapH: 200, simRes: '4f' });
-  // Pinned to the pre-#86 full refinement stack: at the 3-level / 3 m default
-  // scenario 15's boats no longer reach the zone overlapped (no mark-room).
-  core.command({ type: 'refine', maxLevel: null, boatRefineRadius: null });
   mute(() => core.command({ type: 'restart', scenario: n }));
   const sim = core.sim;
   let rec = null;
