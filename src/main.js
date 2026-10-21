@@ -17,6 +17,7 @@ import { setInfo, flushInfo } from './info.js';
 import { setupPerfOverlay, isPerfOverlayOn, recordFieldStep, perfOverlayFrame } from './perf-overlay.js';
 import { setupMobileMenu } from './mobile-menu.js';
 import { setupTouchControls } from './touch-controls.js';
+import { setupChat } from './chat-panel.js';
 import { windCeilingMps } from './sim-modes.js';
 
 import { MAP_SIZES, DEFAULT_MAP_SIZE, mapSizeFromQuery, fitMapSize, scenarioFits, cameraLimits } from './map-size.js';
@@ -214,6 +215,7 @@ function startClient() {
     sendPlot();
   }
   setupControls(host, view, getCamera);
+  setupChat(host);
   // Flow tracer inputs (count, life, tail): live, and before installUrlSettings
   // so ?tracers / ?tracerLife / ?tracerTail arrive through these listeners.
   {

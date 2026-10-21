@@ -592,6 +592,22 @@
           margin-top: 16px;
         }
       }
+      /* Chat (remote mode only, src/chat-panel.js). */
+      #chat_panel { position: fixed; left: 8px; bottom: 8px; z-index: 30; max-width: min(360px, calc(100vw - 16px)); font: 13px/1.35 sans-serif; color: #eee; }
+      #chat_toggle { background: rgba(20, 24, 32, 0.85); color: #eee; border: 1px solid #556; border-radius: 6px; padding: 4px 10px; font: inherit; cursor: pointer; }
+      #chat_unread { display: inline-block; min-width: 1.2em; margin-left: 4px; padding: 0 4px; border-radius: 8px; background: #e33; color: #fff; font-size: 11px; text-align: center; }
+      #chat_body { margin-top: 4px; background: rgba(20, 24, 32, 0.85); border: 1px solid #556; border-radius: 6px; padding: 6px; width: min(340px, calc(100vw - 28px)); }
+      #chat_log { max-height: 30vh; overflow-y: auto; overflow-wrap: anywhere; white-space: pre-wrap; margin-bottom: 4px; }
+      .chat-line { padding: 1px 0; }
+      .chat-sys { color: #9ab; font-style: italic; }
+      .chat-who { font-weight: bold; }
+      .chat-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+      #chat_form { display: flex; gap: 4px; }
+      #chat_input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 3px 5px; }
+      #chat_status { color: #f99; font-size: 12px; }
+      @media (max-width: 768px), (pointer: coarse) and (hover: none) {
+        #chat_panel { bottom: auto; top: 8px; left: 8px; }
+      }
     </style>
   
   </head>
@@ -624,6 +640,17 @@
       <button type="button" class="tc-btn tc-tap" data-key="81" aria-label="Penalty turn counter-clockwise">⟲ 360<small>Q</small></button>
       <button type="button" class="tc-btn tc-tap" data-key="69" aria-label="Penalty turn clockwise">360 ⟳<small>E</small></button>
       <button type="button" class="tc-btn tc-tap" data-key="88" aria-label="Depower toggle">Depower<small>X</small></button>
+    </div>
+    <div id="chat_panel" hidden>
+      <button id="chat_toggle" type="button" aria-controls="chat_body" aria-expanded="false">Chat<span id="chat_unread" hidden>0</span></button>
+      <div id="chat_body" hidden>
+        <div id="chat_log" role="log" aria-live="polite"></div>
+        <form id="chat_form" autocomplete="off">
+          <input id="chat_input" type="text" maxlength="200" placeholder="Message the room" enterkeyhint="send" aria-label="Chat message">
+          <button id="chat_send" type="submit">Send</button>
+        </form>
+        <div id="chat_status" aria-live="polite"></div>
+      </div>
     </div>
     <button id="settings_toggle" type="button" aria-controls="settings" aria-expanded="false" aria-label="Settings">☰</button>
     <div id="settings_backdrop" hidden></div>
