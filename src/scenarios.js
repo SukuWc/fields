@@ -22,6 +22,10 @@ export const FLEET4 = [
   [19, -14], [29, -14],
 ];
 
+// Scenario 20 (true-wind sweep): TWA target step per second and start.
+export const TRUEWIND_SWEEP_STEP_DEG = 10;
+export const TRUEWIND_SWEEP_START = { x: -10, y: -40 };
+
 function makeScenario(title, description) {
   return { title, description, frames: [] };
 }
@@ -530,6 +534,40 @@ export function buildScenarios(sim) {
     sim.emit({ type: 'view', follow: true });
     sim.emit({ type: 'view', zoom: 34 });
   };
+
+  // True-wind measurement baseline (scripts/truewind-accuracy.mjs). One boat
+  // in open water on the 100 × 200 map (map-size.js SCENARIO_EXTENT 20) starts
+  // starboard close-hauled on the TWA autopilot. From tick 30 (frame 90),
+  // every 30 ticks (1 s) the target steps TRUEWIND_SWEEP_STEP_DEG = 10° away from the wind:
+  // bear away, run, gybe, reach on port, port close-hauled, head to wind and
+  // tack back. 36 steps = 360° in 36 s (ticks 30-1080), then she holds the
+  // starting TWA. Dev mode: ?scenario_selector=20
+  scenarios[20] = makeScenario(
+    "True-wind sweep: one full circle",
+    "One boat in open water, uniform wind from +Y. She starts on starboard close-hauled on autopilot; then every second the autopilot's true-wind-angle target moves " + TRUEWIND_SWEEP_STEP_DEG + "° further from the wind, so she bears away, runs, gybes, reaches and beats on port, passes head to wind (she may slow almost to a stop there) and tacks back onto starboard: a full circle in " + (360 / TRUEWIND_SWEEP_STEP_DEG) + " s. It is a measurement fixture for the boat's true-wind reading against the free stream (scripts/truewind-accuracy.mjs). Arrows steer, Space toggles the autopilot."
+  );
+  scenarios[20].frames[0] = () => {
+    sim.players.push(new Boat(sim.map, TRUEWIND_SWEEP_START.x, TRUEWIND_SWEEP_START.y, 5 * Math.PI / 4));
+  };
+  scenarios[20].frames[1] = () => {
+    sim.players[0].input_autopilot_enabled_toggle();
+    sim.emit({ type: 'bindControls' });
+    sim.emit({ type: 'view', follow: true });
+    sim.emit({ type: 'view', zoom: 46 });
+  };
+  for (let k = 1; k <= 360 / TRUEWIND_SWEEP_STEP_DEG; k++) {
+    // Scenario frames count the 90 Hz passes (3 per tick): 90 frames = 1 s.
+    scenarios[20].frames[90 * k] = () => {
+      const b = sim.players[0];
+      if (!b || !b.autopilot_enabled) return;
+      // Target is −TWA (boat.js autopilot): away from the wind is a larger |TWA|.
+      if (k === 1) b.sweepSign = Math.sign(b.autopilot_heading_target) || -1;
+      let t = b.autopilot_heading_target + b.sweepSign * TRUEWIND_SWEEP_STEP_DEG;
+      if (t > 180) t -= 360;
+      if (t < -180) t += 360;
+      b.autopilot_heading_target = t;
+    };
+  }
 
   return scenarios;
 }

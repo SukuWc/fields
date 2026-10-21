@@ -64,7 +64,7 @@ export const SETTINGS = [
 
   // Room settings panel.
   // The scenario's existence and fit depend on the room: checks.scenario.
-  { id: 'scenario_selector', scope: 'room', panel: 'room', type: 'int', default: 0, min: 0, coerce: true, check: 'scenario', ui: { min: 0, max: 19 },
+  { id: 'scenario_selector', scope: 'room', panel: 'room', type: 'int', default: 0, min: 0, coerce: true, check: 'scenario', ui: { min: 0, max: 20 },
     command: { type: 'restart', field: 'scenario', required: true }, invalid: (v) => 'no scenario ' + v },
   { id: 'windAngle', scope: 'room', panel: 'room', type: 'number', default: 90, ui: { min: 0, max: 360 },
     command: { type: 'wind', field: 'angle' }, state: 'wind.angle', normalize: (v) => ((v % 360) + 360) % 360, invalid: () => 'bad wind angle' },

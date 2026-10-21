@@ -260,7 +260,7 @@ check('map size default: the registry\'s', MAP_DEFAULT === DEFAULT_MAP_SIZE && s
   });
   check('applySettingDefaults: each control holds the registry default', wrong.length === 0, wrong.map((s) => s.id).join());
   const e = (id) => els.get(id);
-  check('applySettingDefaults: number ranges from the registry (ui hints where they differ)', e('windSpeed').max === '15' && e('windSpeed').min === '0' && e('tracerLife').min === '0.5' && e('contrastSlider').max === '10' && e('cellBudget').min === '1000' && e('cellBudget').max === undefined && e('scenario_selector').max === '19');
+  check('applySettingDefaults: number ranges from the registry (ui hints where they differ)', e('windSpeed').max === '15' && e('windSpeed').min === '0' && e('tracerLife').min === '0.5' && e('contrastSlider').max === '10' && e('cellBudget').min === '1000' && e('cellBudget').max === undefined && e('scenario_selector').max === '20');
   const opt = e('simRes').options.find((o) => o.value === DEFAULT_SIM_RES);
   check('the default simulation resolution option says it is the default', /\(default, /.test(opt.textContent), opt.textContent);
 }
