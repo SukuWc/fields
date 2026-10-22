@@ -9,6 +9,7 @@ import { WorkerHost } from './worker-host.js';
 import { RemoteHost } from './remote-host.js';
 import { hostChoice } from './host-choice.js';
 import { setupOwnBoat } from './own-boat.js';
+import { setupBoatStats } from './boat-stats-panel.js';
 import { View } from './view.js';
 import { installUrlSettings } from './url-settings.js';
 import { roomCommandFor, settingDefault, urlSettingIds, SUBSCRIPTION_IDS } from './settings-registry.js';
@@ -484,7 +485,9 @@ function startClient() {
   // in a server room. Cleared with the scenario.
   let followTarget;
   let ownBoatId = null;
-  setupOwnBoat(host, (ids) => { ownBoatId = ids[0] || null; });
+  // Boat stats panel (#boat_stats): own boat only in a server room.
+  const boatStats = setupBoatStats({ remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
+  setupOwnBoat(host, (ids) => { ownBoatId = ids[0] || null; boatStats.setOwnId(ownBoatId); });
   host.on((ev) => { if (ev.type === 'cleared') followTarget = undefined; });
   host.onFrame((frame) => {
     lastFrame = frame;
@@ -503,6 +506,7 @@ function startClient() {
     if (frame.fieldReady) dataTextureMaterial.needsUpdate = true;
     if (frame.flow) setFlowGrid(frame.flow);
     if (frame.state) updateBoatTrails(frame.state, frame.statics);
+    if (frame.state) boatStats.onFrame(frame.state);
   });
 
   if (remoteDriven) {

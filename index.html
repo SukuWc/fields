@@ -97,6 +97,23 @@
       #budget_controls, #budget_controls_br { display: none; }
       body:has(#perf:checked) #budget_controls { display: inline-block; }
       body:has(#perf:checked) #budget_controls_br { display: inline; }
+      #boat_stats {
+        position: absolute;
+        right: 10px;
+        top: 60px;
+        z-index: 101;
+        max-height: 75vh;
+        overflow-y: auto;
+        padding: 3px 8px;
+        color: #dde;
+        background: rgba(10, 20, 30, 0.75);
+        border-radius: 6px;
+        font: 11px/1.3 monospace;
+      }
+      #boat_stats summary { cursor: pointer; font-weight: bold; }
+      #boat_stats .bs-legend { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 2px 8px; }
+      #boat_stats .bs-chart { display: block; background: rgba(0,0,0,0.25); }
+      #boat_stats .bs-label { margin-top: 2px; }
       #perf_overlay_hud {
         display: none;
         position: absolute;
@@ -630,6 +647,7 @@
     <div id="start_hud" hidden></div>
     <div id="finish_results" hidden></div>
     <pre id="perf_overlay_hud"></pre>
+    <details id="boat_stats"><summary title="Heading, TWA, AWA and boat speed over the last 60 s (your own boat in a server room, every boat locally). Sampled only while open.">Boat stats</summary><div id="boat_stats_body"></div></details>
     <div id="fps"></div>
     <div id="touch_controls" hidden aria-label="Boat 1 touch controls">
       <div class="tc-spectating">Spectating · open ☰ and join with your boat to sail</div>
