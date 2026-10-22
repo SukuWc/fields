@@ -1,7 +1,9 @@
 // Boat stats panel data (src/boat-stats.js): samples from the compact boat
 // state, which boats a client shows, and the rolling buffer (rate, window,
 // boats added / removed by id).
-import { boatSample, boatsToShow, StatsBuffer, wrap180 } from '../src/boat-stats.js';
+import { boatSample, boatsToShow, StatsBuffer, wrap180, seriesRange, polylinePoints, STATS_SERIES } from '../src/boat-stats.js';
+import { BOAT_COLORS, boatColor, boatColorCss, boatColorIndex } from '../src/boat-colors.js';
+import { TRAIL_COLORS } from '../src/boat-trails.js';
 import './dom-stub.mjs';
 let failed = 0;
 const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  ' + detail : ''}`); if (!ok) failed++; };
@@ -32,6 +34,27 @@ check('server room, spectating: none; lockstep without own boat: all', boatsToSh
 	check('a new boat gets its own series', buf.ids().join() === 's2,s3,s9' && buf.series.get('s9').t.length === 1);
 	buf.add(5, boats);
 	check('time going back (restart) clears the buffers', buf.ids().join() === 's1,s2,s3' && buf.series.get('s1').t.length === 1);
+}
+
+// Charts: ranges and SVG polylines.
+{
+	const ser = (k) => STATS_SERIES.find((x) => x.key === k);
+	check('ranges: angles fixed, speed 0..max, VMG ±max', seriesRange(ser('twa'), [[1]]).join() === '-180,180' && seriesRange(ser('bs'), [[1.2], [2.1]]).join() === '0,2.5' && seriesRange(ser('vmg'), [[-1.7, 0.3]]).join() === '-2,2');
+	const pl = polylinePoints([0, 1, 2, 3, 4], [170, 179, -179, NaN, -170], { t1: 4, windowS: 4, lo: -180, hi: 180, w: 40, h: 36, wrap: true });
+	check('polylines break at ±180 wraps and gaps', pl.length === 1 && pl[0] === '0.0,1.0 10.0,0.1', JSON.stringify(pl));
+}
+
+// Boat colours: one palette, by index in the frame's boat list.
+{
+	const want = [0x2f80ff, 0xff3b30, 0x2fd06a, 0xff8c1a, 0xa45cff, 0x2fe0e0, 0xffd02f, 0xff4fd8];
+	check('palette: blue, red, green, orange, purple, cyan, yellow, magenta', BOAT_COLORS.join() === want.join() && TRAIL_COLORS === BOAT_COLORS);
+	check('palette cycles; css form', boatColor(8) === want[0] && boatColor(10) === want[2] && boatColorCss(1) === '#ff3b30');
+	// The host builds state.boats (sim player order); local, worker and remote
+	// clients get the same list (here: the same frame through a JSON round
+	// trip, as the worker / WebSocket deliver it), so the same colours by id.
+	const frame = { boats: [{ id: 's1' }, { id: 'b3' }, { id: 'b7' }], bc: [null, 0x123456, null] };
+	const local = boatColorIndex(frame.boats), remote = boatColorIndex(JSON.parse(JSON.stringify(frame)).boats);
+	check('same boat → same colour in every mode, spawn colour ignored', [...local].every(([id, i]) => remote.get(id) === i) && boatColor(local.get('b3')) === 0xff3b30);
 }
 if (failed) { console.log(`${failed} check(s) failed`); process.exit(1); }
 console.log('all boat-stats checks passed');

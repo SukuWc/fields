@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ghostOutlines, GHOST_AHEAD_S, GHOST_OPACITY, GHOST_MAX_AHEAD_S } from './ghost-boat.js';
+import { boatColor } from './boat-colors.js';
 import { BoatTrails, TRAIL_COLORS, TRAIL_INTERVAL_S, TRAIL_DURATION_S, TRAIL_SIZE_M, colorRgb } from './boat-trails.js';
 import { FlowTracers, tracerCountFor, TRACER_LIFETIME_S, TRACER_TAIL_S, TRACER_SEGMENTS, TRACER_COUNT_LIMIT } from './flow-tracers.js';
 
@@ -44,6 +45,8 @@ const labelGroupPool = [];
 const ORDER_TRACERS = 0.5; // flow tracers: over the field, under the hulls
 const ORDER_TRAILS = 0.6; // boat trail dots: over the tracers, under the hulls
 const ORDER_HULL = 1;
+const ORDER_HULL_FILL = 0.9; // boat colour fill: under the hull outline
+const HULL_FILL_OPACITY = 0.6;
 const ORDER_GUIDE = 2;
 const ORDER_RIBBON = 3;
 const ORDER_ABEAM = 4;
@@ -578,7 +581,7 @@ function renderTracers() {
 // buffer grows (doubling) to fit the live dot count and is drawn up to it.
 let trailPointsCap = 1024;
 const trails = new BoatTrails({ interval: TRAIL_INTERVAL_S, duration: TRAIL_DURATION_S, size: TRAIL_SIZE_M });
-let trailPoints = null, _trailsOn = true, _trailColors = null;
+let trailPoints = null, _trailsOn = true;
 export function setBoatTrailsOn(on) { _trailsOn = !!on; }
 export function setTrailParams(p = {}) { trails.set(p); }
 export function getBoatTrails() { return trails; }
@@ -586,7 +589,6 @@ export function getBoatTrails() { return trails; }
 export function updateBoatTrails(state, statics) {
   if (statics) _ghostHulls = statics.hulls || null;
   if (!state || !state.boats) return;
-  _trailColors = state.bc || null;
   trails.update(state.ts, state.boats, state.ep);
   _ghostBoats = state.boats;
 }
@@ -628,9 +630,47 @@ function renderGhosts() {
   if (typeof window !== 'undefined') window.__ghosts = { drawn: list.length, ids: list.map((g) => g.id), boats: _ghostBoats ? _ghostBoats.length : 0, on: _ghostOn, ahead: _ghostAhead };
 }
 
+// Hull fill (boat-colors.js colour by boat index): the drawn hull outline
+// (statics.hulls by boat id at the frame pose, ghostOutlines at t = 0)
+// as a triangle fan; Box2D hulls are convex. Pooled THREE.Meshes.
+const hullFillPool = [];
+function renderHullFills() {
+  let k = 0;
+  const list = ghostOutlines(_ghostBoats, _ghostHulls, 0);
+  for (const g of list) {
+    const n = g.pts.length / 2 - 1; // last point closes the outline
+    if (n < 3) continue;
+    let mesh = hullFillPool[k];
+    if (!mesh || mesh.geometry.attributes.position.count < (n - 2) * 3) {
+      if (mesh) { scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(Math.max(n - 2, 8) * 9), 3).setUsage(THREE.DynamicDrawUsage));
+      mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, opacity: HULL_FILL_OPACITY, side: THREE.DoubleSide, depthTest: false, depthWrite: false }));
+      mesh.renderOrder = ORDER_HULL_FILL;
+      mesh.frustumCulled = false;
+      scene.add(mesh);
+      hullFillPool[k] = mesh;
+    }
+    const pos = mesh.geometry.attributes.position.array, p = g.pts;
+    let o = 0;
+    for (let q = 1; q < n - 1; q++) {
+      pos[o++] = p[0]; pos[o++] = p[1]; pos[o++] = 0;
+      pos[o++] = p[q * 2]; pos[o++] = p[q * 2 + 1]; pos[o++] = 0;
+      pos[o++] = p[q * 2 + 2]; pos[o++] = p[q * 2 + 3]; pos[o++] = 0;
+    }
+    mesh.geometry.setDrawRange(0, o / 3);
+    mesh.geometry.attributes.position.needsUpdate = true;
+    const rgb = trailColorOf(g.i);
+    mesh.material.color.setRGB(rgb[0], rgb[1], rgb[2]);
+    mesh.visible = true;
+    k++;
+  }
+  for (; k < hullFillPool.length; k++) hullFillPool[k].visible = false;
+  if (typeof window !== 'undefined') window.__hullFills = list.map((g) => ({ id: g.id, i: g.i, color: boatColor(g.i) }));
+}
+
 function trailColorOf(i) {
-  const own = _trailColors && _trailColors[i];
-  return colorRgb(Number.isFinite(own) ? own : TRAIL_COLORS[i % TRAIL_COLORS.length]);
+  return colorRgb(boatColor(i));
 }
 const _trailColorCache = [];
 function trailMaterial() {
@@ -747,6 +787,7 @@ function animation(t) {
   }
 
   renderGhosts();
+  renderHullFills();
 
   for (const [id, line] of fixtureLines) {
     if (!seenFixtures.has(id)) {

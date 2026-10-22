@@ -8,8 +8,7 @@
 // a boat that jumps further than TRAIL_JUMP_M between two frames (respawn,
 // moved by a script) starts a fresh trail.
 //
-// Colour: the boat's own colour if it has one (spawnBoat color, state.bc),
-// else TRAIL_COLORS by boat index. UI / URL: Trail dot every (?trailInterval=s),
+// Colour: boat-colors.js palette by boat index (TRAIL_COLORS is that palette). UI / URL: Trail dot every (?trailInterval=s),
 // kept (?trailDuration=s), dot size (?trailSize=m), Boat trails box (?boat_trails).
 
 export const TRAIL_INTERVAL_S = 1;
@@ -20,7 +19,8 @@ export const TRAIL_MAX_DOTS = 2000;
 export const TRAIL_JUMP_M = 8;
 // Dot opacity: newest TRAIL_ALPHA_NEW, oldest fading to 0.
 export const TRAIL_ALPHA_NEW = 0.9;
-export const TRAIL_COLORS = [0x2f80ff, 0xff6a2f, 0x2fd06a, 0xffd02f, 0xc05cff, 0x2fe0e0, 0xff4fa0, 0xa0a0a0];
+import { BOAT_COLORS } from './boat-colors.js';
+export const TRAIL_COLORS = BOAT_COLORS;
 
 export function colorRgb(c) {
   if (typeof c === 'string') {

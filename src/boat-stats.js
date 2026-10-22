@@ -80,3 +80,37 @@ export class StatsBuffer {
   }
   ids() { return [...this.series.keys()]; }
 }
+
+// Y range of one chart over every shown boat's values: fixed for angles,
+// 0..max for speed, symmetric ±max for VMG (rounded up to 0.5 m/s).
+export function seriesRange(ser, arrays) {
+  if (ser.min !== null && ser.max !== null) return [ser.min, ser.max];
+  let m = 0.5;
+  for (const v of arrays) for (const x of v) if (Number.isFinite(x) && Math.abs(x) > m) m = Math.abs(x);
+  const hi = Math.ceil(m * 2) / 2;
+  return ser.min === null ? [-hi, hi] : [ser.min, hi];
+}
+
+// SVG polyline "points" strings for one boat's series in a w×h chart whose x
+// spans [t1 − windowS, t1]. Gaps (NaN) and ±180° wraps (wrap = true) start a
+// new polyline.
+export function polylinePoints(t, v, { t1, windowS, lo, hi, w, h, wrap = false }) {
+  const out = [];
+  let cur = [], prev = null;
+  const t0 = t1 - windowS;
+  for (let i = 0; i < v.length; i++) {
+    const x = v[i];
+    if (!Number.isFinite(x) || (wrap && prev !== null && Math.abs(x - prev) > 180)) {
+      if (cur.length > 1) out.push(cur.join(' '));
+      cur = [];
+      prev = null;
+      if (!Number.isFinite(x)) continue;
+    }
+    const px = ((t[i] - t0) / windowS) * w;
+    const py = h - ((Math.max(lo, Math.min(hi, x)) - lo) / (hi - lo)) * h;
+    cur.push(px.toFixed(1) + ',' + py.toFixed(1));
+    prev = x;
+  }
+  if (cur.length > 1) out.push(cur.join(' '));
+  return out;
+}
