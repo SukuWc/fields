@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-10-21
+Last updated: 2026-10-22
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -112,6 +112,7 @@ Last updated: 2026-10-21
 - [x] Boat trails: fading dot per boat every 1 s of sim time in the boat's colour, live interval/duration/size settings (`?boat_trails`, `?trailInterval`, `?trailDuration`, `?trailSize`, visual only): [#71](https://github.com/SukuWc/fields/pull/71)
 - [x] Ghost boat: predicted hull outline 2 s ahead on a constant turn-rate arc, off by default (`?ghost`, `?ghostAhead`, visual only): [#74](https://github.com/SukuWc/fields/pull/74)
 - [x] Ghost boat follow-up: ghost hulls matched by boat id, hull shapes sent once in `statics.hulls`, per-boat frame data trimmed to id and rounded velocities (works in local, worker and remote hosts): [#81](https://github.com/SukuWc/fields/pull/81)
+- [ ] Boat stats panel: collapsible 60 s rolling charts of heading, TWA, AWA, boat speed and VMG per boat, sampled at 4 Hz only while open, nothing added to the frame (in progress, [#91](https://github.com/SukuWc/fields/pull/91))
 
 ### Other
 - [x] SailZone logo: [#14](https://github.com/SukuWc/fields/pull/14)
