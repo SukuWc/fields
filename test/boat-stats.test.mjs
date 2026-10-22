@@ -1,7 +1,7 @@
 // Boat stats panel data (src/boat-stats.js): samples from the compact boat
 // state, which boats a client shows, and the rolling buffer (rate, window,
 // boats added / removed by id).
-import { boatSample, boatsToShow, StatsBuffer, wrap180, seriesRange, polylinePoints, STATS_SERIES } from '../src/boat-stats.js';
+import { boatSample, boatsToShow, StatsBuffer, wrap180, seriesRange, polylinePoints, STATS_SERIES, formatStatValue, latestValues } from '../src/boat-stats.js';
 import { BOAT_COLORS, boatColor, boatColorCss, boatColorIndex } from '../src/boat-colors.js';
 import { TRAIL_COLORS } from '../src/boat-trails.js';
 import './dom-stub.mjs';
@@ -56,5 +56,21 @@ check('server room, spectating: none; lockstep without own boat: all', boatsToSh
 	const local = boatColorIndex(frame.boats), remote = boatColorIndex(JSON.parse(JSON.stringify(frame)).boats);
 	check('same boat → same colour in every mode, spawn colour ignored', [...local].every(([id, i]) => remote.get(id) === i) && boatColor(local.get('b3')) === 0xff3b30);
 }
+// numeric readout
+{
+  const byKey = Object.fromEntries(STATS_SERIES.map((s) => [s.key, s]));
+  check('format angle', formatStatValue(byKey.twa, -42.6) === '-43°');
+  check('format speed m/s', formatStatValue(byKey.bs, 1.234) === '1.23 m/s');
+  check('format vmg m/s', formatStatValue(byKey.vmg, -0.5) === '-0.50 m/s');
+  check('format missing', formatStatValue(byKey.bs, NaN) === '–');
+  const buf = new StatsBuffer();
+  buf.add(0, [b0, { ...b0, id: 's2', vx: 0, vy: 0 }]);
+  buf.add(1, [b0, { ...b0, id: 's2', vx: 3, vy: 4 }]);
+  const lv = latestValues(buf, 'bs');
+  check('latest per boat in id order', lv.length === 2 && lv[0].id === 's1' && lv[1].id === 's2');
+  check('latest is newest sample', near(lv[1].v, 5) && near(lv[0].v, 2.5), JSON.stringify(lv));
+  check('latest unknown id is NaN', Number.isNaN(latestValues(buf, 'bs', ['zz'])[0].v));
+}
+
 if (failed) { console.log(`${failed} check(s) failed`); process.exit(1); }
 console.log('all boat-stats checks passed');

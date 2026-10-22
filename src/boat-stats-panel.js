@@ -5,7 +5,7 @@
 // (boat-colors.js, by index in state.boats) with a Boat <id> legend.
 // Closed: no sampling, no drawing, buffers cleared. Remote room: only this
 // client's own boat; local / worker: every boat.
-import { StatsBuffer, STATS_SERIES, boatsToShow, seriesRange, polylinePoints } from './boat-stats.js';
+import { StatsBuffer, STATS_SERIES, boatsToShow, seriesRange, polylinePoints, formatStatValue, latestValues } from './boat-stats.js';
 import { boatColorCss, boatColorIndex } from './boat-colors.js';
 
 const W = 260, H = 54;
@@ -29,6 +29,8 @@ export function setupBoatStats({ remote = false, lockstep = () => false } = {}) 
     for (const ser of STATS_SERIES) {
       const lab = document.createElement('div');
       lab.className = 'bs-label';
+      const vals = document.createElement('div');
+      vals.className = 'bs-values';
       const svg = document.createElementNS(SVG, 'svg');
       svg.setAttribute('width', W); svg.setAttribute('height', H);
       svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
@@ -39,8 +41,8 @@ export function setupBoatStats({ remote = false, lockstep = () => false } = {}) 
       const lines = document.createElementNS(SVG, 'g');
       lines.setAttribute('fill', 'none'); lines.setAttribute('stroke-width', '1.4');
       svg.append(zero, lines);
-      body.append(lab, svg);
-      charts[ser.key] = { lab, zero, lines };
+      body.append(lab, vals, svg);
+      charts[ser.key] = { lab, vals, zero, lines };
     }
   };
   root.addEventListener('toggle', () => {
@@ -64,14 +66,20 @@ export function setupBoatStats({ remote = false, lockstep = () => false } = {}) 
     }
     const t1 = Math.max(...ids.map((id) => { const t = buf.series.get(id).t; return t[t.length - 1]; }), 0);
     for (const ser of STATS_SERIES) {
-      const { lab, zero, lines } = charts[ser.key];
+      const { lab, vals, zero, lines } = charts[ser.key];
       const rows = ids.map((id) => buf.series.get(id));
       const [lo, hi] = seriesRange(ser, rows.map((r) => r[ser.key]));
       const zy = H - ((Math.max(lo, Math.min(hi, 0)) - lo) / (hi - lo)) * H;
       zero.setAttribute('y1', zy); zero.setAttribute('y2', zy);
-      const dec = ser.unit === 'm/s' ? 2 : 0;
-      const last = rows.length === 1 ? rows[0][ser.key][rows[0][ser.key].length - 1] : NaN;
-      lab.textContent = rows.length === 1 && Number.isFinite(last) ? `${ser.label}: ${last.toFixed(dec)} ${ser.unit}` : `${ser.label} (${ser.unit})`;
+      lab.textContent = `${ser.label} (${ser.unit})`;
+      vals.textContent = '';
+      for (const { id, v } of latestValues(buf, ser.key, ids)) {
+        const it = document.createElement('span');
+        it.className = 'bs-val';
+        it.style.color = colorOf(id);
+        it.textContent = `Boat ${id}: ${formatStatValue(ser, v)}`;
+        vals.appendChild(it);
+      }
       lines.textContent = '';
       ids.forEach((id, k) => {
         const r = rows[k];

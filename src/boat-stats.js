@@ -114,3 +114,17 @@ export function polylinePoints(t, v, { t1, windowS, lo, hi, w, h, wrap = false }
   if (cur.length > 1) out.push(cur.join(' '));
   return out;
 }
+
+// Text readout of one value: angles as whole degrees, speeds to 0.01 m/s.
+export function formatStatValue(ser, v) {
+  if (!Number.isFinite(v)) return '–';
+  return ser.unit === 'm/s' ? `${v.toFixed(2)} m/s` : `${Math.round(v)}°`;
+}
+
+// Latest value per boat for one series key: [{ id, v }] in the given id order.
+export function latestValues(buf, key, ids = buf.ids()) {
+  return ids.map((id) => {
+    const a = buf.series.get(id)?.[key];
+    return { id, v: a && a.length ? a[a.length - 1] : NaN };
+  });
+}
