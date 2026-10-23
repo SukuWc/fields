@@ -1,0 +1,11 @@
+.git
+node_modules
+dist
+dist-app
+dist-server
+research
+brand-kit
+*.log
+.DS_Store
+Dockerfile
+.dockerignore
