@@ -143,7 +143,7 @@ export const FIELD_TOL = 1;
 export const FIELD_KEY_S = 10;
 
 export class Room {
-  constructor(name, { lockstep = false, fieldHz = FIELD_HZ, fieldTol = FIELD_TOL, now = () => performance.now(), graceMs = GRACE_MS } = {}) {
+  constructor(name, { lockstep = false, persistent = false, fieldHz = FIELD_HZ, fieldTol = FIELD_TOL, now = () => performance.now(), graceMs = GRACE_MS } = {}) {
     this.name = name;
     this.graceMs = graceMs;
     // Per client: its token (init). Per absent token: { boats, timer, until }.
@@ -153,6 +153,9 @@ export class Room {
     // Called once the room is empty for good (index.js drops it).
     this.onDispose = null;
     this.lockstep = lockstep;
+    // A persistent room (index.js fixed rooms) is never dropped: when the last
+    // client leaves its clock pauses and the sim keeps its state.
+    this.persistent = persistent;
     this.fieldHz = fieldHz;
     this.fieldTol = fieldTol;
     // Per plot stream (key plotType|contrastExp): { seq, shown (the grids
@@ -260,9 +263,10 @@ export class Room {
     this.perfSubs.delete(client);
     this.staticsSent.delete(client);
     if (this.clients.size === 0) {
-      // Paused while empty (no CPU), kept for graceMs, then dropped.
+      // Paused while empty (no CPU), kept for graceMs, then dropped
+      // (a persistent room is only paused).
       this.stop();
-      if (this.graceMs > 0 && this.core) this._emptyTimer = setTimeout(() => this._dispose(), this.graceMs);
+      if (this.persistent) { /* kept */ } else if (this.graceMs > 0 && this.core) this._emptyTimer = setTimeout(() => this._dispose(), this.graceMs);
       else this._dispose();
     }
   }
@@ -303,7 +307,7 @@ export class Room {
   _dispose() {
     if (this._emptyTimer) clearTimeout(this._emptyTimer);
     this._emptyTimer = null;
-    if (this.clients.size > 0) return;
+    if (this.clients.size > 0 || this.persistent) return;
     for (const e of this.parked.values()) clearTimeout(e.timer);
     this.parked.clear();
     this.stop();

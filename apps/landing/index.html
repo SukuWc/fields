@@ -1,0 +1,60 @@
+<!doctype html>
+<!-- SailZone landing page (served at / by apps/server with npm run build:app).
+     Lists the server's rooms from /api/rooms every 5 s; Join opens the game
+     at /play/?room=<id>, which connects to this origin's WebSocket.
+     ?api=https://host points it at another server (CORS is open). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SailZone</title>
+<link rel="icon" href="sailzone-icon.svg" type="image/svg+xml">
+<style>
+  body { margin: 0; font: 16px/1.4 system-ui, sans-serif; background: #f4f7fb; color: #12233a; display: flex; justify-content: center; }
+  main { width: min(420px, 92vw); padding: 32px 0; text-align: center; }
+  main > img { width: 220px; max-width: 70%; }
+  h1 { font-size: 1.6em; margin: 8px 0 24px; }
+  ul { list-style: none; padding: 0; margin: 0; text-align: left; }
+  li { display: flex; align-items: center; gap: 12px; background: #fff; border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; box-shadow: 0 1px 4px #0002; }
+  li .name { font-weight: 600; flex: 1; }
+  li .count { color: #567; }
+  a.join { background: #1565c0; color: #fff; text-decoration: none; padding: 8px 14px; border-radius: 6px; font-weight: 600; }
+  #msg { color: #a33; min-height: 1.4em; }
+</style>
+</head>
+<body>
+<main>
+  <img src="sailzone-logo.svg" alt="">
+  <h1>SailZone</h1>
+  <ul id="rooms"></ul>
+  <p id="msg">Loading rooms…</p>
+</main>
+<script>
+  const api = (new URLSearchParams(location.search).get('api') || '').replace(/\/$/, '');
+  const list = document.getElementById('rooms');
+  const msg = document.getElementById('msg');
+  async function refresh() {
+    try {
+      const r = await fetch(api + '/api/rooms', { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const rooms = await r.json();
+      list.replaceChildren(...rooms.map((room) => {
+        const li = document.createElement('li');
+        const name = document.createElement('span'); name.className = 'name'; name.textContent = room.id;
+        const count = document.createElement('span'); count.className = 'count';
+        count.textContent = room.players + (room.players === 1 ? ' player' : ' players');
+        const join = document.createElement('a'); join.className = 'join'; join.textContent = 'Join room';
+        join.href = api + '/play/?room=' + encodeURIComponent(room.id);
+        li.append(name, count, join);
+        return li;
+      }));
+      msg.textContent = rooms.length ? '' : 'No rooms.';
+    } catch (e) {
+      msg.textContent = 'Server unreachable (' + e.message + ').';
+    }
+  }
+  refresh();
+  setInterval(refresh, 5000);
+</script>
+</body>
+</html>

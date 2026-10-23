@@ -66,5 +66,9 @@ check('host choice: ?host=remote&server=', hc('?host=remote&server=ws://h:9/?roo
 check('host choice: build default remote (VITE_SIM_HOST) drops a redundant host param', hc('?host=remote', { envHost: 'remote', envServer: 'wss://s' }) === 'remote wss://s drop:host');
 check('host choice: ?host=local on a remote build', hc('?host=local', { envHost: 'remote' }) === 'local');
 check('host choice: server param equal to the default is dropped', hc('?host=remote&server=ws://localhost:8787') === 'remote ws://localhost:8787 drop:server');
+const so = { envHost: 'remote', envServer: 'same-origin' };
+check('host choice: same-origin build on https -> wss to the page host, default room', hc('', { ...so, loc: { protocol: 'https:', host: 'sailzone.app' } }) === 'remote wss://sailzone.app/ws?room=europe-1');
+check('host choice: same-origin build on http with ?room=', hc('?room=a%20b', { ...so, loc: { protocol: 'http:', host: 'h:9' } }) === 'remote ws://h:9/ws?room=a%20b');
+check('host choice: same-origin build still honours ?host=worker', hc('?host=worker', so) === 'worker');
 if (failed) { console.log(failed + ' FAILED'); process.exit(1); }
 console.log('all worker checks passed');

@@ -82,7 +82,7 @@ const _hostOpts = {
 };
 const _env = import.meta.env || {};
 const _hostChoice = hostChoice(location.search, {
-  hasWorker: typeof Worker === 'function', envHost: _env.VITE_SIM_HOST, envServer: _env.VITE_SIM_SERVER_URL,
+  hasWorker: typeof Worker === 'function', envHost: _env.VITE_SIM_HOST, envServer: _env.VITE_SIM_SERVER_URL, loc: location,
 });
 // Only non-default values stay in the URL.
 if (_hostChoice.drop.length) {
