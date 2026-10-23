@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-10-22
+Last updated: 2026-10-23
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -70,6 +70,7 @@ Last updated: 2026-10-22
 - [ ] Server-authoritative collisions
 - [x] Reconnect: boats kept for a 10 s grace period (`--grace-s`) with a countdown for others, auto-reconnect with backoff, connection banner: [#75](https://github.com/SukuWc/fields/pull/75)
 - [x] Room chat panel in remote mode: validated, rate-limited room chat with join/leave system lines and 50-message history: [#89](https://github.com/SukuWc/fields/pull/89)
+- [ ] Landing page with live room list and a persistent `europe-1` room, served from one port for sailzone.app (in progress, [#93](https://github.com/SukuWc/fields/pull/93))
 
 ### 4. Core race loop
 - [ ] Course: start line, marks, finish, boundary (partial: [#27](https://github.com/SukuWc/fields/pull/27) adds anchored mark buoy physics and scenario 11; [#28](https://github.com/SukuWc/fields/pull/28) adds anticlockwise triangle course progress, mark rounding, and scenario 12; [#31](https://github.com/SukuWc/fields/pull/31) adds gate marks and windward-leeward scenario 13; [#33](https://github.com/SukuWc/fields/pull/33) adds start line, RRS 26 start sequence, and scenario 14; [#38](https://github.com/SukuWc/fields/pull/38) adds the finish line and scenario 16; [#45](https://github.com/SukuWc/fields/pull/45) adds SailGP-style virtual boundaries, boundary room, crossing penalty, and scenario 19; still open: wider course use of the boundary)
