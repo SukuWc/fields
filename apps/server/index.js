@@ -134,5 +134,17 @@ if (isMain) {
     fixedRooms: arg('open-rooms', false) ? [] : String(arg('rooms', process.env.ROOMS || 'europe-1')).split(',').map((s) => s.trim()).filter(Boolean),
     staticDir: arg('static', process.env.STATIC_DIR || (fs.existsSync('dist-app') ? 'dist-app' : null)),
   });
+  // Docker/Coolify stop sends SIGTERM: close sockets and the HTTP server,
+  // then exit (forced after 5 s).
+  let stopping = false;
+  for (const sig of ['SIGTERM', 'SIGINT']) {
+    process.on(sig, () => {
+      if (stopping) return;
+      stopping = true;
+      console.info(`${sig}: shutting down`);
+      setTimeout(() => process.exit(0), 5000).unref();
+      s.close().then(() => process.exit(0));
+    });
+  }
   console.info(`sim server listening on ws://localhost:${s.port}${arg('lockstep', false) ? ' (lockstep)' : ''}`);
 }
