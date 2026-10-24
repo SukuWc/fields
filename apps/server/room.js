@@ -99,6 +99,9 @@ export const CHAT_RATE_MS = 10000;
 // paused) for graceMs too, so a reload or a short drop of the last client
 // finds it as it was; then it is dropped (onDispose).
 export const GRACE_MS = 10000;
+// Skip frame/field when a client's ws outbound buffer exceeds this
+// (~a few frames / one keyframe). Cleared fieldHave → next field is a keyframe.
+export const SEND_BUF_MAX = 256 * 1024;
 export const TOKEN_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
 export const MAX_BOATS_PER_CLIENT = 1;
@@ -186,6 +189,7 @@ export class Room {
     this._restarting = false;
     this.ticks = 0;
     this.broadcasts = 0;
+    this.sendSkips = 0;
     // Statics version last sent to each client; bytes of frame and statics
     // messages sent (all clients).
     this.staticsSent = new Map();
@@ -603,14 +607,24 @@ export class Room {
     return { frame, fields, statics, flow, perf };
   }
 
-  // Every client in the room gets every frame; the server never waits on a
-  // client (ws buffers per socket). The field message goes first so a
-  // client drawing on the frame message already has the new texture, and
-  // so does a statics message a client has not had yet.
+  // Prefer every client getting every frame, but skip a client whose outbound
+  // WebSocket buffer is full (slow reader): further sends would only grow a
+  // historical backlog. Clearing fieldHave makes the next field a keyframe.
+  // Field goes first so a client drawing on the frame already has the texture.
+  _sendOk(client) {
+    return (client.bufferedAmount || 0) <= SEND_BUF_MAX;
+  }
+
+  _skipClient(client) {
+    this.fieldHave.delete(client);
+    this.sendSkips = (this.sendSkips || 0) + 1;
+  }
+
   _publish({ frame, fields, statics, flow, perf }) {
     for (const f of fields || []) {
       for (const c of f.clients) {
         if (!this.clients.has(c)) continue;
+        if (!this._sendOk(c)) { this._skipClient(c); continue; }
         c.send(f.msg);
         this.fieldBytesSent += f.msg.length;
       }
@@ -619,6 +633,7 @@ export class Room {
       let msg = null;
       for (const c of this.clients) {
         if (this.staticsSent.get(c) === statics.sv) continue;
+        if (!this._sendOk(c)) { this._skipClient(c); continue; }
         msg = msg || roundJson({ type: 'statics', sv: statics.sv, statics: statics.statics });
         c.send(msg);
         this.staticsSent.set(c, statics.sv);
@@ -626,12 +641,31 @@ export class Room {
       }
     }
     // Flow grid and perf counters: before the frame they belong to.
-    if (flow) { const m = roundJson({ type: 'flow', flow }); for (const c of this.flowSubs) if (this.clients.has(c)) c.send(m); }
-    if (perf) { const m = JSON.stringify({ type: 'perf', perf }); for (const c of this.perfSubs) if (this.clients.has(c)) c.send(m); }
+    if (flow) {
+      const m = roundJson({ type: 'flow', flow });
+      for (const c of this.flowSubs) {
+        if (!this.clients.has(c)) continue;
+        if (!this._sendOk(c)) { this._skipClient(c); continue; }
+        c.send(m);
+      }
+    }
+    if (perf) {
+      const m = JSON.stringify({ type: 'perf', perf });
+      for (const c of this.perfSubs) {
+        if (!this.clients.has(c)) continue;
+        if (!this._sendOk(c)) { this._skipClient(c); continue; }
+        c.send(m);
+      }
+    }
     const s = roundJson({ type: 'frame', frame });
-    for (const c of this.clients) c.send(s);
+    let sent = 0;
+    for (const c of this.clients) {
+      if (!this._sendOk(c)) { this._skipClient(c); continue; }
+      c.send(s);
+      sent++;
+    }
     this.lastFrameBytes = s.length;
-    this.frameBytesSent += s.length * this.clients.size;
+    this.frameBytesSent += s.length * sent;
     this.broadcasts++;
   }
 
