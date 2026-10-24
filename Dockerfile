@@ -6,6 +6,9 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY . .
+# Coolify / CI can pass the deploy SHA (image has no .git).
+ARG GIT_COMMIT=dev
+ENV GIT_COMMIT=$GIT_COMMIT
 RUN npm run build:app && npm run build:server
 
 # Runtime: the bundle needs no node_modules.

@@ -13,6 +13,7 @@
 // HTTP on the same port:
 //   GET /api/rooms   [{ id, players }]  players = connected clients (CORS *)
 //   GET /api/status  rooms, clients, tick cost
+//   GET /api/version { commit }  short SHA baked into dist-app/version.json
 //   GET /healthz     { ok: true }
 //   anything else    files from staticDir (npm run build:app: landing at /,
 //                    game at /play/); without staticDir, / is the status.
@@ -42,6 +43,20 @@ function staticFile(root, urlPath) {
   } catch { return null; }
 }
 
+function loadVersion(staticDir) {
+  if (staticDir) {
+    try {
+      const v = JSON.parse(fs.readFileSync(path.join(path.resolve(staticDir), 'version.json'), 'utf8'));
+      if (v && typeof v.commit === 'string' && v.commit) return v.commit;
+    } catch { /* no version.json */ }
+  }
+  for (const key of ['GIT_COMMIT', 'SOURCE_COMMIT', 'COMMIT_SHA']) {
+    const raw = (process.env[key] || '').trim();
+    if (raw) return raw.replace(/^[^0-9a-f]*/i, '').slice(0, 7) || raw.slice(0, 7);
+  }
+  return 'dev';
+}
+
 export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, fieldHz = FIELD_HZ, fieldTol = FIELD_TOL, graceMs = GRACE_MS, fixedRooms = [], staticDir = null } = {}) {
   const rooms = new Map();
   for (const name of fixedRooms) {
@@ -51,6 +66,7 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
     rooms.set(name, room);
   }
   const root = staticDir ? path.resolve(staticDir) : null;
+  const commit = loadVersion(staticDir);
   const json = (res, code, body) => {
     res.writeHead(code, { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'cache-control': 'no-store' });
     res.end(JSON.stringify(body));
@@ -70,6 +86,7 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
     // reconnect grace period do not count.
     if (url.pathname === '/api/rooms') return json(res, 200, [...rooms.values()].map((r) => ({ id: r.name, players: r.clients.size })));
     if (url.pathname === '/api/status') return json(res, 200, status());
+    if (url.pathname === '/api/version') return json(res, 200, { commit });
     if (url.pathname === '/healthz') return json(res, 200, { ok: true });
     if (!root) return json(res, url.pathname === '/' ? 200 : 404, url.pathname === '/' ? status() : { error: 'not found' });
     const file = staticFile(root, url.pathname);
@@ -107,7 +124,7 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
   });
   return new Promise((resolve) => {
     server.listen(port, host, () => resolve({
-      port: server.address().port, rooms,
+      port: server.address().port, rooms, commit,
       close: () => new Promise((r) => { for (const c of wss.clients) c.terminate(); for (const room of rooms.values()) { room.graceMs = 0; room.persistent = false; room._dispose(); room.stop(); } wss.close(); server.close(() => r()); }),
     }));
   });

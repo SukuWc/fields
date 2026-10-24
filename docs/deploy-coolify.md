@@ -70,7 +70,18 @@ Start the first deployment, then check:
     curl -s https://sailzone.app/healthz      # {"ok":true}
     curl -s https://sailzone.app/api/rooms    # [{"id":"europe-1","players":0}]
 
-Open https://sailzone.app/ and click **Join room**.
+Open https://sailzone.app/ and click **Join room**. The landing footer shows
+`build <short SHA>`; `curl -s https://sailzone.app/api/version` returns
+`{"commit":"..."}` (same value, baked at image build time).
+
+For Dockerfile builds, pass the commit as a build argument so the image does
+not need a `.git` directory:
+
+    GIT_COMMIT=<full or short sha>
+
+Coolify often exposes the deployed commit for build args; set `GIT_COMMIT` to
+that value if your build does not run in a git checkout. Locally,
+`npm run build:app` uses `git rev-parse --short HEAD` (or `dev` as a fallback).
 
 ## Notes
 

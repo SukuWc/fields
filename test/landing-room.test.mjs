@@ -22,6 +22,7 @@ fs.writeFileSync(path.join(dir, 'index.html'), '<h1>landing</h1>');
 fs.mkdirSync(path.join(dir, 'play'));
 fs.writeFileSync(path.join(dir, 'play', 'index.html'), '<h1>game</h1>');
 fs.writeFileSync(path.join(dir, 'logo.svg'), '<svg/>');
+fs.writeFileSync(path.join(dir, 'version.json'), JSON.stringify({ commit: 'abc1234' }) + '\n');
 fs.writeFileSync(path.join(os.tmpdir(), 'sz-secret.txt'), 'secret');
 
 const srv = await startServer({ port: 0, fixedRooms: ['europe-1'], staticDir: dir, graceMs: 50 });
@@ -77,6 +78,8 @@ g = await get('/nope.js');
 check('static: missing file 404', g.s === 404);
 g = await get('/healthz');
 check('/healthz ok', g.s === 200 && JSON.parse(g.b).ok === true);
+g = await get('/api/version');
+check('/api/version from version.json', g.s === 200 && JSON.parse(g.b).commit === 'abc1234');
 g = await get('/api/status');
 check('/api/status lists the room', g.s === 200 && JSON.parse(g.b).rooms[0].name === 'europe-1');
 const o = await fetch(base + '/api/rooms', { method: 'OPTIONS' });
