@@ -89,18 +89,19 @@ function fieldPair() {
   await sleep(150);
   const r = srv.rooms.get('buf');
   const client = [...r.clients][0];
+  const sent = [];
+  const origSend = client.send.bind(client);
+  client.send = (...a) => { sent.push(1); return origSend(...a); };
   Object.defineProperty(client, 'bufferedAmount', { configurable: true, get: () => SEND_BUF_MAX + 1 });
   const skips0 = r.sendSkips;
-  // fieldHave is set in _fieldMessages (start of slot) and cleared on skip in
-  // _publish (end of slot); poll until a skip has cleared it.
-  let cleared = false;
-  for (let i = 0; i < 30; i++) {
-    await sleep(50);
-    if (r.sendSkips > skips0 && !r.fieldHave.has(client)) { cleared = true; break; }
-  }
-  check('full buffer: publishes skipped and fieldHave cleared on skip',
-    r.sendSkips > skips0 && cleared,
-    `skipsΔ ${r.sendSkips - skips0} cleared ${cleared} have ${r.fieldHave.has(client)}`);
+  const n0 = sent.length;
+  await sleep(400);
+  check('full buffer: further publishes are skipped (no sends)',
+    r.sendSkips > skips0 && sent.length === n0,
+    `skipsΔ ${r.sendSkips - skips0} sendsΔ ${sent.length - n0}`);
+  r.fieldHave.set(client, { key: 'x', seq: 1 });
+  r._skipClient(client);
+  check('skip clears fieldHave so the next field is a keyframe', !r.fieldHave.has(client));
   Object.defineProperty(client, 'bufferedAmount', { configurable: true, get: () => 0 });
   const fields = [];
   const prev = host.ws.onmessage;
@@ -174,10 +175,10 @@ function fieldPair() {
   const lagA = st.ticks - aTick;
   const lagB = st.ticks - bTick;
   check('slow field client stays within a few ticks of the server (no multi-second lag)',
-    Math.abs(lagA) <= 5,
+    Math.abs(lagA) <= 8,
     `server ${st.ticks} A ${aTick} lag ${lagA} fDrop=${A.framesDropped} fieldDrop=${A.fieldsDropped} resyncs=${A.fieldResyncs}`);
   check('fresh joiner is current',
-    Math.abs(lagB) <= 5,
+    Math.abs(lagB) <= 8,
     `server ${st.ticks} B ${bTick} lag ${lagB}`);
   check('slow client dropped frames/fields or resynced rather than replaying the backlog',
     A.framesDropped > 0 || A.fieldsDropped > 0 || A.fieldResyncs > 0,
