@@ -50,9 +50,10 @@ function loadVersion(staticDir) {
       if (v && typeof v.commit === 'string' && v.commit) return v.commit;
     } catch { /* no version.json */ }
   }
-  for (const key of ['GIT_COMMIT', 'SOURCE_COMMIT', 'COMMIT_SHA']) {
+  for (const key of ['SOURCE_COMMIT', 'COMMIT_SHA', 'GIT_COMMIT']) {
     const raw = (process.env[key] || '').trim();
-    if (raw) return raw.replace(/^[^0-9a-f]*/i, '').slice(0, 7) || raw.slice(0, 7);
+    if (!raw || raw === 'dev') continue;
+    return raw.replace(/^[^0-9a-f]*/i, '').slice(0, 7) || raw.slice(0, 7);
   }
   return 'dev';
 }

@@ -6,9 +6,15 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY . .
-# Coolify / CI can pass the deploy SHA (image has no .git).
-ARG GIT_COMMIT=dev
-ENV GIT_COMMIT=$GIT_COMMIT
+# Coolify injects SOURCE_COMMIT (and sometimes COMMIT_SHA) as Docker build
+# args for git-sourced apps. Declare them so they are visible in this stage;
+# build-app.mjs picks the first non-empty (else "dev" when there is no .git).
+ARG SOURCE_COMMIT=
+ARG COMMIT_SHA=
+ARG GIT_COMMIT=
+ENV SOURCE_COMMIT=$SOURCE_COMMIT \
+    COMMIT_SHA=$COMMIT_SHA \
+    GIT_COMMIT=$GIT_COMMIT
 RUN npm run build:app && npm run build:server
 
 # Runtime: the bundle needs no node_modules.

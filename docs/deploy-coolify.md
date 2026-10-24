@@ -74,14 +74,20 @@ Open https://sailzone.app/ and click **Join room**. The landing footer shows
 `build <short SHA>`; `curl -s https://sailzone.app/api/version` returns
 `{"commit":"..."}` (same value, baked at image build time).
 
-For Dockerfile builds, pass the commit as a build argument so the image does
-not need a `.git` directory:
+**Commit hash on the landing page.** The image has no `.git` directory. The
+Dockerfile declares build-args `SOURCE_COMMIT`, `COMMIT_SHA`, and `GIT_COMMIT`
+(empty by default). Coolify, for an app built from a git repository, injects
+`SOURCE_COMMIT` automatically as a Docker build-arg — you do not need to add a
+Build Argument in the UI. `scripts/build-app.mjs` bakes the first non-empty
+value (short SHA) into `dist-app/version.json` and the landing footer.
 
-    GIT_COMMIT=<full or short sha>
+After this fix is deployed, redeploy once: the footer should show
+`build <hex>` (for example `build c7e5f79`), not `build dev`. Check with
+`curl -s https://sailzone.app/api/version`.
 
-Coolify often exposes the deployed commit for build args; set `GIT_COMMIT` to
-that value if your build does not run in a git checkout. Locally,
-`npm run build:app` uses `git rev-parse --short HEAD` (or `dev` as a fallback).
+Locally, `npm run build:app` uses `git rev-parse --short HEAD`. A plain
+`docker build` without build-args still yields `dev`, which is fine for local
+images; to mimic Coolify: `docker build --build-arg SOURCE_COMMIT=<40-hex> .`.
 
 ## Notes
 

@@ -7,9 +7,12 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 
 function shortCommit() {
-  for (const key of ['GIT_COMMIT', 'SOURCE_COMMIT', 'COMMIT_SHA']) {
+  // Coolify passes SOURCE_COMMIT as a Docker build-arg; COMMIT_SHA / GIT_COMMIT
+  // are fallbacks (CI or a manual build-arg). Skip the literal "dev".
+  for (const key of ['SOURCE_COMMIT', 'COMMIT_SHA', 'GIT_COMMIT']) {
     const v = (process.env[key] || '').trim();
-    if (v) return v.replace(/^[^0-9a-f]*/i, '').slice(0, 7) || v.slice(0, 7);
+    if (!v || v === 'dev') continue;
+    return v.replace(/^[^0-9a-f]*/i, '').slice(0, 7) || v.slice(0, 7);
   }
   try {
     return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim();
