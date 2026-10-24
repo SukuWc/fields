@@ -41,6 +41,14 @@
 // up gets every frame; one that falls behind renders the latest state
 // instead of replaying old ones. coalesce: false delivers every frame.
 //
+// Field messages are coalesced the same way: _onField only stashes the latest
+// message; decode + paintGrids run once in _deliver with the frame shown. A
+// delta that arrives while a field is already pending (or a deliver is
+// scheduled) is dropped, held state cleared, and a keyframe requested once
+// (fieldResyncs); a keyframe replaces the stash. That stops a slow paint from
+// growing an onmessage backlog (the client would otherwise fall seconds
+// behind while a fresh joiner sees the current tick).
+//
 // Field: only while this client shows it (setField({ on, plotType,
 // contrastExp }); the 'plot' command sets the plot). The server then sends,
 // every TICK_HZ / fieldHz ticks, a field text message (src/field-codec.js):
@@ -76,9 +84,11 @@ export class RemoteHost {
       this._channel.port1.onmessage = () => this._deliver();
     }
     this.fieldsReceived = 0;
+    this.fieldsDropped = 0;
     this.fieldBytes = 0;
     this.fieldResyncs = 0;
     this._fieldHeld = null;
+    this._latestField = null;
     this.lastField = null;
     // Recent chat (welcome history, then each 'chat' event).
     this.chat = [];
@@ -134,6 +144,7 @@ export class RemoteHost {
       if (this.token) init.token = this.token;
       ws.send(JSON.stringify(init));
       this._fieldHeld = null;
+      this._latestField = null;
       if (this._field.on) ws.send(JSON.stringify({ type: 'field', ...this._field }));
       if (this._flowOn) ws.send(JSON.stringify({ type: 'flow', on: true }));
       if (this._perfOn) ws.send(JSON.stringify({ type: 'perf', on: true }));
@@ -249,9 +260,12 @@ export class RemoteHost {
     }
   }
 
-  // Hand the newest frame to the onFrame listeners (see the header).
+  // Hand the newest field (if any) and frame to the listeners (see the header).
   _deliver() {
     this._scheduled = false;
+    const pending = this._latestField;
+    this._latestField = null;
+    if (pending) this._applyField(pending.m);
     const frame = this._latest;
     this._latest = null;
     if (!frame) return;
@@ -268,14 +282,37 @@ export class RemoteHost {
     this._painter = texture ? new FieldPainter(texture, this._oversampling) : null;
   }
 
-  // A field text message (src/field-codec.js): a keyframe, or a delta on
-  // top of the one held. A delta against another message (one missed, e.g.
-  // across a reconnect) is dropped and a keyframe asked for.
+  // Stash a field text message; decode + paint run in _deliver. See header.
   _onField(m, bytes) {
     this.fieldBytes += bytes;
+    const keyframe = !m.base;
+    // Behind: a field is already waiting, or a deliver is scheduled (a burst
+    // of ticks). A further delta cannot be applied without the skipped base.
+    const behind = this._latestField != null || this._scheduled;
+    if (behind && !keyframe) {
+      this.fieldsDropped++;
+      this._latestField = null;
+      this._askFieldKeyframe();
+      return;
+    }
+    if (this._latestField) this.fieldsDropped++;
+    this._latestField = { m };
+    if (keyframe) this._fieldAsked = false;
+  }
+
+  _askFieldKeyframe() {
+    this._fieldHeld = null;
+    if (!this._fieldAsked) {
+      this.fieldResyncs++;
+      this._fieldAsked = true;
+      if (this._field.on) this._send({ type: 'field', ...this._field });
+    }
+  }
+
+  // Decode the stashed message onto _fieldHeld and paint (called from _deliver).
+  _applyField(m) {
     const r = decodeFieldText(m, this._fieldHeld);
     if (!r) {
-      // Once per gap: the deltas still in flight are dropped quietly.
       if (this._fieldHeld || !this._fieldAsked) {
         this.fieldResyncs++;
         this._fieldAsked = true;
