@@ -58,6 +58,14 @@ Params equal to the build default are removed from the URL. If the server can't 
 
 ## Field streaming
 
+Slow clients: `_publish` skips frame/field (and clears `fieldHave`, so the next
+field is a keyframe) when a client's WebSocket `bufferedAmount` exceeds
+`SEND_BUF_MAX` (256 KiB). The client also coalesces field messages in
+`src/remote-host.js` (stash latest, paint in `_deliver`; drop deltas while
+behind and ask for a keyframe), so a slow paint cannot grow a multi-second
+receive backlog.
+
+
 - **Grids, not an image.** Each field message holds the root grid and every refinement domain (`bm.domains`, recursively `domain.domains`) as its own grid: origin and cell size `dx` in root cells, width, height. The order is depth first, so painting in order layers them like local `FieldPainter.paint`. A domain sends its interior nodes. Nodes outside its disk are marked hidden, so the parent shows there (the staircase), as in local mode.
 - **One byte per cell.** The value is the selected plot's palette index (the one local mode would use, clamped to the palette) quantized to 0–253. 254 = barrier, 255 = hidden. The header carries plotType and `scale`/`offset`/`base`, so `value = base + (byte/253 − offset)/scale` gives rho, ux, uy, speed or curl back (`decodeFieldValue`).
 - **Painted on the client.** `RemoteHost` decodes it and `FieldPainter.paintGrids` paints it into the page's texture with the local palette, texture size and layering. Against a local paint of the same lattice the difference is at most one palette step (max channel difference 3 of 255 on scenario 0; `test/field-grids.test.mjs`); after a second of 30 Hz deltas it is the same lossless and at most 6 of 255 with the default deadband (`test/field-delta.test.mjs`).

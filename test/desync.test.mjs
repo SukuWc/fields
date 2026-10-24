@@ -3,7 +3,7 @@
 import { spawn } from 'node:child_process';
 import { WebSocket } from 'ws';
 import { SimCore } from '../src/host.js';
-import { FieldPainter, encodeFieldGrids, decodeFieldGrids } from '../src/fieldPainter.js';
+import { encodeFieldGrids, decodeFieldGrids } from '../src/fieldPainter.js';
 import { encodeFieldText } from '../src/field-codec.js';
 import { startServer } from '../apps/server/index.js';
 import { SEND_BUF_MAX } from '../apps/server/room.js';
@@ -91,10 +91,16 @@ function fieldPair() {
   const client = [...r.clients][0];
   Object.defineProperty(client, 'bufferedAmount', { configurable: true, get: () => SEND_BUF_MAX + 1 });
   const skips0 = r.sendSkips;
-  await sleep(400);
-  check('full buffer: publishes skipped and fieldHave cleared',
-    r.sendSkips > skips0 && !r.fieldHave.has(client),
-    `skipsΔ ${r.sendSkips - skips0} have ${r.fieldHave.has(client)}`);
+  // fieldHave is set in _fieldMessages (start of slot) and cleared on skip in
+  // _publish (end of slot); poll until a skip has cleared it.
+  let cleared = false;
+  for (let i = 0; i < 30; i++) {
+    await sleep(50);
+    if (r.sendSkips > skips0 && !r.fieldHave.has(client)) { cleared = true; break; }
+  }
+  check('full buffer: publishes skipped and fieldHave cleared on skip',
+    r.sendSkips > skips0 && cleared,
+    `skipsΔ ${r.sendSkips - skips0} cleared ${cleared} have ${r.fieldHave.has(client)}`);
   Object.defineProperty(client, 'bufferedAmount', { configurable: true, get: () => 0 });
   const fields = [];
   const prev = host.ws.onmessage;
