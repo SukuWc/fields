@@ -71,8 +71,8 @@ Start the first deployment, then check:
     curl -s https://sailzone.app/api/rooms    # [{"id":"europe-1","players":0}]
 
 Open https://sailzone.app/ and click **Join room**. The landing footer shows
-`build <short SHA>`; `curl -s https://sailzone.app/api/version` returns
-`{"commit":"..."}` (same value, baked at image build time).
+`build <a href="…/commit/<sha>"><short SHA></a>`; `curl -s https://sailzone.app/api/version`
+returns `{"commit":"…","sha":"…","url":"https://github.com/SukuWc/fields/commit/…"}`.
 
 **Commit hash on the landing page.** The image has no `.git` directory. The
 Dockerfile declares build-args `SOURCE_COMMIT`, `COMMIT_SHA`, and `GIT_COMMIT`
