@@ -21,6 +21,7 @@
   a.join { background: #1565c0; color: #fff; text-decoration: none; padding: 8px 14px; border-radius: 6px; font-weight: 600; }
   #msg { color: #a33; min-height: 1.4em; }
   footer { margin-top: 28px; font-size: 12px; color: #8a96a8; }
+  footer a { color: inherit; }
 </style>
 </head>
 <body>
@@ -29,7 +30,7 @@
   <h1>SailZone</h1>
   <ul id="rooms"></ul>
   <p id="msg">Loading rooms…</p>
-  <footer>build __BUILD_COMMIT__</footer>
+  <footer>__BUILD_FOOTER__</footer>
 </main>
 <script>
   const api = (new URLSearchParams(location.search).get('api') || '').replace(/\/$/, '');

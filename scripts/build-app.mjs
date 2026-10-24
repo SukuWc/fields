@@ -1,33 +1,47 @@
 // Build what the Node server serves (apps/server --static dist-app):
 //   dist-app/index.html   landing page (apps/landing)
 //   dist-app/play/        the game, connecting to the same origin's WebSocket
-//   dist-app/version.json { commit } short SHA baked in at build time
+//   dist-app/version.json { commit, url } baked in at build time
 // The GitHub Pages build (npm run build -> dist/) is unchanged.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 
-function shortCommit() {
-  for (const key of ['GIT_COMMIT', 'SOURCE_COMMIT', 'COMMIT_SHA']) {
+const REPO_COMMIT = 'https://github.com/SukuWc/fields/commit/';
+
+// Coolify passes SOURCE_COMMIT as a Docker build-arg; COMMIT_SHA / GIT_COMMIT
+// are fallbacks. Returns { commit: short, sha: fullOrShort, url } or { commit: 'dev' }.
+function resolveCommit() {
+  for (const key of ['SOURCE_COMMIT', 'COMMIT_SHA', 'GIT_COMMIT']) {
     const v = (process.env[key] || '').trim();
-    if (v) return v.replace(/^[^0-9a-f]*/i, '').slice(0, 7) || v.slice(0, 7);
+    if (!v || v === 'dev') continue;
+    const hex = v.replace(/^[^0-9a-f]*/i, '') || v;
+    if (!/^[0-9a-f]+$/i.test(hex)) continue;
+    const sha = hex.length >= 40 ? hex.slice(0, 40) : hex;
+    const commit = sha.slice(0, 7);
+    return { commit, sha, url: REPO_COMMIT + sha };
   }
   try {
-    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim();
+    const sha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    const commit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim();
+    return { commit, sha, url: REPO_COMMIT + sha };
   } catch {
-    return 'dev';
+    return { commit: 'dev' };
   }
 }
 
-const commit = shortCommit();
+const version = resolveCommit();
 fs.rmSync('dist-app', { recursive: true, force: true });
 execFileSync(process.execPath, ['node_modules/vite/bin/vite.js', 'build', '--outDir', 'dist-app/play', '--emptyOutDir', '--logLevel', 'warn'], {
   stdio: 'inherit',
   env: { ...process.env, VITE_BASE_PATH: '/play/', VITE_SIM_HOST: 'remote', VITE_SIM_SERVER_URL: 'same-origin' },
 });
 let landing = fs.readFileSync('apps/landing/index.html', 'utf8');
-if (!landing.includes('__BUILD_COMMIT__')) throw new Error('apps/landing/index.html missing __BUILD_COMMIT__ placeholder');
-landing = landing.split('__BUILD_COMMIT__').join(commit);
+if (!landing.includes('__BUILD_FOOTER__')) throw new Error('apps/landing/index.html missing __BUILD_FOOTER__ placeholder');
+const footer = version.url
+  ? `build <a href="${version.url}">${version.commit}</a>`
+  : `build ${version.commit}`;
+landing = landing.split('__BUILD_FOOTER__').join(footer);
 fs.writeFileSync('dist-app/index.html', landing);
-fs.writeFileSync('dist-app/version.json', JSON.stringify({ commit }) + '\n');
+fs.writeFileSync('dist-app/version.json', JSON.stringify(version) + '\n');
 for (const f of ['sailzone-logo.svg', 'sailzone-icon.svg']) fs.copyFileSync('assets/' + f, 'dist-app/' + f);
-console.log('built dist-app/ (landing at /, game at /play/, commit ' + commit + ')');
+console.log('built dist-app/ (landing at /, game at /play/, commit ' + version.commit + ')');

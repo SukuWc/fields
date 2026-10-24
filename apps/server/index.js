@@ -13,7 +13,7 @@
 // HTTP on the same port:
 //   GET /api/rooms   [{ id, players }]  players = connected clients (CORS *)
 //   GET /api/status  rooms, clients, tick cost
-//   GET /api/version { commit }  short SHA baked into dist-app/version.json
+//   GET /api/version { commit, url? }  short SHA (+ GitHub commit URL) from version.json
 //   GET /healthz     { ok: true }
 //   anything else    files from staticDir (npm run build:app: landing at /,
 //                    game at /play/); without staticDir, / is the status.
@@ -43,18 +43,31 @@ function staticFile(root, urlPath) {
   } catch { return null; }
 }
 
+const REPO_COMMIT = 'https://github.com/SukuWc/fields/commit/';
+
+function versionFromSha(raw) {
+  const hex = String(raw).replace(/^[^0-9a-f]*/i, '') || String(raw);
+  if (!hex || hex === 'dev' || !/^[0-9a-f]+$/i.test(hex)) return { commit: 'dev' };
+  const sha = hex.length >= 40 ? hex.slice(0, 40) : hex;
+  return { commit: sha.slice(0, 7), sha, url: REPO_COMMIT + sha };
+}
+
 function loadVersion(staticDir) {
   if (staticDir) {
     try {
       const v = JSON.parse(fs.readFileSync(path.join(path.resolve(staticDir), 'version.json'), 'utf8'));
-      if (v && typeof v.commit === 'string' && v.commit) return v.commit;
+      if (v && typeof v.commit === 'string' && v.commit) {
+        if (v.url || v.commit === 'dev') return { commit: v.commit, ...(v.sha ? { sha: v.sha } : {}), ...(v.url ? { url: v.url } : {}) };
+        return versionFromSha(v.sha || v.commit);
+      }
     } catch { /* no version.json */ }
   }
-  for (const key of ['GIT_COMMIT', 'SOURCE_COMMIT', 'COMMIT_SHA']) {
+  for (const key of ['SOURCE_COMMIT', 'COMMIT_SHA', 'GIT_COMMIT']) {
     const raw = (process.env[key] || '').trim();
-    if (raw) return raw.replace(/^[^0-9a-f]*/i, '').slice(0, 7) || raw.slice(0, 7);
+    if (!raw || raw === 'dev') continue;
+    return versionFromSha(raw);
   }
-  return 'dev';
+  return { commit: 'dev' };
 }
 
 export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, fieldHz = FIELD_HZ, fieldTol = FIELD_TOL, graceMs = GRACE_MS, fixedRooms = [], staticDir = null } = {}) {
@@ -66,7 +79,7 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
     rooms.set(name, room);
   }
   const root = staticDir ? path.resolve(staticDir) : null;
-  const commit = loadVersion(staticDir);
+  const version = loadVersion(staticDir);
   const json = (res, code, body) => {
     res.writeHead(code, { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'cache-control': 'no-store' });
     res.end(JSON.stringify(body));
@@ -86,7 +99,7 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
     // reconnect grace period do not count.
     if (url.pathname === '/api/rooms') return json(res, 200, [...rooms.values()].map((r) => ({ id: r.name, players: r.clients.size })));
     if (url.pathname === '/api/status') return json(res, 200, status());
-    if (url.pathname === '/api/version') return json(res, 200, { commit });
+    if (url.pathname === '/api/version') return json(res, 200, version);
     if (url.pathname === '/healthz') return json(res, 200, { ok: true });
     if (!root) return json(res, url.pathname === '/' ? 200 : 404, url.pathname === '/' ? status() : { error: 'not found' });
     const file = staticFile(root, url.pathname);
@@ -124,7 +137,7 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
   });
   return new Promise((resolve) => {
     server.listen(port, host, () => resolve({
-      port: server.address().port, rooms, commit,
+      port: server.address().port, rooms, version,
       close: () => new Promise((r) => { for (const c of wss.clients) c.terminate(); for (const room of rooms.values()) { room.graceMs = 0; room.persistent = false; room._dispose(); room.stop(); } wss.close(); server.close(() => r()); }),
     }));
   });

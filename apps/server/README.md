@@ -33,7 +33,7 @@ One Node process serves everything on one port (`PORT`):
 | `/play/?room=europe-1` | the game. `npm run build:app` builds it with `VITE_SIM_HOST=remote VITE_SIM_SERVER_URL=same-origin`, so it connects to `ws(s)://<same host>/ws?room=…` (wss on https) with no `?host=`/`?server=` params |
 | `/api/rooms` | `[{ "id": "europe-1", "players": N }]`, CORS `*` (a page on another origin, e.g. GitHub Pages, can read it; the landing page takes `?api=https://sailzone.app`) |
 | `/api/status` | the old status JSON (rooms, clients, tick cost) |
-| `/api/version` | `{ "commit": "<short SHA>" }` from `dist-app/version.json` (baked by `build:app`) |
+| `/api/version` | `{ "commit", "sha"?, "url"? }` from `dist-app/version.json` (baked by `build:app`; `url` is the GitHub commit page) |
 | `/healthz` | `{ "ok": true }` |
 | WebSocket | any path, `?room=` picks the room |
 
