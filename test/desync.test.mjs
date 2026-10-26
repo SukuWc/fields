@@ -78,7 +78,7 @@ function fieldPair() {
   h.terminate();
 }
 
-// 2. Server skips a client with a full outbound buffer and clears fieldHave.
+// 2. Server skips a client with a full outbound buffer; after drain, keyframes resume.
 {
   check('SEND_BUF_MAX is 256KiB', SEND_BUF_MAX === 256 * 1024);
   const srv = await startServer({ port: 0, graceMs: 0 });
@@ -99,9 +99,9 @@ function fieldPair() {
   check('full buffer: further publishes are skipped (no sends)',
     r.sendSkips > skips0 && sent.length === n0,
     `skipsΔ ${r.sendSkips - skips0} sendsΔ ${sent.length - n0}`);
-  r.fieldHave.set(client, { key: 'x', seq: 1 });
+  const skips1 = r.sendSkips;
   r._skipClient(client);
-  check('skip clears fieldHave so the next field is a keyframe', !r.fieldHave.has(client));
+  check('skip increments sendSkips', r.sendSkips === skips1 + 1);
   Object.defineProperty(client, 'bufferedAmount', { configurable: true, get: () => 0 });
   const fields = [];
   const prev = host.ws.onmessage;
@@ -111,9 +111,9 @@ function fieldPair() {
   };
   host.setField({ on: true, plotType: 3, contrastExp: 0 });
   await sleep(500);
-  check('after buffer drains, next field is a keyframe',
-    fields.some((m) => m.base === 0),
-    `bases ${fields.slice(0, 6).map((m) => m.base).join(',')}`);
+  check('after buffer drains, fields resume as keyframes',
+    fields.length > 0 && fields.every((m) => m.base === 0),
+    `n=${fields.length} bases ${fields.slice(0, 6).map((m) => m.base).join(',')}`);
   host.terminate();
   await srv.close();
 }

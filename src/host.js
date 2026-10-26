@@ -63,6 +63,7 @@ export class SimCore {
       devMode: false, wind: { angle: windAngle, speed: windSpeed }, barrier: false,
       simRes: SIM_RES_MODES[simRes] ? simRes : DEFAULT_SIM_RES, amrMode: settingDefault('amrMode'), refine: { maxLevel: settingDefault('maxLevel'), boatRefineRadius: settingDefault('boatRefineRadius') }, cellBudget: { tune: settingDefault('cellBudgetTune'), target: settingDefault('cellBudget') },
       amr: this.sim.options.amr, boatEnergy: this.sim.options.boatEnergy, sailWakeGain: this.sim.options.sailWakeGain,
+      fieldSkip: settingDefault('fieldSkip'),
     };
     // The constructor only took the root resolution; the mode's explicit
     // stepsPerFrame (fast-wind defaults such as '4f') applies before anything runs.
@@ -114,6 +115,11 @@ export class SimCore {
       case 'simRes': st.simRes = SIM_RES_MODES[c.mode] ? c.mode : DEFAULT_SIM_RES; break;
       case 'amrMode': st.amrMode = c.mode === 'auto' ? 'auto' : 'fixed'; break;
       case 'sailWake': st.sailWakeGain = this.sim.options.sailWakeGain; break;
+      case 'fieldSkip': {
+        const n = Math.round(Number(c.n));
+        st.fieldSkip = Number.isFinite(n) ? Math.max(0, Math.min(29, n)) : 0;
+        break;
+      }
       case 'refine': st.refine = { maxLevel: this.bm.maxLevel ?? null, boatRefineRadius: this.bm.boatRefineRadius ?? null }; break;
       case 'cellBudget': st.cellBudget = { tune: !!c.tune, target: c.tune && Number.isFinite(c.target) && c.target > 0 ? c.target : null }; break;
       case 'options':

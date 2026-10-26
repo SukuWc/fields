@@ -1,6 +1,7 @@
 // Authoritative sim server: WebSocket, one Room (room.js) per ?room= name.
 //
-//   node dist-server/server.mjs [--port 8787] [--lockstep] [--field-hz 30] [--field-tol 1] [--grace-s 10]
+//   node dist-server/server.mjs [--port 8787] [--lockstep] [--field-hz 30|0] [--field-tol 1] [--grace-s 10]
+//   field cadence is room setting fieldSkip; --field-hz 0 disables field encoding
 //                               [--rooms europe-1] [--open-rooms] [--static dist-app] [--verbose]
 //   (npm run server builds and starts it; PORT env works too)
 //

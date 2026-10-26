@@ -98,6 +98,11 @@ export const SETTINGS = [
   // Empty = the grid's default target (null).
   { id: 'cellBudget', scope: 'room', panel: 'room', type: 'number', default: null, nullable: true, min: 1000, max: 1e8, ui: { min: 1000, max: null },
     command: { type: 'cellBudget', field: 'target' }, state: 'cellBudget.target', invalid: () => 'cellBudget target must be 1000..1e8 or null' },
+  // Field stream cadence (remote): send a keyframe every (fieldSkip + 1) ticks.
+  // 0 = every frame (30 Hz), 1 = every 2nd, 2 = every 3rd, … Max 29 → 1 Hz.
+  { id: 'fieldSkip', scope: 'room', panel: 'room', type: 'int', default: 0, min: 0, max: 29, coerce: true,
+    command: { type: 'fieldSkip', field: 'n', required: true }, state: 'fieldSkip', invalid: () => 'fieldSkip must be 0..29',
+    remoteOnly: true },
 ];
 
 export const SETTING_BY_ID = new Map(SETTINGS.map((s) => [s.id, s]));
