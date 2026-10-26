@@ -74,8 +74,8 @@ const core = new SimCore({ mapW: 50, mapH: 100, simRes: '4' });
 {
   const vals = [undefined, null, true, false, 0, 1, -1, 3, 4, 12, 19, 20, 999, 45.5, 361, -90, 30, 30.01, 1000, 1e8, 1e9, NaN, Infinity, '', '1', '4', '4f', '2f', '2f34', 'auto', 'fixed', 'bogus', 'yes', '12', '3.0', {}, []];
   const fields = ['scenario', 'angle', 'speed', 'on', 'mode', 'tune', 'target', 'amr', 'boatEnergy'];
-  // 'refine' came after the old validator (its own checks below).
-  const types = [...ROOM_COMMANDS].filter((t) => t !== 'refine' && t !== 'sailWake').concat(['plot', 'spawnBoat', 'bogus']);
+  // 'refine' / 'sailWake' / 'fieldSkip' came after the old validator (their own checks below).
+  const types = [...ROOM_COMMANDS].filter((t) => t !== 'refine' && t !== 'sailWake' && t !== 'fieldSkip').concat(['plot', 'spawnBoat', 'bogus']);
   const cmds = [];
   for (const type of types) {
     cmds.push({ type });
@@ -90,7 +90,7 @@ const core = new SimCore({ mapW: 50, mapH: 100, simRes: '4' });
     if (a !== b) diff.push(JSON.stringify(c) + ' old ' + a + ' new ' + b);
   }
   check('registry validator answers exactly as the old room.js validator', diff.length === 0, `${cmds.length} commands` + (diff.length ? '; ' + diff.slice(0, 5).join(' | ') : ''));
-  check('ROOM_COMMANDS: the registry\'s, the same set as before', SERVER_ROOM_COMMANDS === ROOM_COMMANDS && [...ROOM_COMMANDS].sort().join() === ['restart', 'wind', 'devMode', 'barrier', 'simRes', 'amrMode', 'refine', 'sailWake', 'cellBudget', 'options'].sort().join(), [...ROOM_COMMANDS].join());
+  check('ROOM_COMMANDS: the registry\'s, the same set as before', SERVER_ROOM_COMMANDS === ROOM_COMMANDS && [...ROOM_COMMANDS].sort().join() === ['restart', 'wind', 'devMode', 'barrier', 'simRes', 'amrMode', 'refine', 'sailWake', 'cellBudget', 'options', 'fieldSkip'].sort().join(), [...ROOM_COMMANDS].join());
 }
 
 // 2. Every room setting is validated by the server through the registry:
