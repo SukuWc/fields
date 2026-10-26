@@ -29,10 +29,11 @@ One Node process serves everything on one port (`PORT`):
 
 | URL | What |
 | --- | --- |
-| `/` | landing page (`apps/landing/index.html`): SailZone logo, the room list from `/api/rooms` (refreshed every 5 s), a **Join room** button |
+| `/` | landing page (`apps/landing/index.html`): SailZone logo, the room list from `/api/rooms` (refreshed every 5 s), a **Join room** button, and a per-room frame-time graph from `/api/perf` (last ~180 s) |
 | `/play/?room=europe-1` | the game. `npm run build:app` builds it with `VITE_SIM_HOST=remote VITE_SIM_SERVER_URL=same-origin`, so it connects to `ws(s)://<same host>/ws?room=…` (wss on https) with no `?host=`/`?server=` params |
 | `/api/rooms` | `[{ "id": "europe-1", "players": N }]`, CORS `*` (a page on another origin, e.g. GitHub Pages, can read it; the landing page takes `?api=https://sailzone.app`) |
-| `/api/status` | the old status JSON (rooms, clients, tick cost) |
+| `/api/perf` | `{ rooms: [{ id, players, sampleHz, windowS, endAt, times, latestMs }] }` — last ~180 s of per-tick `frameMs` (physics + field encode) per room; full buffer each response; CORS `*`. Paused empty rooms keep history but append nothing. |
+| `/api/status` | the old status JSON (rooms, clients, tick cost; also `frameMs`) |
 | `/api/version` | `{ "commit", "sha"?, "url"? }` from `dist-app/version.json` (baked by `build:app`; `url` is the GitHub commit page) |
 | `/healthz` | `{ "ok": true }` |
 | WebSocket | any path, `?room=` picks the room |
