@@ -2,6 +2,7 @@
 <!-- SailZone landing page (served at / by apps/server with npm run build:app).
      Lists the server's rooms from /api/rooms every 5 s; Join opens the game
      at /play/?room=<id>, which connects to this origin's WebSocket.
+     Per-room frame-time graphs from /api/perf (last ~180 s, physics + field).
      ?api=https://host points it at another server (CORS is open). -->
 <html lang="en">
 <head>
@@ -11,14 +12,18 @@
 <link rel="icon" href="sailzone-icon.svg" type="image/svg+xml">
 <style>
   body { margin: 0; font: 16px/1.4 system-ui, sans-serif; background: #f4f7fb; color: #12233a; display: flex; justify-content: center; }
-  main { width: min(420px, 92vw); padding: 32px 0; text-align: center; }
+  main { width: min(520px, 94vw); padding: 32px 0; text-align: center; }
   main > img { width: 220px; max-width: 70%; }
   h1 { font-size: 1.6em; margin: 8px 0 24px; }
   ul { list-style: none; padding: 0; margin: 0; text-align: left; }
-  li { display: flex; align-items: center; gap: 12px; background: #fff; border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; box-shadow: 0 1px 4px #0002; }
-  li .name { font-weight: 600; flex: 1; }
-  li .count { color: #567; }
+  li.room { background: #fff; border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; box-shadow: 0 1px 4px #0002; }
+  li.room .row { display: flex; align-items: center; gap: 12px; }
+  li.room .name { font-weight: 600; flex: 1; }
+  li.room .count { color: #567; }
   a.join { background: #1565c0; color: #fff; text-decoration: none; padding: 8px 14px; border-radius: 6px; font-weight: 600; }
+  .perf { margin-top: 10px; }
+  .perf .meta { font-size: 12px; color: #567; margin: 0 0 4px; display: flex; justify-content: space-between; }
+  .perf canvas { width: 100%; height: 72px; display: block; background: #f0f4fa; border-radius: 6px; }
   #msg { color: #a33; min-height: 1.4em; }
   footer { margin-top: 28px; font-size: 12px; color: #8a96a8; }
   footer a { color: inherit; }
@@ -36,19 +41,80 @@
   const api = (new URLSearchParams(location.search).get('api') || '').replace(/\/$/, '');
   const list = document.getElementById('rooms');
   const msg = document.getElementById('msg');
-  async function refresh() {
+  const charts = new Map(); // id → { canvas, ctx }
+
+  function ensureChart(id) {
+    let c = charts.get(id);
+    if (c) return c;
+    const canvas = document.createElement('canvas');
+    canvas.width = 480; canvas.height = 72;
+    canvas.setAttribute('aria-label', id + ' frame time');
+    c = { canvas, ctx: canvas.getContext('2d') };
+    charts.set(id, c);
+    return c;
+  }
+
+  function drawPerf(canvas, ctx, room) {
+    const w = canvas.width, h = canvas.height;
+    const times = room.times || [];
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#f0f4fa';
+    ctx.fillRect(0, 0, w, h);
+    // Budget line at 33.3 ms (30 Hz slot)
+    const budget = 1000 / 30;
+    const maxY = Math.max(budget * 1.2, ...times, 1);
+    const yOf = (ms) => h - 4 - (ms / maxY) * (h - 12);
+    ctx.strokeStyle = '#c5d0de';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    const yb = yOf(budget);
+    ctx.moveTo(0, yb); ctx.lineTo(w, yb); ctx.stroke();
+    if (times.length < 2) {
+      ctx.fillStyle = '#8a96a8';
+      ctx.font = '11px system-ui,sans-serif';
+      ctx.fillText(times.length ? '1 sample' : 'No samples yet (room idle)', 8, h / 2 + 4);
+      return;
+    }
+    ctx.strokeStyle = '#1565c0';
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    for (let i = 0; i < times.length; i++) {
+      const x = (i / (times.length - 1)) * (w - 1);
+      const y = yOf(times[i]);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.fillStyle = '#8a96a8';
+    ctx.font = '10px system-ui,sans-serif';
+    ctx.fillText(Math.round(maxY) + ' ms', 4, 12);
+    ctx.fillText('0', 4, h - 4);
+    ctx.fillText('−' + (room.windowS || 180) + 's', w - 36, h - 4);
+  }
+
+  async function refreshRooms() {
     try {
       const r = await fetch(api + '/api/rooms', { cache: 'no-store' });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const rooms = await r.json();
+      const keep = new Set(rooms.map((x) => x.id));
+      for (const id of [...charts.keys()]) if (!keep.has(id)) charts.delete(id);
       list.replaceChildren(...rooms.map((room) => {
         const li = document.createElement('li');
+        li.className = 'room';
+        li.dataset.id = room.id;
+        const row = document.createElement('div'); row.className = 'row';
         const name = document.createElement('span'); name.className = 'name'; name.textContent = room.id;
         const count = document.createElement('span'); count.className = 'count';
         count.textContent = room.players + (room.players === 1 ? ' player' : ' players');
         const join = document.createElement('a'); join.className = 'join'; join.textContent = 'Join room';
         join.href = api + '/play/?room=' + encodeURIComponent(room.id);
-        li.append(name, count, join);
+        row.append(name, count, join);
+        const perf = document.createElement('div'); perf.className = 'perf';
+        const meta = document.createElement('div'); meta.className = 'meta';
+        meta.innerHTML = '<span>Frame time (physics + field)</span><span class="latest">—</span>';
+        const { canvas } = ensureChart(room.id);
+        perf.append(meta, canvas);
+        li.append(row, perf);
         return li;
       }));
       msg.textContent = rooms.length ? '' : 'No rooms.';
@@ -56,8 +122,28 @@
       msg.textContent = 'Server unreachable (' + e.message + ').';
     }
   }
-  refresh();
-  setInterval(refresh, 5000);
+
+  async function refreshPerf() {
+    try {
+      const r = await fetch(api + '/api/perf', { cache: 'no-store' });
+      if (!r.ok) return;
+      const body = await r.json();
+      for (const room of body.rooms || []) {
+        const li = list.querySelector('li.room[data-id="' + CSS.escape(room.id) + '"]');
+        const chart = charts.get(room.id);
+        if (!chart) continue;
+        drawPerf(chart.canvas, chart.ctx, room);
+        if (li) {
+          const latest = li.querySelector('.latest');
+          if (latest) latest.textContent = room.latestMs != null ? room.latestMs.toFixed(1) + ' ms' : 'idle';
+        }
+      }
+    } catch (_) { /* rooms refresh shows errors */ }
+  }
+
+  refreshRooms().then(refreshPerf);
+  setInterval(refreshRooms, 5000);
+  setInterval(refreshPerf, 2000);
 </script>
 </body>
 </html>
