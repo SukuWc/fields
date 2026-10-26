@@ -8,7 +8,7 @@ const check = (name, ok, extra = '') => { console.log((ok ? 'PASS  ' : 'FAIL  ')
 check('no DOM globals in this process', typeof document === 'undefined' && typeof window === 'undefined');
 
 const SIM_MODULES = [
-  'boltzmann.js', 'domainTrack.js', 'wind.js', 'map.js', 'boat.js', 'mark.js',
+  'boltzmann.js', 'domainTrack.js', 'wind.js', 'ladder-lines.js', 'map.js', 'boat.js', 'mark.js',
   'course.js', 'start.js', 'finish.js', 'mark-touch.js', 'rules.js',
   'race-bot.js', 'leaderboard.js', 'utils.js', 'loop.js',
   'boundary.js', 'boundary-scenario.js', 'scenarios.js', 'sim.js', 'map-size.js',
@@ -62,7 +62,7 @@ try {
   sim.on((e) => events.push(e.type));
   // Every scenario loads and runs 30 ticks (1 s); scenario 19 is dev mode only.
   const bad = [];
-  for (let n = 0; n <= 19; n++) {
+  for (let n = 0; n < sim.scenarios.length; n++) {
     if (!sim.scenarios[n]) continue;
     sim.command({ type: 'devMode', on: n === 19 });
     try {
