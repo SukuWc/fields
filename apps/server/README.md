@@ -11,11 +11,11 @@ npm start                           # vite dev server in another terminal
 # open http://localhost:5173/fields/?host=remote&server=ws://localhost:8787
 ```
 
-Options: `node dist-server/server.mjs --port 8787 --field-hz 30 --field-tol 1 --lockstep --verbose`. `PORT` in the environment also sets the port.
+Options: `node dist-server/server.mjs --port 8787 --field-hz 30 --lockstep --verbose`. `PORT` in the environment also sets the port.
 
 - `--lockstep`: each tick is driven by a client `tick` message instead of the server clock. Runs are reproducible; `test/server.test.mjs` uses it from Node (`RemoteHost.tick`). It is test-only: the browser page is frame-driven in remote mode and never sends `tick`, so a page against a lockstep server stays on the restart frame.
-- `--field-hz N`: a field message every 30/N ticks (default 30: every tick; 0 = no field).
-- `--field-tol N`: field deadband in field bytes (default 1): a delta leaves a cell alone while it is within N of what the client shows. 0 = lossless. `--field-scale` is gone: the server sends the lattice at full resolution (see Field streaming).
+- `--field-hz N`: `0` disables field encoding entirely (tests). Any other value is ignored — cadence is the room setting **fieldSkip** (admin panel; 0 = every tick, N = every N+1 ticks). Default CLI value stays 30 so encoding is on.
+- `--field-tol N`: kept for CLI compatibility; keyframes ignore it (encoded lossless).
 - `--grace-s N`: how long a disconnected client's boats, and an empty room, are kept for it to come back (default 10; 0 = remove at once). See Reconnect.
 - `GET http://localhost:8787/`: JSON status (rooms, clients, ticks, last tick ms).
 
@@ -55,24 +55,21 @@ Params equal to the build default are removed from the URL. If the server can't 
 
 ## Protocol
 
-`src/host-protocol.js` is shared with the worker. It uses JSON text messages: `init` → `welcome`, `command`/`query` → `result` (`{ error }` when the server refuses a command), `event`, `frame`, `statics`, `input` (held keys only, sent when they change), `tick` in lockstep, `chat` (`{ type: 'chat', id, text }` → `result` `{ ok, seq }` or `{ error }`; see Chat below), and the per-client subscriptions `field` (`{ on, plotType, contrastExp }`: whether this client shows the field and which plot), `flow` (`{ on }`: flow tracer grids) and `perf` (`{ on }`: perf counters). Field data is a `{ type: 'field', ... }` JSON text message, a keyframe or a delta (format in `src/field-codec.js`; the grids are those of `encodeFieldGrids` in `src/fieldPainter.js`). Every server message is text; flow grids and perf counters arrive as `{ type: 'flow', flow }` / `{ type: 'perf', perf }` just before the frame they belong to, to subscribers only.
+`src/host-protocol.js` is shared with the worker. It uses JSON text messages: `init` → `welcome`, `command`/`query` → `result` (`{ error }` when the server refuses a command), `event`, `frame`, `statics`, `input` (held keys only, sent when they change), `tick` in lockstep, `chat` (`{ type: 'chat', id, text }` → `result` `{ ok, seq }` or `{ error }`; see Chat below), and the per-client subscriptions `field` (`{ on, plotType, contrastExp }`: whether this client shows the field and which plot), `flow` (`{ on }`: flow tracer grids) and `perf` (`{ on }`: perf counters). Field data is a `{ type: 'field', ... }` JSON text message, always a keyframe (`base: 0`; format in `src/field-codec.js`; the grids are those of `encodeFieldGrids` in `src/fieldPainter.js`). Every server message is text; flow grids and perf counters arrive as `{ type: 'flow', flow }` / `{ type: 'perf', perf }` just before the frame they belong to, to subscribers only.
 
 ## Field streaming
 
-Slow clients: `_publish` skips frame/field (and clears `fieldHave`, so the next
-field is a keyframe) when a client's WebSocket `bufferedAmount` exceeds
-`SEND_BUF_MAX` (256 KiB). The client also coalesces field messages in
-`src/remote-host.js` (stash latest, paint in `_deliver`; drop deltas while
-behind and ask for a keyframe), so a slow paint cannot grow a multi-second
-receive backlog.
-
+Slow clients: `_publish` skips frame/field when a client's WebSocket
+`bufferedAmount` exceeds `SEND_BUF_MAX` (256 KiB). The client also coalesces
+field messages in `src/remote-host.js` (stash latest keyframe, paint in
+`_deliver`), so a slow paint cannot grow a multi-second receive backlog.
 
 - **Grids, not an image.** Each field message holds the root grid and every refinement domain (`bm.domains`, recursively `domain.domains`) as its own grid: origin and cell size `dx` in root cells, width, height. The order is depth first, so painting in order layers them like local `FieldPainter.paint`. A domain sends its interior nodes. Nodes outside its disk are marked hidden, so the parent shows there (the staircase), as in local mode.
 - **One byte per cell.** The value is the selected plot's palette index (the one local mode would use, clamped to the palette) quantized to 0–253. 254 = barrier, 255 = hidden. The header carries plotType and `scale`/`offset`/`base`, so `value = base + (byte/253 − offset)/scale` gives rho, ux, uy, speed or curl back (`decodeFieldValue`).
-- **Painted on the client.** `RemoteHost` decodes it and `FieldPainter.paintGrids` paints it into the page's texture with the local palette, texture size and layering. Against a local paint of the same lattice the difference is at most one palette step (max channel difference 3 of 255 on scenario 0; `test/field-grids.test.mjs`); after a second of 30 Hz deltas it is the same lossless and at most 6 of 255 with the default deadband (`test/field-delta.test.mjs`).
+- **Painted on the client.** `RemoteHost` decodes it and `FieldPainter.paintGrids` paints it into the page's texture with the local palette, texture size and layering. Against a local paint of the same lattice the difference is at most one palette step (`test/field-grids.test.mjs` / `test/field-delta.test.mjs`).
 - **Only to clients that show it.** The page sends `field` when its **Show field (server)** box (server mode only, `?field_plane=0`) or dev mode changes, and the plot with the `plot` command. Plot options are per client. When a field message is due, the room encodes the lattice once per distinct plot among the clients showing the field and sends it to those clients only. If nobody shows it, or dev mode is on, nothing is encoded. New clients start with the field off until they ask.
-- **Text keyframes and deltas, every tick** (`src/field-codec.js`). Each message is JSON: the grid headers plus, per grid, its cells as a base64url string (no JSON escaping). Cells are predicted, from the same cell of the previous message (a refinement window that moved is matched by its whole-cell shift) or, in a keyframe or a new grid, from the cell to the left; only the residuals are coded, with zero runs and small changes packed into 6-bit symbols. Per plot the room keeps one stream: a delta when every client on it holds the previous message, else a keyframe for all of them (a client joined, changed plot or asked, or 10 s passed: `FIELD_KEY_S`). A client that gets a delta for a message it does not hold (e.g. after a reconnect) drops it and asks for a keyframe. With `--field-tol 1` (default) a cell that moved by one byte since what the client shows is not sent; the client stays within one byte (≈1.6 palette steps) of the lattice, and barrier/hidden are exact.
-- **Size** (scenario 0, 100 × 200 m, 4f; 6 grids, 22 211 B raw with one boat, 63 979 B with three). Live server, field on, one client: at 2 Hz (the old binary stream) 22 211 B per message, 42.5 KB/s per client at 30 ticks/s; now every tick: ~1.9 KB per delta with one boat, 54 KB/s at 30 Hz (lossless `--field-tol 0`: ~2.7 KB, 78 KB/s); three boats ~3.5 KB, 103 KB/s (lossless 154 KB/s; old 2 Hz: 80 KB/s). A keyframe is ~5.5 KB (one boat) / ~17 KB (three). Encoding (grids + text) takes ~1–2 ms per message, about 2 % of the server's CPU (`test/field-delta.test.mjs` prints lockstep numbers). The per-frame JSON used to be ~40 KB (bodies, guides and HUD); see Frames below.
+- **Keyframes only, cadence = fieldSkip** (`src/field-codec.js`). Every message is a keyframe (`base: 0`): JSON grid headers plus, per grid, cells as a base64url string (left-neighbour prediction + zero-run RLE into 6-bit symbols — compression on the keyframe itself, no inter-frame deltas). Room admin setting **Field skip** (`fieldSkip`, default `0`, clamp 0–29): send a keyframe every `(fieldSkip + 1)` ticks (0 = 30 Hz, 1 = every 2nd, 2 = every 3rd, …). It is room-wide (all field subscribers), persisted in `roomState`, and broadcast like other room settings. `--field-hz` no longer sets the rate (only `0` disables encoding for tests).
+- **Size** (scenario 0, 100 × 200 m, 4f, one boat): a compressed keyframe is roughly several KB; at `fieldSkip` 0 / 1 / 2 the send rate is 30 / 15 / 10 Hz, so bandwidth scales roughly with `30/(N+1)`. See numbers printed by `test/field-delta.test.mjs` (`BANDWIDTH_KB_S`). Encoding takes ~1–2 ms per keyframe.
 
 ## Frame clock and broadcast
 

@@ -372,6 +372,25 @@ function startClient() {
     el.addEventListener('change', apply);
     if (!remote) apply();
   }
+  // Field skip (#fieldSkip): room-wide keyframe cadence for remote field streaming.
+  // 0 = every frame, N = send every (N + 1) ticks. Hidden in local/worker (no server stream).
+  {
+    const el = document.getElementById('fieldSkip');
+    const row = document.getElementById('fieldSkip_row');
+    const br = document.getElementById('fieldSkip_br');
+    if (!remote) {
+      if (row) row.hidden = true;
+      if (br) br.hidden = true;
+    } else if (el) {
+      if (el.value === '') el.value = String(settingDefault('fieldSkip'));
+      const apply = () => {
+        const t = String(el.value).trim();
+        const n = Number(t);
+        if (t !== '' && Number.isFinite(n)) roomCommand(roomCommandFor({ fieldSkip: n }));
+      };
+      el.addEventListener('change', apply);
+    }
+  }
   // Boat refinement stack (#maxLevel, #boatRefineRadius; empty = the mode
   // default). One 'refine' command per edit; a rebuilt lattice restarts.
   {

@@ -42,21 +42,15 @@
 // instead of replaying old ones. coalesce: false delivers every frame.
 //
 // Field messages are coalesced the same way: _onField only stashes the latest
-// message; decode + paintGrids run once in _deliver with the frame shown. A
-// delta that arrives while a field is already pending (or a deliver is
-// scheduled) is dropped, held state cleared, and a keyframe requested once
-// (fieldResyncs); a keyframe replaces the stash. That stops a slow paint from
-// growing an onmessage backlog (the client would otherwise fall seconds
-// behind while a fresh joiner sees the current tick).
+// message; decode + paintGrids run once in _deliver with the frame shown.
+// A newer keyframe replaces a pending stash (fieldsDropped). That stops a
+// slow paint from growing an onmessage backlog.
 //
 // Field: only while this client shows it (setField({ on, plotType,
-// contrastExp }); the 'plot' command sets the plot). The server then sends,
-// every TICK_HZ / fieldHz ticks, a field text message (src/field-codec.js):
-// the root grid and each refinement domain, one byte per cell, as a
-// keyframe or as a delta against the previous one. It is painted here into
-// the page's texture with the local palette and layering
-// (FieldPainter.paintGrids), so remote looks like local; the page shows it
-// on the next frame.
+// contrastExp }); the 'plot' command sets the plot). The server sends
+// keyframes only (src/field-codec.js, base: 0), at the room's fieldSkip
+// cadence. Painted here into the page's texture with the local palette
+// (FieldPainter.paintGrids), so remote looks like local.
 import { plainView } from './host-protocol.js';
 import { FieldPainter } from './fieldPainter.js';
 import { decodeFieldText } from './field-codec.js';
@@ -283,11 +277,11 @@ export class RemoteHost {
   }
 
   // Stash a field text message; decode + paint run in _deliver. See header.
+  // Server sends keyframes only; keep a thin legacy path for a stray delta
+  // (drop + ask keyframe when behind) so an old server build still recovers.
   _onField(m, bytes) {
     this.fieldBytes += bytes;
     const keyframe = !m.base;
-    // Behind: a field is already waiting, or a deliver is scheduled (a burst
-    // of ticks). A further delta cannot be applied without the skipped base.
     const behind = this._latestField != null || this._scheduled;
     if (behind && !keyframe) {
       this.fieldsDropped++;

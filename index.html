@@ -788,6 +788,8 @@
       <br></span>
       <span id="budget_controls" class="setting-row" title="Refinement budget: target cell updates per root step. Tuning raises the curl threshold (×scale) when the load nears the target. Also ?cellBudgetTune=0 / ?cellBudget=N"><label><input id="cellBudgetTune" autocomplete="off" type="checkbox">Threshold tuning</label> <input id="cellBudget" autocomplete="off" type="number" step="5000" style="width: 70px;" placeholder="default">cells/step</span>
       <br id="budget_controls_br">
+      <label class="setting-row setting-field" id="fieldSkip_row" title="How often the server sends the wind-field texture to clients that show it. 0 = every frame (30 Hz), 1 = every 2nd frame, 2 = every 3rd, …. Keyframes only (no deltas). Room-wide. Also ?fieldSkip=N">Field skip <input id="fieldSkip" autocomplete="off" type="number" step="1" style="width: 50px;"></label>
+      <br id="fieldSkip_br">
       <div id="admin_status" class="setting-row" hidden></div>
       </div>
     </div>
