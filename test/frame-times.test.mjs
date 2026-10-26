@@ -4,7 +4,6 @@ import { WebSocket } from 'ws';
 import { FrameTimeHistory, FRAME_TIME_CAP, FRAME_TIME_WINDOW_S, FRAME_TIME_HZ } from '../apps/server/frame-times.js';
 import { Room } from '../apps/server/room.js';
 import { startServer } from '../apps/server/index.js';
-import { encodeFieldGrids, decodeFieldGrids } from '../src/fieldPainter.js';
 
 let failed = 0;
 const quiet = console.log;
