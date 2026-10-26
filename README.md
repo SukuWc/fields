@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-10-24
+Last updated: 2026-10-26
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -66,6 +66,7 @@ Last updated: 2026-10-24
 - [x] Shared world and shared wind: [#60](https://github.com/SukuWc/fields/pull/60) (server rooms + streamed wind); [#61](https://github.com/SukuWc/fields/pull/61) (Join with my boat: each client owns a named boat, steers only that boat, removed on leave or disconnect)
 - [x] Room settings panel (room-wide, validated), own-boat-only controls (spectators steer nothing, 1 boat per client, 8 per room), per-client readouts and flow/perf subscriptions, joining never resets the room: [#73](https://github.com/SukuWc/fields/pull/73)
 - [x] Bandwidth: field streamed every tick (30 Hz) as JSON keyframes + deltas (shifted-window prediction, base64url residuals, deadband 1), ~54 KB/s per client with one boat vs 42 KB/s at 2 Hz before: [#85](https://github.com/SukuWc/fields/pull/85)
+- [ ] Simpler field streaming: keyframes only (no deltas) with a room `fieldSkip` setting for send cadence (0 = 30 Hz at ~74 KB/s, 1 = 15 Hz at ~37 KB/s, 2 = 10 Hz at ~25 KB/s with one boat) (in progress, [#98](https://github.com/SukuWc/fields/pull/98))
 - [ ] Soft physical collisions (bump and slow)
 - [ ] Server-authoritative collisions
 - [x] Reconnect: boats kept for a 10 s grace period (`--grace-s`) with a countdown for others, auto-reconnect with backoff, connection banner: [#75](https://github.com/SukuWc/fields/pull/75)
