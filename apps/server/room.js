@@ -31,6 +31,7 @@ import { SimCore } from '../../src/host.js';
 import { answer, eventForClient, EXACT_JSON } from '../../src/host-protocol.js';
 import { BOAT_ACTIONS } from '../../src/sim.js';
 import { MAX_WIND_MPS, ROOM_COMMANDS, SIM_RES_MODES, validateRoomSettingCommand, settingDefault } from '../../src/settings-registry.js';
+import { validateRoomConfig, commandsFromConfig } from '../../src/room-config.js';
 import { encodeFieldGrids, decodeFieldGrids } from '../../src/fieldPainter.js';
 import { encodeFieldText } from '../../src/field-codec.js';
 import { FrameTimeHistory } from './frame-times.js';
@@ -71,7 +72,7 @@ export const CHAT_RATE_MS = 10000;
 // on the server clock).
 //
 // Room-wide settings (ROOM_COMMANDS, from src/settings-registry.js: restart,
-// wind, devMode, barrier, simRes, amrMode, refine, options, cellBudget): any client may send them (no owner
+// wind, devMode, barrier, simRes, amrMode, refine, options, cellBudget, config): any client may send them (no owner
 // for now); each is validated (validateRoomCommand) and refused with
 // { error } when invalid. After a change every client gets
 // { type: 'event', ev: { type: 'room', room } } (room: SimCore.roomState(),
@@ -117,6 +118,15 @@ export { MAX_WIND_MPS, ROOM_COMMANDS };
 // A room-wide command checked against the room: { c } (normalised) or
 // { error }.
 export function validateRoomCommand(c, core) {
+  if (c && c.type === 'config') {
+    const v = validateRoomConfig(c.config, { core });
+    if (v.error) return v;
+    // Map size is create-time only on the server.
+    if (v.config.map_width_m !== core.map.width || v.config.map_height_m !== core.map.height) {
+      return { error: 'map size is fixed for a server room (set when the room was created)' };
+    }
+    return { c: { type: 'config', config: v.config } };
+  }
   return validateRoomSettingCommand(c, {
     scenario: (n, raw) => {
       const sc = core.sim.scenarios;
@@ -439,6 +449,25 @@ export class Room {
 
   _roomCommand(c) {
     if (c.type === 'restart') return this._restart(c.scenario);
+    if (c.type === 'config') {
+      // Expand and apply here so a lattice rebuild uses _restart (keeps boats).
+      const cmds = commandsFromConfig(c.config);
+      let last;
+      let rebuilt = false;
+      let restartScenario = null;
+      for (const cmd of cmds) {
+        if (cmd.type === 'restart') { restartScenario = cmd.scenario; continue; }
+        const r = this.core.command(cmd);
+        last = r;
+        if ((cmd.type === 'simRes' || cmd.type === 'amrMode' || cmd.type === 'refine') && r && r.rebuilt) rebuilt = true;
+      }
+      if (restartScenario !== null || rebuilt) {
+        const n = restartScenario !== null ? restartScenario
+          : (Number.isInteger(this.core.sim.scenarioIndex) ? this.core.sim.scenarioIndex : c.config.scenario);
+        last = this._restart(n);
+      }
+      return last;
+    }
     const r = this.core.command(c);
     // A rebuilt lattice restarts the scenario (the page used to click Restart).
     if ((c.type === 'simRes' || c.type === 'amrMode' || c.type === 'refine') && r && r.rebuilt && Number.isInteger(this.core.sim.scenarioIndex)) {

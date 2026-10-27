@@ -1,18 +1,21 @@
 // Client input and settings UI: keyboard and touch keys become Sim commands
-// (sim.js), the room settings panel (#admin_panel: scenario, wind, dev mode)
-// sends room-wide commands, scenario view hints move the camera (view.js),
-// and the scenario card shows the Sim's scenario text.
+// (sim.js), the room settings panel (#admin_panel) is a TOML textarea
+// (room-config.js) with Commit / Reset, scenario view hints move the camera
+// (view.js), and the scenario card shows the Sim's scenario text.
 // Everything goes through the SimHost (host.js); no Sim objects here.
 //
-// Local and worker modes: the page owns the Sim, so its controls are the
-// truth: setup sends dev mode off and loads the selected scenario.
-// Remote mode (a server room): the room's state is the truth. Setup sends
-// nothing; the controls start from the welcome snapshot (host.room) and
-// follow every 'room' event (applyRoomState), so a join or reload never
-// restarts the room or changes its settings. A user edit sends the command;
-// the server validates it, applies it and broadcasts the new room state.
+// Local and worker modes: the page owns the Sim; Commit applies the TOML
+// (and may reload when map size changes). Remote mode: the room's state is
+// the truth — the textarea starts from the welcome snapshot and follows
+// every 'room' event unless the user has unsaved edits.
 import * as THREE from 'three';
-import { ROOM_SETTINGS, DEV_MODE_DISABLED, roomCommandFor, roomStateValue, settingDefault } from './settings-registry.js';
+import { settingDefault } from './settings-registry.js';
+import {
+  configFromRoomState, stringifyRoomConfig, parseAndValidateRoomConfig,
+  mapKeyFromDims, ROOM_CONFIG_DEFAULTS, rootFromSimRes,
+} from './room-config.js';
+import { windCeilingMps } from './sim-modes.js';
+import { MAP_SIZES, DEFAULT_MAP_SIZE } from './map-size.js';
 
 let _host, _view, _getCamera;
 let _remote = false;
@@ -191,77 +194,49 @@ function mouse_monitor(e) {
   });
 }
 
-// Controls with no meaning without the fluid (registry devModeDisabled).
-const DEV_MODE_FLUID_CONTROLS = DEV_MODE_DISABLED;
-
 function syncDevModeUi() {
   const on = _devMode;
   const banner = document.getElementById("devmode_banner");
-  banner.style.display = on ? "block" : "none";
+  if (banner) banner.style.display = on ? "block" : "none";
   const fromDeg = _wind.angle;
   const toDeg = (fromDeg + 180) % 360;
-  document.getElementById("dev_wind_label").textContent =
-    "from " + fromDeg + "° to " + toDeg + "° @ " + _wind.speed + " m/s";
+  const label = document.getElementById("dev_wind_label");
+  if (label) label.textContent = "from " + fromDeg + "° to " + toDeg + "° @ " + _wind.speed + " m/s";
   // CSS rotation is clockwise; world +Y is up. Point the arrow downwind ("to").
-  document.getElementById("dev_wind_arrow").style.transform = "rotate(" + (-toDeg) + "deg)";
-  for (const id of DEV_MODE_FLUID_CONTROLS) {
-    document.getElementById(id).disabled = on;
-  }
+  const arrow = document.getElementById("dev_wind_arrow");
+  if (arrow) arrow.style.transform = "rotate(" + (-toDeg) + "deg)";
 }
 
-function applyWindAngle() {
-  const angle = parseInt(document.getElementById("windAngle").value, 10);
-  if (!Number.isFinite(angle)) return;
-  _host.command(roomCommandFor({ windAngle: angle })).then((r) => { if (r && r.error) showRoomError(r.error); });
-  if (_remote) return;
-  _wind.angle = angle;
-  syncDevModeUi();
-}
-
-// Wind speed input is true wind in m/s; show knots next to the label.
-function showWindKnots(mps) {
-  const el = document.getElementById("windSpeedKn");
-  if (el && Number.isFinite(mps)) el.textContent = "≈ " + (mps * 3600 / 1852).toFixed(1) + " kn";
-}
-
-// Wind input max follows the simulation mode's stable ceiling (sim.js
-// windCeilingMps); a value above it is clamped and re-sent.
+// Kept for callers (main.js); the wind inputs lived on the old admin panel.
 export function setWindCeiling(mps) {
-  const el = document.getElementById("windSpeed");
-  if (!el || !Number.isFinite(mps)) return;
-  el.max = String(mps);
-  el.title = "Stable up to " + mps + " m/s (≈ " + Math.round(mps * 3600 / 1852) + " kn) in this simulation mode";
-  if (parseFloat(el.value) > mps) { el.value = String(mps); applyWindSpeed(); }
+  _windCeiling = Number.isFinite(mps) ? mps : _windCeiling;
 }
-
-function applyWindSpeed() {
-  const speed = parseFloat(document.getElementById("windSpeed").value);
-  if (!Number.isFinite(speed)) return;
-  showWindKnots(speed);
-  _host.command(roomCommandFor({ windSpeed: speed })).then((r) => { if (r && r.error) showRoomError(r.error); });
-  if (_remote) return;
-  _wind.speed = speed;
-  syncDevModeUi();
-}
+let _windCeiling = windCeilingMps('2f');
 
 let scenarioCardCollapsed = false;
+let _appliedConfig = null;
+let _dirty = false;
+let _mapW = ROOM_CONFIG_DEFAULTS.map_width_m;
+let _mapH = ROOM_CONFIG_DEFAULTS.map_height_m;
+let _onLattice = null;
+let _infoScenarios = [];
 
-function renderScenarioCard(scenario) {
+export function onRoomLattice(fn) { _onLattice = fn; }
+
+function renderScenarioCard(scenario, index) {
   const card = document.getElementById("scenario_card");
   if (!card) return;
-  const selector = document.getElementById("scenario_selector");
-  const index = selector ? selector.value : "";
   const titleEl = document.getElementById("scenario_card_title");
   const bodyEl = document.getElementById("scenario_card_body");
   const numEl = document.getElementById("scenario_card_num");
   const toggle = document.getElementById("scenario_card_toggle");
-  numEl.textContent = index;
+  if (numEl) numEl.textContent = index == null ? "" : String(index);
   if (scenario && scenario.title) {
     titleEl.textContent = scenario.title;
     bodyEl.textContent = scenario.description || "";
   } else {
     titleEl.textContent = "No scenario";
-    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 19 each have a description.";
+    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 21 each have a description.";
   }
   card.classList.toggle("collapsed", scenarioCardCollapsed);
   if (toggle) {
@@ -270,47 +245,96 @@ function renderScenarioCard(scenario) {
   }
 }
 
-function scenario_start(index) {
-  _host.command(roomCommandFor({ scenario_selector: _remote ? Number(index) : index })).then((r) => {
-    if (r && r.error) { showRoomError(r.error); return; }
-    if (!_remote) renderScenarioCard(r);
-  });
-}
-
-// A refused room command (remote mode: the server validates them).
 export function showRoomError(msg) {
   const el = document.getElementById("admin_status");
   if (!el) return;
-  el.textContent = msg ? "Refused: " + msg : "";
+  el.textContent = msg || "";
   el.hidden = !msg;
 }
 
-// Remote mode: show the room's scenario and settings in the room panel
-// (no change events: nothing is sent back). room: SimCore.roomState().
+function roomConfigEl() { return document.getElementById("room_config"); }
+
+function fillRoomConfigTextarea(cfg) {
+  const el = roomConfigEl();
+  if (!el) return;
+  el.value = stringifyRoomConfig(cfg);
+  _dirty = false;
+}
+
+function currentConfigFromHost(room) {
+  const mapW = (_host && _host.info && _host.info.mapW) || _mapW;
+  const mapH = (_host && _host.info && _host.info.mapH) || _mapH;
+  if (room) return configFromRoomState(room, { mapW, mapH });
+  if (_host && _host.room) return configFromRoomState(_host.room, { mapW, mapH });
+  // Local: synthesise from last applied + host info wind.
+  const base = _appliedConfig ? { ..._appliedConfig } : { ...ROOM_CONFIG_DEFAULTS };
+  base.map_width_m = mapW;
+  base.map_height_m = mapH;
+  base.wind_angle_deg = _wind.angle;
+  base.wind_speed_mps = _wind.speed;
+  base.dev_mode = _devMode;
+  return base;
+}
+
+function markDirty() { _dirty = true; }
+
+/** Apply a validated config via the atomic `config` room command (or locally). */
+function commitRoomConfig(cfg) {
+  const mapKey = cfg._mapKey || mapKeyFromDims(cfg.map_width_m, cfg.map_height_m);
+  // Local map-size change: reload the page (lattice / walls / texture at load).
+  if (!_remote && mapKey && (cfg.map_width_m !== _mapW || cfg.map_height_m !== _mapH)) {
+    const u = new URL(location.href);
+    u.searchParams.delete('mapSize');
+    u.searchParams.delete('simRes');
+    u.searchParams.delete('map_size');
+    u.searchParams.delete('map_width_m');
+    u.searchParams.delete('map_height_m');
+    if (mapKey !== DEFAULT_MAP_SIZE) u.searchParams.set('map_size', mapKey);
+    location.href = u.toString();
+    return Promise.resolve({ reloading: true });
+  }
+  if (_remote && mapKey && (cfg.map_width_m !== _mapW || cfg.map_height_m !== _mapH)) {
+    return Promise.resolve({ error: 'map size is fixed for a server room (set when the room was created)' });
+  }
+  return _host.command({ type: 'config', config: cfg }).then((r) => {
+    if (r && r.error) return r;
+    _appliedConfig = { ...cfg };
+    delete _appliedConfig._mapKey;
+    delete _appliedConfig._simRes;
+    _wind.angle = cfg.wind_angle_deg;
+    _wind.speed = cfg.wind_speed_mps;
+    _devMode = !!cfg.dev_mode;
+    setWindCeiling(windCeilingMps(cfg._simRes));
+    syncDevModeUi();
+    const idx = cfg.scenario;
+    const sc = _infoScenarios[idx] || (r && r.title ? r : null);
+    renderScenarioCard(sc || (_host.room && _host.room.scenario), idx);
+    if (!_remote && r && r.lattice && _onLattice) _onLattice(r.lattice, r);
+    fillRoomConfigTextarea(_appliedConfig);
+    showRoomError(null);
+    return r;
+  });
+}
+
 export function applyRoomState(room) {
   if (!room) return;
   const st = room.settings || {};
-  if (room.scenario && room.scenario.index !== null) document.getElementById("scenario_selector").value = String(room.scenario.index);
-  renderScenarioCard(room.scenario && room.scenario.index !== null ? room.scenario : null);
-  // Every room setting with a place in the room state (registry state).
-  // A checkbox the state leaves out shows its default; other controls keep
-  // their value.
-  for (const s of ROOM_SETTINGS) {
-    if (!s.state) continue;
-    const el = document.getElementById(s.id);
-    if (!el) continue;
-    const v = roomStateValue(s, st);
-    if (s.type === "bool") el.checked = v === undefined ? !!s.default : !!v;
-    else if (v === null && s.nullable) el.value = "";
-    else if (v !== undefined && v !== null) el.value = String(v);
-  }
+  const cfg = configFromRoomState(room, { mapW: _mapW, mapH: _mapH });
   if (st.wind) {
     _wind.angle = st.wind.angle;
     _wind.speed = st.wind.speed;
-    showWindKnots(st.wind.speed);
   }
   _devMode = !!st.devMode;
   syncDevModeUi();
+  renderScenarioCard(room.scenario && room.scenario.index !== null ? room.scenario : null,
+    room.scenario && room.scenario.index !== null ? room.scenario.index : null);
+  _appliedConfig = cfg;
+  // Refresh the textarea unless the user has unsaved edits.
+  if (!_dirty) fillRoomConfigTextarea(cfg);
+  else {
+    // Still keep applied snapshot for Reset.
+  }
+  setWindCeiling(windCeilingMps(cfg._simRes || (st.simRes)));
 }
 
 // host: a SimHost (host.js) whose info is ready.
@@ -322,34 +346,22 @@ export function setupControls(host, view, getCamera) {
   host.on(onSimEvent);
   if (_remote) host.on((ev) => { if (ev.type === "room") { applyRoomState(ev.room); showRoomError(null); } });
   const info = host.info;
+  _infoScenarios = info.scenarios || [];
+  _mapW = info.mapW;
+  _mapH = info.mapH;
   _wind.angle = info.wind.from;
   _wind.speed = info.wind.speed;
 
   document.onkeydown = checkKeyPress;
   document.onkeyup = checkKeyRelease;
 
-  // Registry defaults (flow tracers on, drawn over the field plot).
   document.getElementById("camera_follow").checked = settingDefault("camera_follow");
   document.getElementById("show_forces").checked = settingDefault("show_forces");
   document.getElementById("show_field").checked = settingDefault("show_field");
   view.input_show_fields(settingDefault("show_field"));
 
-  document.getElementById("windAngle").value = info.wind.from;
-  document.getElementById("windSpeed").value = info.wind.speed;
-  showWindKnots(info.wind.speed);
-  // Query-string settings, including ?devmode=1, are applied by installUrlSettings
-  // after these listeners exist. Leave the checkbox at its default so that
-  // default can be captured; the change listener below turns dev mode on.
   _devMode = settingDefault("devmode");
-  if (!_remote) host.command(roomCommandFor({ devmode: _devMode }));
   syncDevModeUi();
-
-  document.getElementById("devmode").addEventListener("change", () => {
-    const on = document.getElementById("devmode").checked;
-    host.command(roomCommandFor({ devmode: on })).then((r) => { if (r && r.error) showRoomError(r.error); });
-    // Remote: the room event sets it (and the banner) for every client.
-    if (!_remote) { _devMode = on; syncDevModeUi(); }
-  });
 
   document.getElementById("show_forces").addEventListener("change", () => {
     view.input_show_forces(document.getElementById("show_forces").checked);
@@ -357,25 +369,13 @@ export function setupControls(host, view, getCamera) {
 
   document.getElementById("scenario_card_toggle").addEventListener("click", () => {
     scenarioCardCollapsed = !scenarioCardCollapsed;
-    const selector = document.getElementById("scenario_selector");
-    const index = selector ? parseInt(selector.value, 10) : 0;
-    renderScenarioCard(info.scenarios[index]);
-  });
-
-  document.getElementById("scenario_selector").addEventListener("change", () => {
-    scenario_start(document.getElementById("scenario_selector").value);
-  });
-
-  document.getElementById("scenario_restart").addEventListener("click", () => {
-    scenario_start(document.getElementById("scenario_selector").value);
+    const idx = _appliedConfig ? _appliedConfig.scenario : 0;
+    renderScenarioCard(_infoScenarios[idx], idx);
   });
 
   document.getElementById("show_field").addEventListener("change", () => {
     view.input_show_fields(document.getElementById("show_field").checked);
   });
-
-  document.getElementById("windAngle").addEventListener("change", applyWindAngle);
-  document.getElementById("windSpeed").addEventListener("change", applyWindSpeed);
 
   document.getElementById("camera_follow").addEventListener("change", () => {
     view.input_camera_follow(document.getElementById("camera_follow").checked);
@@ -390,6 +390,55 @@ export function setupControls(host, view, getCamera) {
 
   document.addEventListener("mousemove", mouse_monitor);
 
-  if (_remote) { applyRoomState(host.room); autokeybind(host.bindings || 0); }
-  else scenario_start(document.getElementById("scenario_selector").value);
+  const ta = roomConfigEl();
+  if (ta) ta.addEventListener("input", markDirty);
+
+  const commitBtn = document.getElementById("room_config_commit");
+  if (commitBtn) commitBtn.addEventListener("click", () => {
+    const text = ta ? ta.value : "";
+    // Scenario fit uses the TOML map size (local Commit may reload onto it).
+    const parsed = parseAndValidateRoomConfig(text, { scenarios: _infoScenarios });
+    if (parsed.error) { showRoomError(parsed.error); return; }
+    commitRoomConfig(parsed.config).then((r) => {
+      if (r && r.error) showRoomError(r.error);
+    });
+  });
+
+  const resetBtn = document.getElementById("room_config_reset");
+  if (resetBtn) resetBtn.addEventListener("click", () => {
+    const cfg = _appliedConfig || currentConfigFromHost(_remote ? host.room : null);
+    fillRoomConfigTextarea(cfg);
+    showRoomError(null);
+  });
+
+  if (_remote) {
+    applyRoomState(host.room);
+    autokeybind(host.bindings || 0);
+  } else {
+    // Seed applied config from defaults + host wind/map, then Commit once so
+    // the sim starts on scenario 0 (and any TOML-equivalent defaults).
+    const seed = {
+      ...ROOM_CONFIG_DEFAULTS,
+      map_width_m: _mapW,
+      map_height_m: _mapH,
+      wind_angle_deg: _wind.angle,
+      wind_speed_mps: _wind.speed,
+    };
+    // Pull live settings when the host exposes them (LocalHost.core /
+    // remote welcome). Otherwise derive root cell from the map size default.
+    if (host.core && host.core.roomState) {
+      Object.assign(seed, configFromRoomState(host.core.roomState(), { mapW: _mapW, mapH: _mapH }));
+    } else if (host.room) {
+      Object.assign(seed, configFromRoomState(host.room, { mapW: _mapW, mapH: _mapH }));
+    } else {
+      const key = mapKeyFromDims(_mapW, _mapH);
+      const mode = (key && MAP_SIZES[key] && MAP_SIZES[key].simRes) || '2f';
+      const root = rootFromSimRes(mode);
+      seed.root_cell_m = root.root_cell_m;
+      seed.steps_per_frame = root.steps_per_frame;
+    }
+    _appliedConfig = seed;
+    fillRoomConfigTextarea(seed);
+    commitRoomConfig(seed);
+  }
 }

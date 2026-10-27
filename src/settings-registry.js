@@ -5,8 +5,8 @@
 //              (apps/server/room.js ROOM_COMMANDS / validateRoomCommand,
 //              broadcast to everyone in a server room);
 //              'player': this page only, or a per-client subscription
-//   panel      'room' (#admin_panel, Room settings) or 'player'
-//              (#player_panel, Player)
+//   panel      'room' (#admin_panel TOML) or 'player' (#player_panel)
+//   control    false: no per-setting DOM (room settings use the TOML box)
 //   type       'bool' | 'number' | 'int' | 'enum' | 'text'
 //   default    the control's default (applied to the page by
 //              settings-panel.js; nothing else in the markup)
@@ -62,48 +62,40 @@ export const SETTINGS = [
   { id: 'plotSelect', scope: 'player', panel: 'player', type: 'enum', default: 'Plot speed', values: ['Plot density', 'Plot x velocity', 'Plot y velocity', 'Plot speed', 'Plot curl'], command: { type: 'plot', field: 'plotType' }, devModeDisabled: true },
   { id: 'contrastSlider', scope: 'player', panel: 'player', type: 'number', default: 0, min: -10, max: 10, command: { type: 'plot', field: 'contrastExp' }, devModeDisabled: true },
 
-  // Room settings panel.
+  // Room settings: still validated / applied as room commands, but the
+  // Room settings panel is a single TOML textarea (src/room-config.js).
+  // control:false = no per-setting DOM; url:false = not written to the query
+  // (old room URL params are gone).
   // The scenario's existence and fit depend on the room: checks.scenario.
-  { id: 'scenario_selector', scope: 'room', panel: 'room', type: 'int', default: 0, min: 0, coerce: true, check: 'scenario', ui: { min: 0, max: 21 },
+  { id: 'scenario_selector', scope: 'room', panel: 'room', control: false, url: false, type: 'int', default: 0, min: 0, coerce: true, check: 'scenario', ui: { min: 0, max: 21 },
     command: { type: 'restart', field: 'scenario', required: true }, invalid: (v) => 'no scenario ' + v },
-  { id: 'windAngle', scope: 'room', panel: 'room', type: 'number', default: 90, ui: { min: 0, max: 360 },
+  { id: 'windAngle', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: 90, ui: { min: 0, max: 360 },
     command: { type: 'wind', field: 'angle' }, state: 'wind.angle', normalize: (v) => ((v % 360) + 360) % 360, invalid: () => 'bad wind angle' },
-  { id: 'windSpeed', scope: 'room', panel: 'room', type: 'number', default: 4.5, min: 0, max: MAX_WIND_MPS, ui: { min: 0, max: windCeilingMps(DEFAULT_SIM_RES) },
+  { id: 'windSpeed', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: 4.5, min: 0, max: MAX_WIND_MPS, ui: { min: 0, max: windCeilingMps(DEFAULT_SIM_RES) },
     command: { type: 'wind', field: 'speed' }, state: 'wind.speed', invalid: () => 'wind speed must be 0..' + MAX_WIND_MPS + ' m/s' },
-  { id: 'devmode', scope: 'room', panel: 'room', type: 'bool', default: false, command: { type: 'devMode', field: 'on', required: true }, state: 'devMode' },
-  { id: 'amr', scope: 'room', panel: 'room', type: 'bool', default: true, command: { type: 'options', field: 'amr', key: true }, state: 'amr', devModeDisabled: true },
-  { id: 'barrier', scope: 'room', panel: 'room', type: 'bool', default: false, command: { type: 'barrier', field: 'on', required: true }, state: 'barrier', devModeDisabled: true },
-  { id: 'boat_energy', scope: 'room', panel: 'room', type: 'bool', default: true, command: { type: 'options', field: 'boatEnergy', key: true }, state: 'boatEnergy', devModeDisabled: true },
-  // Downwind-distance ladder lines from the first mark (ladder-lines.js):
-  // 20 m and 40 m only. Samples the live field so sail wake warps them.
-  { id: 'ladder', scope: 'room', panel: 'room', type: 'bool', default: false, command: { type: 'options', field: 'ladder', key: true }, state: 'ladder' },
-  { id: 'simRes', scope: 'room', panel: 'room', type: 'enum', default: DEFAULT_SIM_RES, values: Object.keys(SIM_RES_MODES), markDefault: true,
+  { id: 'devmode', scope: 'room', panel: 'room', control: false, url: false, type: 'bool', default: false, command: { type: 'devMode', field: 'on', required: true }, state: 'devMode' },
+  { id: 'amr', scope: 'room', panel: 'room', control: false, url: false, type: 'bool', default: true, command: { type: 'options', field: 'amr', key: true }, state: 'amr', devModeDisabled: true },
+  { id: 'barrier', scope: 'room', panel: 'room', control: false, url: false, type: 'bool', default: false, command: { type: 'barrier', field: 'on', required: true }, state: 'barrier', devModeDisabled: true },
+  { id: 'boat_energy', scope: 'room', panel: 'room', control: false, url: false, type: 'bool', default: true, command: { type: 'options', field: 'boatEnergy', key: true }, state: 'boatEnergy', devModeDisabled: true },
+  // Downwind-distance ladder lines from the first mark (ladder-lines.js).
+  { id: 'ladder', scope: 'room', panel: 'room', control: false, url: false, type: 'bool', default: false, command: { type: 'options', field: 'ladder', key: true }, state: 'ladder' },
+  { id: 'simRes', scope: 'room', panel: 'room', control: false, url: false, type: 'enum', default: DEFAULT_SIM_RES, values: Object.keys(SIM_RES_MODES), markDefault: true,
     command: { type: 'simRes', field: 'mode', required: true }, state: 'simRes', invalid: (v) => 'unknown simRes ' + v },
-  { id: 'amrMode', scope: 'room', panel: 'room', type: 'enum', default: 'auto', values: ['auto', 'fixed'],
+  { id: 'amrMode', scope: 'room', panel: 'room', control: false, url: false, type: 'enum', default: 'auto', values: ['auto', 'fixed'],
     command: { type: 'amrMode', field: 'mode', required: true }, state: 'amrMode', invalid: () => 'amrMode must be auto or fixed' },
-  // Sail → field momentum: multiple of the boat's own sail impulse put into
-  // the lattice (boat.js SAIL_WAKE_GAIN, 16; sim.js sailEfficiency). 0 = no
-  // wake; higher = deeper wake (32 reaches |u| ≈ 0.49 at wind 25).
-  { id: 'sailWakeGain', scope: 'room', panel: 'room', type: 'number', default: 16, min: 0, max: 64,
+  { id: 'sailWakeGain', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: 16, min: 0, max: 64,
     command: { type: 'sailWake', field: 'gain', required: true }, state: 'sailWakeGain', invalid: () => 'sailWake gain must be 0..64', devModeDisabled: true },
-  // Boat refinement stack (domainTrack amrParams). Default 3 levels and a
-  // 3 m finest disk (sim-modes.js). Empty = the mode's full stack (2f 4,
-  // 4f 5, 1 m 3, x2 4, x4 5) / the level's own disk (2 m on a full stack).
-  // Clamped per mode by the engine. Restarts.
-  { id: 'maxLevel', scope: 'room', panel: 'room', type: 'int', default: DEFAULT_MAX_LEVEL, nullable: true, min: 1, max: 5,
+  { id: 'maxLevel', scope: 'room', panel: 'room', control: false, url: false, type: 'int', default: DEFAULT_MAX_LEVEL, nullable: true, min: 1, max: 5,
     command: { type: 'refine', field: 'maxLevel' }, state: 'refine.maxLevel', invalid: () => 'maxLevel must be 1..5 or null', devModeDisabled: true },
-  { id: 'boatRefineRadius', scope: 'room', panel: 'room', type: 'number', default: DEFAULT_BOAT_REFINE_RADIUS, nullable: true, min: 0.5, max: 16,
+  { id: 'boatRefineRadius', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: DEFAULT_BOAT_REFINE_RADIUS, nullable: true, min: 0.5, max: 16,
     command: { type: 'refine', field: 'boatRefineRadius' }, state: 'refine.boatRefineRadius', invalid: () => 'boatRefineRadius must be 0.5..16 m or null', devModeDisabled: true },
   // Set when the room is created (the creator's init options); no command.
-  // Values: map-size.js MAP_SIZES.
-  { id: 'map_size', scope: 'room', panel: 'room', type: 'enum', default: DEFAULT_MAP_SIZE },
-  { id: 'cellBudgetTune', scope: 'room', panel: 'room', type: 'bool', default: true, command: { type: 'cellBudget', field: 'tune', required: true }, state: 'cellBudget.tune' },
-  // Empty = the grid's default target (null).
-  { id: 'cellBudget', scope: 'room', panel: 'room', type: 'number', default: null, nullable: true, min: 1000, max: 1e8, ui: { min: 1000, max: null },
+  { id: 'map_size', scope: 'room', panel: 'room', control: false, url: false, type: 'enum', default: DEFAULT_MAP_SIZE },
+  // Default off: TOML budget_target = -1 means unlimited (tune false).
+  { id: 'cellBudgetTune', scope: 'room', panel: 'room', control: false, url: false, type: 'bool', default: false, command: { type: 'cellBudget', field: 'tune', required: true }, state: 'cellBudget.tune' },
+  { id: 'cellBudget', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: null, nullable: true, min: 1000, max: 1e8, ui: { min: 1000, max: null },
     command: { type: 'cellBudget', field: 'target' }, state: 'cellBudget.target', invalid: () => 'cellBudget target must be 1000..1e8 or null' },
-  // Field stream cadence (remote): send a keyframe every (fieldSkip + 1) ticks.
-  // 0 = every frame (30 Hz), 1 = every 2nd, 2 = every 3rd, … Max 29 → 1 Hz.
-  { id: 'fieldSkip', scope: 'room', panel: 'room', type: 'int', default: 0, min: 0, max: 29, coerce: true,
+  { id: 'fieldSkip', scope: 'room', panel: 'room', control: false, url: false, type: 'int', default: 0, min: 0, max: 29, coerce: true,
     command: { type: 'fieldSkip', field: 'n', required: true }, state: 'fieldSkip', invalid: () => 'fieldSkip must be 0..29',
     remoteOnly: true },
 ];
@@ -127,6 +119,9 @@ for (const s of ROOM_SETTINGS) {
   ROOM_COMMAND_FIELDS.get(s.command.type).push(s);
 }
 export const ROOM_COMMANDS = new Set(ROOM_COMMAND_FIELDS.keys());
+// Atomic TOML apply (src/room-config.js); validated in apps/server/room.js /
+// SimCore, not as per-field registry entries.
+ROOM_COMMANDS.add('config');
 export function isRoomCommand(type) { return ROOM_COMMANDS.has(type); }
 
 // One value against its setting: { v } (normalised) or { error }.
