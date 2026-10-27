@@ -50,10 +50,10 @@ const near = (a, b, e = 1e-12) => Math.abs(a - b) <= e;
   const boat2f = {
     x: 0, y: 0,
     map: { devMode: false, bm: { velScale: 2 }, get_wind_ring: () => base, get_wind: () => base },
-    mainsail_force: { x: 20, y: -10 },
+    mainsail_force: { x: 12, y: -5 },
   };
   const w = boatTrueWind(boat2f, 0.001);
-  check('boatTrueWind on 2f applies +k·F', near(w.vx, 0.01 + 0.02) && near(w.vy, -0.01));
+  check('boatTrueWind on 2f applies +k·F', near(w.vx, 0.01 + 0.012) && near(w.vy, -0.005));
   const boat1 = {
     x: 0, y: 0,
     map: { devMode: false, bm: { velScale: 1 }, get_wind_ring: () => base, get_wind: () => base },
@@ -61,6 +61,12 @@ const near = (a, b, e = 1e-12) => Math.abs(a - b) <= e;
   };
   const w1 = boatTrueWind(boat1, 0.001);
   check('boatTrueWind on Default (velScale 1): no correction', w1.vx === base.vx && w1.vy === base.vy);
+}
+
+{
+  const s = windSample(0.01, 0);
+  const out = correctWindOwnForce(s, { x: 400, y: 0 }, 0.001, 20);
+  check('force cap clamps |F| before k·F', near(out.vx, 0.01 + 0.001 * 20) && near(out.vy, 0));
 }
 if (failed) { console.log(`${failed} check(s) failed`); process.exit(1); }
 console.log('all truewind-force checks passed');

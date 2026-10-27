@@ -136,11 +136,21 @@ export function getTrueWindOwnForceK() { return _trueWindOwnForceK; }
 export function setTrueWindOwnForceK(k) { _trueWindOwnForceK = Number.isFinite(k) ? k : 0; }
 export { _trueWindOwnForceK as TRUE_WIND_OWN_FORCE_K };
 
-export function correctWindOwnForce(sample, forceOnBoat, k = _trueWindOwnForceK) {
+// Cap |F| used in the undo. k was fitted near |F| ≈ 11 on scenario 20 at
+// 4.5 m/s; at 15 m/s |F| reaches ~250 and a linear undo overshoots, yanking
+// the autopilot off close-hauled (wind-sweep-check). Soft-cap at 20 (~2× the
+// fit mean) so normal 2f sailing keeps the full correction.
+export const TRUE_WIND_OWN_FORCE_CAP = 20;
+
+export function correctWindOwnForce(sample, forceOnBoat, k = _trueWindOwnForceK, fCap = TRUE_WIND_OWN_FORCE_CAP) {
   if (!sample || !forceOnBoat || !Number.isFinite(k) || k === 0) return sample;
-  const fx = forceOnBoat.x, fy = forceOnBoat.y;
+  let fx = forceOnBoat.x, fy = forceOnBoat.y;
   if (!Number.isFinite(fx) || !Number.isFinite(fy)) return sample;
   if (fx === 0 && fy === 0) return sample;
+  if (Number.isFinite(fCap) && fCap > 0) {
+    const mag = Math.hypot(fx, fy);
+    if (mag > fCap) { fx *= fCap / mag; fy *= fCap / mag; }
+  }
   return windSample(sample.vx + k * fx, sample.vy + k * fy);
 }
 
