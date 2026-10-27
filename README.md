@@ -59,7 +59,7 @@ Last updated: 2026-10-27
 - [x] Sail wake gain as a room setting (`?sailWakeGain`, default 16, range 0 to 64, live in local, worker and remote modes, no change at the default): [#87](https://github.com/SukuWc/fields/pull/87)
 - [x] True-wind accuracy baseline: scenario 20 full-circle sweep plus `scripts/truewind-accuracy.mjs` measurement (2f baseline about 2.5° RMS direction error, 0.19 m/s RMS speed error; true-wind computation unchanged): [#88](https://github.com/SukuWc/fields/pull/88)
 - [x] Boat true wind from a 1 m, 20-point ring vector mean instead of a single centre sample (used for boat smoothing, HUD and rules; scenario 20 RMS direction error about 2.47° to 2.33°): [#90](https://github.com/SukuWc/fields/pull/90)
-- [x] True-wind own-sail-force correction on 2f: ring mean minus k·(−F_boat) with k = 0.000105 (scenario 20 direction RMS about 2.33° → 1.47°, speed bias −0.16 → −0.08 m/s; other modes unchanged)
+- [x] True-wind own-sail-force correction on 2f: ring mean minus k·(−F_boat) with k = 0.000105 (scenario 20 direction RMS about 2.33° → 1.47°, speed bias −0.16 → −0.08 m/s; other modes unchanged): [#103](https://github.com/SukuWc/fields/pull/103)
 - [ ] Strategy tuning
 - [ ] Strong-wind speed cap (heel limit): boat speed keeps climbing with wind (about 0.72× wind speed at 15 m/s) because the sail model has no heel or depower limit; real boats level off. Sweep data in [#83](https://github.com/SukuWc/fields/pull/83) (backlog, not started)
 
