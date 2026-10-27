@@ -31,6 +31,7 @@ import { Map } from './map.js';
 import { FluidWind, ConstantWind } from './wind.js';
 import { Sim, SIM_RES_MODES, DEFAULT_SIM_RES } from './sim.js';
 import { settingDefault } from './settings-registry.js';
+import { commandsFromConfig, validateRoomConfig } from './room-config.js';
 import { bodyOutlines, perfStats } from './present.js';
 import { sceneFrame } from './scene-state.js';
 import { eventForClient } from './host-protocol.js';
@@ -61,7 +62,7 @@ export class SimCore {
     // what a server room reports to joining clients and broadcasts on change.
     this.settings = {
       devMode: false, wind: { angle: windAngle, speed: windSpeed }, barrier: false,
-      simRes: SIM_RES_MODES[simRes] ? simRes : DEFAULT_SIM_RES, amrMode: settingDefault('amrMode'), refine: { maxLevel: settingDefault('maxLevel'), boatRefineRadius: settingDefault('boatRefineRadius') }, cellBudget: { tune: settingDefault('cellBudgetTune'), target: settingDefault('cellBudget') },
+      simRes: SIM_RES_MODES[simRes] ? simRes : DEFAULT_SIM_RES, amrMode: settingDefault('amrMode'), refine: { maxLevel: settingDefault('maxLevel'), boatRefineRadius: settingDefault('boatRefineRadius') }, cellBudget: { tune: settingDefault('cellBudgetTune'), target: settingDefault('cellBudget') }, // tune default false = unlimited
       amr: this.sim.options.amr, boatEnergy: this.sim.options.boatEnergy, ladder: this.sim.options.ladder, sailWakeGain: this.sim.options.sailWakeGain,
       fieldSkip: settingDefault('fieldSkip'),
     };
@@ -95,6 +96,35 @@ export class SimCore {
       if (Number.isFinite(c.plotType)) this.plot.plotType = c.plotType;
       if ('contrastExp' in c) this.plot.contrastExp = c.contrastExp;
       return undefined;
+    }
+    // Atomic room TOML apply (room-config.js): validate, expand, apply in order.
+    if (c.type === 'config') {
+      const v = validateRoomConfig(c.config, { core: this });
+      if (v.error) return { error: v.error };
+      const cfg = v.config;
+      const cmds = commandsFromConfig(cfg);
+      let last = undefined;
+      let rebuilt = false;
+      let restartScenario = null;
+      for (const cmd of cmds) {
+        if (cmd.type === 'restart') { restartScenario = cmd.scenario; continue; }
+        const r = this.command(cmd);
+        last = r;
+        if (r && r.rebuilt) rebuilt = true;
+      }
+      if (restartScenario !== null || rebuilt) {
+        const n = restartScenario !== null ? restartScenario : this.sim.scenarioIndex;
+        if (Number.isInteger(n)) {
+          const r = this.sim.command({ type: 'restart', scenario: n });
+          this._trackSetting({ type: 'restart', scenario: n }, r);
+          last = r ? { title: r.title, description: r.description, rebuilt, lattice: this.lattice() } : { rebuilt, lattice: this.lattice() };
+        } else {
+          last = { rebuilt, lattice: this.lattice() };
+        }
+      } else if (last === undefined) {
+        last = { ok: true, lattice: this.lattice() };
+      }
+      return last;
     }
     const r = this.sim.command(c);
     this._trackSetting(c, r);

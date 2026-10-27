@@ -60,8 +60,6 @@ export function budgetLines(st, updates) {
   const t = st.target;
   const on = Number.isFinite(t);
   const s = on && st.curlScale > 1 ? st.curlScale : 1;
-  const num = typeof document !== 'undefined' && document.getElementById('cellBudget');
-  if (num) num.placeholder = String(st.defaultTarget);
   return [
     'budget ' + (on ? 'on' : 'off') + '  x' + s.toFixed(2),
     'curl tau ' + (CURL_TAU_ON * s).toFixed(4) + ' / ' + (CURL_TAU_OFF * s).toFixed(4),
