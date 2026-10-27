@@ -5,6 +5,8 @@
 // hull angle + 90, wrapped), recomputed from wd and ha.
 // Drawn by boat-stats-panel.js.
 
+import { valueToY, timeToX } from './svg-chart.js';
+
 export const STATS_WINDOW_S = 60;
 export const STATS_SAMPLE_HZ = 4;
 export const STATS_SERIES = [
@@ -97,7 +99,6 @@ export function seriesRange(ser, arrays) {
 export function polylinePoints(t, v, { t1, windowS, lo, hi, w, h, wrap = false }) {
   const out = [];
   let cur = [], prev = null;
-  const t0 = t1 - windowS;
   for (let i = 0; i < v.length; i++) {
     const x = v[i];
     if (!Number.isFinite(x) || (wrap && prev !== null && Math.abs(x - prev) > 180)) {
@@ -106,8 +107,8 @@ export function polylinePoints(t, v, { t1, windowS, lo, hi, w, h, wrap = false }
       prev = null;
       if (!Number.isFinite(x)) continue;
     }
-    const px = ((t[i] - t0) / windowS) * w;
-    const py = h - ((Math.max(lo, Math.min(hi, x)) - lo) / (hi - lo)) * h;
+    const px = timeToX(t[i], t1, windowS, w);
+    const py = valueToY(x, lo, hi, h);
     cur.push(px.toFixed(1) + ',' + py.toFixed(1));
     prev = x;
   }

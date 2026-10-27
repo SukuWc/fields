@@ -2,7 +2,8 @@
 <!-- SailZone landing page (served at / by apps/server with npm run build:app).
      Lists the server's rooms from /api/rooms every 5 s; Join opens the game
      at /play/?room=<id>, which connects to this origin's WebSocket.
-     Per-room frame-time graphs from /api/perf (last ~180 s, physics + field).
+     Per-room frame-time graphs from /api/perf (last ~180 s, physics + field)
+     drawn as SVG polylines (same technique as boat stats) with hover readout.
      ?api=https://host points it at another server (CORS is open). -->
 <html lang="en">
 <head>
@@ -23,7 +24,15 @@
   a.join { background: #1565c0; color: #fff; text-decoration: none; padding: 8px 14px; border-radius: 6px; font-weight: 600; }
   .perf { margin-top: 10px; }
   .perf .meta { font-size: 12px; color: #567; margin: 0 0 4px; display: flex; justify-content: space-between; }
-  .perf canvas { width: 100%; height: 72px; display: block; background: #f0f4fa; border-radius: 6px; }
+  .perf-chart-wrap { position: relative; color: #12233a; }
+  .perf-chart { width: 100%; height: 72px; display: block; border-radius: 6px; }
+  .perf-tip {
+    position: fixed; left: 0; top: 0; transform: translate(-50%, calc(-100% - 4px));
+    pointer-events: none; opacity: 0; z-index: 10000;
+    background: #12233a; color: #fff; border-radius: 4px; padding: 3px 7px;
+    font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
+  .perf-tip.on { opacity: 1; }
   #msg { color: #a33; min-height: 1.4em; }
   footer { margin-top: 28px; font-size: 12px; color: #8a96a8; }
   footer a { color: inherit; }
@@ -37,58 +46,19 @@
   <p id="msg">Loading rooms…</p>
   <footer>__BUILD_FOOTER__</footer>
 </main>
+<script src="perf-charts.js"></script>
 <script>
   const api = (new URLSearchParams(location.search).get('api') || '').replace(/\/$/, '');
   const list = document.getElementById('rooms');
   const msg = document.getElementById('msg');
-  const charts = new Map(); // id → { canvas, ctx }
+  const charts = new Map(); // id → createPerfChart result
 
   function ensureChart(id) {
     let c = charts.get(id);
     if (c) return c;
-    const canvas = document.createElement('canvas');
-    canvas.width = 480; canvas.height = 72;
-    canvas.setAttribute('aria-label', id + ' frame time');
-    c = { canvas, ctx: canvas.getContext('2d') };
+    c = window.LandingPerfCharts.createPerfChart(id);
     charts.set(id, c);
     return c;
-  }
-
-  function drawPerf(canvas, ctx, room) {
-    const w = canvas.width, h = canvas.height;
-    const times = room.times || [];
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = '#f0f4fa';
-    ctx.fillRect(0, 0, w, h);
-    // Budget line at 33.3 ms (30 Hz slot)
-    const budget = 1000 / 30;
-    const maxY = Math.max(budget * 1.2, ...times, 1);
-    const yOf = (ms) => h - 4 - (ms / maxY) * (h - 12);
-    ctx.strokeStyle = '#c5d0de';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    const yb = yOf(budget);
-    ctx.moveTo(0, yb); ctx.lineTo(w, yb); ctx.stroke();
-    if (times.length < 2) {
-      ctx.fillStyle = '#8a96a8';
-      ctx.font = '11px system-ui,sans-serif';
-      ctx.fillText(times.length ? '1 sample' : 'No samples yet (room idle)', 8, h / 2 + 4);
-      return;
-    }
-    ctx.strokeStyle = '#1565c0';
-    ctx.lineWidth = 1.25;
-    ctx.beginPath();
-    for (let i = 0; i < times.length; i++) {
-      const x = (i / (times.length - 1)) * (w - 1);
-      const y = yOf(times[i]);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-    ctx.fillStyle = '#8a96a8';
-    ctx.font = '10px system-ui,sans-serif';
-    ctx.fillText(Math.round(maxY) + ' ms', 4, 12);
-    ctx.fillText('0', 4, h - 4);
-    ctx.fillText('−' + (room.windowS || 180) + 's', w - 36, h - 4);
   }
 
   async function refreshRooms() {
@@ -97,7 +67,9 @@
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const rooms = await r.json();
       const keep = new Set(rooms.map((x) => x.id));
-      for (const id of [...charts.keys()]) if (!keep.has(id)) charts.delete(id);
+      for (const id of [...charts.keys()]) {
+        if (!keep.has(id)) { charts.get(id).destroy(); charts.delete(id); }
+      }
       list.replaceChildren(...rooms.map((room) => {
         const li = document.createElement('li');
         li.className = 'room';
@@ -112,8 +84,8 @@
         const perf = document.createElement('div'); perf.className = 'perf';
         const meta = document.createElement('div'); meta.className = 'meta';
         meta.innerHTML = '<span>Frame time (physics + field)</span><span class="latest">—</span>';
-        const { canvas } = ensureChart(room.id);
-        perf.append(meta, canvas);
+        const chart = ensureChart(room.id);
+        perf.append(meta, chart.el);
         li.append(row, perf);
         return li;
       }));
@@ -132,7 +104,7 @@
         const li = list.querySelector('li.room[data-id="' + CSS.escape(room.id) + '"]');
         const chart = charts.get(room.id);
         if (!chart) continue;
-        drawPerf(chart.canvas, chart.ctx, room);
+        chart.draw(room);
         if (li) {
           const latest = li.querySelector('.latest');
           if (latest) latest.textContent = room.latestMs != null ? room.latestMs.toFixed(1) + ' ms' : 'idle';
