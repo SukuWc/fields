@@ -77,8 +77,8 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
   const rooms = new Map();
   for (const name of fixedRooms) {
     const room = new Room(name, { lockstep, fieldHz, fieldTol, graceMs, persistent: true });
-    // The sim exists from startup (paused until someone joins).
-    if (!lockstep) { room._create({}); room.stop(); }
+    // The sim exists and ticks from startup (even with no clients).
+    if (!lockstep) room._create({});
     rooms.set(name, room);
   }
   const root = staticDir ? path.resolve(staticDir) : null;
