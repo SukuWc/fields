@@ -76,6 +76,8 @@ export class Sim {
     this.map = map;
     this.bm = map.bm;
     this.options = { amr, boatEnergy, ladder, sailWakeGain };
+    // boatTrueWind reads map.sailWakeGain so the undo tracks the live room setting.
+    map.sailWakeGain = sailWakeGain;
     this.rules = createRulesState();
     this.scenarios = buildScenarios(this);
     this.scenarioIndex = null;
@@ -198,7 +200,10 @@ export class Sim {
         return true;
       }
       case 'sailWake':
-        if (Number.isFinite(c.gain) && c.gain >= 0) this.options.sailWakeGain = c.gain;
+        if (Number.isFinite(c.gain) && c.gain >= 0) {
+          this.options.sailWakeGain = c.gain;
+          this.map.sailWakeGain = c.gain;
+        }
         return undefined;
       case 'refine': {
         // Boat refinement stack (domainTrack amrParams): maxLevel levels below

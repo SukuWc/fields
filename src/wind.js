@@ -121,20 +121,24 @@ export class FluidWind {
   }
 }
 
-// Own-sail-force true-wind correction (default 2f, sailWakeGain 16).
+// Own-sail-force true-wind correction (default 2f).
 // The 1 m ring mean includes the boat's own wake. The lattice received
-// impulse ∝ −mainsail_force (getSailSegments), so
-//   u_meas ≈ u_free + k · (−F_boat).
-// Undo with u_est = u_meas − k · (−F) = u_meas + k · F_boat.
-// TRUE_WIND_OWN_FORCE_K is lattice vx per unit force-on-boat, fitted on
+// impulse ∝ −mainsail_force × (sailWakeGain / 16) (getSailSegments × sailEfficiency),
+// so
+//   u_meas ≈ u_free + k0 · (gain/16) · (−F_boat).
+// Undo with u_est = u_meas + k_eff · F_boat, k_eff = TRUE_WIND_OWN_FORCE_K · (gain / GAIN_REF).
+// TRUE_WIND_OWN_FORCE_K is lattice vx per unit force-on-boat at gain 16, fitted on
 // scenario 20 / scripts/truewind-accuracy.mjs for simRes 2f. boatTrueWind
 // applies it only on 2f (velScale 2); other modes and dev mode stay on the
-// plain ring mean until they get their own k.
+// plain ring mean until they get their own k. Live sailWakeGain is read from
+// map.sailWakeGain (Sim keeps it in sync with the room setting).
 // Mutable so scripts/truewind-force-k-fit.mjs can sweep without restarting the process.
 let _trueWindOwnForceK = 0.000105;
 export function getTrueWindOwnForceK() { return _trueWindOwnForceK; }
 export function setTrueWindOwnForceK(k) { _trueWindOwnForceK = Number.isFinite(k) ? k : 0; }
 export { _trueWindOwnForceK as TRUE_WIND_OWN_FORCE_K };
+// Same default as boat.js SAIL_WAKE_GAIN (kept local to avoid a boat↔wind import cycle).
+export const TRUE_WIND_OWN_FORCE_GAIN_REF = 16;
 
 // Cap |F| used in the undo. k was fitted near |F| ≈ 11 on scenario 20 at
 // 4.5 m/s; at 15 m/s |F| reaches ~250 and a linear undo overshoots, yanking
@@ -165,13 +169,19 @@ export function trueWindForceCorrectActive(map) {
   return !!(bm && bm.velScale === 2);
 }
 
+export function trueWindOwnForceKEff(gain, k = _trueWindOwnForceK) {
+  const g = Number.isFinite(gain) ? Math.max(0, gain) : TRUE_WIND_OWN_FORCE_GAIN_REF;
+  return k * (g / TRUE_WIND_OWN_FORCE_GAIN_REF);
+}
+
 export function boatTrueWind(boat, k = _trueWindOwnForceK) {
   if (!boat || !boat.map) return null;
   const m = boat.map;
   const raw = typeof m.get_wind_ring === 'function' ? m.get_wind_ring(boat.x, boat.y) : m.get_wind(boat.x, boat.y);
   if (!raw) return null;
   if (!trueWindForceCorrectActive(m)) return raw;
-  return correctWindOwnForce(raw, boat.mainsail_force, k);
+  const gain = Number.isFinite(m.sailWakeGain) ? m.sailWakeGain : TRUE_WIND_OWN_FORCE_GAIN_REF;
+  return correctWindOwnForce(raw, boat.mainsail_force, trueWindOwnForceKEff(gain, k));
 }
 
 // Three line segments (shaft + two head barbs). directionDeg is the heading

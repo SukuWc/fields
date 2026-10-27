@@ -3,6 +3,7 @@ import './dom-stub.mjs';
 const {
   windSample, correctWindOwnForce, boatTrueWind, ConstantWind,
   getTrueWindOwnForceK, setTrueWindOwnForceK, TRUE_WIND_OWN_FORCE_K,
+  TRUE_WIND_OWN_FORCE_GAIN_REF, trueWindOwnForceKEff,
 } = await import('../src/wind.js');
 let failed = 0;
 const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  ' + detail : ''}`); if (!ok) failed++; };
@@ -49,7 +50,7 @@ const near = (a, b, e = 1e-12) => Math.abs(a - b) <= e;
   const base = windSample(0.01, 0);
   const boat2f = {
     x: 0, y: 0,
-    map: { devMode: false, bm: { velScale: 2 }, get_wind_ring: () => base, get_wind: () => base },
+    map: { devMode: false, bm: { velScale: 2 }, sailWakeGain: 16, get_wind_ring: () => base, get_wind: () => base },
     mainsail_force: { x: 12, y: -5 },
   };
   const w = boatTrueWind(boat2f, 0.001);
@@ -63,6 +64,26 @@ const near = (a, b, e = 1e-12) => Math.abs(a - b) <= e;
   check('boatTrueWind on Default (velScale 1): no correction', w1.vx === base.vx && w1.vy === base.vy);
 }
 
+
+{
+  check('GAIN_REF matches default sail wake gain (16)', TRUE_WIND_OWN_FORCE_GAIN_REF === 16);
+  check('kEff at gain 16 equals k0', near(trueWindOwnForceKEff(16, 0.000105), 0.000105));
+  check('kEff at gain 0 is 0', near(trueWindOwnForceKEff(0, 0.000105), 0));
+  check('kEff at gain 32 is 2×k0', near(trueWindOwnForceKEff(32, 0.000105), 0.00021));
+  check('kEff at gain 8 is 0.5×k0', near(trueWindOwnForceKEff(8, 0.000105), 0.0000525));
+}
+{
+  const base = windSample(0.01, 0);
+  const mk = (gain) => ({
+    x: 0, y: 0,
+    map: { devMode: false, bm: { velScale: 2 }, sailWakeGain: gain, get_wind_ring: () => base, get_wind: () => base },
+    mainsail_force: { x: 10, y: 0 },
+  });
+  const w16 = boatTrueWind(mk(16), 0.001);
+  const w32 = boatTrueWind(mk(32), 0.001);
+  const w0 = boatTrueWind(mk(0), 0.001);
+  check('boatTrueWind scales undo with sailWakeGain', near(w16.vx, 0.01 + 0.01) && near(w32.vx, 0.01 + 0.02) && near(w0.vx, 0.01));
+}
 {
   const s = windSample(0.01, 0);
   const out = correctWindOwnForce(s, { x: 400, y: 0 }, 0.001, 20);
