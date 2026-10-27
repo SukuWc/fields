@@ -153,6 +153,19 @@ export function stringifyRoomConfig(cfg) {
 }
 
 /**
+ * Default room TOML for Reset: ROOM_CONFIG_DEFAULTS, with map dims overridden
+ * to the live room size (remote map is create-time fixed; local keeps the
+ * page's current map so Reset does not imply a reload). Local-only fill —
+ * does not send a room command.
+ */
+export function defaultRoomConfig(mapW, mapH) {
+  const cfg = { ...ROOM_CONFIG_DEFAULTS };
+  if (Number.isFinite(mapW) && mapW > 0) cfg.map_width_m = mapW;
+  if (Number.isFinite(mapH) && mapH > 0) cfg.map_height_m = mapH;
+  return cfg;
+}
+
+/**
  * Parse TOML text into a plain object (only known keys kept).
  * Returns { config } or { error }.
  */
