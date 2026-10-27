@@ -75,7 +75,7 @@ const core = new SimCore({ mapW: 50, mapH: 100, simRes: '4' });
   const vals = [undefined, null, true, false, 0, 1, -1, 3, 4, 12, 19, 20, 999, 45.5, 361, -90, 30, 30.01, 1000, 1e8, 1e9, NaN, Infinity, '', '1', '4', '4f', '2f', '2f34', 'auto', 'fixed', 'bogus', 'yes', '12', '3.0', {}, []];
   const fields = ['scenario', 'angle', 'speed', 'on', 'mode', 'tune', 'target', 'amr', 'boatEnergy', 'ladder'];
   // 'refine' / 'sailWake' / 'fieldSkip' came after the old validator (their own checks below).
-  const types = [...ROOM_COMMANDS].filter((t) => t !== 'refine' && t !== 'sailWake' && t !== 'fieldSkip').concat(['plot', 'spawnBoat', 'bogus']);
+  const types = [...ROOM_COMMANDS].filter((t) => t !== 'refine' && t !== 'sailWake' && t !== 'fieldSkip' && t !== 'config').concat(['plot', 'spawnBoat', 'bogus']);
   const cmds = [];
   for (const type of types) {
     cmds.push({ type });
@@ -90,7 +90,7 @@ const core = new SimCore({ mapW: 50, mapH: 100, simRes: '4' });
     if (a !== b) diff.push(JSON.stringify(c) + ' old ' + a + ' new ' + b);
   }
   check('registry validator answers exactly as the old room.js validator', diff.length === 0, `${cmds.length} commands` + (diff.length ? '; ' + diff.slice(0, 5).join(' | ') : ''));
-  check('ROOM_COMMANDS: the registry\'s, the same set as before', SERVER_ROOM_COMMANDS === ROOM_COMMANDS && [...ROOM_COMMANDS].sort().join() === ['restart', 'wind', 'devMode', 'barrier', 'simRes', 'amrMode', 'refine', 'sailWake', 'cellBudget', 'options', 'fieldSkip'].sort().join(), [...ROOM_COMMANDS].join());
+  check('ROOM_COMMANDS: the registry\'s, the same set as before', SERVER_ROOM_COMMANDS === ROOM_COMMANDS && [...ROOM_COMMANDS].sort().join() === ['restart', 'wind', 'devMode', 'barrier', 'simRes', 'amrMode', 'refine', 'sailWake', 'cellBudget', 'options', 'fieldSkip', 'config'].sort().join(), [...ROOM_COMMANDS].join());
 }
 
 // 2. Every room setting is validated by the server through the registry:
@@ -116,6 +116,8 @@ for (const s of ROOM_SETTINGS) {
   if (!s.command) { check(`${s.id}: no room command (set when the room is created)`, s.id === 'map_size'); continue; }
   const other = ROOM_SETTINGS.filter((o) => o !== s && o.command && o.command.type === s.command.type && o.command.required);
   const base = Object.fromEntries(other.map((o) => [o.id, o.default]));
+  // cellBudget target is ignored unless tune is on (host._trackSetting).
+  if (s.id === 'cellBudget') base.cellBudgetTune = true;
   // Wind speed: below this room's mode ceiling (sim.js clamps to it).
   const good = s.id === 'windSpeed' ? 7 : GOOD[s.type](s);
   const ok = command(roomCommandFor({ ...base, [s.id]: good }));
@@ -184,36 +186,36 @@ for (const m of html.matchAll(/<(input|select|textarea)\b([^>]*)>/g)) {
   controls.push({ id, tag: m[1].toUpperCase(), type, attrs, panel, options });
 }
 
-// 4. URL sync: the registry's ids, minus the room settings in remote mode;
-// the same controls as before (all of #settings; remote: not #admin_panel).
+// 4. URL sync: player settings only (room settings are TOML, url:false).
 {
-  const all = controls.map((c) => c.id);
+  const playerControls = controls.filter((c) => c.panel === 'player').map((c) => c.id);
   const local = urlSettingIds({ remote: false }), remote = urlSettingIds({ remote: true });
-  check('URL settings (local, worker): every control on the panel, nothing else', local.join() === all.join(), local.length + ' ids');
-  check('URL settings (remote): exactly the controls outside the room panel (the old #admin_panel exclusion)', remote.join() === controls.filter((c) => c.panel !== 'room').map((c) => c.id).join());
-  const left = all.filter((id) => !remote.includes(id));
-  check('remote mode leaves exactly the room settings out of the URL', left.join() === ROOM_SETTINGS.map((s) => s.id).join(), left.join());
+  check('URL settings (local): exactly the player controls', local.join() === playerControls.join(), local.join());
+  check('URL settings (remote): the same player controls (room never in the URL)', remote.join() === playerControls.join());
+  check('every room setting is url:false', ROOM_SETTINGS.every((s) => s.url === false));
   check('no player setting is left out of the URL', PLAYER_SETTINGS.every((s) => remote.includes(s.id) && local.includes(s.id)));
 }
 
-// 5. Panel contents match the registry: the same controls, in order, in the
-// registry's panel; no defaults or ranges in the markup; the select options
-// are the allowed values.
+// 5. Panel contents: player controls match the registry; room panel is the
+// TOML textarea + Commit / Reset (room settings have control:false).
 {
   const byPanel = (p) => controls.filter((c) => c.panel === p).map((c) => c.id).join();
-  check('the Player panel holds exactly the player-panel settings, in order', byPanel('player') === SETTINGS.filter((s) => s.panel === 'player').map((s) => s.id).join(), byPanel('player'));
-  check('the Room settings panel holds exactly the room-panel settings, in order', byPanel('room') === SETTINGS.filter((s) => s.panel === 'room').map((s) => s.id).join(), byPanel('room'));
+  const playerIds = SETTINGS.filter((s) => s.panel === 'player' && s.control !== false).map((s) => s.id).join();
+  check('the Player panel holds exactly the player-panel settings, in order', byPanel('player') === playerIds, byPanel('player'));
+  check('the Room settings panel is the TOML editor (room_config + buttons are not registry settings)', byPanel('room') === 'room_config', byPanel('room'));
+  check('room_config textarea is in #admin_panel', /id="room_config"/.test(html) && html.indexOf('id="room_config"') > panels.room[0] && html.indexOf('id="room_config"') < panels.room[1]);
+  check('Commit and Reset buttons are in #admin_panel', /id="room_config_commit"/.test(html) && /id="room_config_reset"/.test(html));
   check('every control is in one of the two panels', controls.every((c) => c.panel));
+  check('room settings are control:false (no per-setting DOM)', ROOM_SETTINGS.every((s) => s.control === false));
   check('room settings sit on the room panel, player settings on the player panel', SETTINGS.every((s) => s.panel === s.scope));
-  const own = controls.filter((c) => /\s(value|min|max)="|\schecked\b/.test(' ' + c.attrs) || (c.options && c.options.some((o) => o.selected)));
-  check('the markup carries no defaults or ranges of its own (value, checked, selected, min, max)', own.length === 0, own.map((c) => c.id).join());
-  for (const s of SETTINGS.filter((x) => x.type === 'enum')) {
+  const own = controls.filter((c) => c.panel === 'player' && (/\s(value|min|max)="|\schecked\b/.test(' ' + c.attrs) || (c.options && c.options.some((o) => o.selected))));
+  check('the player markup carries no defaults or ranges of its own (value, checked, selected, min, max)', own.length === 0, own.map((c) => c.id).join());
+  for (const s of SETTINGS.filter((x) => x.type === 'enum' && x.control !== false)) {
     const c = controls.find((x) => x.id === s.id);
     const vals = c.options.map((o) => o.value);
-    const want = s.id === 'map_size' ? MAP_SIZE_ORDER : s.values;
-    check(`${s.id}: the options are the allowed values`, [...vals].sort().join() === [...want].sort().join() && vals.includes(String(s.default)), vals.join());
+    check(`${s.id}: the options are the allowed values`, [...vals].sort().join() === [...s.values].sort().join() && vals.includes(String(s.default)), vals.join());
   }
-  check('types match the controls (checkbox = bool, select = enum, number / range = number / int, text)', SETTINGS.every((s) => {
+  check('player control types match (checkbox = bool, select = enum, number / range = number / int, text)', SETTINGS.filter((s) => s.control !== false).every((s) => {
     const c = controls.find((x) => x.id === s.id);
     return s.type === 'bool' ? c.type === 'checkbox' : s.type === 'enum' ? c.tag === 'SELECT' : s.type === 'text' ? c.type === 'text' : (c.type === 'number' || c.type === 'range');
   }));
@@ -225,7 +227,7 @@ check('map size default: the registry\'s', MAP_DEFAULT === DEFAULT_MAP_SIZE && s
 {
   const st = core.roomState().settings;
   const off = ROOM_SETTINGS.filter((s) => s.state && s.id !== 'simRes' && roomStateValue(s, st) !== s.default);
-  check('a new SimCore starts with the registry defaults (wind, dev mode, options, layout, budget)', off.length === 0, off.map((s) => s.id + '=' + JSON.stringify(roomStateValue(s, st))).join());
+  check('a new SimCore starts with the registry defaults (wind, dev mode, options, layout, budget tune off)', off.length === 0, off.map((s) => s.id + '=' + JSON.stringify(roomStateValue(s, st))).join());
   const r = new Room('d', { lockstep: true, graceMs: 0 });
   const c2 = { send() {} };
   r.join(c2);
@@ -234,11 +236,11 @@ check('map size default: the registry\'s', MAP_DEFAULT === DEFAULT_MAP_SIZE && s
   r.leave(c2);
 }
 
-// 7. applySettingDefaults on a stand-in DOM built from the markup: every
-// control gets the registry default, the ranges come from the registry.
+// 7. applySettingDefaults on a stand-in DOM built from the player markup:
+// every player control gets the registry default; room settings are skipped.
 {
   const els = new Map();
-  for (const c of controls) {
+  for (const c of controls.filter((x) => x.panel === 'player')) {
     const el = { id: c.id, tagName: c.tag, type: c.tag === 'SELECT' ? 'select-one' : c.type, value: '', defaultValue: '', checked: false, defaultChecked: false,
       closest: (sel) => (sel === '#' + PANEL_IDS[c.panel] ? {} : null) };
     if (c.options) {
@@ -251,18 +253,16 @@ check('map size default: the registry\'s', MAP_DEFAULT === DEFAULT_MAP_SIZE && s
   const warn = console.warn; console.warn = () => {};
   const problems = applySettingDefaults({ getElementById: (id) => els.get(id) || null });
   console.warn = warn;
-  check('applySettingDefaults: every registry setting has its control, in its panel', problems.length === 0, problems.join('; '));
-  const wrong = SETTINGS.filter((s) => {
+  check('applySettingDefaults: every player setting has its control, in its panel', problems.length === 0, problems.join('; '));
+  const wrong = SETTINGS.filter((s) => s.control !== false).filter((s) => {
     const el = els.get(s.id);
     if (s.type === 'bool') return el.checked !== s.default || el.defaultChecked !== s.default;
     const want = s.default === null ? '' : String(s.default);
     return el.value !== want || (el.options ? !el.options.find((o) => o.value === want).defaultSelected : el.defaultValue !== want);
   });
-  check('applySettingDefaults: each control holds the registry default', wrong.length === 0, wrong.map((s) => s.id).join());
+  check('applySettingDefaults: each player control holds the registry default', wrong.length === 0, wrong.map((s) => s.id).join());
   const e = (id) => els.get(id);
-  check('applySettingDefaults: number ranges from the registry (ui hints where they differ)', e('windSpeed').max === '15' && e('windSpeed').min === '0' && e('tracerLife').min === '0.5' && e('contrastSlider').max === '10' && e('cellBudget').min === '1000' && e('cellBudget').max === undefined && e('scenario_selector').max === '21');
-  const opt = e('simRes').options.find((o) => o.value === DEFAULT_SIM_RES);
-  check('the default simulation resolution option says it is the default', /\(default, /.test(opt.textContent), opt.textContent);
+  check('applySettingDefaults: number ranges from the registry (player)', e('tracerLife').min === '0.5' && e('contrastSlider').max === '10');
 }
 
 room.leave(client);

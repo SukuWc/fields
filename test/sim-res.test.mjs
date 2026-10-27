@@ -25,14 +25,20 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol;
 {
 	const fs = await import('node:fs');
 	const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-	const sel = html.match(/<select id="amrMode"[^>]*>([\s\S]*?)<\/select>/);
-	// The default is the settings registry's (the dropdown and host.js SimCore,
-	// which sends that amrMode command at startup, both take it from there).
+	// Room amrMode is edited via the TOML admin textarea (amr_auto), not a dropdown.
+	// The registry default and host.js SimCore still send amrMode at startup.
 	const { settingDefault } = await import('../src/settings-registry.js');
+	const { ROOM_CONFIG_DEFAULTS, ROOM_CONFIG_KEYS } = await import('../src/room-config.js');
 	const selected = settingDefault('amrMode');
 	const hostJs = fs.readFileSync(new URL('../src/host.js', import.meta.url), 'utf8');
-	check('app default refinement layout is auto (registry: dropdown + host.js); fixed stays selectable',
-		selected === 'auto' && /<option value="auto">/.test(sel[1]) && /<option value="fixed">/.test(sel[1]) && /type: 'amrMode', mode: settingDefault\('amrMode'\)/.test(hostJs) && H.amrMode() === 'auto',
+	check('app default refinement layout is auto (registry + TOML amr_auto + host.js); fixed stays selectable via amr_auto=false',
+		selected === 'auto'
+		&& ROOM_CONFIG_DEFAULTS.amr_auto === true
+		&& ROOM_CONFIG_KEYS.includes('amr_auto')
+		&& /id="room_config"/.test(html)
+		&& !/<select id="amrMode"/.test(html)
+		&& /type: 'amrMode', mode: settingDefault\('amrMode'\)/.test(hostJs)
+		&& H.amrMode() === 'auto',
 		`selected=${selected} harness=${H.amrMode()}`);
 	const eng = new Boltzmann(75, 75, 1, 90, 4.5, undefined, 1);
 	const engFixed = new Boltzmann(75, 75, 1, 90, 4.5, undefined, 1);
