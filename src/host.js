@@ -62,7 +62,7 @@ export class SimCore {
     this.settings = {
       devMode: false, wind: { angle: windAngle, speed: windSpeed }, barrier: false,
       simRes: SIM_RES_MODES[simRes] ? simRes : DEFAULT_SIM_RES, amrMode: settingDefault('amrMode'), refine: { maxLevel: settingDefault('maxLevel'), boatRefineRadius: settingDefault('boatRefineRadius') }, cellBudget: { tune: settingDefault('cellBudgetTune'), target: settingDefault('cellBudget') },
-      amr: this.sim.options.amr, boatEnergy: this.sim.options.boatEnergy, sailWakeGain: this.sim.options.sailWakeGain,
+      amr: this.sim.options.amr, boatEnergy: this.sim.options.boatEnergy, ladder: this.sim.options.ladder, sailWakeGain: this.sim.options.sailWakeGain,
       fieldSkip: settingDefault('fieldSkip'),
     };
     // The constructor only took the root resolution; the mode's explicit
@@ -107,6 +107,10 @@ export class SimCore {
   _trackSetting(c, r) {
     const st = this.settings;
     switch (c.type) {
+      case 'restart':
+        // Scenario scripts may flip options (e.g. scenario 21 enables ladder).
+        st.ladder = this.sim.options.ladder;
+        break;
       case 'devMode': st.devMode = !!c.on; break;
       case 'barrier': st.barrier = !!c.on; break;
       case 'wind':
@@ -125,6 +129,7 @@ export class SimCore {
       case 'options':
         st.amr = this.sim.options.amr;
         st.boatEnergy = this.sim.options.boatEnergy;
+        st.ladder = this.sim.options.ladder;
         break;
       default: break;
     }

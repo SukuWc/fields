@@ -443,7 +443,7 @@ function startClient() {
   // simulation pass never touches the DOM. Kept current by change listeners
   // (url-settings dispatches change events, so query values land here too).
   // Remote: only on an edit (the room has its own values).
-  for (const id of ['amr', 'boat_energy']) {
+  for (const id of ['amr', 'boat_energy', 'ladder']) {
     const el = document.getElementById(id);
     if (!remote) host.command(roomCommandFor({ [id]: el.checked }));
     el.addEventListener('change', () => { roomCommand(roomCommandFor({ [id]: el.checked })); });

@@ -31,6 +31,9 @@
 //          k: [cx, cy, radius] | 0 (disk), m: run lengths of the mask | null,
 //          c: [children] }; absent in dev mode
 //   wind   dev mode: flow direction (deg) for the wind arrow
+//   ladder downwind-distance ladder polylines from the first mark
+//          (ladder-lines.js): [[x0,y0,…], …] for 20 m and 40 m when
+//          sim.options.ladder is on and a mark exists
 //   bt     transforms of the moving bodies, flat, in statics.bodies order
 // sceneStatics(sim) → statics:
 //   lat    { w, h, res } root lattice (for the refinement outlines)
@@ -48,6 +51,7 @@ import { roomGuideState, contactFlashState, penaltyGuideState, pairStateFor } fr
 import { markTouchState } from './mark-touch.js';
 import { hudState } from './hud.js';
 import { markExact } from './host-protocol.js';
+import { ladderState } from './ladder-lines.js';
 
 // Mask (Uint8Array, refined = 1) → run lengths, alternating starting with
 // unrefined, base 36, comma separated.
@@ -154,6 +158,12 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
   if (racing.some((b) => b.awayUntil != null)) s.aw = racing.map((b) => (b.awayUntil != null ? Math.max(0, Math.ceil((b.awayUntil - nowMs) / 1000)) : null));
   s.hud = markExact(hudState(sim, rec));
   if (sim.marks.length) s.mk = sim.marks.map((m) => { const p = m.physics_model.getPosition(); return [p.x, p.y]; });
+  // Ladder lines (ladder-lines.js): live field sample so sail wake warps them.
+  if (sim.options.ladder && sim.marks.length) {
+    const m = sim.marks[0];
+    const p = m.physics_model.getPosition();
+    s.ladder = ladderState((x, y) => map.get_wind(x, y), p.x, p.y);
+  }
   const seq = sim.startSequence;
   if (seq) s.start = startGuideState(seq, racing[0]);
   const course = sim.course;

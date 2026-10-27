@@ -64,7 +64,7 @@ export const SETTINGS = [
 
   // Room settings panel.
   // The scenario's existence and fit depend on the room: checks.scenario.
-  { id: 'scenario_selector', scope: 'room', panel: 'room', type: 'int', default: 0, min: 0, coerce: true, check: 'scenario', ui: { min: 0, max: 20 },
+  { id: 'scenario_selector', scope: 'room', panel: 'room', type: 'int', default: 0, min: 0, coerce: true, check: 'scenario', ui: { min: 0, max: 21 },
     command: { type: 'restart', field: 'scenario', required: true }, invalid: (v) => 'no scenario ' + v },
   { id: 'windAngle', scope: 'room', panel: 'room', type: 'number', default: 90, ui: { min: 0, max: 360 },
     command: { type: 'wind', field: 'angle' }, state: 'wind.angle', normalize: (v) => ((v % 360) + 360) % 360, invalid: () => 'bad wind angle' },
@@ -74,6 +74,9 @@ export const SETTINGS = [
   { id: 'amr', scope: 'room', panel: 'room', type: 'bool', default: true, command: { type: 'options', field: 'amr', key: true }, state: 'amr', devModeDisabled: true },
   { id: 'barrier', scope: 'room', panel: 'room', type: 'bool', default: false, command: { type: 'barrier', field: 'on', required: true }, state: 'barrier', devModeDisabled: true },
   { id: 'boat_energy', scope: 'room', panel: 'room', type: 'bool', default: true, command: { type: 'options', field: 'boatEnergy', key: true }, state: 'boatEnergy', devModeDisabled: true },
+  // Downwind-distance ladder lines from the first mark (ladder-lines.js):
+  // 20 m and 40 m only. Samples the live field so sail wake warps them.
+  { id: 'ladder', scope: 'room', panel: 'room', type: 'bool', default: false, command: { type: 'options', field: 'ladder', key: true }, state: 'ladder' },
   { id: 'simRes', scope: 'room', panel: 'room', type: 'enum', default: DEFAULT_SIM_RES, values: Object.keys(SIM_RES_MODES), markDefault: true,
     command: { type: 'simRes', field: 'mode', required: true }, state: 'simRes', invalid: (v) => 'unknown simRes ' + v },
   { id: 'amrMode', scope: 'room', panel: 'room', type: 'enum', default: 'auto', values: ['auto', 'fixed'],
