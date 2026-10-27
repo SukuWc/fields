@@ -288,9 +288,9 @@ export class Boat{
 
 
     
-    // True wind at the boat: 1 m ring mean, then undo own sail wake (wind.js boatTrueWind).
+    // True wind at the boat: centre sample + own-sail-force undo on 2f (wind.js boatTrueWind).
     // mainsail_force is still last tick's value here, which matches the wake already in the field.
-    const wind_raw = boatTrueWind(this) || (this.map.get_wind_ring ? this.map.get_wind_ring(this.x, this.y) : this.map.get_wind(this.x, this.y));
+    const wind_raw = boatTrueWind(this) || this.map.get_wind(this.x, this.y);
     const alpha = WIND_SMOOTH_ALPHA;
     // A single non-finite sample used to latch the smoother (NaN + finite = NaN)
     // and every later force stayed NaN. Keep the last finite wind instead.

@@ -26,7 +26,7 @@ function sweep(gain, { kOn = true } = {}) {
     try { core.tick({ dt: 1 / 30, held: [] }); } finally { console.log = log; }
     const b = core.sim.players[0];
     if (!b || t % 3) continue;
-    const raw = boatTrueWind(b) || (map.get_wind_ring ? map.get_wind_ring(b.x, b.y) : map.get_wind(b.x, b.y));
+    const raw = boatTrueWind(b) || (map.get_wind(b.x, b.y));
     const tru = map.constantWind.getWind(b.x, b.y);
     rows.push({
       tick: t,
