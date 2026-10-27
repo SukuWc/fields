@@ -2,6 +2,7 @@
 // state, which boats a client shows, and the rolling buffer (rate, window,
 // boats added / removed by id).
 import { boatSample, boatsToShow, StatsBuffer, wrap180, seriesRange, polylinePoints, STATS_SERIES, formatStatValue, latestValues } from '../src/boat-stats.js';
+import { valueToY, indexToX, xToIndex, timeToX, xToTime, nearestTimeIndex, valuesPolylinePoints, agoLabel } from '../src/svg-chart.js';
 import { BOAT_COLORS, boatColor, boatColorCss, boatColorIndex } from '../src/boat-colors.js';
 import { TRAIL_COLORS } from '../src/boat-trails.js';
 import './dom-stub.mjs';
@@ -70,6 +71,18 @@ check('server room, spectating: none; lockstep without own boat: all', boatsToSh
   check('latest per boat in id order', lv.length === 2 && lv[0].id === 's1' && lv[1].id === 's2');
   check('latest is newest sample', near(lv[1].v, 5) && near(lv[0].v, 2.5), JSON.stringify(lv));
   check('latest unknown id is NaN', Number.isNaN(latestValues(buf, 'bs', ['zz'])[0].v));
+}
+
+
+// Shared SVG chart helpers (src/svg-chart.js).
+{
+	check('valueToY: lo→h, hi→0, mid→h/2', valueToY(0, 0, 10, 40) === 40 && valueToY(10, 0, 10, 40) === 0 && valueToY(5, 0, 10, 40) === 20);
+	check('indexToX / xToIndex round-trip', xToIndex(indexToX(3, 7, 100), 7, 100) === 3 && xToIndex(0, 5, 50) === 0 && xToIndex(50, 5, 50) === 4);
+	check('timeToX / xToTime', near(xToTime(timeToX(8, 10, 10, 100), 10, 10, 100), 8) && near(timeToX(0, 10, 10, 100), 0));
+	check('nearestTimeIndex', nearestTimeIndex([1, 2, 5, 9], 4) === 2 && nearestTimeIndex([], 1) === -1);
+	const vp = valuesPolylinePoints([0, 5, NaN, 10], { lo: 0, hi: 10, w: 30, h: 20 });
+	check('valuesPolylinePoints splits on NaN (singleton dropped)', vp.length === 1 && vp[0].split(' ').length === 2, JSON.stringify(vp));
+	check('agoLabel', agoLabel(0) === 'now' && agoLabel(0.5) === '0.50s ago' && agoLabel(12.3) === '12.3s ago');
 }
 
 if (failed) { console.log(`${failed} check(s) failed`); process.exit(1); }

@@ -112,7 +112,16 @@
       }
       #boat_stats summary { cursor: pointer; font-weight: bold; }
       #boat_stats .bs-legend { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 2px 8px; }
-      #boat_stats .bs-chart { display: block; background: rgba(0,0,0,0.25); }
+      #boat_stats .bs-chart-wrap { position: relative; display: inline-block; }
+      #boat_stats .bs-chart { display: block; background: rgba(0,0,0,0.25); color: #fff; }
+      #boat_stats .bs-tip {
+        position: absolute; left: 0; top: 0; transform: translate(-50%, calc(-100% - 6px));
+        pointer-events: none; opacity: 0; z-index: 2;
+        background: rgba(12, 18, 28, 0.92); color: #e8eef6; border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 4px; padding: 3px 7px; font-size: 11px; white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+      #boat_stats .bs-tip.on { opacity: 1; }
       #boat_stats .bs-label { margin-top: 2px; }
       #boat_stats .bs-values { display: flex; flex-wrap: wrap; gap: 0 10px; font-variant-numeric: tabular-nums; }
       #perf_overlay_hud {

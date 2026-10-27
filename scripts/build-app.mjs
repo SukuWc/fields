@@ -42,6 +42,9 @@ const footer = version.url
   : `build ${version.commit}`;
 landing = landing.split('__BUILD_FOOTER__').join(footer);
 fs.writeFileSync('dist-app/index.html', landing);
+execFileSync(process.execPath, ['node_modules/esbuild/bin/esbuild', 'apps/landing/perf-charts.js',
+  '--bundle', '--format=iife', '--outfile=dist-app/perf-charts.js', '--log-level=warning'], { stdio: 'inherit' });
+
 fs.writeFileSync('dist-app/version.json', JSON.stringify(version) + '\n');
 for (const f of ['sailzone-logo.svg', 'sailzone-icon.svg']) fs.copyFileSync('assets/' + f, 'dist-app/' + f);
 console.log('built dist-app/ (landing at /, game at /play/, commit ' + version.commit + ')');
