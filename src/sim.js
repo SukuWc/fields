@@ -50,7 +50,7 @@ export { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps };
 //   { type: 'wind', angle?, speed? }   UI wind (from-angle °, true wind m/s)
 //   { type: 'devMode', on }            uniform wind, lattice frozen
 //   { type: 'barrier', on }
-//   { type: 'options', amr?, boatEnergy? }
+//   { type: 'options', amr?, boatEnergy?, ladder? }
 //   { type: 'simRes', mode }           SIM_RES_MODES key; returns true if the lattice was rebuilt
 //   { type: 'amrMode', mode }          'auto' | 'fixed'; returns true if the lattice was rebuilt
 //   { type: 'sailWake', gain }         sail → lattice momentum multiple (SAIL_WAKE_GAIN 16)
@@ -71,10 +71,10 @@ export const BOAT_ACTIONS = {
 
 export class Sim {
   // map: Map (map.js) with physics_model_init() done; bm: its Boltzmann.
-  constructor(map, { amr = settingDefault('amr'), boatEnergy = settingDefault('boat_energy'), sailWakeGain = SAIL_WAKE_GAIN } = {}) {
+  constructor(map, { amr = settingDefault('amr'), boatEnergy = settingDefault('boat_energy'), ladder = settingDefault('ladder'), sailWakeGain = SAIL_WAKE_GAIN } = {}) {
     this.map = map;
     this.bm = map.bm;
-    this.options = { amr, boatEnergy, sailWakeGain };
+    this.options = { amr, boatEnergy, ladder, sailWakeGain };
     this.rules = createRulesState();
     this.scenarios = buildScenarios(this);
     this.scenarioIndex = null;
@@ -173,6 +173,7 @@ export class Sim {
       case 'options':
         if ('amr' in c) this.options.amr = !!c.amr;
         if ('boatEnergy' in c) this.options.boatEnergy = !!c.boatEnergy;
+        if ('ladder' in c) this.options.ladder = !!c.ladder;
         return undefined;
       case 'simRes': {
         const mode = SIM_RES_MODES[c.mode] || SIM_RES_MODES[DEFAULT_SIM_RES];

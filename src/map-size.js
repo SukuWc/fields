@@ -65,7 +65,9 @@ export const SCENARIO_EXTENT = {
   16: { x: 35, y: 31 },  // finish: |x| ≤ 32, |y| ≤ 27
   17: { x: 35.5, y: 32 },  // test race: boats from x −34.4, mark y 10, line y −22
   18: { x: 46, y: 90 },
-  20: { x: 40, y: 75 },    // true-wind sweep: one circle from (−10, −40), radius ≲ 20 m, plus downwind drift    // boundary test: lines at x ±40 (built for 100 m), beats up to y ≈ 90
+  20: { x: 40, y: 75 },    // true-wind sweep: one circle from (−10, −40), radius ≲ 20 m, plus downwind drift
+  21: { x: 40, y: 50 },    // ladder demo: mark at (0, 40), boat from y ≈ −10 up through the 40 m / 20 m lines
+  // 19 boundary test: lines at x ±40 (built for 100 m), beats up to y ≈ 90
 };
 export function scenarioExtent(n) {
   return SCENARIO_EXTENT[n] || SMALL_SCENARIO;

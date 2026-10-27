@@ -56,12 +56,12 @@ function oldValidateRoomCommand(c, core) {
     }
     case 'options': {
       const out = { type: 'options' };
-      for (const k of ['amr', 'boatEnergy']) {
+      for (const k of ['amr', 'boatEnergy', 'ladder']) {
         if (!(k in c)) continue;
         if (!bool(c[k])) return { error: k + ' must be true | false' };
         out[k] = c[k];
       }
-      return Object.keys(out).length > 1 ? { c: out } : { error: 'options needs amr or boatEnergy' };
+      return Object.keys(out).length > 1 ? { c: out } : { error: 'options needs amr or boatEnergy or ladder' };
     }
     default: return { error: 'unknown command ' + c.type };
   }
@@ -73,7 +73,7 @@ const core = new SimCore({ mapW: 50, mapH: 100, simRes: '4' });
 // 1. Same answers as before, over valid, invalid and odd commands.
 {
   const vals = [undefined, null, true, false, 0, 1, -1, 3, 4, 12, 19, 20, 999, 45.5, 361, -90, 30, 30.01, 1000, 1e8, 1e9, NaN, Infinity, '', '1', '4', '4f', '2f', '2f34', 'auto', 'fixed', 'bogus', 'yes', '12', '3.0', {}, []];
-  const fields = ['scenario', 'angle', 'speed', 'on', 'mode', 'tune', 'target', 'amr', 'boatEnergy'];
+  const fields = ['scenario', 'angle', 'speed', 'on', 'mode', 'tune', 'target', 'amr', 'boatEnergy', 'ladder'];
   // 'refine' / 'sailWake' / 'fieldSkip' came after the old validator (their own checks below).
   const types = [...ROOM_COMMANDS].filter((t) => t !== 'refine' && t !== 'sailWake' && t !== 'fieldSkip').concat(['plot', 'spawnBoat', 'bogus']);
   const cmds = [];
@@ -82,7 +82,7 @@ const core = new SimCore({ mapW: 50, mapH: 100, simRes: '4' });
     for (const f of fields) for (const v of vals) cmds.push({ type, [f]: v });
     for (const a of [true, false, 'x', undefined]) for (const t of [null, undefined, 5000, 10, 'x', 2e8]) cmds.push({ type, tune: a, target: t });
     for (const a of [90, 'x', undefined, null]) for (const s of [4, -1, 31, undefined]) cmds.push({ type, angle: a, speed: s });
-    for (const a of [true, 1, undefined]) for (const b of [false, 'no', undefined]) { cmds.push({ type, amr: a, boatEnergy: b }); cmds.push({ type, boatEnergy: b }); }
+    for (const a of [true, 1, undefined]) for (const b of [false, 'no', undefined]) { cmds.push({ type, amr: a, boatEnergy: b, ladder: a }); cmds.push({ type, boatEnergy: b }); cmds.push({ type, ladder: b }); }
   }
   const diff = [];
   for (const c of cmds) {
@@ -260,7 +260,7 @@ check('map size default: the registry\'s', MAP_DEFAULT === DEFAULT_MAP_SIZE && s
   });
   check('applySettingDefaults: each control holds the registry default', wrong.length === 0, wrong.map((s) => s.id).join());
   const e = (id) => els.get(id);
-  check('applySettingDefaults: number ranges from the registry (ui hints where they differ)', e('windSpeed').max === '15' && e('windSpeed').min === '0' && e('tracerLife').min === '0.5' && e('contrastSlider').max === '10' && e('cellBudget').min === '1000' && e('cellBudget').max === undefined && e('scenario_selector').max === '20');
+  check('applySettingDefaults: number ranges from the registry (ui hints where they differ)', e('windSpeed').max === '15' && e('windSpeed').min === '0' && e('tracerLife').min === '0.5' && e('contrastSlider').max === '10' && e('cellBudget').min === '1000' && e('cellBudget').max === undefined && e('scenario_selector').max === '21');
   const opt = e('simRes').options.find((o) => o.value === DEFAULT_SIM_RES);
   check('the default simulation resolution option says it is the default', /\(default, /.test(opt.textContent), opt.textContent);
 }
