@@ -32,13 +32,13 @@ One Node process serves everything on one port (`PORT`):
 | `/` | landing page (`apps/landing/index.html`): SailZone logo, the room list from `/api/rooms` (refreshed every 5 s), a **Join room** button, and a per-room frame-time graph from `/api/perf` (last ~180 s) |
 | `/play/?room=europe-1` | the game. `npm run build:app` builds it with `VITE_SIM_HOST=remote VITE_SIM_SERVER_URL=same-origin`, so it connects to `ws(s)://<same host>/ws?room=…` (wss on https) with no `?host=`/`?server=` params |
 | `/api/rooms` | `[{ "id": "europe-1", "players": N }]`, CORS `*` (a page on another origin, e.g. GitHub Pages, can read it; the landing page takes `?api=https://sailzone.app`) |
-| `/api/perf` | `{ rooms: [{ id, players, sampleHz, windowS, endAt, times, latestMs }] }` — last ~180 s of per-tick `frameMs` (physics + field encode) per room; full buffer each response; CORS `*`. Paused empty rooms keep history but append nothing. |
+| `/api/perf` | `{ rooms: [{ id, players, sampleHz, windowS, endAt, times, latestMs }] }` — last ~180 s of per-tick `frameMs` (physics + field encode) per room; full buffer each response; CORS `*`. Persistent rooms keep appending while empty; non-persistent rooms that pause while empty keep history but append nothing. |
 | `/api/status` | the old status JSON (rooms, clients, tick cost; also `frameMs`) |
 | `/api/version` | `{ "commit", "sha"?, "url"? }` from `dist-app/version.json` (baked by `build:app`; `url` is the GitHub commit page) |
 | `/healthz` | `{ "ok": true }` |
 | WebSocket | any path, `?room=` picks the room |
 
-- **Fixed rooms:** `--rooms europe-1` (default; `ROOMS` env, comma-separated) are created at startup with their sim and never dropped. When the last client leaves, the clock pauses (no CPU) and the sim keeps its state; the next join resumes it. Other room names are refused (close 1008); a connection without `?room=` joins the first fixed room. `--open-rooms` restores on-demand rooms (dropped `--grace-s` after they empty). `startServer()` defaults to open rooms, as the tests expect.
+- **Fixed rooms:** `--rooms europe-1` (default; `ROOMS` env, comma-separated) are created at startup with their sim and never dropped. The clock runs from startup and keeps running when the last client leaves, so physics and `/api/perf` stay live; the next join finds the already-running world. Other room names are refused (close 1008); a connection without `?room=` joins the first fixed room. `--open-rooms` restores on-demand rooms (dropped `--grace-s` after they empty). `startServer()` defaults to open rooms, as the tests expect.
 - **`players`** counts connected WebSocket clients, spectators included. Boats parked for a reconnect grace period do not count.
 - **`--static <dir>`** (`STATIC_DIR` env; defaults to `./dist-app` when it exists) serves files with traversal protection; `/play` redirects to `/play/`. Without it, `/` answers the status JSON as before.
 - The GitHub Pages build (`npm run build` → `dist/`) is unchanged: worker by default, `?host=remote&server=` still works.

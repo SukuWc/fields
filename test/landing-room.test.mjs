@@ -1,5 +1,5 @@
 // The persistent room and HTTP side of apps/server: fixed rooms exist from
-// startup and survive the last disconnect (sim state kept, clock paused),
+// startup and survive the last disconnect (sim keeps ticking while empty),
 // /api/rooms counts connected clients with CORS, other room names are
 // refused, and staticDir is served on the WebSocket's port.
 import fs from 'node:fs';
@@ -32,7 +32,12 @@ const rooms = async () => { const r = await fetch(base + '/api/rooms'); return {
 let r = await rooms();
 check('/api/rooms at startup: europe-1 with 0 players, CORS *', JSON.stringify(r.body) === '[{"id":"europe-1","players":0}]' && r.cors === '*', JSON.stringify(r.body));
 const room = srv.rooms.get('europe-1');
-check('europe-1 has its sim from startup, paused', room && room.persistent && room.core && !room.timer);
+check('europe-1 has its sim from startup, clock running', room && room.persistent && room.core && !!room.timer);
+await sleep(200);
+const ticksAtStart = room.ticks;
+await sleep(250);
+check('europe-1 ticks with 0 clients from startup', room.ticks > ticksAtStart && room.frameTimes.length > 0,
+  `ticks ${ticksAtStart}→${room.ticks} samples ${room.frameTimes.length}`);
 
 const a = new RemoteHost(`ws://127.0.0.1:${srv.port}/ws?room=europe-1`, opts, tex(), { WebSocketImpl: WebSocket });
 const info = await a.ready;
@@ -52,11 +57,17 @@ a.terminate();
 await sleep(300);
 r = await rooms();
 check('after the last disconnect (and past graceMs) the room is still listed with 0', JSON.stringify(r.body) === '[{"id":"europe-1","players":0}]', JSON.stringify(r.body));
-check('same Room and sim kept, clock paused, ticks kept', srv.rooms.get('europe-1') === room && room.core && !room.timer && room.ticks >= ticks);
+check('same Room and sim kept, clock still running', srv.rooms.get('europe-1') === room && room.core && !!room.timer && room.ticks >= ticks);
+const ticksWhileEmpty = room.ticks;
+const samplesWhileEmpty = room.frameTimes.length;
+await sleep(300);
+check('ticks and frame times grow while empty', room.ticks > ticksWhileEmpty && room.frameTimes.length > samplesWhileEmpty && !!room.timer,
+  `ticks ${ticksWhileEmpty}→${room.ticks} samples ${samplesWhileEmpty}→${room.frameTimes.length}`);
+const ticksBeforeRejoin = room.ticks;
 const c = new RemoteHost(`ws://127.0.0.1:${srv.port}/ws?room=europe-1`, opts, tex(), { WebSocketImpl: WebSocket });
 await c.ready;
 await sleep(300);
-check('rejoining resumes the same sim (ticks continue from where they were)', srv.rooms.get('europe-1') === room && room.ticks > ticks && !!room.timer);
+check('rejoining finds the same already-running sim', srv.rooms.get('europe-1') === room && room.ticks > ticksBeforeRejoin && !!room.timer);
 c.terminate();
 
 const closed = await new Promise((res) => { const ws = new WebSocket(`ws://127.0.0.1:${srv.port}/ws?room=mine`); ws.on('close', (code) => res(code)); ws.on('error', () => {}); });

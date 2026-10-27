@@ -5,6 +5,7 @@
 // The GitHub Pages build (npm run build -> dist/) is unchanged.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import esbuild from 'esbuild';
 
 const REPO_COMMIT = 'https://github.com/SukuWc/fields/commit/';
 
@@ -42,8 +43,16 @@ const footer = version.url
   : `build ${version.commit}`;
 landing = landing.split('__BUILD_FOOTER__').join(footer);
 fs.writeFileSync('dist-app/index.html', landing);
-execFileSync(process.execPath, ['node_modules/esbuild/bin/esbuild', 'apps/landing/perf-charts.js',
-  '--bundle', '--format=iife', '--outfile=dist-app/perf-charts.js', '--log-level=warning'], { stdio: 'inherit' });
+// Use the JS API — node_modules/esbuild/bin/esbuild is a native ELF binary on
+// Linux (Docker/Coolify), so `node …/bin/esbuild` throws SyntaxError: Invalid
+// or unexpected token. Vite still uses process.execPath because vite.js is JS.
+esbuild.buildSync({
+  entryPoints: ['apps/landing/perf-charts.js'],
+  bundle: true,
+  format: 'iife',
+  outfile: 'dist-app/perf-charts.js',
+  logLevel: 'warning',
+});
 
 fs.writeFileSync('dist-app/version.json', JSON.stringify(version) + '\n');
 for (const f of ['sailzone-logo.svg', 'sailzone-icon.svg']) fs.copyFileSync('assets/' + f, 'dist-app/' + f);

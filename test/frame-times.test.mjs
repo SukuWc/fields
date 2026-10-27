@@ -50,15 +50,22 @@ check('cap is 180 s × 30 Hz', FRAME_TIME_CAP === FRAME_TIME_WINDOW_S * FRAME_TI
 {
   const srv = await startServer({ port: 0, host: '127.0.0.1', fixedRooms: ['europe-1'], graceMs: 0, fieldHz: 30 });
   const base = `http://127.0.0.1:${srv.port}`;
+  // Persistent room ticks from startup with 0 clients — wait briefly for samples.
+  await sleep(200);
   const empty = await fetch(base + '/api/perf');
   check('/api/perf CORS *', empty.headers.get('access-control-allow-origin') === '*');
   const body0 = await empty.json();
-  check('/api/perf shape at startup (empty history)', Array.isArray(body0.rooms) && body0.rooms.length === 1
+  check('/api/perf shape at startup (ticking while empty)', Array.isArray(body0.rooms) && body0.rooms.length === 1
     && body0.rooms[0].id === 'europe-1' && body0.rooms[0].players === 0
     && body0.rooms[0].sampleHz === 30 && body0.rooms[0].windowS === 180
-    && Array.isArray(body0.rooms[0].times) && body0.rooms[0].times.length === 0
-    && body0.rooms[0].latestMs === null && body0.rooms[0].endAt === null,
+    && Array.isArray(body0.rooms[0].times) && body0.rooms[0].times.length >= 1
+    && body0.rooms[0].latestMs != null && body0.rooms[0].endAt != null,
     JSON.stringify(body0));
+  const nEmpty = body0.rooms[0].times.length;
+  await sleep(250);
+  const bodyEmpty2 = await (await fetch(base + '/api/perf')).json();
+  check('/api/perf keeps growing with 0 players', bodyEmpty2.rooms[0].players === 0 && bodyEmpty2.rooms[0].times.length > nEmpty,
+    `n ${nEmpty}→${bodyEmpty2.rooms[0].times.length}`);
 
   const ws = new WebSocket(`ws://127.0.0.1:${srv.port}/?room=europe-1`);
   await new Promise((resolve, reject) => {
@@ -73,7 +80,7 @@ check('cap is 180 s × 30 Hz', FRAME_TIME_CAP === FRAME_TIME_WINDOW_S * FRAME_TI
   await sleep(250);
   const body1 = await (await fetch(base + '/api/perf')).json();
   const r = body1.rooms[0];
-  check('/api/perf fills while the room is running', r.players === 1 && r.times.length >= 3 && r.latestMs != null && r.endAt != null,
+  check('/api/perf fills while a client is connected', r.players === 1 && r.times.length >= 3 && r.latestMs != null && r.endAt != null,
     `n=${r.times.length} latest=${r.latestMs}`);
   check('/api/rooms still works', JSON.stringify(await (await fetch(base + '/api/rooms')).json()) === '[{"id":"europe-1","players":1}]');
 
