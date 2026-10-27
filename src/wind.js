@@ -124,21 +124,32 @@ export class FluidWind {
 // Own-sail-force true-wind correction (default 2f).
 // The 1 m ring mean includes the boat's own wake. The lattice received
 // impulse ∝ −mainsail_force × (sailWakeGain / 16) (getSailSegments × sailEfficiency),
-// so
-//   u_meas ≈ u_free + k0 · (gain/16) · (−F_boat).
-// Undo with u_est = u_meas + k_eff · F_boat, k_eff = TRUE_WIND_OWN_FORCE_K · (gain / GAIN_REF).
-// TRUE_WIND_OWN_FORCE_K is lattice vx per unit force-on-boat at gain 16, fitted on
-// scenario 20 / scripts/truewind-accuracy.mjs for simRes 2f. boatTrueWind
+// but wake strength saturates with gain, so a linear (gain/16) undo is not
+// optimal across the room setting. Undo with
+//   u_est = u_meas + k_eff · F_boat,
+//   k_eff = trueWindOwnForceKEff(sailWakeGain)
+// where k_eff is piecewise-linear in gain through closed-loop fits on
+// scenario 20 / 2f (scripts/truewind-force-k-fit-by-gain.mjs). Knots:
+//   gain 0 → 0, 10 → 6e-5, 16 → 1.05e-4, 25 → 1.8e-4; extrapolate past 25.
+// TRUE_WIND_OWN_FORCE_K is the table value at gain 16 and scales the whole
+// map when setTrueWindOwnForceK changes it (fit scripts). boatTrueWind
 // applies it only on 2f (velScale 2); other modes and dev mode stay on the
-// plain ring mean until they get their own k. Live sailWakeGain is read from
-// map.sailWakeGain (Sim keeps it in sync with the room setting).
-// Mutable so scripts/truewind-force-k-fit.mjs can sweep without restarting the process.
+// plain ring mean. Live sailWakeGain is read from map.sailWakeGain
+// (Sim keeps it in sync with the room setting).
 let _trueWindOwnForceK = 0.000105;
 export function getTrueWindOwnForceK() { return _trueWindOwnForceK; }
 export function setTrueWindOwnForceK(k) { _trueWindOwnForceK = Number.isFinite(k) ? k : 0; }
 export { _trueWindOwnForceK as TRUE_WIND_OWN_FORCE_K };
 // Same default as boat.js SAIL_WAKE_GAIN (kept local to avoid a boat↔wind import cycle).
 export const TRUE_WIND_OWN_FORCE_GAIN_REF = 16;
+// Absolute k (lattice vx per unit force-on-boat) at the listed gains, fitted
+// at the default TRUE_WIND_OWN_FORCE_K. Sorted by gain ascending.
+export const TRUE_WIND_OWN_FORCE_K_BY_GAIN = Object.freeze([
+  Object.freeze([0, 0]),
+  Object.freeze([10, 0.00006]),
+  Object.freeze([16, 0.000105]),
+  Object.freeze([25, 0.00018]),
+]);
 
 // Cap |F| used in the undo. k was fitted near |F| ≈ 11 on scenario 20 at
 // 4.5 m/s; at 15 m/s |F| reaches ~250 and a linear undo overshoots, yanking
@@ -169,9 +180,27 @@ export function trueWindForceCorrectActive(map) {
   return !!(bm && bm.velScale === 2);
 }
 
+// Piecewise-linear absolute k at `gain`, then scaled so the table's gain-16
+// knot tracks the live TRUE_WIND_OWN_FORCE_K (setTrueWindOwnForceK).
 export function trueWindOwnForceKEff(gain, k = _trueWindOwnForceK) {
   const g = Number.isFinite(gain) ? Math.max(0, gain) : TRUE_WIND_OWN_FORCE_GAIN_REF;
-  return k * (g / TRUE_WIND_OWN_FORCE_GAIN_REF);
+  const table = TRUE_WIND_OWN_FORCE_K_BY_GAIN;
+  let kTable;
+  if (g <= table[0][0]) kTable = table[0][1];
+  else if (g >= table[table.length - 1][0]) {
+    const [g0, k0] = table[table.length - 2];
+    const [g1, k1] = table[table.length - 1];
+    kTable = k1 + (k1 - k0) * (g - g1) / (g1 - g0);
+  } else {
+    let i = 1;
+    while (i < table.length && table[i][0] < g) i++;
+    const [g0, k0] = table[i - 1];
+    const [g1, k1] = table[i];
+    kTable = k0 + (k1 - k0) * (g - g0) / (g1 - g0);
+  }
+  const kRef = table.find((p) => p[0] === TRUE_WIND_OWN_FORCE_GAIN_REF)?.[1] ?? table[table.length - 1][1];
+  if (!kRef) return 0;
+  return kTable * (k / kRef);
 }
 
 export function boatTrueWind(boat, k = _trueWindOwnForceK) {
