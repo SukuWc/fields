@@ -1,7 +1,7 @@
 import planck from 'planck-js';
 import { aeroCoefficients } from './utils.js';
 import { resetPenaltyManeuvers, updatePenaltyManeuvers, updateTackingState } from './rules.js';
-import { WIND_UNIT_MPS } from './wind.js';
+import { WIND_UNIT_MPS, boatTrueWind } from './wind.js';
 import { boatGuides } from './boat-draw.js';
 
 // Lattice momentum per frame = sail reaction × SAIL_LATTICE_COUPLING.
@@ -288,8 +288,9 @@ export class Boat{
 
 
     
-    // True wind at the boat: mean vector of a 1 m, 20-point ring (Map.get_wind_ring).
-    const wind_raw = this.map.get_wind_ring ? this.map.get_wind_ring(this.x, this.y) : this.map.get_wind(this.x, this.y);
+    // True wind at the boat: centre sample + own-sail-force undo on 2f (wind.js boatTrueWind).
+    // mainsail_force is still last tick's value here, which matches the wake already in the field.
+    const wind_raw = boatTrueWind(this) || this.map.get_wind(this.x, this.y);
     const alpha = WIND_SMOOTH_ALPHA;
     // A single non-finite sample used to latch the smoother (NaN + finite = NaN)
     // and every later force stayed NaN. Keep the last finite wind instead.

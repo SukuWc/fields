@@ -121,6 +121,169 @@ export class FluidWind {
   }
 }
 
+// Own-sail-force true-wind correction (default 2f).
+// Sample at the boat centre (map.get_wind), then undo own wake with
+//   u_est = u_meas + k_eff · F_boat,
+//   k_eff = k0(gain) + ka(gain) · acc,
+//   acc = d(|v_boat|)/dt at 30 Hz
+// where (k0, ka) are piecewise-linear in sailWakeGain through closed-loop
+// fits on scenario 20 / 2f with point sampling (scripts/truewind-fva-fit.mjs).
+// Knots (k0, ka): gain 0 → (0, 0); see TRUE_WIND_OWN_FORCE_BY_GAIN.
+// |F| soft-capped at 20. TRUE_WIND_OWN_FORCE_K is the table k0 at gain 16 and
+// scales the whole (k0, ka) map when setTrueWindOwnForceK changes it (fit
+// scripts). boatTrueWind applies it only on 2f (velScale 2); other modes and
+// dev mode keep the plain centre sample. Live sailWakeGain is read from
+// map.sailWakeGain (Sim keeps it in sync with the room setting).
+const TRUE_WIND_ACC_HZ = 30;
+// Bound |acc| in k_eff so high-wind acceleration cannot overshoot
+// the close-hauled window (wind-sweep-check at 15 m/s). Scenario 20 fit
+// stays well inside ±1.5 m/s².
+export const TRUE_WIND_ACC_CAP = 1.5;
+let _trueWindOwnForceK = 0.00008625; // gain-16 k0 (point+mod fit)
+export function getTrueWindOwnForceK() { return _trueWindOwnForceK; }
+export function setTrueWindOwnForceK(k) { _trueWindOwnForceK = Number.isFinite(k) ? k : 0; }
+export { _trueWindOwnForceK as TRUE_WIND_OWN_FORCE_K };
+// Same default as boat.js SAIL_WAKE_GAIN (kept local to avoid a boat↔wind import cycle).
+export const TRUE_WIND_OWN_FORCE_GAIN_REF = 16;
+// Absolute (k0, ka) at listed gains. k_eff = k0 + ka·acc; kv omitted (≈0 in fits).
+// Sorted by gain ascending. Point-sample closed-loop fit, scenario 20 / 2f.
+export const TRUE_WIND_OWN_FORCE_BY_GAIN = Object.freeze([
+  Object.freeze({ gain: 0, k0: 0, ka: 0 }),
+  Object.freeze({ gain: 10, k0: 0.0000525, ka: 0.0000805 }),
+  Object.freeze({ gain: 16, k0: 0.00008625, ka: 0.000117875 }),
+  Object.freeze({ gain: 25, k0: 0.00022, ka: 0.000145 }),
+]);
+// Backward-compatible k0-only view of the table (gain, k0).
+export const TRUE_WIND_OWN_FORCE_K_BY_GAIN = Object.freeze(
+  TRUE_WIND_OWN_FORCE_BY_GAIN.map((p) => Object.freeze([p.gain, p.k0])),
+);
+
+// Cap |F| used in the undo. k was fitted near |F| ≈ 11 on scenario 20 at
+// 4.5 m/s; at 15 m/s |F| reaches ~250 and a linear undo overshoots, yanking
+// the autopilot off close-hauled (wind-sweep-check). Soft-cap at 20 (~2× the
+// fit mean) so normal 2f sailing keeps the full correction.
+export const TRUE_WIND_OWN_FORCE_CAP = 20;
+
+// Optional closed-loop fit override: { k0, ka } used instead of the gain table.
+let _trueWindCoeffOverride = null;
+export function getTrueWindOwnForceCoeffsOverride() { return _trueWindCoeffOverride; }
+export function setTrueWindOwnForceCoeffsOverride(c) {
+  if (!c || typeof c !== 'object') { _trueWindCoeffOverride = null; return; }
+  const k0 = Number(c.k0), ka = Number(c.ka);
+  _trueWindCoeffOverride = {
+    k0: Number.isFinite(k0) ? k0 : 0,
+    ka: Number.isFinite(ka) ? ka : 0,
+  };
+}
+
+// Per-boat |v| finite-difference state. Keyed by boat; stepped with
+// map._trueWindUndoStep (bumped once per Sim.step) so HUD/rules re-entry
+// in the same tick reuses the same acc.
+const _boatAccState = new WeakMap();
+export function resetTrueWindAccState() { /* WeakMap has no clear; drop refs by replacing */ }
+
+export function boatSpeedAcc(boat, hz = TRUE_WIND_ACC_HZ) {
+  const body = boat && boat.physics_model;
+  const v = body && body.m_linearVelocity;
+  if (!v || !Number.isFinite(v.x) || !Number.isFinite(v.y)) return 0;
+  const speed = Math.hypot(v.x, v.y);
+  const step = boat.map && Number.isFinite(boat.map._trueWindUndoStep)
+    ? boat.map._trueWindUndoStep : null;
+  let st = _boatAccState.get(boat);
+  if (!st) {
+    st = { prevSpeed: speed, acc: 0, step };
+    _boatAccState.set(boat, st);
+    return 0;
+  }
+  if (step != null && st.step === step) return st.acc;
+  const dt = Number.isFinite(hz) && hz > 0 ? 1 / hz : 1 / TRUE_WIND_ACC_HZ;
+  st.acc = (speed - st.prevSpeed) / dt;
+  st.prevSpeed = speed;
+  st.step = step;
+  return st.acc;
+}
+
+export function correctWindOwnForce(sample, forceOnBoat, k = _trueWindOwnForceK, fCap = TRUE_WIND_OWN_FORCE_CAP) {
+  if (!sample || !forceOnBoat || !Number.isFinite(k) || k === 0) return sample;
+  let fx = forceOnBoat.x, fy = forceOnBoat.y;
+  if (!Number.isFinite(fx) || !Number.isFinite(fy)) return sample;
+  if (fx === 0 && fy === 0) return sample;
+  if (Number.isFinite(fCap) && fCap > 0) {
+    const mag = Math.hypot(fx, fy);
+    if (mag > fCap) { fx *= fCap / mag; fy *= fCap / mag; }
+  }
+  return windSample(sample.vx + k * fx, sample.vy + k * fy);
+}
+
+// Boat true wind: centre sample, then undo own sail wake on 2f. Uses the
+// force currently on the boat (previous tick at the start of
+// physics_model_step). Coeffs fitted on 2f; other modes keep the plain
+// centre sample until they get their own.
+export function trueWindForceCorrectActive(map) {
+  if (!map || map.devMode) return false;
+  const bm = map.bm;
+  return !!(bm && bm.velScale === 2);
+}
+
+function lerpGainKnot(table, gain, key) {
+  const g = Number.isFinite(gain) ? Math.max(0, gain) : TRUE_WIND_OWN_FORCE_GAIN_REF;
+  if (g <= table[0].gain) return table[0][key];
+  if (g >= table[table.length - 1].gain) {
+    const a = table[table.length - 2], b = table[table.length - 1];
+    return b[key] + (b[key] - a[key]) * (g - b.gain) / (b.gain - a.gain);
+  }
+  let i = 1;
+  while (i < table.length && table[i].gain < g) i++;
+  const a = table[i - 1], b = table[i];
+  return a[key] + (b[key] - a[key]) * (g - a.gain) / (b.gain - a.gain);
+}
+
+// Piecewise-linear absolute {k0, ka} at `gain`, then scaled so the table's
+// gain-16 k0 tracks the live TRUE_WIND_OWN_FORCE_K (setTrueWindOwnForceK).
+export function trueWindOwnForceCoeffs(gain, k = _trueWindOwnForceK) {
+  if (_trueWindCoeffOverride) {
+    return { k0: _trueWindCoeffOverride.k0, ka: _trueWindCoeffOverride.ka };
+  }
+  const table = TRUE_WIND_OWN_FORCE_BY_GAIN;
+  const k0Table = lerpGainKnot(table, gain, 'k0');
+  const kaTable = lerpGainKnot(table, gain, 'ka');
+  const ref = table.find((p) => p.gain === TRUE_WIND_OWN_FORCE_GAIN_REF);
+  const kRef = ref ? ref.k0 : table[table.length - 1].k0;
+  if (!kRef) return { k0: 0, ka: 0 };
+  const scale = k / kRef;
+  return { k0: k0Table * scale, ka: kaTable * scale };
+}
+
+// k_eff = k0 + ka·acc. `acc` defaults to 0 so existing call sites that only
+// pass (gain, k) still get the base k0.
+export function trueWindOwnForceKEff(gain, accOrK, maybeK) {
+  let acc = 0, k = _trueWindOwnForceK;
+  if (arguments.length >= 3) {
+    acc = Number.isFinite(accOrK) ? accOrK : 0;
+    k = maybeK;
+  } else if (arguments.length === 2) {
+    // Legacy: trueWindOwnForceKEff(gain, k) → base k0 (acc = 0).
+    k = accOrK;
+  }
+  const { k0, ka } = trueWindOwnForceCoeffs(gain, k);
+  return k0 + ka * acc;
+}
+
+export function boatTrueWind(boat, k = _trueWindOwnForceK) {
+  if (!boat || !boat.map) return null;
+  const m = boat.map;
+  const raw = m.get_wind(boat.x, boat.y);
+  if (!raw) return null;
+  if (!trueWindForceCorrectActive(m)) return raw;
+  const gain = Number.isFinite(m.sailWakeGain) ? m.sailWakeGain : TRUE_WIND_OWN_FORCE_GAIN_REF;
+  let acc = boatSpeedAcc(boat);
+  if (Number.isFinite(TRUE_WIND_ACC_CAP) && TRUE_WIND_ACC_CAP > 0) {
+    acc = Math.max(-TRUE_WIND_ACC_CAP, Math.min(TRUE_WIND_ACC_CAP, acc));
+  }
+  const kEff = trueWindOwnForceKEff(gain, acc, k);
+  return correctWindOwnForce(raw, boat.mainsail_force, kEff);
+}
+
 // Three line segments (shaft + two head barbs). directionDeg is the heading
 // the arrow points (0 = +X, 90 = +Y). Pass the downwind / flow angle,
 // atan2(vy, vx), not windSample.direction (that one is 180° off, upwind).
