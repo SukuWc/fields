@@ -13,6 +13,8 @@
 //
 // HTTP on the same port:
 //   GET /api/rooms   [{ id, players }]  players = connected clients (CORS *)
+//   GET /api/perf    { rooms: [{ id, players, sampleHz, windowS, endAt, times, latestMs }] }
+//                    last ~180 s of frameMs (physics + field encode) per room (CORS *)
 //   GET /api/status  rooms, clients, tick cost
 //   GET /api/version { commit, url? }  short SHA (+ GitHub commit URL) from version.json
 //   GET /healthz     { ok: true }
@@ -87,7 +89,7 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
   };
   const status = () => ({
     ok: true, lockstep,
-    rooms: [...rooms.values()].map((r) => ({ name: r.name, clients: r.clients.size, ticks: r.ticks, tickMs: Math.round(r.tickMs * 10) / 10, fieldEncodes: r.fieldEncodes, fieldKeys: r.fieldKeys, fieldBytesSent: r.fieldBytesSent, fieldEncodeMs: Math.round(r.fieldEncodeMs * 100) / 100 })),
+    rooms: [...rooms.values()].map((r) => ({ name: r.name, clients: r.clients.size, ticks: r.ticks, tickMs: Math.round(r.tickMs * 10) / 10, frameMs: Math.round(r.frameMs * 10) / 10, fieldEncodes: r.fieldEncodes, fieldKeys: r.fieldKeys, fieldBytesSent: r.fieldBytesSent, fieldEncodeMs: Math.round(r.fieldEncodeMs * 100) / 100 })),
   });
   const server = http.createServer((req, res) => {
     const url = new URL(req.url || '/', 'http://x');
@@ -99,6 +101,15 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
     // Players: connected clients (spectators included); boats parked for a
     // reconnect grace period do not count.
     if (url.pathname === '/api/rooms') return json(res, 200, [...rooms.values()].map((r) => ({ id: r.name, players: r.clients.size })));
+    if (url.pathname === '/api/perf') {
+      return json(res, 200, {
+        rooms: [...rooms.values()].map((r) => ({
+          id: r.name,
+          players: r.clients.size,
+          ...r.frameTimes.snapshot(),
+        })),
+      });
+    }
     if (url.pathname === '/api/status') return json(res, 200, status());
     if (url.pathname === '/api/version') return json(res, 200, version);
     if (url.pathname === '/healthz') return json(res, 200, { ok: true });

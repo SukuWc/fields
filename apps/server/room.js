@@ -33,6 +33,8 @@ import { BOAT_ACTIONS } from '../../src/sim.js';
 import { MAX_WIND_MPS, ROOM_COMMANDS, SIM_RES_MODES, validateRoomSettingCommand, settingDefault } from '../../src/settings-registry.js';
 import { encodeFieldGrids, decodeFieldGrids } from '../../src/fieldPainter.js';
 import { encodeFieldText } from '../../src/field-codec.js';
+import { FrameTimeHistory } from './frame-times.js';
+export { FRAME_TIME_WINDOW_S, FRAME_TIME_HZ, FRAME_TIME_CAP } from './frame-times.js';
 import { scenarioExtent, WALL_INSET_M } from '../../src/map-size.js';
 import { TRAIL_COLORS } from '../../src/boat-trails.js';
 
@@ -172,6 +174,11 @@ export class Room {
     this.fieldBytesSent = 0;
     this.fieldEncodeMs = 0;
     this.fieldEncodeMsTotal = 0;
+    // Physics + field encode for the last completed tick (ms), and a
+    // ~180 s ring of those values for GET /api/perf. Paused rooms do not
+    // append (clock stopped); history is kept until overwritten.
+    this.frameMs = 0;
+    this.frameTimes = new FrameTimeHistory();
     this.now = now;
     this.core = null;
     this.clients = new Set();
@@ -592,6 +599,9 @@ export class Room {
     delete frame.statics;
     const statics = frame.state ? { sv: this.core.staticsVersion, statics: this.core.statics } : null;
     const fields = fieldDue ? this._fieldMessages() : [];
+    // Total wall time for this tick: physics (tickMs) + field keyframe encode.
+    this.frameMs = this.now() - t0;
+    if (r.dt !== undefined) this.frameTimes.push(this.frameMs);
     return { frame, fields, statics, flow, perf };
   }
 
