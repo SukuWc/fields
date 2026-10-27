@@ -82,7 +82,13 @@ check('cap is 180 s × 30 Hz', FRAME_TIME_CAP === FRAME_TIME_WINDOW_S * FRAME_TI
   const r = body1.rooms[0];
   check('/api/perf fills while a client is connected', r.players === 1 && r.times.length >= 3 && r.latestMs != null && r.endAt != null,
     `n=${r.times.length} latest=${r.latestMs}`);
-  check('/api/rooms still works', JSON.stringify(await (await fetch(base + '/api/rooms')).json()) === '[{"id":"europe-1","players":1}]');
+  {
+    const rooms = await (await fetch(base + '/api/rooms')).json();
+    const r0 = rooms[0];
+    check('/api/rooms still works',
+      r0 && r0.id === 'europe-1' && r0.players === 1 && typeof r0.config === 'string' && r0.config.includes('scenario ='),
+      JSON.stringify(rooms));
+  }
 
   // Two rooms in the payload when configured.
   const srv2 = await startServer({ port: 0, host: '127.0.0.1', fixedRooms: ['a', 'b'], graceMs: 0, fieldHz: 0 });

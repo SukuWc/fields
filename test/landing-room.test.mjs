@@ -30,7 +30,12 @@ const base = `http://127.0.0.1:${srv.port}`;
 const rooms = async () => { const r = await fetch(base + '/api/rooms'); return { cors: r.headers.get('access-control-allow-origin'), body: await r.json() }; };
 
 let r = await rooms();
-check('/api/rooms at startup: europe-1 with 0 players, CORS *', JSON.stringify(r.body) === '[{"id":"europe-1","players":0}]' && r.cors === '*', JSON.stringify(r.body));
+const room0 = r.body[0];
+check('/api/rooms at startup: europe-1 with 0 players, CORS *',
+  room0 && room0.id === 'europe-1' && room0.players === 0 && r.cors === '*', JSON.stringify(r.body));
+check('/api/rooms includes current room TOML config',
+  typeof room0.config === 'string' && room0.config.includes('scenario =') && room0.config.includes('root_cell_m') && room0.config.includes('budget_target'),
+  String(room0 && room0.config).slice(0, 120));
 const room = srv.rooms.get('europe-1');
 check('europe-1 has its sim from startup, clock running', room && room.persistent && room.core && !!room.timer);
 await sleep(200);
@@ -56,7 +61,8 @@ check('the room ticks while someone is in it', ticks > 5, 'ticks ' + ticks);
 a.terminate();
 await sleep(300);
 r = await rooms();
-check('after the last disconnect (and past graceMs) the room is still listed with 0', JSON.stringify(r.body) === '[{"id":"europe-1","players":0}]', JSON.stringify(r.body));
+check('after the last disconnect (and past graceMs) the room is still listed with 0',
+  r.body[0] && r.body[0].id === 'europe-1' && r.body[0].players === 0 && typeof r.body[0].config === 'string', JSON.stringify(r.body));
 check('same Room and sim kept, clock still running', srv.rooms.get('europe-1') === room && room.core && !!room.timer && room.ticks >= ticks);
 const ticksWhileEmpty = room.ticks;
 const samplesWhileEmpty = room.frameTimes.length;

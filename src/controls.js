@@ -7,12 +7,14 @@
 // Local and worker modes: the page owns the Sim; Commit applies the TOML
 // (and may reload when map size changes). Remote mode: the room's state is
 // the truth — the textarea starts from the welcome snapshot and follows
-// every 'room' event unless the user has unsaved edits.
+// every 'room' event unless the user has unsaved edits. Reset fills the
+// default TOML preset (ROOM_CONFIG_DEFAULTS, map size kept as the room's
+// current size); it is local only and does not push to the server.
 import * as THREE from 'three';
 import { settingDefault } from './settings-registry.js';
 import {
   configFromRoomState, stringifyRoomConfig, parseAndValidateRoomConfig,
-  mapKeyFromDims, ROOM_CONFIG_DEFAULTS, rootFromSimRes,
+  mapKeyFromDims, ROOM_CONFIG_DEFAULTS, rootFromSimRes, defaultRoomConfig,
 } from './room-config.js';
 import { windCeilingMps } from './sim-modes.js';
 import { MAP_SIZES, DEFAULT_MAP_SIZE } from './map-size.js';
@@ -329,11 +331,8 @@ export function applyRoomState(room) {
   renderScenarioCard(room.scenario && room.scenario.index !== null ? room.scenario : null,
     room.scenario && room.scenario.index !== null ? room.scenario.index : null);
   _appliedConfig = cfg;
-  // Refresh the textarea unless the user has unsaved edits.
+  // Refresh the textarea unless the user has unsaved edits (typing or Reset).
   if (!_dirty) fillRoomConfigTextarea(cfg);
-  else {
-    // Still keep applied snapshot for Reset.
-  }
   setWindCeiling(windCeilingMps(cfg._simRes || (st.simRes)));
 }
 
@@ -406,8 +405,12 @@ export function setupControls(host, view, getCamera) {
 
   const resetBtn = document.getElementById("room_config_reset");
   if (resetBtn) resetBtn.addEventListener("click", () => {
-    const cfg = _appliedConfig || currentConfigFromHost(_remote ? host.room : null);
-    fillRoomConfigTextarea(cfg);
+    // Default preset; keep the room's current map size (fixed on the server).
+    // Local only — does not Commit. Mark dirty so a peer's room event does
+    // not overwrite the preset before the user Commits.
+    const cfg = defaultRoomConfig(_mapW, _mapH);
+    const el = roomConfigEl();
+    if (el) { el.value = stringifyRoomConfig(cfg); _dirty = true; }
     showRoomError(null);
   });
 

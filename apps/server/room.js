@@ -31,7 +31,7 @@ import { SimCore } from '../../src/host.js';
 import { answer, eventForClient, EXACT_JSON } from '../../src/host-protocol.js';
 import { BOAT_ACTIONS } from '../../src/sim.js';
 import { MAX_WIND_MPS, ROOM_COMMANDS, SIM_RES_MODES, validateRoomSettingCommand, settingDefault } from '../../src/settings-registry.js';
-import { validateRoomConfig, commandsFromConfig } from '../../src/room-config.js';
+import { validateRoomConfig, commandsFromConfig, configFromRoomState, stringifyRoomConfig } from '../../src/room-config.js';
 import { encodeFieldGrids, decodeFieldGrids } from '../../src/fieldPainter.js';
 import { encodeFieldText } from '../../src/field-codec.js';
 import { FrameTimeHistory } from './frame-times.js';
@@ -239,6 +239,14 @@ export class Room {
   }
 
   info() { return { ...this.core.info(), mode: this.lockstep ? 'client' : 'server', room: this.name }; }
+
+  /** Current room admin TOML (src/room-config.js), or null before the sim exists. */
+  tomlConfig() {
+    if (!this.core) return null;
+    const mapW = this.core.map.width;
+    const mapH = this.core.map.height;
+    return stringifyRoomConfig(configFromRoomState(this.core.roomState(), { mapW, mapH }));
+  }
 
   join(client) {
     this.clients.add(client);

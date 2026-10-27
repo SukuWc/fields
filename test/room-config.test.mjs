@@ -6,6 +6,7 @@ import {
   ROOM_CONFIG_DEFAULTS, ROOM_CONFIG_KEYS, stringifyRoomConfig, parseRoomConfigToml,
   parseAndValidateRoomConfig, validateRoomConfig, configFromRoomState,
   commandsFromConfig, simResForRoot, rootFromSimRes, roomConfigCommit,
+  defaultRoomConfig,
 } from '../src/room-config.js';
 import { DEFAULT_SIM_RES } from '../src/sim-modes.js';
 
@@ -143,6 +144,25 @@ budget_target = -1
 }
 
 check('roomConfigCommit returns commands', !roomConfigCommit(stringifyRoomConfig(ROOM_CONFIG_DEFAULTS)).error);
+
+// 7. Reset preset: defaults with the live room map size kept.
+{
+  const d = defaultRoomConfig(50, 100);
+  check('defaultRoomConfig keeps map size', d.map_width_m === 50 && d.map_height_m === 100);
+  check('defaultRoomConfig other fields are ROOM_CONFIG_DEFAULTS',
+    d.scenario === ROOM_CONFIG_DEFAULTS.scenario
+    && d.wind_speed_mps === ROOM_CONFIG_DEFAULTS.wind_speed_mps
+    && d.sail_wake_gain === ROOM_CONFIG_DEFAULTS.sail_wake_gain
+    && d.refine_max_level === ROOM_CONFIG_DEFAULTS.refine_max_level
+    && d.budget_target === ROOM_CONFIG_DEFAULTS.budget_target
+    && d.amr_auto === ROOM_CONFIG_DEFAULTS.amr_auto);
+  const plain = defaultRoomConfig();
+  check('defaultRoomConfig without map = full defaults',
+    plain.map_width_m === ROOM_CONFIG_DEFAULTS.map_width_m
+    && plain.map_height_m === ROOM_CONFIG_DEFAULTS.map_height_m);
+  const text = stringifyRoomConfig(defaultRoomConfig(100, 200));
+  check('Reset preset TOML validates', !parseAndValidateRoomConfig(text).error);
+}
 
 if (failed) { console.log(failed + ' FAILED'); process.exit(1); }
 console.log('all room-config checks passed');

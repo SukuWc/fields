@@ -12,7 +12,7 @@
 // opens a room that is dropped graceMs after it empties.
 //
 // HTTP on the same port:
-//   GET /api/rooms   [{ id, players }]  players = connected clients (CORS *)
+//   GET /api/rooms   [{ id, players, config }]  config = room TOML; players = connected clients (CORS *)
 //   GET /api/perf    { rooms: [{ id, players, sampleHz, windowS, endAt, times, latestMs }] }
 //                    last ~180 s of frameMs (physics + field encode) per room (CORS *)
 //   GET /api/status  rooms, clients, tick cost
@@ -100,7 +100,7 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
     if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'method' });
     // Players: connected clients (spectators included); boats parked for a
     // reconnect grace period do not count.
-    if (url.pathname === '/api/rooms') return json(res, 200, [...rooms.values()].map((r) => ({ id: r.name, players: r.clients.size })));
+    if (url.pathname === '/api/rooms') return json(res, 200, [...rooms.values()].map((r) => ({ id: r.name, players: r.clients.size, config: r.tomlConfig() })));
     if (url.pathname === '/api/perf') {
       return json(res, 200, {
         rooms: [...rooms.values()].map((r) => ({
