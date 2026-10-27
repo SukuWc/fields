@@ -4,7 +4,7 @@ const {
   windSample, correctWindOwnForce, boatTrueWind, ConstantWind,
   getTrueWindOwnForceK, setTrueWindOwnForceK, TRUE_WIND_OWN_FORCE_K,
   TRUE_WIND_OWN_FORCE_GAIN_REF, TRUE_WIND_OWN_FORCE_K_BY_GAIN, TRUE_WIND_OWN_FORCE_BY_GAIN,
-  trueWindOwnForceKEff, trueWindOwnForceCoeffs, boatSpeedAcc,
+  TRUE_WIND_ACC_CAP, trueWindOwnForceKEff, trueWindOwnForceCoeffs, boatSpeedAcc,
   setTrueWindOwnForceCoeffsOverride,
 } = await import('../src/wind.js');
 let failed = 0;
@@ -105,17 +105,22 @@ const near = (a, b, e = 1e-12) => Math.abs(a - b) <= e;
   });
   const b0 = mk(16, 1, 0);
   boatTrueWind(b0, k16); // seed
-  const b1 = mk(16, 2, 1); // |v| 0 → 1 in 1/30 s → acc = 30
-  // Reuse same boat object so WeakMap state carries
+  // |v| 0 → ACC_CAP/30 in 1/30 s → acc exactly at the soft-cap
+  const dv = TRUE_WIND_ACC_CAP / 30;
   b0.map._trueWindUndoStep = 2;
-  b0.physics_model.m_linearVelocity.x = 1;
+  b0.physics_model.m_linearVelocity.x = dv;
   const wAcc = boatTrueWind(b0, k16);
-  const kEff = k16 + a16 * 30;
-  check('boatTrueWind modulates k by acc', near(wAcc.vx, 0.01 + kEff * 10, 1e-9));
+  const kEff = k16 + a16 * TRUE_WIND_ACC_CAP;
+  check('boatTrueWind modulates k by acc (capped)', near(wAcc.vx, 0.01 + kEff * 10, 1e-9));
   // Same step re-entry reuses acc
   const acc1 = boatSpeedAcc(b0);
   const acc2 = boatSpeedAcc(b0);
-  check('boatSpeedAcc stable within a step', near(acc1, 30) && near(acc2, 30));
+  check('boatSpeedAcc stable within a step', near(acc1, TRUE_WIND_ACC_CAP) && near(acc2, TRUE_WIND_ACC_CAP));
+  // Over-cap speed change is clamped in boatTrueWind
+  b0.map._trueWindUndoStep = 3;
+  b0.physics_model.m_linearVelocity.x = dv + 1;
+  const wOver = boatTrueWind(b0, k16);
+  check('acc soft-cap limits k_eff', near(wOver.vx, 0.01 + kEff * 10, 1e-9));
 }
 {
   setTrueWindOwnForceCoeffsOverride({ k0: 1e-4, ka: 2e-4 });

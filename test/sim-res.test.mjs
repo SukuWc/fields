@@ -209,9 +209,10 @@ for (const k of KS) {
 		r.depth === 3 + Math.log2(k) && r.finestStep === 0.125, `depth=${r.depth} finest=${r.finestStep}`);
 }
 check(// Fixed 30 FPS (one pass per tick, boat terms ×3): −49.4023 / 2.1314 → −49.3314 / 2.8466.
-// #90 (1 m ring true wind): −49.3314 / 2.8466 → −49.3106 / 2.8521.
-'Default scenario 0 with ?amrMode=fixed pinned (twa −49.31, bs 2.852)',
-	near(s0[1].twa, -49.3106, 0.01) && near(s0[1].bs, 2.8521, 0.002), `twa=${s0[1].twa.toFixed(4)} bs=${s0[1].bs.toFixed(4)}`);
+// #90 (1 m ring): −49.3314 / 2.8466 → −49.3106 / 2.8521.
+// #103 point true wind (Default has no force undo): → −49.3314 / 2.8466.
+'Default scenario 0 with ?amrMode=fixed pinned (twa −49.33, bs 2.847)',
+	near(s0[1].twa, -49.3314, 0.01) && near(s0[1].bs, 2.8466, 0.002), `twa=${s0[1].twa.toFixed(4)} bs=${s0[1].bs.toFixed(4)}`);
 // With the outer rings the boat keeps Default's fine levels, so refinement
 // costs about what it does at Default. Coarse settings must not be slower.
 check('x2 and x4 with refinement are no slower per frame than Default',
@@ -355,9 +356,10 @@ for (const k of [2, 4]) {
 	const s0 = H.scenario0(1);
 	const wk = H.wakeShadow(1, INWAKE);
 	check(// Fixed 30 FPS: −49.428 / 2.129 → −49.305 / 2.8465.
-	// #90 (1 m ring true wind): −49.3048 / 2.8465 → −49.3557 / 2.8526.
-	'auto Default scenario 0 pinned: twa −49.36, bs 2.853',
-		near(s0.twa, -49.3557, 0.01) && near(s0.bs, 2.8526, 0.002), `twa=${s0.twa.toFixed(4)} bs=${s0.bs.toFixed(4)}`);
+	// #90 (1 m ring): −49.3048 / 2.8465 → −49.3557 / 2.8526.
+	// #103 point true wind (Default has no force undo): → −49.3048 / 2.8465.
+	'auto Default scenario 0 pinned: twa −49.30, bs 2.847',
+		near(s0.twa, -49.3048, 0.01) && near(s0.bs, 2.8465, 0.002), `twa=${s0.twa.toFixed(4)} bs=${s0.bs.toFixed(4)}`);
 	H.setAmrMode('fixed');
 	check('auto Default scenario 0 close-hauled and the in-wake shadow is at least the fixed one',
 		s0.twa < -45 && s0.twa > -54 && s0.bs > 2.4 && s0.bs < 3.1 && wk.shadow > 0.4 && wk.overlapGap < 1e-12,

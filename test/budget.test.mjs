@@ -26,9 +26,10 @@ const check = (name, cond, detail) => { if (!cond) failed++; console.log(`${cond
 {
 	H.setBudget('default');
 	const r = H.scenario0(1);
-	check(// Fixed 30 FPS: −49.4282 / 2.1290 → −49.3048 / 2.8465; #90 ring true wind → −49.3557 / 2.8526.
-	'1 boat, default budget: unchanged (twa −49.3557 / bs 2.8526)',
-		Math.abs(r.twa + 49.3557) < 1e-4 && Math.abs(r.bs - 2.8526) < 1e-4,
+	check(// Fixed 30 FPS: −49.4282 / 2.1290 → −49.3048 / 2.8465; #90 ring → −49.3557 / 2.8526;
+	// #103 point true wind (Default, no force undo) → −49.3048 / 2.8465.
+	'1 boat, default budget: unchanged (twa −49.3048 / bs 2.8465)',
+		Math.abs(r.twa + 49.3048) < 1e-4 && Math.abs(r.bs - 2.8465) < 1e-4,
 		`${r.twa.toFixed(4)} / ${r.bs.toFixed(4)}`);
 }
 

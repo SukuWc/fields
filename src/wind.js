@@ -135,6 +135,10 @@ export class FluidWind {
 // dev mode keep the plain centre sample. Live sailWakeGain is read from
 // map.sailWakeGain (Sim keeps it in sync with the room setting).
 const TRUE_WIND_ACC_HZ = 30;
+// Bound |acc| in k_eff so high-wind acceleration cannot overshoot
+// the close-hauled window (wind-sweep-check at 15 m/s). Scenario 20 fit
+// stays well inside ±1.5 m/s².
+export const TRUE_WIND_ACC_CAP = 1.5;
 let _trueWindOwnForceK = 0.00008625; // gain-16 k0 (point+mod fit)
 export function getTrueWindOwnForceK() { return _trueWindOwnForceK; }
 export function setTrueWindOwnForceK(k) { _trueWindOwnForceK = Number.isFinite(k) ? k : 0; }
@@ -272,7 +276,10 @@ export function boatTrueWind(boat, k = _trueWindOwnForceK) {
   if (!raw) return null;
   if (!trueWindForceCorrectActive(m)) return raw;
   const gain = Number.isFinite(m.sailWakeGain) ? m.sailWakeGain : TRUE_WIND_OWN_FORCE_GAIN_REF;
-  const acc = boatSpeedAcc(boat);
+  let acc = boatSpeedAcc(boat);
+  if (Number.isFinite(TRUE_WIND_ACC_CAP) && TRUE_WIND_ACC_CAP > 0) {
+    acc = Math.max(-TRUE_WIND_ACC_CAP, Math.min(TRUE_WIND_ACC_CAP, acc));
+  }
   const kEff = trueWindOwnForceKEff(gain, acc, k);
   return correctWindOwnForce(raw, boat.mainsail_force, kEff);
 }
