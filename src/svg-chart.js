@@ -65,8 +65,11 @@ export function agoLabel(ageS) {
   return (ageS / 60).toFixed(1) + 'm ago';
 }
 
-// tipEl: absolutely positioned HTMLElement next to the svg (or null to skip).
-// getHit(svgX, svgY) → null | { x, y, text } in SVG user units + tip string.
+// tipEl: tip HTMLElement (or null). Tip is position:fixed so overflow:auto
+// ancestors (e.g. #boat_stats) do not clip it.
+// getHit(svgX) → null | { x, y, text[, color] } in SVG user units + tip string.
+// Call refresh() after redrawing the chart so the overlay tracks under a
+// still pointer as the series scrolls/updates.
 export function bindSvgChartHover(svg, tipEl, getHit) {
   const guide = document.createElementNS(SVG_NS, 'line');
   guide.setAttribute('stroke', 'currentColor');
@@ -84,24 +87,32 @@ export function bindSvgChartHover(svg, tipEl, getHit) {
   overlay.append(guide, mark);
   svg.appendChild(overlay);
 
+  let lastClientX = null;
+  let over = false;
+
   const toSvgX = (clientX) => {
     const rect = svg.getBoundingClientRect();
     const vb = svg.viewBox.baseVal;
     const w = vb && vb.width ? vb.width : (svg.width.baseVal.value || rect.width);
+    if (!(rect.width > 0)) return 0;
     return ((clientX - rect.left) / rect.width) * w;
   };
 
-  // Tip uses position:fixed in viewport coords so overflow:auto ancestors
-  // (e.g. #boat_stats) do not clip it. Cleared on scroll capture too.
-  const clear = () => {
+  const hide = () => {
     guide.style.display = 'none';
     mark.style.display = 'none';
     if (tipEl) tipEl.classList.remove('on');
   };
 
-  const onMove = (e) => {
-    const hit = getHit(toSvgX(e.clientX));
-    if (!hit) { clear(); return; }
+  const clear = () => {
+    over = false;
+    lastClientX = null;
+    hide();
+  };
+
+  const paint = (clientX) => {
+    const hit = getHit(toSvgX(clientX));
+    if (!hit) { hide(); return; }
     const vb = svg.viewBox.baseVal;
     const h = vb && vb.height ? vb.height : (svg.height.baseVal.value || 54);
     guide.setAttribute('x1', hit.x); guide.setAttribute('x2', hit.x);
@@ -116,11 +127,23 @@ export function bindSvgChartHover(svg, tipEl, getHit) {
       tipEl.textContent = hit.text;
       const rect = svg.getBoundingClientRect();
       tipEl.style.position = 'fixed';
-      tipEl.style.left = e.clientX + 'px';
+      tipEl.style.left = clientX + 'px';
       tipEl.style.top = rect.top + 'px';
       tipEl.style.zIndex = '10000';
       tipEl.classList.add('on');
     }
+  };
+
+  const onMove = (e) => {
+    over = true;
+    lastClientX = e.clientX;
+    paint(e.clientX);
+  };
+
+  // Re-hit at the last cursor x after the series/model changes.
+  const refresh = () => {
+    if (!over || lastClientX == null) return;
+    paint(lastClientX);
   };
 
   const onScroll = () => clear();
@@ -128,7 +151,7 @@ export function bindSvgChartHover(svg, tipEl, getHit) {
   svg.addEventListener('mouseleave', clear);
   window.addEventListener('scroll', onScroll, true);
   svg.style.cursor = 'crosshair';
-  return { clear, overlay, destroy() {
+  return { clear, refresh, overlay, destroy() {
     svg.removeEventListener('mousemove', onMove);
     svg.removeEventListener('mouseleave', clear);
     window.removeEventListener('scroll', onScroll, true);

@@ -128,6 +128,7 @@ export function setupBoatStats({ remote = false, lockstep = () => false } = {}) 
         }
       });
       model.ser = ser; model.lo = lo; model.hi = hi; model.t1 = t1; model.ids = ids; model.rows = rows;
+      charts[ser.key].hover.refresh();
     }
   };
 

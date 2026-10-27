@@ -85,6 +85,7 @@ export function createPerfChart(roomId) {
     if (times.length < 2) {
       empty.textContent = times.length ? '1 sample' : 'No samples yet (room idle)';
       empty.style.display = '';
+      hover.refresh();
       return;
     }
     empty.style.display = 'none';
@@ -106,6 +107,7 @@ export function createPerfChart(roomId) {
       pl.setAttribute('points', p);
       lines.appendChild(pl);
     }
+    hover.refresh();
   }
 
   return { el: wrap, draw, destroy() { hover.destroy(); } };
