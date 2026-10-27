@@ -27,8 +27,8 @@
   .perf-chart-wrap { position: relative; color: #12233a; }
   .perf-chart { width: 100%; height: 72px; display: block; border-radius: 6px; }
   .perf-tip {
-    position: absolute; left: 0; top: 0; transform: translate(-50%, calc(-100% - 4px));
-    pointer-events: none; opacity: 0; z-index: 2;
+    position: fixed; left: 0; top: 0; transform: translate(-50%, calc(-100% - 4px));
+    pointer-events: none; opacity: 0; z-index: 10000;
     background: #12233a; color: #fff; border-radius: 4px; padding: 3px 7px;
     font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums;
   }

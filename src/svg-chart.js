@@ -91,6 +91,8 @@ export function bindSvgChartHover(svg, tipEl, getHit) {
     return ((clientX - rect.left) / rect.width) * w;
   };
 
+  // Tip uses position:fixed in viewport coords so overflow:auto ancestors
+  // (e.g. #boat_stats) do not clip it. Cleared on scroll capture too.
   const clear = () => {
     guide.style.display = 'none';
     mark.style.display = 'none';
@@ -113,20 +115,23 @@ export function bindSvgChartHover(svg, tipEl, getHit) {
     if (tipEl) {
       tipEl.textContent = hit.text;
       const rect = svg.getBoundingClientRect();
-      const parent = tipEl.offsetParent || tipEl.parentElement;
-      const pref = parent ? parent.getBoundingClientRect() : rect;
-      tipEl.style.left = (e.clientX - pref.left) + 'px';
-      tipEl.style.top = (rect.top - pref.top) + 'px';
+      tipEl.style.position = 'fixed';
+      tipEl.style.left = e.clientX + 'px';
+      tipEl.style.top = rect.top + 'px';
+      tipEl.style.zIndex = '10000';
       tipEl.classList.add('on');
     }
   };
 
+  const onScroll = () => clear();
   svg.addEventListener('mousemove', onMove);
   svg.addEventListener('mouseleave', clear);
+  window.addEventListener('scroll', onScroll, true);
   svg.style.cursor = 'crosshair';
   return { clear, overlay, destroy() {
     svg.removeEventListener('mousemove', onMove);
     svg.removeEventListener('mouseleave', clear);
+    window.removeEventListener('scroll', onScroll, true);
     overlay.remove();
     clear();
   } };
