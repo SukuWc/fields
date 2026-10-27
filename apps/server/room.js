@@ -155,7 +155,7 @@ export class Room {
     this.onDispose = null;
     this.lockstep = lockstep;
     // A persistent room (index.js fixed rooms) is never dropped: when the last
-    // client leaves its clock pauses and the sim keeps its state.
+    // client leaves the clock keeps running so physics and /api/perf stay live.
     this.persistent = persistent;
     this.fieldHz = fieldHz;
     this.fieldTol = fieldTol;
@@ -175,8 +175,8 @@ export class Room {
     this.fieldEncodeMs = 0;
     this.fieldEncodeMsTotal = 0;
     // Physics + field encode for the last completed tick (ms), and a
-    // ~180 s ring of those values for GET /api/perf. Paused rooms do not
-    // append (clock stopped); history is kept until overwritten.
+    // ~180 s ring of those values for GET /api/perf. Non-persistent rooms
+    // pause while empty (no append); persistent rooms keep ticking.
     this.frameMs = 0;
     this.frameTimes = new FrameTimeHistory();
     this.now = now;
@@ -267,11 +267,14 @@ export class Room {
     this.perfSubs.delete(client);
     this.staticsSent.delete(client);
     if (this.clients.size === 0) {
-      // Paused while empty (no CPU), kept for graceMs, then dropped
-      // (a persistent room is only paused).
-      this.stop();
-      if (this.persistent) { /* kept */ } else if (this.graceMs > 0 && this.core) this._emptyTimer = setTimeout(() => this._dispose(), this.graceMs);
-      else this._dispose();
+      // Non-persistent: pause while empty (no CPU), keep for graceMs, then drop.
+      // Persistent: keep the clock running so the world and /api/perf advance.
+      if (this.persistent) { /* kept, still ticking */ }
+      else {
+        this.stop();
+        if (this.graceMs > 0 && this.core) this._emptyTimer = setTimeout(() => this._dispose(), this.graceMs);
+        else this._dispose();
+      }
     }
   }
 
@@ -618,6 +621,8 @@ export class Room {
   }
 
   _publish({ frame, fields, statics, flow, perf }) {
+    // Nobody connected: skip outbound work (encode already skipped with no fieldSubs).
+    if (this.clients.size === 0) return;
     for (const f of fields || []) {
       for (const c of f.clients) {
         if (!this.clients.has(c)) continue;

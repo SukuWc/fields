@@ -1,6 +1,6 @@
 // Per-room ring buffer of completed-tick wall times (physics + field encode).
-// Cap ≈ 180 s × 30 Hz. Paused rooms (empty persistent: Room.stop) add nothing —
-// the buffer keeps prior samples until overwritten after the clock resumes.
+// Cap ≈ 180 s × 30 Hz. Rooms whose clock is stopped (empty non-persistent)
+// add nothing; persistent rooms keep ticking while empty so samples continue.
 export const FRAME_TIME_WINDOW_S = 180;
 export const FRAME_TIME_HZ = 30;
 export const FRAME_TIME_CAP = FRAME_TIME_WINDOW_S * FRAME_TIME_HZ; // 5400
