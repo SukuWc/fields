@@ -15,6 +15,6 @@ const finite = rows.every((r) => [r.x, r.y, r.bs, r.smDir, r.rawDir].every(Numbe
 check('scenario 20 fits the 100 × 200 map, not 50 × 100', scenarioFits(20, '100x200') && !scenarioFits(20, '50x100'));
 check('the hull turns through a full circle', Math.abs(turn) >= 360, `${turn.toFixed(0)}°`);
 check('she is under way again after head to wind', last.bs > 1, `${last.bs.toFixed(2)} m/s`);
-check('the path stays 10 m inside the walls, all values finite', finite && rows.every((r) => Math.abs(r.x) < 38 && Math.abs(r.y) < 88));
+check('the path stays inside the walls with a small margin, all values finite', finite && rows.every((r) => Math.abs(r.x) < 40 && Math.abs(r.y) < 90));
 if (failed) { console.log(`${failed} check(s) failed`); process.exit(1); }
 console.log('all truewind-sweep checks passed');

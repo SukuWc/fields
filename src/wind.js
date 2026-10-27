@@ -121,6 +121,49 @@ export class FluidWind {
   }
 }
 
+// Own-sail-force true-wind correction (default 2f, sailWakeGain 16).
+// The 1 m ring mean includes the boat's own wake. The lattice received
+// impulse ∝ −mainsail_force (getSailSegments), so
+//   u_meas ≈ u_free + k · (−F_boat).
+// Undo with u_est = u_meas − k · (−F) = u_meas + k · F_boat.
+// TRUE_WIND_OWN_FORCE_K is lattice vx per unit force-on-boat, fitted on
+// scenario 20 / scripts/truewind-accuracy.mjs for simRes 2f. boatTrueWind
+// applies it only on 2f (velScale 2); other modes and dev mode stay on the
+// plain ring mean until they get their own k.
+// Mutable so scripts/truewind-force-k-fit.mjs can sweep without restarting the process.
+let _trueWindOwnForceK = 0.000105;
+export function getTrueWindOwnForceK() { return _trueWindOwnForceK; }
+export function setTrueWindOwnForceK(k) { _trueWindOwnForceK = Number.isFinite(k) ? k : 0; }
+export { _trueWindOwnForceK as TRUE_WIND_OWN_FORCE_K };
+
+export function correctWindOwnForce(sample, forceOnBoat, k = _trueWindOwnForceK) {
+  if (!sample || !forceOnBoat || !Number.isFinite(k) || k === 0) return sample;
+  const fx = forceOnBoat.x, fy = forceOnBoat.y;
+  if (!Number.isFinite(fx) || !Number.isFinite(fy)) return sample;
+  if (fx === 0 && fy === 0) return sample;
+  return windSample(sample.vx + k * fx, sample.vy + k * fy);
+}
+
+// Boat true wind: 1 m ring mean, then undo own sail wake. Uses the force
+// currently on the boat (previous tick at the start of physics_model_step,
+// current tick once the sail force has been written).
+// Apply the force undo only on the default 2f grid (velScale 2). k was
+// fitted there; other modes keep the plain ring mean until they get their own k.
+export function trueWindForceCorrectActive(map) {
+  if (!map || map.devMode) return false;
+  const bm = map.bm;
+  return !!(bm && bm.velScale === 2);
+}
+
+export function boatTrueWind(boat, k = _trueWindOwnForceK) {
+  if (!boat || !boat.map) return null;
+  const m = boat.map;
+  const raw = typeof m.get_wind_ring === 'function' ? m.get_wind_ring(boat.x, boat.y) : m.get_wind(boat.x, boat.y);
+  if (!raw) return null;
+  if (!trueWindForceCorrectActive(m)) return raw;
+  return correctWindOwnForce(raw, boat.mainsail_force, k);
+}
+
 // Three line segments (shaft + two head barbs). directionDeg is the heading
 // the arrow points (0 = +X, 90 = +Y). Pass the downwind / flow angle,
 // atan2(vy, vx), not windSample.direction (that one is 180° off, upwind).

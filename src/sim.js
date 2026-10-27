@@ -7,6 +7,7 @@
 // One step() is one 30 Hz tick, run right after world.step(dt) (loop.js).
 // The order of work inside a step is the order of the old main.js simPass.
 import { SAIL_LATTICE_COUPLING, SAIL_WAKE_GAIN } from './boat.js';
+import { boatTrueWind } from './wind.js';
 import { trackBoats, resetTracking } from './domainTrack.js';
 import { Leaderboard } from './leaderboard.js';
 import { resetMarkTouches, recordMarkTouches } from './mark-touch.js';
@@ -385,7 +386,7 @@ export class Sim {
     // (as the old readout did).
     for (let i = 0; i < players.length; i++) {
       const b = players[i];
-      const sample = map.get_wind_ring(b.x, b.y);
+      const sample = boatTrueWind(b) || map.get_wind_ring(b.x, b.y);
       const from = sample && Number.isFinite(sample.direction) ? sample.direction : null;
       const pending = pendingPenaltyCount(b);
       const steered = b.penalty_turn;
@@ -403,8 +404,13 @@ export class Sim {
       });
     }
 
-    // Rules read true wind only at boats: the same ring mean the boat uses.
-    const getWind = (x, y) => map.get_wind_ring(x, y);
+    // Rules read true wind only at boats: same boatTrueWind the boat / HUD use.
+    const getWind = (x, y) => {
+      for (const b of players) {
+        if (b.x === x && b.y === y) return boatTrueWind(b) || map.get_wind_ring(x, y);
+      }
+      return map.get_wind_ring(x, y);
+    };
     // Rule 18 asks the course which mark each boat is rounding.
     const markFor = course ? (boat) => markRoomTarget(course, boat) : null;
     // Virtual boundary (scenario 19 only): its script and crossing penalties.

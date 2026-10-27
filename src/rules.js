@@ -181,6 +181,7 @@
 // evaluated); "rounding" a gate mark ends at the gate line.
 
 import { RULE_TEXT, ruleCode, ruleText, ROLE_CODE, roleText, incidentCode, incidentReason, incidentLabel, penaltyNameText } from './rule-text.js';
+import { boatTrueWind } from './wind.js';
 
 export const BOAT_LENGTH_M = 4;
 export const RULE18_ZONE_M = 3 * BOAT_LENGTH_M;
@@ -498,9 +499,11 @@ function beginTacking(boat, onto) {
   boat.tackingOnto = onto;
 }
 
-// The boat's true-wind sample (Map.get_wind_ring, the 1 m 20-point ring
-// mean; plain get_wind on a map without it).
+// The boat's true-wind sample: 1 m ring mean with own-sail-force correction
+// (wind.js boatTrueWind). Falls back to plain get_wind when needed.
 function boatWind(boat) {
+  const w = boatTrueWind(boat);
+  if (w) return w;
   const m = boat.map;
   return typeof m.get_wind_ring === 'function' ? m.get_wind_ring(boat.x, boat.y) : m.get_wind(boat.x, boat.y);
 }

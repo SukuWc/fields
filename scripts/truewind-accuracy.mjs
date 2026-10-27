@@ -13,7 +13,7 @@ import './../test/dom-stub.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 const { SimCore } = await import('../src/host.js');
-const { WIND_UNIT_MPS } = await import('../src/wind.js');
+const { WIND_UNIT_MPS, boatTrueWind } = await import('../src/wind.js');
 const { TRUEWIND_SWEEP_STEP_DEG } = await import('../src/scenarios.js');
 
 const mode = process.argv[2] || '2f';
@@ -35,7 +35,7 @@ export function runSweep(simRes = '2f', ticks = TICKS) {
 		const v = b.physics_model.getLinearVelocity();
 		const bs = Math.hypot(v.x, v.y);
 		const ax = b.x + (b.x < 0 ? 20 : -20), amb = map.get_wind(ax, b.y);
-		const raw = map.get_wind_ring ? map.get_wind_ring(b.x, b.y) : map.get_wind(b.x, b.y), tru = map.constantWind.getWind(b.x, b.y);
+		const raw = boatTrueWind(b) || (map.get_wind_ring ? map.get_wind_ring(b.x, b.y) : map.get_wind(b.x, b.y)), tru = map.constantWind.getWind(b.x, b.y);
 		const acc = prevV === null ? 0 : (bs - prevV) / 0.1;
 		prevV = bs;
 		rows.push({ tick: t, x: b.x, y: b.y, heading: b.angle * 180 / Math.PI, bs, acc, target: b.autopilot_heading_target, twa: b.twa,
