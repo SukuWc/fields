@@ -3,6 +3,7 @@
      Lists the server's rooms from /api/rooms every 5 s; Join opens the game
      at /play/?room=<id>, which connects to this origin's WebSocket.
      Per-room frame-time graphs from /api/perf (last ~180 s, physics + field).
+     Hover a graph to read ms at that sample (and how long ago).
      ?api=https://host points it at another server (CORS is open). -->
 <html lang="en">
 <head>
@@ -21,9 +22,16 @@
   li.room .name { font-weight: 600; flex: 1; }
   li.room .count { color: #567; }
   a.join { background: #1565c0; color: #fff; text-decoration: none; padding: 8px 14px; border-radius: 6px; font-weight: 600; }
-  .perf { margin-top: 10px; }
+  .perf { margin-top: 10px; position: relative; }
   .perf .meta { font-size: 12px; color: #567; margin: 0 0 4px; display: flex; justify-content: space-between; }
-  .perf canvas { width: 100%; height: 72px; display: block; background: #f0f4fa; border-radius: 6px; }
+  .perf canvas { width: 100%; height: 72px; display: block; background: #f0f4fa; border-radius: 6px; cursor: crosshair; }
+  .perf .tip {
+    display: none; position: absolute; z-index: 2; pointer-events: none;
+    background: #12233a; color: #fff; font-size: 11px; line-height: 1.3;
+    padding: 4px 7px; border-radius: 4px; white-space: nowrap;
+    transform: translate(-50%, calc(-100% - 8px));
+  }
+  .perf .tip.on { display: block; }
   #msg { color: #a33; min-height: 1.4em; }
   footer { margin-top: 28px; font-size: 12px; color: #8a96a8; }
   footer a { color: inherit; }
@@ -41,7 +49,8 @@
   const api = (new URLSearchParams(location.search).get('api') || '').replace(/\/$/, '');
   const list = document.getElementById('rooms');
   const msg = document.getElementById('msg');
-  const charts = new Map(); // id → { canvas, ctx }
+  // id → { canvas, ctx, tip, room, hover }
+  const charts = new Map();
 
   function ensureChart(id) {
     let c = charts.get(id);
@@ -49,12 +58,60 @@
     const canvas = document.createElement('canvas');
     canvas.width = 480; canvas.height = 72;
     canvas.setAttribute('aria-label', id + ' frame time');
-    c = { canvas, ctx: canvas.getContext('2d') };
+    const tip = document.createElement('div');
+    tip.className = 'tip';
+    tip.setAttribute('role', 'tooltip');
+    c = { canvas, ctx: canvas.getContext('2d'), tip, room: null, hover: -1 };
+    canvas.addEventListener('mousemove', (e) => onHover(c, e));
+    canvas.addEventListener('mouseleave', () => {
+      c.hover = -1;
+      c.tip.classList.remove('on');
+      if (c.room) drawPerf(c);
+    });
     charts.set(id, c);
     return c;
   }
 
-  function drawPerf(canvas, ctx, room) {
+  function sampleIndex(c, clientX) {
+    const times = (c.room && c.room.times) || [];
+    if (times.length < 1) return -1;
+    const rect = c.canvas.getBoundingClientRect();
+    const x = ((clientX - rect.left) / rect.width) * c.canvas.width;
+    if (times.length === 1) return 0;
+    const i = Math.round((x / (c.canvas.width - 1)) * (times.length - 1));
+    return Math.max(0, Math.min(times.length - 1, i));
+  }
+
+  function agoLabel(room, i) {
+    const n = room.times.length;
+    const hz = room.sampleHz || 30;
+    const ageS = (n - 1 - i) / hz;
+    if (ageS < 0.05) return 'now';
+    if (ageS < 1) return ageS.toFixed(2) + 's ago';
+    if (ageS < 60) return ageS.toFixed(1) + 's ago';
+    return (ageS / 60).toFixed(1) + 'm ago';
+  }
+
+  function onHover(c, e) {
+    if (!c.room) return;
+    const i = sampleIndex(c, e.clientX);
+    if (i < 0) { c.tip.classList.remove('on'); return; }
+    c.hover = i;
+    const ms = c.room.times[i];
+    c.tip.textContent = ms.toFixed(1) + ' ms · ' + agoLabel(c.room, i);
+    const rect = c.canvas.getBoundingClientRect();
+    const perf = c.canvas.parentElement;
+    const x = e.clientX - rect.left;
+    // tip is positioned relative to .perf; canvas sits below .meta
+    c.tip.style.left = (c.canvas.offsetLeft + x) + 'px';
+    c.tip.style.top = c.canvas.offsetTop + 'px';
+    c.tip.classList.add('on');
+    drawPerf(c);
+  }
+
+  function drawPerf(c) {
+    const canvas = c.canvas, ctx = c.ctx, room = c.room;
+    if (!room) return;
     const w = canvas.width, h = canvas.height;
     const times = room.times || [];
     ctx.clearRect(0, 0, w, h);
@@ -73,6 +130,11 @@
       ctx.fillStyle = '#8a96a8';
       ctx.font = '11px system-ui,sans-serif';
       ctx.fillText(times.length ? '1 sample' : 'No samples yet (room idle)', 8, h / 2 + 4);
+      if (c.hover === 0 && times.length === 1) {
+        const y = yOf(times[0]);
+        ctx.fillStyle = '#1565c0';
+        ctx.beginPath(); ctx.arc(w / 2, y, 3, 0, Math.PI * 2); ctx.fill();
+      }
       return;
     }
     ctx.strokeStyle = '#1565c0';
@@ -84,6 +146,18 @@
       if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
     ctx.stroke();
+    if (c.hover >= 0 && c.hover < times.length) {
+      const x = (c.hover / (times.length - 1)) * (w - 1);
+      const y = yOf(times[c.hover]);
+      ctx.strokeStyle = '#12233a88';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, 4); ctx.lineTo(x, h - 4); ctx.stroke();
+      ctx.fillStyle = '#1565c0';
+      ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
     ctx.fillStyle = '#8a96a8';
     ctx.font = '10px system-ui,sans-serif';
     ctx.fillText(Math.round(maxY) + ' ms', 4, 12);
@@ -112,8 +186,8 @@
         const perf = document.createElement('div'); perf.className = 'perf';
         const meta = document.createElement('div'); meta.className = 'meta';
         meta.innerHTML = '<span>Frame time (physics + field)</span><span class="latest">—</span>';
-        const { canvas } = ensureChart(room.id);
-        perf.append(meta, canvas);
+        const chart = ensureChart(room.id);
+        perf.append(meta, chart.canvas, chart.tip);
         li.append(row, perf);
         return li;
       }));
@@ -132,7 +206,11 @@
         const li = list.querySelector('li.room[data-id="' + CSS.escape(room.id) + '"]');
         const chart = charts.get(room.id);
         if (!chart) continue;
-        drawPerf(chart.canvas, chart.ctx, room);
+        // Keep hover index if still in range after refresh.
+        const prev = chart.hover;
+        chart.room = room;
+        if (prev >= (room.times || []).length) chart.hover = -1;
+        drawPerf(chart);
         if (li) {
           const latest = li.querySelector('.latest');
           if (latest) latest.textContent = room.latestMs != null ? room.latestMs.toFixed(1) + ' ms' : 'idle';
