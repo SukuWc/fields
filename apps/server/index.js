@@ -135,6 +135,8 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
     const room = new Room(name, { lockstep, fieldHz, fieldTol, graceMs, persistent: true });
     // The sim exists and ticks from startup (even with no clients).
     if (!lockstep) room._create({});
+    // Fixed remote rooms start on the shared Reset preset (live europe-1 baseline).
+    if (room.core) room.applyTomlConfig(room.defaultTomlConfig());
     rooms.set(name, room);
   }
   const root = staticDir ? path.resolve(staticDir) : null;

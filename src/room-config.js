@@ -15,10 +15,9 @@
 // atomic `config` room command, and tests.
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import { SIM_RES_MODES, DEFAULT_SIM_RES, MAX_WIND_MPS, DEFAULT_MAP_SIZE } from './settings-registry.js';
-import { DEFAULT_MAX_LEVEL, DEFAULT_BOAT_REFINE_RADIUS } from './sim-modes.js';
 import { MAP_SIZES, parseMapSize, scenarioExtent, WALL_INSET_M } from './map-size.js';
 import {
-  GUST_FORCE_GAIN, GUST_ALONG_SIGMA_M, GUST_CROSS_SIGMA_M, GUST_LIFE_S, GUST_RAMP_S,
+  GUST_FORCE_GAIN, GUST_ALONG_SIGMA_M, GUST_CROSS_SIGMA_M, GUST_LIFE_S,
 } from './gusts.js';
 
 export const ROOM_CONFIG_KEYS = [
@@ -49,6 +48,8 @@ export const ROOM_CONFIG_KEYS = [
 ];
 
 export const ROOM_CONFIG_DEFAULTS = Object.freeze({
+  // Remote/server Reset preset (matches live sailzone.app europe-1).
+  // Local solo also seeds from this shared source on first Commit.
   scenario: 0,
   map_width_m: 100,
   map_height_m: 200,
@@ -58,22 +59,21 @@ export const ROOM_CONFIG_DEFAULTS = Object.freeze({
   barrier: false,
   ladder_lines: false,
   amr_auto: true,
-  root_cell_m: 2.0,
+  root_cell_m: 2,
   steps_per_frame: 1,
   sail_wake_gain: 16,
   field_skip: 0,
-  refine_max_level: DEFAULT_MAX_LEVEL,
-  boat_refine_radius_m: DEFAULT_BOAT_REFINE_RADIUS,
-  budget_target: -1,
-  // Gust rate spawner off by default (scenario 22 still scripts its own columns).
-  gusts: false,
-  gust_rate_per_min: 0,
-  gust_force_gain: [GUST_FORCE_GAIN, 0],
-  gust_along_sigma_m: [GUST_ALONG_SIGMA_M, 0],
-  gust_cross_sigma_m: [GUST_CROSS_SIGMA_M, 0],
-  gust_life_s: [GUST_LIFE_S, 0],
-  gust_dir_deg: [0, 0],
-  gust_ramp_s: GUST_RAMP_S,
+  refine_max_level: 2,
+  boat_refine_radius_m: 3,
+  budget_target: 50000,
+  gusts: true,
+  gust_rate_per_min: 10,
+  gust_force_gain: [0.0005, 0],
+  gust_along_sigma_m: [10, 10],
+  gust_cross_sigma_m: [10, 10],
+  gust_life_s: [10, 5],
+  gust_dir_deg: [0, 45],
+  gust_ramp_s: 1.5,
 });
 
 function approxEq(a, b) {

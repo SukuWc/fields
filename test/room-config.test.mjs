@@ -235,8 +235,8 @@ gust_ramp_s = 1.5
     && core.settings.gusts.ratePerMin === 6, JSON.stringify(core.settings.gusts));
   check('GustField spawner enabled', core.sim.gusts.spawner.enabled === true && core.sim.gusts.spawner.ratePerMin === 6);
 
-  // Off → no inject activity from spawner (rate 0).
-  const off = validateRoomConfig({ ...ROOM_CONFIG_DEFAULTS }, { core }).config;
+  // Off → no inject activity from spawner (explicitly disable; defaults now enable gusts).
+  const off = validateRoomConfig({ ...ROOM_CONFIG_DEFAULTS, gusts: false, gust_rate_per_min: 0 }, { core }).config;
   core.command({ type: 'config', config: off });
   check('gusts=false disables spawner', core.sim.gusts.spawner.enabled === false);
 }
