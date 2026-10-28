@@ -85,6 +85,7 @@ Last updated: 2026-10-28
 - [x] Landing page shows each room's live TOML config under its frame-time graph (`GET /api/rooms` returns `config`), and room admin Reset fills the default TOML preset: [#107](https://github.com/SukuWc/fields/pull/107)
 - [x] Landing admin TOML Commit/Reset (`ADMIN_SECRET` Bearer, no full login yet): [#113](https://github.com/SukuWc/fields/pull/113)
 - [x] Landing admin Login/Logout (secret kept in `localStorage`, read-only TOML until login) and the landing TOML textarea visible again: [#114](https://github.com/SukuWc/fields/pull/114)
+- [ ] Landing TOML textarea keeps focus, caret and scroll across the room-list refresh (in progress, [#115](https://github.com/SukuWc/fields/pull/115))
 - [x] Room config Commit no longer leaves orphan player boats: restart removes leftover player boats before respawn and defers joins during the restart window, so each client keeps one boat: [#109](https://github.com/SukuWc/fields/pull/109)
 
 ### 4. Core race loop
