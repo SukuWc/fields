@@ -62,6 +62,28 @@ export const GUST_DEMO = {
   ],
 };
 
+/**
+ * Scenario 23: large-σ gust checkerboard repro (Europe-1 room TOML).
+ * Circular-ish elliptical kernels with σ ≈ 10–15 m and the live room's
+ * force gain (0.0005). Deterministic scripted columns — no Poisson spawner.
+ * Regression for inject step = root cell (large σ used to sparsify with
+ * min(σ)/2 and look checkerboard on the field overlay).
+ */
+export const GUST_CHECKERBOARD_DEMO = {
+  windMps: 4.5,
+  boat: { x: 0, y: -30, heading: 5 * Math.PI / 4 },
+  // Match europe-1 refine knobs applied from the scenario frames.
+  refine: { maxLevel: 2, boatRefineRadius: 3 },
+  columns: [
+    // Large near-circular puff centred on the course, starts injecting immediately.
+    { x: 0, y: 10, alongSigma: 15, crossSigma: 15, lifeS: 12, rampS: 1.5, forceGain: 0.0005, delayS: 0 },
+    // Second large puff off-axis (dir offset like gust_dir_deg sd), overlapping.
+    { x: 20, y: 35, alongSigma: 12, crossSigma: 12, lifeS: 12, rampS: 1.5, forceGain: 0.0005, windFromDeg: 135, delayS: 0.5 },
+    // Third at σ=10 (the TOML mean) for a mid-size reference.
+    { x: -18, y: 40, alongSigma: 10, crossSigma: 10, lifeS: 10, rampS: 1.5, forceGain: 0.0005, delayS: 1 },
+  ],
+};
+
 function clamp01(x) {
   return x < 0 ? 0 : x > 1 ? 1 : x;
 }
@@ -160,9 +182,12 @@ export function injectEllipticalKernel(bm, cx, cy, fx, fy, along, cross, alongSi
   if (!Number.isFinite(fx) || !Number.isFinite(fy)) return 0;
   if (!(alongSigma > 0) || !(crossSigma > 0)) return 0;
   const ax = along.x, ay = along.y, cxu = cross.x, cyu = cross.y;
-  // World sample step ≈ one root cell (or finer when resolution > 1).
+  // World sample step = one root cell. Large σ used to sparsify with
+  // min(σ)/2, which left deposits on a sparse Cartesian lattice and looked
+  // checkerboard on the field overlay; keep every root cell inside the
+  // ellipse. Area weight below keeps total momentum ~resolution-independent.
   const cell = 1 / (bm.resolution || 1);
-  const step = Math.max(cell, Math.min(alongSigma, crossSigma) / 2);
+  const step = cell;
   const halfA = KERNEL_RADIUS_SIGMA * alongSigma;
   const halfC = KERNEL_RADIUS_SIGMA * crossSigma;
   // Bounding box in world axes from the oriented ellipse extents.
