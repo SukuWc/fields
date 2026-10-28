@@ -32,6 +32,7 @@ import { FluidWind, ConstantWind } from './wind.js';
 import { Sim, SIM_RES_MODES, DEFAULT_SIM_RES } from './sim.js';
 import { settingDefault } from './settings-registry.js';
 import { commandsFromConfig, validateRoomConfig } from './room-config.js';
+import { defaultGustSpawner } from './gusts.js';
 import { bodyOutlines, perfStats } from './present.js';
 import { sceneFrame } from './scene-state.js';
 import { eventForClient } from './host-protocol.js';
@@ -65,6 +66,7 @@ export class SimCore {
       simRes: SIM_RES_MODES[simRes] ? simRes : DEFAULT_SIM_RES, amrMode: settingDefault('amrMode'), refine: { maxLevel: settingDefault('maxLevel'), boatRefineRadius: settingDefault('boatRefineRadius') }, cellBudget: { tune: settingDefault('cellBudgetTune'), target: settingDefault('cellBudget') }, // tune default false = unlimited
       amr: this.sim.options.amr, boatEnergy: this.sim.options.boatEnergy, ladder: this.sim.options.ladder, sailWakeGain: this.sim.options.sailWakeGain,
       fieldSkip: settingDefault('fieldSkip'),
+      gusts: defaultGustSpawner(),
     };
     // The constructor only took the root resolution; the mode's explicit
     // stepsPerFrame (fast-wind defaults such as '4f') applies before anything runs.
@@ -149,6 +151,11 @@ export class SimCore {
       case 'simRes': st.simRes = SIM_RES_MODES[c.mode] ? c.mode : DEFAULT_SIM_RES; break;
       case 'amrMode': st.amrMode = c.mode === 'auto' ? 'auto' : 'fixed'; break;
       case 'sailWake': st.sailWakeGain = this.sim.options.sailWakeGain; break;
+      case 'gusts': {
+        const s = this.sim.gusts && this.sim.gusts.spawner;
+        st.gusts = s ? { ...s } : defaultGustSpawner();
+        break;
+      }
       case 'fieldSkip': {
         const n = Math.round(Number(c.n));
         st.fieldSkip = Number.isFinite(n) ? Math.max(0, Math.min(29, n)) : 0;

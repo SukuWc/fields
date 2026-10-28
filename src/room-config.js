@@ -8,6 +8,8 @@
 //   budget_target = -1    → unlimited cell budget (no tuning)
 //   amr_auto              → amrMode auto|fixed
 //   root_cell_m + steps_per_frame → simRes mode (metres for the root cell)
+//   gusts = false         → rate spawner off (no inject / outlines from spawner)
+//   gust_* = number | [mean, sd]  → per-column sample knobs (sd optional, default 0)
 //
 // Browser and Node: smol-toml. Used by the admin textarea, the server's
 // atomic `config` room command, and tests.
@@ -15,6 +17,9 @@ import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import { SIM_RES_MODES, DEFAULT_SIM_RES, MAX_WIND_MPS, DEFAULT_MAP_SIZE } from './settings-registry.js';
 import { DEFAULT_MAX_LEVEL, DEFAULT_BOAT_REFINE_RADIUS } from './sim-modes.js';
 import { MAP_SIZES, parseMapSize, scenarioExtent, WALL_INSET_M } from './map-size.js';
+import {
+  GUST_FORCE_GAIN, GUST_ALONG_SIGMA_M, GUST_CROSS_SIGMA_M, GUST_LIFE_S, GUST_RAMP_S,
+} from './gusts.js';
 
 export const ROOM_CONFIG_KEYS = [
   'scenario',
@@ -33,6 +38,14 @@ export const ROOM_CONFIG_KEYS = [
   'refine_max_level',
   'boat_refine_radius_m',
   'budget_target',
+  'gusts',
+  'gust_rate_per_min',
+  'gust_force_gain',
+  'gust_along_sigma_m',
+  'gust_cross_sigma_m',
+  'gust_life_s',
+  'gust_dir_deg',
+  'gust_ramp_s',
 ];
 
 export const ROOM_CONFIG_DEFAULTS = Object.freeze({
@@ -52,10 +65,61 @@ export const ROOM_CONFIG_DEFAULTS = Object.freeze({
   refine_max_level: DEFAULT_MAX_LEVEL,
   boat_refine_radius_m: DEFAULT_BOAT_REFINE_RADIUS,
   budget_target: -1,
+  // Gust rate spawner off by default (scenario 22 still scripts its own columns).
+  gusts: false,
+  gust_rate_per_min: 0,
+  gust_force_gain: [GUST_FORCE_GAIN, 0],
+  gust_along_sigma_m: [GUST_ALONG_SIGMA_M, 0],
+  gust_cross_sigma_m: [GUST_CROSS_SIGMA_M, 0],
+  gust_life_s: [GUST_LIFE_S, 0],
+  gust_dir_deg: [0, 0],
+  gust_ramp_s: GUST_RAMP_S,
 });
 
 function approxEq(a, b) {
   return Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
+}
+
+/**
+ * Parse a mean[, sd] TOML value: number → {mean, sd:0}; [m] → sd 0; [m,s] → both.
+ * Returns { mean, sd } or { error }.
+ */
+export function parseMeanSd(raw, name) {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return { mean: raw, sd: 0 };
+  if (Array.isArray(raw)) {
+    if (raw.length !== 1 && raw.length !== 2) {
+      return { error: name + ' must be a number or [mean] / [mean, sd]' };
+    }
+    const mean = raw[0], sd = raw.length === 2 ? raw[1] : 0;
+    if (!Number.isFinite(mean)) return { error: name + ' mean must be a number' };
+    if (!Number.isFinite(sd) || sd < 0) return { error: name + ' sd must be a number ≥ 0' };
+    return { mean, sd };
+  }
+  return { error: name + ' must be a number or [mean, sd]' };
+}
+
+/** TOML form: always [mean, sd] (sd defaults to 0). */
+export function meanSdToToml(mean, sd) {
+  return [mean, sd > 0 ? sd : 0];
+}
+
+/** Flat gust spawner snapshot from a validated room config. */
+export function gustSpawnerFromConfig(cfg) {
+  const fg = parseMeanSd(cfg.gust_force_gain, 'gust_force_gain');
+  const al = parseMeanSd(cfg.gust_along_sigma_m, 'gust_along_sigma_m');
+  const cr = parseMeanSd(cfg.gust_cross_sigma_m, 'gust_cross_sigma_m');
+  const life = parseMeanSd(cfg.gust_life_s, 'gust_life_s');
+  const dir = parseMeanSd(cfg.gust_dir_deg, 'gust_dir_deg');
+  return {
+    enabled: !!cfg.gusts,
+    ratePerMin: cfg.gust_rate_per_min,
+    forceGain: fg.mean, forceGainSd: fg.sd,
+    alongSigmaM: al.mean, alongSigmaMSd: al.sd,
+    crossSigmaM: cr.mean, crossSigmaMSd: cr.sd,
+    lifeS: life.mean, lifeSSd: life.sd,
+    dirDeg: dir.mean, dirDegSd: dir.sd,
+    rampS: cfg.gust_ramp_s,
+  };
 }
 
 /** Root cell (m) and steps/frame for a known simRes mode. */
@@ -91,6 +155,42 @@ export function mapKeyFromDims(w, h) {
 
 export function defaultsConfig(overrides = {}) {
   return { ...ROOM_CONFIG_DEFAULTS, ...overrides };
+}
+
+/** Room-config gust keys from SimCore.settings.gusts (spawner snapshot). */
+export function gustConfigFromSettings(g) {
+  if (!g || typeof g !== 'object') {
+    return {
+      gusts: ROOM_CONFIG_DEFAULTS.gusts,
+      gust_rate_per_min: ROOM_CONFIG_DEFAULTS.gust_rate_per_min,
+      gust_force_gain: ROOM_CONFIG_DEFAULTS.gust_force_gain,
+      gust_along_sigma_m: ROOM_CONFIG_DEFAULTS.gust_along_sigma_m,
+      gust_cross_sigma_m: ROOM_CONFIG_DEFAULTS.gust_cross_sigma_m,
+      gust_life_s: ROOM_CONFIG_DEFAULTS.gust_life_s,
+      gust_dir_deg: ROOM_CONFIG_DEFAULTS.gust_dir_deg,
+      gust_ramp_s: ROOM_CONFIG_DEFAULTS.gust_ramp_s,
+    };
+  }
+  return {
+    gusts: !!g.enabled,
+    gust_rate_per_min: Number.isFinite(g.ratePerMin) ? g.ratePerMin : ROOM_CONFIG_DEFAULTS.gust_rate_per_min,
+    gust_force_gain: meanSdToToml(
+      Number.isFinite(g.forceGain) ? g.forceGain : GUST_FORCE_GAIN,
+      Number.isFinite(g.forceGainSd) ? g.forceGainSd : 0),
+    gust_along_sigma_m: meanSdToToml(
+      Number.isFinite(g.alongSigmaM) ? g.alongSigmaM : GUST_ALONG_SIGMA_M,
+      Number.isFinite(g.alongSigmaMSd) ? g.alongSigmaMSd : 0),
+    gust_cross_sigma_m: meanSdToToml(
+      Number.isFinite(g.crossSigmaM) ? g.crossSigmaM : GUST_CROSS_SIGMA_M,
+      Number.isFinite(g.crossSigmaMSd) ? g.crossSigmaMSd : 0),
+    gust_life_s: meanSdToToml(
+      Number.isFinite(g.lifeS) ? g.lifeS : GUST_LIFE_S,
+      Number.isFinite(g.lifeSSd) ? g.lifeSSd : 0),
+    gust_dir_deg: meanSdToToml(
+      Number.isFinite(g.dirDeg) ? g.dirDeg : 0,
+      Number.isFinite(g.dirDegSd) ? g.dirDegSd : 0),
+    gust_ramp_s: Number.isFinite(g.rampS) ? g.rampS : ROOM_CONFIG_DEFAULTS.gust_ramp_s,
+  };
 }
 
 /** Build a config object from SimCore.settings + scenario index + map size. */
@@ -139,6 +239,7 @@ export function configFromRoomState(roomOrSettings, { scenarioIndex = 0, mapW, m
       ? refine.boatRefineRadius
       : ROOM_CONFIG_DEFAULTS.boat_refine_radius_m,
     budget_target,
+    ...gustConfigFromSettings(st.gusts),
   });
 }
 
@@ -269,6 +370,32 @@ export function validateRoomConfig(cfg, checks = {}) {
       else need(t >= 1000 && t <= 1e8, 'budget_target must be -1 (unlimited) or 1000..1e8');
       if (t !== -1) out.budget_target = t;
     }
+    // gust rate spawner
+    {
+      need(typeof cfg.gusts === 'boolean', 'gusts must be true or false');
+      out.gusts = cfg.gusts;
+      const rate = cfg.gust_rate_per_min;
+      need(Number.isFinite(rate) && rate >= 0 && rate <= 120, 'gust_rate_per_min must be 0..120');
+      out.gust_rate_per_min = rate;
+      const ramp = cfg.gust_ramp_s;
+      need(Number.isFinite(ramp) && ramp >= 0 && ramp <= 60, 'gust_ramp_s must be 0..60');
+      out.gust_ramp_s = ramp;
+
+      const meanSdKeys = [
+        ['gust_force_gain', 0, 1],
+        ['gust_along_sigma_m', 0, 100],
+        ['gust_cross_sigma_m', 0, 200],
+        ['gust_life_s', 0, 120],
+        ['gust_dir_deg', null, null],
+      ];
+      for (const [key, lo, hi] of meanSdKeys) {
+        const p = parseMeanSd(cfg[key], key);
+        need(!p.error, p.error || key);
+        if (lo !== null) need(p.mean >= lo && p.mean <= hi, key + ' mean must be ' + lo + '..' + hi);
+        else need(Number.isFinite(p.mean), key + ' mean must be a number');
+        out[key] = meanSdToToml(p.mean, p.sd);
+      }
+    }
 
     // Scenario exists / fits (when a core or map is provided).
     const core = checks.core;
@@ -358,6 +485,19 @@ export function commandsFromConfig(cfg, prev = null) {
   }
 
   if (changed('field_skip')) cmds.push({ type: 'fieldSkip', n: cfg.field_skip });
+
+  const gustKeys = [
+    'gusts', 'gust_rate_per_min', 'gust_force_gain', 'gust_along_sigma_m',
+    'gust_cross_sigma_m', 'gust_life_s', 'gust_dir_deg', 'gust_ramp_s',
+  ];
+  if (!prev || gustKeys.some((k) => {
+    const a = prev[k], b = cfg[k];
+    if (Array.isArray(a) || Array.isArray(b)) return JSON.stringify(a) !== JSON.stringify(b);
+    return a !== b;
+  })) {
+    const sp = gustSpawnerFromConfig(cfg);
+    cmds.push({ type: 'gusts', ...sp });
+  }
 
   // Scenario restart last (also triggered by lattice rebuild on the server).
   if (changed('scenario')) cmds.push({ type: 'restart', scenario: cfg.scenario });
