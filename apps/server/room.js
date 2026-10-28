@@ -32,6 +32,7 @@ import { answer, eventForClient, EXACT_JSON } from '../../src/host-protocol.js';
 import { BOAT_ACTIONS } from '../../src/sim.js';
 import { MAX_WIND_MPS, ROOM_COMMANDS, SIM_RES_MODES, validateRoomSettingCommand, settingDefault } from '../../src/settings-registry.js';
 import { validateRoomConfig, commandsFromConfig, configFromRoomState, stringifyRoomConfig } from '../../src/room-config.js';
+import { hashSeed } from '../../src/gusts.js';
 import { encodeFieldGrids, decodeFieldGrids } from '../../src/fieldPainter.js';
 import { encodeFieldText } from '../../src/field-codec.js';
 import { FrameTimeHistory } from './frame-times.js';
@@ -128,6 +129,38 @@ export function validateRoomCommand(c, core) {
       return { error: 'map size is fixed for a server room (set when the room was created)' };
     }
     return { c: { type: 'config', config: v.config } };
+  }
+  if (c && c.type === 'gusts') {
+    // Accept a flat spawner payload (from commandsFromConfig) or refuse junk.
+    if (!c || typeof c !== 'object') return { error: 'gusts needs a settings object' };
+    const enabled = !!c.enabled;
+    const rate = c.ratePerMin;
+    if (!Number.isFinite(rate) || rate < 0 || rate > 120) return { error: 'gusts.ratePerMin must be 0..120' };
+    const ramp = c.rampS;
+    if (!Number.isFinite(ramp) || ramp < 0 || ramp > 60) return { error: 'gusts.rampS must be 0..60' };
+    for (const [k, lo, hi] of [
+      ['forceGain', 0, 1], ['forceGainSd', 0, 1],
+      ['alongSigmaM', 0, 100], ['alongSigmaMSd', 0, 100],
+      ['crossSigmaM', 0, 200], ['crossSigmaMSd', 0, 200],
+      ['lifeS', 0, 120], ['lifeSSd', 0, 120],
+      ['dirDegSd', 0, 180],
+    ]) {
+      const v = c[k];
+      if (!Number.isFinite(v) || v < lo || v > hi) return { error: 'gusts.' + k + ' must be ' + lo + '..' + hi };
+    }
+    if (!Number.isFinite(c.dirDeg)) return { error: 'gusts.dirDeg must be a number' };
+    const out = {
+      type: 'gusts',
+      enabled, ratePerMin: rate,
+      forceGain: c.forceGain, forceGainSd: c.forceGainSd,
+      alongSigmaM: c.alongSigmaM, alongSigmaMSd: c.alongSigmaMSd,
+      crossSigmaM: c.crossSigmaM, crossSigmaMSd: c.crossSigmaMSd,
+      lifeS: c.lifeS, lifeSSd: c.lifeSSd,
+      dirDeg: c.dirDeg, dirDegSd: c.dirDegSd,
+      rampS: ramp,
+    };
+    if (Number.isFinite(c.seed)) out.seed = c.seed >>> 0;
+    return { c: out };
   }
   return validateRoomSettingCommand(c, {
     scenario: (n, raw) => {
@@ -233,6 +266,9 @@ export class Room {
       this.broadcast({ type: 'event', ev: eventForClient(core, ev) });
     });
     this.core = core;
+    // Deterministic gust PRNG seed from room name (local hosts keep seed 1).
+    core.command({ type: 'gusts', ...core.settings.gusts, seed: hashSeed(this.name) });
+    // Re-sync settings after seed apply (gusts command clears columns; none yet).
     if (o.scenario !== undefined && o.scenario !== null) {
       const v = validateRoomCommand({ type: 'restart', scenario: o.scenario }, core);
       if (v.c) core.command(v.c);

@@ -6,7 +6,7 @@ import {
   ROOM_CONFIG_DEFAULTS, ROOM_CONFIG_KEYS, stringifyRoomConfig, parseRoomConfigToml,
   parseAndValidateRoomConfig, validateRoomConfig, configFromRoomState,
   commandsFromConfig, simResForRoot, rootFromSimRes, roomConfigCommit,
-  defaultRoomConfig,
+  defaultRoomConfig, parseMeanSd, meanSdToToml, gustSpawnerFromConfig,
 } from '../src/room-config.js';
 import { DEFAULT_SIM_RES } from '../src/sim-modes.js';
 
@@ -162,6 +162,82 @@ check('roomConfigCommit returns commands', !roomConfigCommit(stringifyRoomConfig
     && plain.map_height_m === ROOM_CONFIG_DEFAULTS.map_height_m);
   const text = stringifyRoomConfig(defaultRoomConfig(100, 200));
   check('Reset preset TOML validates', !parseAndValidateRoomConfig(text).error);
+}
+
+// 8. Gust mean[,sd] parse + config round-trip + commands.
+{
+  check('parseMeanSd number → sd 0', (() => {
+    const p = parseMeanSd(0.003, 'g');
+    return !p.error && p.mean === 0.003 && p.sd === 0;
+  })());
+  check('parseMeanSd [mean] → sd 0', (() => {
+    const p = parseMeanSd([0.003], 'g');
+    return !p.error && p.mean === 0.003 && p.sd === 0;
+  })());
+  check('parseMeanSd [mean, sd]', (() => {
+    const p = parseMeanSd([0.003, 0.0005], 'g');
+    return !p.error && p.mean === 0.003 && p.sd === 0.0005;
+  })());
+  check('parseMeanSd rejects length 3', !!parseMeanSd([1, 2, 3], 'g').error);
+  check('parseMeanSd rejects negative sd', !!parseMeanSd([1, -0.1], 'g').error);
+  check('meanSdToToml sd0 → scalar', meanSdToToml(0.003, 0) === 0.003);
+  check('meanSdToToml with sd → array', Array.isArray(meanSdToToml(0.003, 0.0005))
+    && meanSdToToml(0.003, 0.0005)[0] === 0.003 && meanSdToToml(0.003, 0.0005)[1] === 0.0005);
+
+  const text = `
+scenario = 0
+map_width_m = 100
+map_height_m = 200
+wind_angle_deg = 90
+wind_speed_mps = 4.5
+dev_mode = false
+barrier = false
+ladder_lines = false
+amr_auto = true
+root_cell_m = 2.0
+steps_per_frame = 1
+sail_wake_gain = 16
+field_skip = 0
+refine_max_level = 3
+boat_refine_radius_m = 3.0
+budget_target = -1
+gusts = true
+gust_rate_per_min = 6
+gust_force_gain = [0.003, 0.0005]
+gust_along_sigma_m = [2.5, 0.4]
+gust_cross_sigma_m = [12.5, 2.0]
+gust_life_s = [10, 2]
+gust_dir_deg = [0, 5]
+gust_ramp_s = 1.5
+`;
+  const v = parseAndValidateRoomConfig(text);
+  check('gust TOML validates', !v.error, v.error);
+  check('gust arrays preserved when sd>0', Array.isArray(v.config.gust_force_gain)
+    && v.config.gust_force_gain[0] === 0.003 && v.config.gust_force_gain[1] === 0.0005);
+  const cmds = commandsFromConfig(v.config);
+  const g = cmds.find((c) => c.type === 'gusts');
+  check('commandsFromConfig emits gusts', !!g && g.enabled === true && g.ratePerMin === 6
+    && g.forceGain === 0.003 && g.forceGainSd === 0.0005 && g.dirDegSd === 5,
+    JSON.stringify(g));
+  const sp = gustSpawnerFromConfig(v.config);
+  check('gustSpawnerFromConfig flat snapshot', sp.enabled && sp.alongSigmaM === 2.5 && sp.alongSigmaMSd === 0.4);
+
+  const badLen = parseAndValidateRoomConfig(stringifyRoomConfig({
+    ...ROOM_CONFIG_DEFAULTS, gust_force_gain: [0.003, 0.0005, 1],
+  }));
+  check('refuse gust array length 3', !!badLen.error && /gust_force_gain/i.test(badLen.error), badLen.error);
+
+  const core = new SimCore({ mapW: 100, mapH: 200, simRes: '2f' });
+  const r = core.command({ type: 'config', config: v.config });
+  check('SimCore config applies gusts', !(r && r.error), JSON.stringify(r));
+  check('settings.gusts.enabled after config', core.settings.gusts && core.settings.gusts.enabled === true
+    && core.settings.gusts.ratePerMin === 6, JSON.stringify(core.settings.gusts));
+  check('GustField spawner enabled', core.sim.gusts.spawner.enabled === true && core.sim.gusts.spawner.ratePerMin === 6);
+
+  // Off → no inject activity from spawner (rate 0).
+  const off = validateRoomConfig({ ...ROOM_CONFIG_DEFAULTS }, { core }).config;
+  core.command({ type: 'config', config: off });
+  check('gusts=false disables spawner', core.sim.gusts.spawner.enabled === false);
 }
 
 if (failed) { console.log(failed + ' FAILED'); process.exit(1); }

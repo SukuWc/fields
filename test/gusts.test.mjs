@@ -5,6 +5,7 @@ const {
   GustField, GustColumn, gustEnvelope, flowUnitFromWind, injectEllipticalKernel,
   gustState, gustGuidesFromState, gustColumnAxes, GUST_OUTLINE_STEPS,
   GUST_ASPECT, GUST_ALONG_SIGMA_M, GUST_CROSS_SIGMA_M, GUST_DEMO, GUST_FORCE_GAIN,
+  samplePoisson, sampleNormal, mulberry32, GUST_MAX_LIVE,
 } = await import('../src/gusts.js');
 const { SimCore } = await import('../src/host.js');
 
@@ -153,6 +154,72 @@ check('demo layout exports two columns and a boat',
     `x[${minX.toFixed(2)},${maxX.toFixed(2)}] y[${minY.toFixed(2)},${maxY.toFixed(2)}]`);
   check('empty / dead → no state', gustState(new GustField(), map) === null);
   check('bad row → no guides', gustGuidesFromState([[0, 0]]).length === 0);
+}
+
+// Rate spawner: Poisson arrivals, sd=0 → constant knobs, disabled → no spawn.
+{
+  const rng = mulberry32(42);
+  let sum = 0;
+  const N = 20000;
+  const lambda = 0.2;
+  for (let i = 0; i < N; i++) sum += samplePoisson(lambda, rng);
+  const mean = sum / N;
+  check('samplePoisson mean ≈ λ', Math.abs(mean - lambda) < 0.02, `mean ${mean.toFixed(4)} λ ${lambda}`);
+
+  const g = new GustField();
+  g.setSpawner({
+    enabled: true,
+    ratePerMin: 60, // 1 per second → λ = dt at 30 Hz ≈ 0.0333 per tick
+    forceGain: 0.003, forceGainSd: 0,
+    alongSigmaM: 2.5, alongSigmaMSd: 0,
+    crossSigmaM: 12.5, crossSigmaMSd: 0,
+    lifeS: 10, lifeSSd: 0,
+    dirDeg: 0, dirDegSd: 0,
+    rampS: 1.5,
+    seed: 7,
+  }, { clearColumns: true });
+  const map = { width: 100, height: 200, wind_direction: 90, wind_speed: 4.5, devMode: true };
+  const dt = 1 / 30;
+  const ticks = 30 * 60; // 60 s → expect ~60 spawns (rate 60/min); life 10 s so ~10 alive steady
+  let spawned = 0;
+  const before = 0;
+  for (let t = 0; t < ticks; t++) {
+    const n0 = g.columns.length;
+    g.step(dt, null, map);
+    // Count births roughly: columns can die; track via age near 0 after step is hard.
+    // Instead compare total ever-added via a counter on add — wrap by counting length jumps.
+    if (g.columns.length > n0) spawned += g.columns.length - n0;
+  }
+  check('rate spawner ~60/min over 60 s (45..75)', spawned >= 45 && spawned <= 75, `spawned ${spawned}`);
+  check('live columns capped / reasonable', g.columns.length <= GUST_MAX_LIVE && g.columns.length > 0,
+    `live ${g.columns.length}`);
+  // sd=0 → every column has exact means
+  const allExact = g.columns.every((c) =>
+    c.forceGain === 0.003 && c.alongSigma === 2.5 && c.crossSigma === 12.5 && c.lifeS === 10);
+  check('sd=0 → constant knobs on every column', allExact);
+
+  g.setSpawner({ enabled: false, ratePerMin: 60, forceGain: 0.003, seed: 9 }, { clearColumns: true });
+  for (let t = 0; t < 90; t++) g.step(dt, null, map);
+  check('gusts=false → zero columns from spawner', g.columns.length === 0);
+
+  // Deterministic: same seed → same first spawn position
+  const a = new GustField();
+  const b = new GustField();
+  const opts = {
+    enabled: true, ratePerMin: 600, forceGain: 0.003, forceGainSd: 0,
+    alongSigmaM: 2.5, alongSigmaMSd: 0, crossSigmaM: 12.5, crossSigmaMSd: 0,
+    lifeS: 10, lifeSSd: 0, dirDeg: 0, dirDegSd: 0, rampS: 1.5, seed: 12345,
+  };
+  a.setSpawner(opts, { clearColumns: true });
+  b.setSpawner(opts, { clearColumns: true });
+  // Force one spawn via high rate over a few ticks
+  for (let t = 0; t < 5; t++) { a.step(dt, null, map); b.step(dt, null, map); }
+  check('same seed → same spawn sequence',
+    a.columns.length === b.columns.length
+    && a.columns.length > 0
+    && near(a.columns[0].x, b.columns[0].x, 1e-12)
+    && near(a.columns[0].y, b.columns[0].y, 1e-12),
+    `a ${a.columns[0] && a.columns[0].x} b ${b.columns[0] && b.columns[0].x}`);
 }
 
 if (failed) { console.log(`${failed} check(s) failed`); process.exit(1); }

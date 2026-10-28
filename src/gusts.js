@@ -33,6 +33,9 @@ export const GUST_RAMP_S = 1.5;
  */
 export const GUST_FORCE_GAIN = 0.003;
 
+/** Cap on live columns (rate spawner + scripted). */
+export const GUST_MAX_LIVE = 32;
+
 /** Sample the kernel out to this many σ. */
 const KERNEL_RADIUS_SIGMA = 3;
 /** Soft floor: skip samples below this weight. */
@@ -261,18 +264,123 @@ export class GustColumn {
   }
 }
 
-/** Sparse set of moving columns owned by one Sim. */
+/** Default rate-spawner settings (room-config off). */
+export function defaultGustSpawner() {
+  return {
+    enabled: false,
+    ratePerMin: 0,
+    forceGain: GUST_FORCE_GAIN,
+    forceGainSd: 0,
+    alongSigmaM: GUST_ALONG_SIGMA_M,
+    alongSigmaMSd: 0,
+    crossSigmaM: GUST_CROSS_SIGMA_M,
+    crossSigmaMSd: 0,
+    lifeS: GUST_LIFE_S,
+    lifeSSd: 0,
+    dirDeg: 0,
+    dirDegSd: 0,
+    rampS: GUST_RAMP_S,
+    maxLive: GUST_MAX_LIVE,
+    seed: 1,
+  };
+}
+
+/** Mulberry32: deterministic [0,1) from a 32-bit state. */
+export function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function next() {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Hash a string to a uint32 seed. */
+export function hashSeed(str) {
+  let h = 2166136261 >>> 0;
+  const s = String(str ?? '');
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** Sample N(mean, sd²); sd≤0 → mean. */
+export function sampleNormal(mean, sd, rng) {
+  if (!(sd > 0)) return mean;
+  // Box–Muller
+  let u = 0, v = 0;
+  while (u === 0) u = rng();
+  while (v === 0) v = rng();
+  const z = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  return mean + z * sd;
+}
+
+/** Knuth Poisson for small λ (our rates ≪ 30 per tick). */
+export function samplePoisson(lambda, rng) {
+  if (!(lambda > 0)) return 0;
+  if (lambda > 100) lambda = 100;
+  const L = Math.exp(-lambda);
+  let k = 0, p = 1;
+  do {
+    k++;
+    p *= rng();
+  } while (p > L);
+  return k - 1;
+}
+
+/** Clamp non-negative physics knobs after sampling. */
+function clampNonNeg(x) {
+  return Number.isFinite(x) && x > 0 ? x : 0;
+}
+
+/** Sparse set of moving columns owned by one Sim (+ optional rate spawner). */
 export class GustField {
   constructor() {
     this.columns = [];
+    this.spawner = defaultGustSpawner();
+    this._rng = mulberry32(this.spawner.seed);
+    this._tick = 0;
   }
 
   clear() {
     this.columns.length = 0;
   }
 
-  /** Add a column; returns it. */
+  /**
+   * Apply room-config / command spawner settings.
+   * Replaces settings and reseeds RNG; clears live columns when `clearColumns`.
+   */
+  setSpawner(opts = {}, { clearColumns = true } = {}) {
+    const d = defaultGustSpawner();
+    const s = { ...d, ...this.spawner, ...opts };
+    s.enabled = !!s.enabled;
+    s.ratePerMin = Number.isFinite(s.ratePerMin) ? Math.max(0, s.ratePerMin) : 0;
+    s.forceGain = Number.isFinite(s.forceGain) ? Math.max(0, s.forceGain) : d.forceGain;
+    s.forceGainSd = Number.isFinite(s.forceGainSd) ? Math.max(0, s.forceGainSd) : 0;
+    s.alongSigmaM = Number.isFinite(s.alongSigmaM) ? Math.max(0, s.alongSigmaM) : d.alongSigmaM;
+    s.alongSigmaMSd = Number.isFinite(s.alongSigmaMSd) ? Math.max(0, s.alongSigmaMSd) : 0;
+    s.crossSigmaM = Number.isFinite(s.crossSigmaM) ? Math.max(0, s.crossSigmaM) : d.crossSigmaM;
+    s.crossSigmaMSd = Number.isFinite(s.crossSigmaMSd) ? Math.max(0, s.crossSigmaMSd) : 0;
+    s.lifeS = Number.isFinite(s.lifeS) ? Math.max(0, s.lifeS) : d.lifeS;
+    s.lifeSSd = Number.isFinite(s.lifeSSd) ? Math.max(0, s.lifeSSd) : 0;
+    s.dirDeg = Number.isFinite(s.dirDeg) ? s.dirDeg : 0;
+    s.dirDegSd = Number.isFinite(s.dirDegSd) ? Math.max(0, s.dirDegSd) : 0;
+    s.rampS = Number.isFinite(s.rampS) && s.rampS >= 0 ? s.rampS : d.rampS;
+    s.maxLive = Number.isFinite(s.maxLive) && s.maxLive > 0 ? Math.floor(s.maxLive) : GUST_MAX_LIVE;
+    s.seed = (Number.isFinite(s.seed) ? s.seed : d.seed) >>> 0;
+    this.spawner = s;
+    this._rng = mulberry32(s.seed);
+    this._tick = 0;
+    if (clearColumns) this.clear();
+  }
+
+  /** Add a column; returns it (or null if at cap). */
   add(opts) {
+    if (this.columns.length >= (this.spawner.maxLive || GUST_MAX_LIVE)) return null;
     const c = opts instanceof GustColumn ? opts : new GustColumn(opts);
     this.columns.push(c);
     return c;
@@ -283,8 +391,51 @@ export class GustField {
     return this.columns.filter((c) => !c.dead);
   }
 
+  _spawnOne(map) {
+    const s = this.spawner;
+    const rng = this._rng;
+    const w = map && Number.isFinite(map.width) ? map.width : 100;
+    const h = map && Number.isFinite(map.height) ? map.height : 200;
+    // WALL_INSET_M = 2 (map-size.js); keep spawns inside open water.
+    const inset = 2;
+    const halfW = Math.max(0, w / 2 - inset);
+    const halfH = Math.max(0, h / 2 - inset);
+    const x = (rng() * 2 - 1) * halfW;
+    const y = (rng() * 2 - 1) * halfH;
+    const windFrom = (map && Number.isFinite(map.wind_direction) ? map.wind_direction : 90)
+      + sampleNormal(s.dirDeg, s.dirDegSd, rng);
+    const gain = clampNonNeg(sampleNormal(s.forceGain, s.forceGainSd, rng));
+    const along = clampNonNeg(sampleNormal(s.alongSigmaM, s.alongSigmaMSd, rng));
+    const cross = clampNonNeg(sampleNormal(s.crossSigmaM, s.crossSigmaMSd, rng));
+    const life = clampNonNeg(sampleNormal(s.lifeS, s.lifeSSd, rng));
+    if (!(along > 0) || !(cross > 0) || !(life > 0) || !(gain > 0)) return null;
+    return this.add({
+      x, y,
+      alongSigma: along,
+      crossSigma: cross,
+      lifeS: life,
+      rampS: s.rampS,
+      forceGain: gain,
+      windFromDeg: ((windFrom % 360) + 360) % 360,
+      delayS: 0,
+    });
+  }
+
+  _spawn(dt, map) {
+    const s = this.spawner;
+    if (!s.enabled || !(s.ratePerMin > 0) || !(dt > 0)) return;
+    const lambda = (s.ratePerMin / 60) * dt;
+    const n = samplePoisson(lambda, this._rng);
+    for (let i = 0; i < n; i++) {
+      if (this.columns.length >= s.maxLive) break;
+      this._spawnOne(map);
+    }
+  }
+
   step(dt, bm, map) {
     if (!(dt > 0)) return;
+    this._tick++;
+    this._spawn(dt, map);
     for (const c of this.columns) c.step(dt, bm, map);
     // Keep finished columns out of the hot list; scenarios that want history
     // can snapshot before they die.

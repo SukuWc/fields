@@ -75,7 +75,7 @@ const core = new SimCore({ mapW: 50, mapH: 100, simRes: '4' });
   const vals = [undefined, null, true, false, 0, 1, -1, 3, 4, 12, 19, 20, 999, 45.5, 361, -90, 30, 30.01, 1000, 1e8, 1e9, NaN, Infinity, '', '1', '4', '4f', '2f', '2f34', 'auto', 'fixed', 'bogus', 'yes', '12', '3.0', {}, []];
   const fields = ['scenario', 'angle', 'speed', 'on', 'mode', 'tune', 'target', 'amr', 'boatEnergy', 'ladder'];
   // 'refine' / 'sailWake' / 'fieldSkip' came after the old validator (their own checks below).
-  const types = [...ROOM_COMMANDS].filter((t) => t !== 'refine' && t !== 'sailWake' && t !== 'fieldSkip' && t !== 'config').concat(['plot', 'spawnBoat', 'bogus']);
+  const types = [...ROOM_COMMANDS].filter((t) => t !== 'refine' && t !== 'sailWake' && t !== 'fieldSkip' && t !== 'config' && t !== 'gusts').concat(['plot', 'spawnBoat', 'bogus']);
   const cmds = [];
   for (const type of types) {
     cmds.push({ type });
@@ -90,7 +90,7 @@ const core = new SimCore({ mapW: 50, mapH: 100, simRes: '4' });
     if (a !== b) diff.push(JSON.stringify(c) + ' old ' + a + ' new ' + b);
   }
   check('registry validator answers exactly as the old room.js validator', diff.length === 0, `${cmds.length} commands` + (diff.length ? '; ' + diff.slice(0, 5).join(' | ') : ''));
-  check('ROOM_COMMANDS: the registry\'s, the same set as before', SERVER_ROOM_COMMANDS === ROOM_COMMANDS && [...ROOM_COMMANDS].sort().join() === ['restart', 'wind', 'devMode', 'barrier', 'simRes', 'amrMode', 'refine', 'sailWake', 'cellBudget', 'options', 'fieldSkip', 'config'].sort().join(), [...ROOM_COMMANDS].join());
+  check('ROOM_COMMANDS: the registry\'s, the same set as before', SERVER_ROOM_COMMANDS === ROOM_COMMANDS && [...ROOM_COMMANDS].sort().join() === ['restart', 'wind', 'devMode', 'barrier', 'simRes', 'amrMode', 'refine', 'sailWake', 'cellBudget', 'options', 'fieldSkip', 'config', 'gusts'].sort().join(), [...ROOM_COMMANDS].join());
 }
 
 // 2. Every room setting is validated by the server through the registry:
@@ -113,7 +113,11 @@ const command = (c) => {
 const GOOD = { bool: (s) => !s.default, int: () => 2, number: (s) => (s.max !== undefined ? s.max : 45), enum: (s) => s.values.find((v) => v !== s.default) };
 const BAD = { bool: () => 'yes', int: () => 'x', number: (s) => (s.max !== undefined ? s.max * 2 + 1 : NaN), enum: () => 'bogus' };
 for (const s of ROOM_SETTINGS) {
-  if (!s.command) { check(`${s.id}: no room command (set when the room is created)`, s.id === 'map_size'); continue; }
+  if (!s.command) {
+    check(`${s.id}: no room command (create-time or TOML-only via config)`,
+      s.id === 'map_size' || s.id === 'gusts' || s.id.startsWith('gust_'));
+    continue;
+  }
   const other = ROOM_SETTINGS.filter((o) => o !== s && o.command && o.command.type === s.command.type && o.command.required);
   const base = Object.fromEntries(other.map((o) => [o.id, o.default]));
   // cellBudget target is ignored unless tune is on (host._trackSetting).

@@ -98,6 +98,16 @@ export const SETTINGS = [
   { id: 'fieldSkip', scope: 'room', panel: 'room', control: false, url: false, type: 'int', default: 0, min: 0, max: 29, coerce: true,
     command: { type: 'fieldSkip', field: 'n', required: true }, state: 'fieldSkip', invalid: () => 'fieldSkip must be 0..29',
     remoteOnly: true },
+  // Gust rate spawner (room-config.js TOML). Applied via atomic `config` → `gusts`
+  // command; not individual panel controls. See gusts.js / ROOM_CONFIG_DEFAULTS.
+  { id: 'gusts', scope: 'room', panel: 'room', control: false, url: false, type: 'bool', default: false, state: 'gusts.enabled' },
+  { id: 'gust_rate_per_min', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: 0, min: 0, max: 120, state: 'gusts.ratePerMin' },
+  { id: 'gust_force_gain', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: 0.003, min: 0, max: 1, state: 'gusts.forceGain' },
+  { id: 'gust_along_sigma_m', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: 2.5, min: 0, max: 100, state: 'gusts.alongSigmaM' },
+  { id: 'gust_cross_sigma_m', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: 12.5, min: 0, max: 200, state: 'gusts.crossSigmaM' },
+  { id: 'gust_life_s', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: 10, min: 0, max: 120, state: 'gusts.lifeS' },
+  { id: 'gust_dir_deg', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: 0, state: 'gusts.dirDeg' },
+  { id: 'gust_ramp_s', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: 1.5, min: 0, max: 60, state: 'gusts.rampS' },
 ];
 
 export const SETTING_BY_ID = new Map(SETTINGS.map((s) => [s.id, s]));
@@ -122,6 +132,9 @@ export const ROOM_COMMANDS = new Set(ROOM_COMMAND_FIELDS.keys());
 // Atomic TOML apply (src/room-config.js); validated in apps/server/room.js /
 // SimCore, not as per-field registry entries.
 ROOM_COMMANDS.add('config');
+// Compound gust spawner (room-config.js); validated in apps/server/room.js /
+// SimCore via the config path, also accepted as a standalone room command.
+ROOM_COMMANDS.add('gusts');
 export function isRoomCommand(type) { return ROOM_COMMANDS.has(type); }
 
 // One value against its setting: { v } (normalised) or { error }.

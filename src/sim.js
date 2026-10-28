@@ -56,6 +56,8 @@ export { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps };
 //   { type: 'simRes', mode }           SIM_RES_MODES key; returns true if the lattice was rebuilt
 //   { type: 'amrMode', mode }          'auto' | 'fixed'; returns true if the lattice was rebuilt
 //   { type: 'sailWake', gain }         sail → lattice momentum multiple (SAIL_WAKE_GAIN 16)
+//   { type: 'gusts', enabled, ratePerMin, forceGain, forceGainSd, ... }
+//                                      room-config rate spawner (gusts.js); clears columns
 // Gusts (gusts.js GustField on sim.gusts): scenarios call sim.gusts.add(...); stepped each tick.
 //   { type: 'refine', maxLevel?, boatRefineRadius? }  boat refinement levels (int) and
 //                                      finest disk radius (m); null = mode default;
@@ -210,6 +212,29 @@ export class Sim {
           this.map.sailWakeGain = c.gain;
         }
         return undefined;
+      case 'gusts': {
+        // Room-config rate spawner. Clears live columns so a Commit rebuilds cleanly;
+        // scenario 22 re-adds its scripted columns on restart.
+        const opts = {
+          enabled: !!c.enabled,
+          ratePerMin: c.ratePerMin,
+          forceGain: c.forceGain,
+          forceGainSd: c.forceGainSd,
+          alongSigmaM: c.alongSigmaM,
+          alongSigmaMSd: c.alongSigmaMSd,
+          crossSigmaM: c.crossSigmaM,
+          crossSigmaMSd: c.crossSigmaMSd,
+          lifeS: c.lifeS,
+          lifeSSd: c.lifeSSd,
+          dirDeg: c.dirDeg,
+          dirDegSd: c.dirDegSd,
+          rampS: c.rampS,
+        };
+        if (Number.isFinite(c.seed)) opts.seed = c.seed;
+        if (!this.gusts) this.gusts = new GustField();
+        this.gusts.setSpawner(opts, { clearColumns: true });
+        return undefined;
+      }
       case 'refine': {
         // Boat refinement stack (domainTrack amrParams): maxLevel levels below
         // the root, finest disk radius in metres; null = the mode default.
