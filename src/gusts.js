@@ -28,9 +28,10 @@ export const GUST_RAMP_S = 1.5;
  * Sim.sailEfficiency). Each sample deposits forceGain · weight · scale;
  * weights are the elliptical Gaussian (peak 1), not renormalised to sum 1,
  * so the centre keeps the full gain and the shape stays elliptical.
- * Tuned on 2f / 4.5 m/s for a clear +speed core and downwind streak.
+ * Tuned on 2f / 4.5 m/s: ~+50% peak |u| vs freestream while injecting,
+ * stable over 16 s on scenario 22 (0.045 blew up by ~t=3–9 s).
  */
-export const GUST_FORCE_GAIN = 0.045;
+export const GUST_FORCE_GAIN = 0.003;
 
 /** Sample the kernel out to this many σ. */
 const KERNEL_RADIUS_SIGMA = 3;

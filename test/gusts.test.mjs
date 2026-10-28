@@ -44,10 +44,10 @@ check('flow unit: wind from +Y → flow −Y', (() => {
   check('scenario 22 loads with boat and two columns',
     core.sim.scenarioIndex === 22 && core.sim.players.length === 1 && core.sim.gusts.columns.length === 2,
     `boats ${core.sim.players.length} gusts ${core.sim.gusts.columns.length}`);
-  // Run until first column is injecting (delay 0.5 s + ramp).
-  for (let t = 0; t < 45; t++) mute(() => core.tick({ dt: 1 / 30, held: [] }));
+  // Run until first column is in its hold (delay 0.5 s + ramp 1.5 s → ~2 s).
+  for (let t = 0; t < 60; t++) mute(() => core.tick({ dt: 1 / 30, held: [] }));
   const col = core.sim.gusts.columns[0];
-  check('first column injecting after ~1.5 s', !!col && col.lastEnvelope > 0.5 && col.lastInjectCount > 20,
+  check('first column injecting after ~2 s', !!col && col.lastEnvelope > 0.9 && col.lastInjectCount > 20,
     col ? `env ${col.lastEnvelope.toFixed(2)} n ${col.lastInjectCount}` : 'gone');
   // Peak |u| above freestream near the column centre.
   const bm = core.bm;
