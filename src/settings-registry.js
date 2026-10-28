@@ -67,7 +67,7 @@ export const SETTINGS = [
   // control:false = no per-setting DOM; url:false = not written to the query
   // (old room URL params are gone).
   // The scenario's existence and fit depend on the room: checks.scenario.
-  { id: 'scenario_selector', scope: 'room', panel: 'room', control: false, url: false, type: 'int', default: 0, min: 0, coerce: true, check: 'scenario', ui: { min: 0, max: 22 },
+  { id: 'scenario_selector', scope: 'room', panel: 'room', control: false, url: false, type: 'int', default: 0, min: 0, coerce: true, check: 'scenario', ui: { min: 0, max: 23 },
     command: { type: 'restart', field: 'scenario', required: true }, invalid: (v) => 'no scenario ' + v },
   { id: 'windAngle', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: 90, ui: { min: 0, max: 360 },
     command: { type: 'wind', field: 'angle' }, state: 'wind.angle', normalize: (v) => ((v % 360) + 360) % 360, invalid: () => 'bad wind angle' },

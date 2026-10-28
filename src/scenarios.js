@@ -15,7 +15,7 @@ import { setupBoundaryTest } from './boundary-scenario.js';
 import { chargePendingPenalty, PENALTY_MANEUVER_WINDOW_S } from './rules.js';
 import { incidentCode, incidentReason, incidentLabel } from './rule-text.js';
 import { range_map } from './utils.js';
-import { GUST_DEMO } from './gusts.js';
+import { GUST_DEMO, GUST_CHECKERBOARD_DEMO } from './gusts.js';
 
 // Scenario 18 start positions (four boats upwind, the refinement-budget case).
 export const FLEET4 = [
@@ -616,6 +616,30 @@ export function buildScenarios(sim) {
     sim.emit({ type: 'bindControls' });
     sim.emit({ type: 'view', follow: true });
     sim.emit({ type: 'view', zoom: 55 });
+  };
+
+
+  // Large-σ gust checkerboard repro (gusts.js GUST_CHECKERBOARD_DEMO).
+  // Mirrors europe-1 room TOML: σ ≈ 10–15 m, forceGain 0.0005, refine_max_level 2
+  // on 2f / amr auto. Fluid mode. ?scenario_selector=23
+  scenarios[23] = makeScenario(
+    "Large-σ gusts: checkerboard field artifact",
+    "Steady wind from +Y on the 100 × 200 map. Three large near-circular momentum columns (σ along/cross 10–15 m, force gain 0.0005) inject deterministically — the same size class as the europe-1 room TOML that showed a checkerboard-style wind-field artifact. Boat refinement is capped at maxLevel 2 (boat disk 3 m) to match that room. Prefer fluid / 2f with Show field on so the overlay shows the lattice pattern. Arrows steer, Space toggles the autopilot."
+  );
+  scenarios[23].frames[0] = () => {
+    const L = GUST_CHECKERBOARD_DEMO;
+    // Mirror europe-1 AMR / refine knobs (room-config refine_max_level = 2).
+    if (L.refine) sim.command({ type: 'refine', maxLevel: L.refine.maxLevel, boatRefineRadius: L.refine.boatRefineRadius });
+    sim.command({ type: 'amrMode', mode: 'auto' });
+    sim.players.push(new Boat(sim.map, L.boat.x, L.boat.y, L.boat.heading));
+    for (const c of L.columns) sim.gusts.add({ ...c });
+  };
+  scenarios[23].frames[1] = () => {
+    sim.players[0].input_autopilot_enabled_toggle();
+    sim.emit({ type: 'bindControls' });
+    sim.emit({ type: 'view', follow: true });
+    // Pull back so several root cells of the large kernels are in view.
+    sim.emit({ type: 'view', zoom: 70 });
   };
 
   return scenarios;
