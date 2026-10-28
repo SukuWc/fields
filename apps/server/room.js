@@ -65,7 +65,9 @@ export const CHAT_RATE_MS = 10000;
 // removeBoat only works on own boats; a disconnect removes them all. A
 // room-wide restart keeps them: each is spawned again, with its name and
 // colour, once the new scenario has placed its own boats (after its first
-// tick). Each client hears its list as
+// tick). Any player boat that appears in the restart→respawn window is
+// dropped before that respawn so config commits cannot orphan old boats.
+// Each client hears its list as
 // { type: 'event', ev: { type: 'ownBoats', boats: [{ id, name, color }] } }
 // and its key binding as { type: 'event', ev: { type: 'bindControls', boats } }
 // (1 with an own boat, else 0; the scenario's own bindControls is not sent
@@ -421,11 +423,20 @@ export class Room {
       return undefined;
     }
     if (c.type === 'spawnBoat') {
+      const name = typeof c.name === 'string' ? c.name.trim().slice(0, 24) : '';
+      const color = Number.isInteger(c.color) && c.color >= 0 && c.color <= 0xffffff ? c.color : undefined;
+      // A room-wide restart clears ownership then respawns after the scenario's
+      // first ticks. Spawning in that window would orphan the mid-restart boat
+      // when _respawnDue runs; record the join as the pending respawn instead.
+      if (this._respawn) {
+        const list = this.owned.get(client) || [];
+        if (list.length >= MAX_BOATS_PER_CLIENT) return { error: 'at most ' + MAX_BOATS_PER_CLIENT + ' boat per client' };
+        this._respawn.set(client, [{ name, color }]);
+        return { ok: true, pending: true };
+      }
       const list = this.owned.get(client) || [];
       if (list.length >= MAX_BOATS_PER_CLIENT) return { error: 'at most ' + MAX_BOATS_PER_CLIENT + ' boat per client' };
       if (this.core.sim.players.filter((b) => b.spawnId).length >= MAX_PLAYER_BOATS) return { error: 'the room is full (' + MAX_PLAYER_BOATS + ' player boats)' };
-      const name = typeof c.name === 'string' ? c.name.trim().slice(0, 24) : '';
-      const color = Number.isInteger(c.color) && c.color >= 0 && c.color <= 0xffffff ? c.color : undefined;
       const r = this._spawn(client, { name, color });
       this._sendOwn(client);
       if (r && r.id) { const who = this._chatBoat({ id: r.id, name: r.name, color }); this._chatSystem(`${who.name} joined (boat ${who.n})`); }
@@ -488,15 +499,34 @@ export class Room {
   // scenario's first tick, see _compute).
   _restart(n) {
     const keep = new Map();
+    // A prior restart may still be waiting to respawn (owned already cleared).
+    if (this._respawn) {
+      for (const [key, specs] of this._respawn) {
+        if (specs && specs.length) keep.set(key, specs.map((s) => ({ name: s.name, color: s.color })));
+      }
+    }
     for (const [client, list] of this.owned) if (list.length) keep.set(client, list.map((b) => ({ name: b.name, color: b.color })));
     // Absent owners' boats (grace period) come back too.
     for (const e of this.parked.values()) if (e.boats.length) { keep.set(e, e.boats.map((b) => ({ name: b.name, color: b.color }))); }
     this._restarting = true;
     let r;
     try { r = this.core.command({ type: 'restart', scenario: n }); } finally { this._restarting = false; }
+    // Scenario restart clears sim.players; drop any stray player boats that
+    // appeared between stacked restarts, then arm a single respawn pass.
+    this._removeAllPlayerBoats();
     for (const key of keep.keys()) { if (key.parked) key.boats = []; else this.owned.set(key, []); }
-    if (keep.size) this._respawn = keep;
+    this._respawn = keep.size ? keep : null;
     return r;
+  }
+
+  // Destroy every spawnBoat entity. Used around room-wide restart so a join
+  // in the respawn window cannot leave an orphan beside the kept boat.
+  _removeAllPlayerBoats() {
+    const sim = this.core && this.core.sim;
+    if (!sim) return;
+    for (const id of sim.players.filter((b) => b.spawnId).map((b) => b.spawnId)) {
+      this.core.command({ type: 'removeBoat', id });
+    }
   }
 
   _spawn(client, { name, color }) {
@@ -512,14 +542,20 @@ export class Room {
     if (!this._respawn || this.core.sim.frame < 3) return;
     const due = this._respawn;
     this._respawn = null;
+    // Drop any player boats that appeared while ownership was cleared
+    // (e.g. a join during the restart window) so each kept client ends with
+    // exactly the boats in `due`, not due + orphans.
+    this._removeAllPlayerBoats();
     for (const [key, specs] of due) {
       if (key.parked) {
         if (this.parked.get(key.token) !== key) continue;
+        key.boats = [];
         for (const sp of specs) { const r = this.core.command({ type: 'spawnBoat', name: sp.name, color: sp.color }); key.boats.push({ id: r.id, name: r.name, color: sp.color }); }
         this._markAway(key);
         continue;
       }
       if (!this.clients.has(key)) continue;
+      this.owned.set(key, []);
       for (const sp of specs) this._spawn(key, sp);
       this._sendOwn(key);
     }
