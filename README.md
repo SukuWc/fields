@@ -61,6 +61,7 @@ Last updated: 2026-10-28
 - [x] Boat true wind from a 1 m, 20-point ring vector mean instead of a single centre sample (used for boat smoothing, HUD and rules; scenario 20 RMS direction error about 2.47° to 2.33°): [#90](https://github.com/SukuWc/fields/pull/90)
 - [x] True-wind own-sail-force correction on 2f: centre sample + (k0+ka·acc)·F_boat with piecewise gain→(k0,ka), |F| capped at 20 (scenario 20 dir RMS ~0.79/1.25/1.85° at gains 10/16/25; other modes unchanged): [#103](https://github.com/SukuWc/fields/pull/103)
 - [x] Moving-column gusts: elliptical momentum columns injected into the lattice (long axis across the wind, carried downwind at free-stream speed, 10 s life), scenario 22: [#111](https://github.com/SukuWc/fields/pull/111)
+- [ ] Large gusts (σ about 10–15 m, as on `europe-1`) sampled at every root cell, removing the checkerboard artifact on the wind field with no gain rescale, scenario 23 (in progress, [#117](https://github.com/SukuWc/fields/pull/117))
 - [x] Room-config gust rate spawner: Poisson gust arrivals (`gust_rate_per_min`) with mean[,sd] knobs for gain, size, life and direction in room TOML, off by default: [#112](https://github.com/SukuWc/fields/pull/112)
 - [ ] Strategy tuning
 - [ ] Strong-wind speed cap (heel limit): boat speed keeps climbing with wind (about 0.72× wind speed at 15 m/s) because the sail model has no heel or depower limit; real boats level off. Sweep data in [#83](https://github.com/SukuWc/fields/pull/83) (backlog, not started)
