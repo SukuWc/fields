@@ -66,7 +66,8 @@ export const GUST_DEMO = {
  * Scenario 23: large-σ gust checkerboard repro (Europe-1 room TOML).
  * Circular-ish elliptical kernels with σ ≈ 10–15 m and the live room's
  * force gain (0.0005). Deterministic scripted columns — no Poisson spawner.
- * On 2f + AMR the wind overlay shows a checkerboard-style lattice artifact.
+ * Regression for inject step = root cell (large σ used to sparsify with
+ * min(σ)/2 and look checkerboard on the field overlay).
  */
 export const GUST_CHECKERBOARD_DEMO = {
   windMps: 4.5,
@@ -181,9 +182,12 @@ export function injectEllipticalKernel(bm, cx, cy, fx, fy, along, cross, alongSi
   if (!Number.isFinite(fx) || !Number.isFinite(fy)) return 0;
   if (!(alongSigma > 0) || !(crossSigma > 0)) return 0;
   const ax = along.x, ay = along.y, cxu = cross.x, cyu = cross.y;
-  // World sample step ≈ one root cell (or finer when resolution > 1).
+  // World sample step = one root cell. Large σ used to sparsify with
+  // min(σ)/2, which left deposits on a sparse Cartesian lattice and looked
+  // checkerboard on the field overlay; keep every root cell inside the
+  // ellipse. Area weight below keeps total momentum ~resolution-independent.
   const cell = 1 / (bm.resolution || 1);
-  const step = Math.max(cell, Math.min(alongSigma, crossSigma) / 2);
+  const step = cell;
   const halfA = KERNEL_RADIUS_SIGMA * alongSigma;
   const halfC = KERNEL_RADIUS_SIGMA * crossSigma;
   // Bounding box in world axes from the oriented ellipse extents.

@@ -165,7 +165,7 @@ for meta in summary["metas"]:
     im2 = ax.imshow(g2, origin="lower", extent=extent, cmap="coolwarm",
                     vmin=-vmax2, vmax=vmax2, interpolation="nearest", aspect="equal")
     fig.colorbar(im2, ax=ax, fraction=0.046, pad=0.04)
-    step = max(meta["cell"], min(c0["sa"], c0["sc"]) / 2)
+    step = meta["cell"]  # inject samples every root cell
     ax.set_title(f"nearest zoom; inject step≈{step:.1f} m")
     fig.tight_layout()
     fig.savefig(out / f"{label}.png")

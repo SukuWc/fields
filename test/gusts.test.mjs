@@ -222,5 +222,34 @@ check('demo layout exports two columns and a boat',
     `a ${a.columns[0] && a.columns[0].x} b ${b.columns[0] && b.columns[0].x}`);
 }
 
+
+// Large-σ inject step = root cell (no min(σ)/2 sparsify → checkerboard).
+{
+  const along = flowUnitFromWind(90);
+  const cross = { x: -along.y, y: along.x };
+  const hits = [];
+  const resolution = 0.5; // 2f root cell = 2 m
+  const bm = {
+    resolution,
+    velScale: 2,
+    apply_energy(wx, wy, fx, fy) { hits.push({ wx, wy }); },
+  };
+  const sa = 15, sc = 15;
+  const n = injectEllipticalKernel(bm, 0, 0, along.x, along.y, along, cross, sa, sc);
+  const cell = 1 / resolution;
+  // Sparse old step would be max(cell, minσ/2) = 7.5 → ~143 hits; dense ≈ cell → ~2k.
+  check('large-σ kernel samples every root cell (≫ sparse minσ/2 lattice)',
+    n > 500 && hits.length === n, `n ${n} (expect ≫ 143 sparse)`);
+  // Spacing between distinct x/y samples ≤ cell (no min(σ)/2 gaps).
+  const xs = [...new Set(hits.map((h) => +h.wx.toFixed(9)))].sort((a, b) => a - b);
+  const ys = [...new Set(hits.map((h) => +h.wy.toFixed(9)))].sort((a, b) => a - b);
+  let maxGapX = 0, maxGapY = 0;
+  for (let i = 1; i < xs.length; i++) maxGapX = Math.max(maxGapX, xs[i] - xs[i - 1]);
+  for (let i = 1; i < ys.length; i++) maxGapY = Math.max(maxGapY, ys[i] - ys[i - 1]);
+  check('large-σ sample gaps ≤ root cell',
+    maxGapX <= cell + 1e-9 && maxGapY <= cell + 1e-9,
+    `maxGapX ${maxGapX} maxGapY ${maxGapY} cell ${cell}`);
+}
+
 if (failed) { console.log(`${failed} check(s) failed`); process.exit(1); }
 console.log('all gusts checks passed');
