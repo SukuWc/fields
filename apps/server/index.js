@@ -12,7 +12,10 @@
 // opens a room that is dropped graceMs after it empties.
 //
 // HTTP on the same port:
-//   GET /api/rooms   [{ id, players, config }]  config = room TOML; players = connected clients (CORS *)
+//   GET /api/rooms   [{ id, players, config, admin }]  config = room TOML; admin = writes enabled
+//                    when ADMIN_SECRET is set (CORS *)
+//   PUT|POST /api/rooms/:id/config   apply room TOML (Authorization: Bearer <ADMIN_SECRET>)
+//                    body: raw TOML (text/plain) or JSON { "toml": "..." } / { "config": "..." }
 //   GET /api/perf    { rooms: [{ id, players, sampleHz, windowS, endAt, times, latestMs }] }
 //                    last ~180 s of frameMs (physics + field encode) per room (CORS *)
 //   GET /api/status  rooms, clients, tick cost
@@ -23,6 +26,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import { Room, FIELD_HZ, FIELD_TOL, GRACE_MS } from './room.js';
 
@@ -73,7 +77,59 @@ function loadVersion(staticDir) {
   return { commit: 'dev' };
 }
 
-export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, fieldHz = FIELD_HZ, fieldTol = FIELD_TOL, graceMs = GRACE_MS, fixedRooms = [], staticDir = null } = {}) {
+
+/** Normalize ADMIN_SECRET: unset/blank → null (writes disabled). */
+export function normalizeAdminSecret(raw) {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  return s ? s : null;
+}
+
+/** Constant-time secret compare (hashes first so lengths need not match). */
+export function adminSecretsEqual(a, b) {
+  const ha = crypto.createHash('sha256').update(String(a ?? '')).digest();
+  const hb = crypto.createHash('sha256').update(String(b ?? '')).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+function bearerToken(req) {
+  const h = req.headers.authorization;
+  if (typeof h !== 'string') return null;
+  const m = /^Bearer\s+(\S+)$/i.exec(h.trim());
+  return m ? m[1] : null;
+}
+
+function readRequestBody(req, limit = 256 * 1024) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let n = 0;
+    req.on('data', (c) => {
+      n += c.length;
+      if (n > limit) { reject(Object.assign(new Error('body too large'), { status: 413 })); req.destroy(); return; }
+      chunks.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+/** Extract TOML text from a raw body (plain TOML or JSON wrapper). */
+export function tomlFromBody(raw, contentType) {
+  const ct = String(contentType || '').split(';')[0].trim().toLowerCase();
+  const text = String(raw ?? '');
+  if (ct === 'application/json') {
+    let j;
+    try { j = JSON.parse(text); } catch { return { error: 'invalid JSON body' }; }
+    if (j && typeof j.toml === 'string') return { toml: j.toml };
+    if (j && typeof j.config === 'string') return { toml: j.config };
+    return { error: 'JSON body needs string "toml" or "config"' };
+  }
+  return { toml: text };
+}
+
+export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, fieldHz = FIELD_HZ, fieldTol = FIELD_TOL, graceMs = GRACE_MS, fixedRooms = [], staticDir = null, adminSecret = process.env.ADMIN_SECRET } = {}) {
+  const secret = normalizeAdminSecret(adminSecret);
+  const adminEnabled = !!secret;
   const rooms = new Map();
   for (const name of fixedRooms) {
     const room = new Room(name, { lockstep, fieldHz, fieldTol, graceMs, persistent: true });
@@ -91,16 +147,52 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
     ok: true, lockstep,
     rooms: [...rooms.values()].map((r) => ({ name: r.name, clients: r.clients.size, ticks: r.ticks, tickMs: Math.round(r.tickMs * 10) / 10, frameMs: Math.round(r.frameMs * 10) / 10, fieldEncodes: r.fieldEncodes, fieldKeys: r.fieldKeys, fieldBytesSent: r.fieldBytesSent, fieldEncodeMs: Math.round(r.fieldEncodeMs * 100) / 100 })),
   });
+  const corsHeaders = {
+    'access-control-allow-origin': '*',
+    'access-control-allow-methods': 'GET, HEAD, PUT, POST, OPTIONS',
+    'access-control-allow-headers': 'Authorization, Content-Type',
+    'access-control-max-age': '86400',
+  };
   const server = http.createServer((req, res) => {
     const url = new URL(req.url || '/', 'http://x');
     if (req.method === 'OPTIONS') {
-      res.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, OPTIONS', 'access-control-max-age': '86400' });
+      res.writeHead(204, corsHeaders);
       return res.end();
+    }
+    // Admin: apply room TOML without joining the WebSocket (landing page Commit).
+    const configMatch = /^\/api\/rooms\/([^/]+)\/config$/.exec(url.pathname);
+    if (configMatch && (req.method === 'PUT' || req.method === 'POST')) {
+      (async () => {
+        if (!adminEnabled) return json(res, 403, { error: 'admin writes disabled (set ADMIN_SECRET)' });
+        const token = bearerToken(req);
+        if (!token || !adminSecretsEqual(token, secret)) return json(res, 401, { error: 'unauthorized' });
+        let id;
+        try { id = decodeURIComponent(configMatch[1]); } catch { return json(res, 400, { error: 'bad room id' }); }
+        const room = rooms.get(id);
+        if (!room) return json(res, 404, { error: 'no such room' });
+        let raw;
+        try { raw = await readRequestBody(req); } catch (e) {
+          return json(res, e.status || 400, { error: e.message || 'bad body' });
+        }
+        const extracted = tomlFromBody(raw, req.headers['content-type']);
+        if (extracted.error) return json(res, 400, { error: extracted.error });
+        const result = room.applyTomlConfig(extracted.toml);
+        if (result.error) return json(res, 400, { error: result.error });
+        return json(res, 200, { ok: true, id: room.name, config: result.config });
+      })().catch((e) => {
+        console.error('admin config', e);
+        if (!res.headersSent) json(res, 500, { error: 'internal' });
+      });
+      return;
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'method' });
     // Players: connected clients (spectators included); boats parked for a
     // reconnect grace period do not count.
-    if (url.pathname === '/api/rooms') return json(res, 200, [...rooms.values()].map((r) => ({ id: r.name, players: r.clients.size, config: r.tomlConfig() })));
+    if (url.pathname === '/api/rooms') {
+      return json(res, 200, [...rooms.values()].map((r) => ({
+        id: r.name, players: r.clients.size, config: r.tomlConfig(), admin: adminEnabled,
+      })));
+    }
     if (url.pathname === '/api/perf') {
       return json(res, 200, {
         rooms: [...rooms.values()].map((r) => ({

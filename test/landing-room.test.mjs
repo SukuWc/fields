@@ -31,8 +31,8 @@ const rooms = async () => { const r = await fetch(base + '/api/rooms'); return {
 
 let r = await rooms();
 const room0 = r.body[0];
-check('/api/rooms at startup: europe-1 with 0 players, CORS *',
-  room0 && room0.id === 'europe-1' && room0.players === 0 && r.cors === '*', JSON.stringify(r.body));
+check('/api/rooms at startup: europe-1 with 0 players, CORS *, admin false',
+  room0 && room0.id === 'europe-1' && room0.players === 0 && room0.admin === false && r.cors === '*', JSON.stringify(r.body));
 check('/api/rooms includes current room TOML config',
   typeof room0.config === 'string' && room0.config.includes('scenario =') && room0.config.includes('root_cell_m') && room0.config.includes('budget_target'),
   String(room0 && room0.config).slice(0, 120));
@@ -101,7 +101,76 @@ g = await get('/api/status');
 check('/api/status lists the room', g.s === 200 && JSON.parse(g.b).rooms[0].name === 'europe-1');
 const o = await fetch(base + '/api/rooms', { method: 'OPTIONS' });
 check('CORS preflight answers 204', o.status === 204 && o.headers.get('access-control-allow-origin') === '*');
+check('CORS preflight allows PUT and Authorization',
+  (o.headers.get('access-control-allow-methods') || '').includes('PUT')
+  && (o.headers.get('access-control-allow-headers') || '').toLowerCase().includes('authorization'));
+const denied = await fetch(base + '/api/rooms/europe-1/config', {
+  method: 'PUT', headers: { 'content-type': 'text/plain', authorization: 'Bearer x' }, body: 'scenario = 0\n',
+});
+check('PUT config without ADMIN_SECRET is 403', denied.status === 403, await denied.text());
 await srv.close();
+
+// Admin TOML apply via HTTP (ADMIN_SECRET).
+{
+  const { stringifyRoomConfig, ROOM_CONFIG_DEFAULTS } = await import('../src/room-config.js');
+  const admin = await startServer({ port: 0, fixedRooms: ['europe-1'], graceMs: 50, adminSecret: 'test-admin-secret' });
+  const abase = `http://127.0.0.1:${admin.port}`;
+  const listed = await (await fetch(abase + '/api/rooms')).json();
+  check('with ADMIN_SECRET, /api/rooms marks admin true', listed[0] && listed[0].admin === true, JSON.stringify(listed));
+
+  const noAuth = await fetch(abase + '/api/rooms/europe-1/config', {
+    method: 'PUT', headers: { 'content-type': 'text/plain' }, body: 'scenario = 0\n',
+  });
+  check('PUT config without Bearer is 401', noAuth.status === 401, await noAuth.text());
+
+  const badAuth = await fetch(abase + '/api/rooms/europe-1/config', {
+    method: 'PUT',
+    headers: { 'content-type': 'text/plain', authorization: 'Bearer wrong' },
+    body: 'scenario = 0\n',
+  });
+  check('PUT config with wrong secret is 401', badAuth.status === 401, await badAuth.text());
+
+  const badToml = await fetch(abase + '/api/rooms/europe-1/config', {
+    method: 'PUT',
+    headers: { 'content-type': 'text/plain', authorization: 'Bearer test-admin-secret' },
+    body: 'not = [valid\n',
+  });
+  check('PUT config with invalid TOML is 400', badToml.status === 400, await badToml.text());
+
+  const before = admin.rooms.get('europe-1').core.roomState().settings;
+  const next = stringifyRoomConfig({ ...ROOM_CONFIG_DEFAULTS, wind_speed_mps: 6.5, field_skip: 2 });
+  const ok = await fetch(abase + '/api/rooms/europe-1/config', {
+    method: 'PUT',
+    headers: { 'content-type': 'text/plain; charset=utf-8', authorization: 'Bearer test-admin-secret' },
+    body: next,
+  });
+  const okBody = await ok.json();
+  check('PUT config with good secret applies', ok.status === 200 && okBody.ok === true && typeof okBody.config === 'string', JSON.stringify(okBody).slice(0, 200));
+  const after = admin.rooms.get('europe-1').core.roomState().settings;
+  check('applied config changes live room settings',
+    after.wind && after.wind.speed === 6.5 && after.fieldSkip === 2,
+    JSON.stringify({ before: before && before.wind, after: after && after.wind, fieldSkip: after && after.fieldSkip }));
+  const listed2 = await (await fetch(abase + '/api/rooms')).json();
+  check('/api/rooms config reflects the apply',
+    typeof listed2[0].config === 'string' && listed2[0].config.includes('wind_speed_mps = 6.5') && listed2[0].config.includes('field_skip = 2'),
+    String(listed2[0].config).slice(0, 200));
+
+  const jsonBody = await fetch(abase + '/api/rooms/europe-1/config', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: 'Bearer test-admin-secret' },
+    body: JSON.stringify({ toml: stringifyRoomConfig({ ...ROOM_CONFIG_DEFAULTS, wind_speed_mps: 5 }) }),
+  });
+  check('POST JSON { toml } also applies', jsonBody.status === 200 && (await jsonBody.json()).ok === true);
+
+  const missing = await fetch(abase + '/api/rooms/nope/config', {
+    method: 'PUT',
+    headers: { 'content-type': 'text/plain', authorization: 'Bearer test-admin-secret' },
+    body: next,
+  });
+  check('PUT config for unknown room is 404', missing.status === 404);
+
+  await admin.close();
+}
 
 // Without fixedRooms / staticDir the old behaviour holds: / is the status, rooms open on demand.
 const old = await startServer({ port: 0, graceMs: 0 });
