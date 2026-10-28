@@ -88,7 +88,7 @@ Last updated: 2026-10-28
 - [x] Finish times and results list: [#38](https://github.com/SukuWc/fields/pull/38)
 - [x] Live leaderboard (distance only) and three-boat test race, scenario 17: [#39](https://github.com/SukuWc/fields/pull/39)
 - [x] Distance ladder lines: 20 m and 40 m downwind path-length contours from the first mark, traced through the local wind so sail wakes bend them (room setting, `?ladder=1`, scenario 21): [#100](https://github.com/SukuWc/fields/pull/100)
-- [x] Moving-column gusts: elliptical lattice momentum columns (long axis ⊥ wind, advected free-stream), scenario 22
+- [x] Moving-column gusts: elliptical lattice momentum columns (long axis ⊥ wind, advected free-stream), scenario 22: [#111](https://github.com/SukuWc/fields/pull/111)
 - [ ] Equal boats
 - [ ] Race states
 - [ ] Replay scrub
