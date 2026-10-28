@@ -68,11 +68,11 @@ export const ROOM_CONFIG_DEFAULTS = Object.freeze({
   // Gust rate spawner off by default (scenario 22 still scripts its own columns).
   gusts: false,
   gust_rate_per_min: 0,
-  gust_force_gain: GUST_FORCE_GAIN,
-  gust_along_sigma_m: GUST_ALONG_SIGMA_M,
-  gust_cross_sigma_m: GUST_CROSS_SIGMA_M,
-  gust_life_s: GUST_LIFE_S,
-  gust_dir_deg: 0,
+  gust_force_gain: [GUST_FORCE_GAIN, 0],
+  gust_along_sigma_m: [GUST_ALONG_SIGMA_M, 0],
+  gust_cross_sigma_m: [GUST_CROSS_SIGMA_M, 0],
+  gust_life_s: [GUST_LIFE_S, 0],
+  gust_dir_deg: [0, 0],
   gust_ramp_s: GUST_RAMP_S,
 });
 
@@ -98,10 +98,9 @@ export function parseMeanSd(raw, name) {
   return { error: name + ' must be a number or [mean, sd]' };
 }
 
-/** TOML form: scalar when sd==0, else [mean, sd]. */
+/** TOML form: always [mean, sd] (sd defaults to 0). */
 export function meanSdToToml(mean, sd) {
-  if (!(sd > 0)) return mean;
-  return [mean, sd];
+  return [mean, sd > 0 ? sd : 0];
 }
 
 /** Flat gust spawner snapshot from a validated room config. */
@@ -176,16 +175,16 @@ export function gustConfigFromSettings(g) {
     gusts: !!g.enabled,
     gust_rate_per_min: Number.isFinite(g.ratePerMin) ? g.ratePerMin : ROOM_CONFIG_DEFAULTS.gust_rate_per_min,
     gust_force_gain: meanSdToToml(
-      Number.isFinite(g.forceGain) ? g.forceGain : ROOM_CONFIG_DEFAULTS.gust_force_gain,
+      Number.isFinite(g.forceGain) ? g.forceGain : GUST_FORCE_GAIN,
       Number.isFinite(g.forceGainSd) ? g.forceGainSd : 0),
     gust_along_sigma_m: meanSdToToml(
-      Number.isFinite(g.alongSigmaM) ? g.alongSigmaM : ROOM_CONFIG_DEFAULTS.gust_along_sigma_m,
+      Number.isFinite(g.alongSigmaM) ? g.alongSigmaM : GUST_ALONG_SIGMA_M,
       Number.isFinite(g.alongSigmaMSd) ? g.alongSigmaMSd : 0),
     gust_cross_sigma_m: meanSdToToml(
-      Number.isFinite(g.crossSigmaM) ? g.crossSigmaM : ROOM_CONFIG_DEFAULTS.gust_cross_sigma_m,
+      Number.isFinite(g.crossSigmaM) ? g.crossSigmaM : GUST_CROSS_SIGMA_M,
       Number.isFinite(g.crossSigmaMSd) ? g.crossSigmaMSd : 0),
     gust_life_s: meanSdToToml(
-      Number.isFinite(g.lifeS) ? g.lifeS : ROOM_CONFIG_DEFAULTS.gust_life_s,
+      Number.isFinite(g.lifeS) ? g.lifeS : GUST_LIFE_S,
       Number.isFinite(g.lifeSSd) ? g.lifeSSd : 0),
     gust_dir_deg: meanSdToToml(
       Number.isFinite(g.dirDeg) ? g.dirDeg : 0,

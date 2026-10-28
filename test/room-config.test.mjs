@@ -22,7 +22,7 @@ const check = (name, ok, extra = '') => {
   const p = parseAndValidateRoomConfig(text);
   check('defaults TOML parses and validates', !p.error, p.error);
   for (const k of ROOM_CONFIG_KEYS) {
-    check(`default ${k} round-trips`, p.config[k] === ROOM_CONFIG_DEFAULTS[k],
+    check(`default ${k} round-trips`, JSON.stringify(p.config[k]) === JSON.stringify(ROOM_CONFIG_DEFAULTS[k]),
       `${k}: got ${JSON.stringify(p.config[k])} want ${JSON.stringify(ROOM_CONFIG_DEFAULTS[k])}`);
   }
   check('defaults map to simRes 2f', p.config._simRes === DEFAULT_SIM_RES, p.config._simRes);
@@ -180,7 +180,8 @@ check('roomConfigCommit returns commands', !roomConfigCommit(stringifyRoomConfig
   })());
   check('parseMeanSd rejects length 3', !!parseMeanSd([1, 2, 3], 'g').error);
   check('parseMeanSd rejects negative sd', !!parseMeanSd([1, -0.1], 'g').error);
-  check('meanSdToToml sd0 → scalar', meanSdToToml(0.003, 0) === 0.003);
+  check('meanSdToToml sd0 → [mean, 0]', JSON.stringify(meanSdToToml(0.003, 0)) === '[0.003,0]');
+  check('parseMeanSd scalar → sd 0', parseMeanSd(0.003, 'x').sd === 0 && parseMeanSd(0.003, 'x').mean === 0.003);
   check('meanSdToToml with sd → array', Array.isArray(meanSdToToml(0.003, 0.0005))
     && meanSdToToml(0.003, 0.0005)[0] === 0.003 && meanSdToToml(0.003, 0.0005)[1] === 0.0005);
 
