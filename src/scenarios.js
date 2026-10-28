@@ -604,7 +604,7 @@ export function buildScenarios(sim) {
   // advected streak. Fluid mode (not dev). ?scenario_selector=22
   scenarios[22] = makeScenario(
     "Moving-column gusts: elliptical momentum puffs",
-    "Steady wind from +Y. Two soft elliptical gust columns (long axis across the wind, thin along it) spawn upwind and keep injecting lattice momentum while they live, then stop so the field carries the streak downwind. Only boats inside or near a column feel the pressure — a local lane of stronger wind, not a whole-map gust. Boat 0 starts below on starboard close-hauled autopilot and beats up into them. Arrows steer, Space toggles the autopilot. Prefer fluid / 2f so the wind overlay shows the insertion."
+    "Steady wind from +Y. Two soft elliptical gust columns (long axis across the wind, thin along it) spawn upwind and keep injecting lattice momentum while they live, then stop so the field carries the streak downwind. A pale cyan 1σ ellipse outlines each live column. Only boats inside or near a column feel the pressure — a local lane of stronger wind, not a whole-map gust. Boat 0 starts below on starboard close-hauled autopilot and beats up into them. Arrows steer, Space toggles the autopilot. Prefer fluid / 2f so the wind overlay shows the insertion."
   );
   scenarios[22].frames[0] = () => {
     const L = GUST_DEMO;

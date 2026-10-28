@@ -38,6 +38,12 @@ const KERNEL_RADIUS_SIGMA = 3;
 /** Soft floor: skip samples below this weight. */
 const WEIGHT_EPS = 1e-3;
 
+/** 1σ outline stroke (scene-build guides; no fill). */
+export const GUST_OUTLINE_COLOR = 0x9fd4ff;
+export const GUST_OUTLINE_OPACITY = 0.9;
+/** Segments around the 1σ ellipse. */
+export const GUST_OUTLINE_STEPS = 64;
+
 /**
  * Scenario 22 demo layout (wind from +Y → flow −Y). Two columns spawn upwind
  * of the boat so they drift down onto the beat.
@@ -70,6 +76,67 @@ export function gustEnvelope(ageS, lifeS, rampS) {
 export function flowUnitFromWind(windFromDeg) {
   const rad = (windFromDeg + 180) * Math.PI / 180;
   return { x: Math.cos(rad), y: Math.sin(rad) };
+}
+
+/** Along (flow) and cross (long-axis) units for a column / map wind. */
+export function gustColumnAxes(col, map) {
+  const from = Number.isFinite(col && col.windFromDeg) ? col.windFromDeg
+    : (map && Number.isFinite(map.wind_direction) ? map.wind_direction : 90);
+  const along = flowUnitFromWind(from);
+  return { along, cross: { x: -along.y, y: along.x } };
+}
+
+/**
+ * Compact frame payload for alive columns (scene-state.js):
+ *   [[x, y, alongSigma, crossSigma, alongX, alongY], ...]
+ * Cross = (−alongY, alongX); 1σ contour uses those σ axes.
+ */
+export function gustState(field, map) {
+  if (!field || !field.columns || !field.columns.length) return null;
+  const out = [];
+  for (const c of field.columns) {
+    if (c.dead) continue;
+    if (!Number.isFinite(c.x) || !Number.isFinite(c.y)) continue;
+    if (!(c.alongSigma > 0) || !(c.crossSigma > 0)) continue;
+    const { along } = gustColumnAxes(c, map);
+    out.push([c.x, c.y, c.alongSigma, c.crossSigma, along.x, along.y]);
+  }
+  return out.length ? out : null;
+}
+
+/**
+ * Guide segments for the 1σ elliptical contour (scene-build.js).
+ * Parametric: centre + along·σ_a·cosθ + cross·σ_c·sinθ.
+ */
+export function gustGuidesFromState(gust) {
+  const guides = [];
+  if (!gust || !gust.length) return guides;
+  const steps = GUST_OUTLINE_STEPS;
+  for (const e of gust) {
+    if (!e || e.length < 6) continue;
+    const cx = e[0], cy = e[1], sa = e[2], sc = e[3], ax = e[4], ay = e[5];
+    if (!(sa > 0) || !(sc > 0)) continue;
+    const mag = Math.hypot(ax, ay);
+    if (!(mag > 1e-12)) continue;
+    const ux = ax / mag, uy = ay / mag;
+    const vx = -uy, vy = ux;
+    for (let i = 0; i < steps; i++) {
+      const a0 = (i / steps) * 2 * Math.PI;
+      const a1 = ((i + 1) / steps) * 2 * Math.PI;
+      const c0 = Math.cos(a0), s0 = Math.sin(a0);
+      const c1 = Math.cos(a1), s1 = Math.sin(a1);
+      guides.push({
+        color: GUST_OUTLINE_COLOR,
+        opacity: GUST_OUTLINE_OPACITY,
+        type: 'guide',
+        x1: cx + ux * sa * c0 + vx * sc * s0,
+        y1: cy + uy * sa * c0 + vy * sc * s0,
+        x2: cx + ux * sa * c1 + vx * sc * s1,
+        y2: cy + uy * sa * c1 + vy * sc * s1,
+      });
+    }
+  }
+  return guides;
 }
 
 /** Lattice momentum scale matching sailEfficiency (resolution² / velScale). */

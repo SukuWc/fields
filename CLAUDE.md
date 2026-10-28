@@ -40,7 +40,7 @@ src/scene-build.js    — Client side: buildScene(state, statics, view) → { gu
 src/boat-draw.js      — Pure boat drawing (boatGuides(state, def)); Boat.renderState/renderDef feed it
 src/sim.js            — Sim: the whole simulation without DOM/three (boats, marks, course, start, finish, bots, boundary, per-Sim rules state, scenarios); step(simDt, held), command(cmd), snapshot(), events
 src/scenarios.js      — Scenario scripts: buildScenarios(sim) (title, description, frames[] in 90 Hz units)
-src/gusts.js         — Moving-column gusts: elliptical Gaussian momentum via apply_energy (long axis ⊥ wind); GustField on Sim.gusts; scenario 22
+src/gusts.js         — Moving-column gusts: elliptical Gaussian momentum via apply_energy (long axis ⊥ wind); GustField on Sim.gusts; 1σ outline guides via scene-state; scenario 22
 src/view.js           — Client View: camera position/zoom/follow + show_forces / show_fields (was in map.js)
 src/renderer.js       — Three.js scene init and animation loop; flow tracers drawn as one LineSegments buffer
 src/flow-tracers.js   — Wind flow tracers: host grid (sampleFlowGrid → frame.flow every 3 ticks while show_fields), client pool (FlowTracers: speed-weighted rejection spawn, bilinear RK2 advection, 6 s life with fade, 250 tracers on 100×200 (area-scaled 100..500), 1.5 s tail = ring buffer of 10 past positions drawn as a Catmull-Rom curve, reset on respawn). "Flow tracers" box (#show_field, default on) replaces the old per-boat wind arrow grid; drawn over the colour field plot, independent of it. Live inputs #tracers (count, empty = auto), #tracerLife, #tracerTail (= ?tracers, ?tracerLife, ?tracerTail). Check: scripts/tracers-check.mjs

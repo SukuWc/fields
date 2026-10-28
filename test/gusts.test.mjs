@@ -3,6 +3,7 @@
 import './dom-stub.mjs';
 const {
   GustField, GustColumn, gustEnvelope, flowUnitFromWind, injectEllipticalKernel,
+  gustState, gustGuidesFromState, gustColumnAxes, GUST_OUTLINE_STEPS,
   GUST_ASPECT, GUST_ALONG_SIGMA_M, GUST_CROSS_SIGMA_M, GUST_DEMO, GUST_FORCE_GAIN,
 } = await import('../src/gusts.js');
 const { SimCore } = await import('../src/host.js');
@@ -123,6 +124,36 @@ check('flow unit: wind from +Y → flow −Y', (() => {
 
 check('demo layout exports two columns and a boat',
   GUST_DEMO.columns.length === 2 && Number.isFinite(GUST_DEMO.boat.y));
+
+// 1σ outline: compact state + guide polyline (long axis = cross-wind).
+{
+  const map = { wind_direction: 90, wind_speed: 4.5 };
+  const g = new GustField();
+  g.add({ x: 3, y: 7, alongSigma: GUST_ALONG_SIGMA_M, crossSigma: GUST_CROSS_SIGMA_M, forceGain: 0 });
+  const st = gustState(g, map);
+  check('gustState: one row [x,y,σa,σc,ax,ay]',
+    !!st && st.length === 1 && st[0].length === 6
+    && near(st[0][0], 3, 1e-12) && near(st[0][1], 7, 1e-12)
+    && near(st[0][2], GUST_ALONG_SIGMA_M, 1e-12) && near(st[0][3], GUST_CROSS_SIGMA_M, 1e-12)
+    && near(st[0][4], 0, 1e-12) && near(st[0][5], -1, 1e-12));
+  const axes = gustColumnAxes(g.columns[0], map);
+  check('axes: cross is +X when flow is −Y', near(axes.cross.x, 1, 1e-12) && near(axes.cross.y, 0, 1e-12));
+  const guides = gustGuidesFromState(st);
+  check('gustGuidesFromState: closed 1σ polyline',
+    guides.length === GUST_OUTLINE_STEPS && guides.every((s) => s.type === 'guide' && Number.isFinite(s.x1)));
+  // Extremum along +cross should sit at centre + σ_cross (x = 3+12.5).
+  let maxX = -Infinity, minX = Infinity, maxY = -Infinity, minY = Infinity;
+  for (const s of guides) {
+    maxX = Math.max(maxX, s.x1, s.x2); minX = Math.min(minX, s.x1, s.x2);
+    maxY = Math.max(maxY, s.y1, s.y2); minY = Math.min(minY, s.y1, s.y2);
+  }
+  check('1σ extents: ±σ_cross in X, ±σ_along in Y (wind from +Y)',
+    near(maxX, 3 + GUST_CROSS_SIGMA_M, 0.05) && near(minX, 3 - GUST_CROSS_SIGMA_M, 0.05)
+    && near(maxY, 7 + GUST_ALONG_SIGMA_M, 0.05) && near(minY, 7 - GUST_ALONG_SIGMA_M, 0.05),
+    `x[${minX.toFixed(2)},${maxX.toFixed(2)}] y[${minY.toFixed(2)},${maxY.toFixed(2)}]`);
+  check('empty / dead → no state', gustState(new GustField(), map) === null);
+  check('bad row → no guides', gustGuidesFromState([[0, 0]]).length === 0);
+}
 
 if (failed) { console.log(`${failed} check(s) failed`); process.exit(1); }
 console.log('all gusts checks passed');
