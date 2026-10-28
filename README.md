@@ -83,7 +83,7 @@ Last updated: 2026-10-28
 - [x] Persistent rooms (`europe-1`) keep ticking with zero clients so physics and `/api/perf` landing graphs stay live: [#104](https://github.com/SukuWc/fields/pull/104)
 - [x] Room admin settings as one TOML textarea with Commit and Reset: atomic, validated room config that replaces the per-control room panel and room URL params: [#106](https://github.com/SukuWc/fields/pull/106)
 - [x] Landing page shows each room's live TOML config under its frame-time graph (`GET /api/rooms` returns `config`), and room admin Reset fills the default TOML preset: [#107](https://github.com/SukuWc/fields/pull/107)
-- [ ] Landing admin TOML Commit/Reset (`ADMIN_SECRET` Bearer, no full login yet)
+- [x] Landing admin TOML Commit/Reset (`ADMIN_SECRET` Bearer, no full login yet): [#113](https://github.com/SukuWc/fields/pull/113)
 - [x] Room config Commit no longer leaves orphan player boats: restart removes leftover player boats before respawn and defers joins during the restart window, so each client keeps one boat: [#109](https://github.com/SukuWc/fields/pull/109)
 
 ### 4. Core race loop
