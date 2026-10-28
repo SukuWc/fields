@@ -53,6 +53,13 @@ esbuild.buildSync({
   outfile: 'dist-app/perf-charts.js',
   logLevel: 'warning',
 });
+esbuild.buildSync({
+  entryPoints: ['apps/landing/room-admin.js'],
+  bundle: true,
+  format: 'iife',
+  outfile: 'dist-app/room-admin.js',
+  logLevel: 'warning',
+});
 
 fs.writeFileSync('dist-app/version.json', JSON.stringify(version) + '\n');
 for (const f of ['sailzone-logo.svg', 'sailzone-icon.svg']) fs.copyFileSync('assets/' + f, 'dist-app/' + f);

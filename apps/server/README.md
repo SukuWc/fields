@@ -29,9 +29,10 @@ One Node process serves everything on one port (`PORT`):
 
 | URL | What |
 | --- | --- |
-| `/` | landing page (`apps/landing/index.html`): SailZone logo, the room list from `/api/rooms` (refreshed every 5 s), a **Join room** button, a per-room frame-time graph from `/api/perf` (last ~180 s), and the current room TOML config under each graph |
+| `/` | landing page (`apps/landing/index.html`): SailZone logo, the room list from `/api/rooms` (refreshed every 5 s), a **Join room** button, a per-room frame-time graph from `/api/perf` (last ~180 s), and the current room TOML config under each graph (editable with Commit / Reset when `ADMIN_SECRET` is set) |
 | `/play/?room=europe-1` | the game. `npm run build:app` builds it with `VITE_SIM_HOST=remote VITE_SIM_SERVER_URL=same-origin`, so it connects to `ws(s)://<same host>/ws?room=…` (wss on https) with no `?host=`/`?server=` params |
-| `/api/rooms` | `[{ "id": "europe-1", "players": N, "config": "<toml>" }]`, CORS `*` — `config` is the current room admin TOML (`src/room-config.js`); null before the sim exists. A page on another origin (e.g. GitHub Pages) can read it; the landing page takes `?api=https://sailzone.app` |
+| `/api/rooms` | `[{ "id": "europe-1", "players": N, "config": "<toml>", "admin": false }]`, CORS `*` — `config` is the current room admin TOML (`src/room-config.js`); null before the sim exists; `admin` is true when `ADMIN_SECRET` is set. A page on another origin (e.g. GitHub Pages) can read it; the landing page takes `?api=https://sailzone.app` |
+| `PUT`/`POST` `/api/rooms/:id/config` | apply room TOML (same as in-game Commit). Requires `Authorization: Bearer <ADMIN_SECRET>` when that env is set; 403 if unset. Body: raw TOML (`text/plain`) or JSON `{ "toml": "…" }`. Broadcasts `{ type: "event", ev: { type: "room", room } }` to connected clients |
 | `/api/perf` | `{ rooms: [{ id, players, sampleHz, windowS, endAt, times, latestMs }] }` — last ~180 s of per-tick `frameMs` (physics + field encode) per room; full buffer each response; CORS `*`. Persistent rooms keep appending while empty; non-persistent rooms that pause while empty keep history but append nothing. |
 | `/api/status` | the old status JSON (rooms, clients, tick cost; also `frameMs`) |
 | `/api/version` | `{ "commit", "sha"?, "url"? }` from `dist-app/version.json` (baked by `build:app`; `url` is the GitHub commit page) |

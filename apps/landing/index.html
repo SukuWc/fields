@@ -5,7 +5,9 @@
      Per-room frame-time graphs from /api/perf (last ~180 s, physics + field)
      drawn as SVG polylines (same technique as boat stats) with hover readout.
      Each room card also shows the current room TOML config from /api/rooms
-     (refreshed with the room list).
+     (refreshed with the room list). When the server has ADMIN_SECRET set,
+     the TOML is editable here with Commit / Reset (Bearer token remembered
+     in localStorage for this origin — never baked into the client bundle).
      ?api=https://host points it at another server (CORS is open). -->
 <html lang="en">
 <head>
@@ -35,13 +37,28 @@
     font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums;
   }
   .perf-tip.on { opacity: 1; }
+  .room-config-wrap { margin-top: 10px; }
   .room-config {
-    margin: 10px 0 0; padding: 10px 12px; text-align: left;
-    background: #f0f4fa; border-radius: 6px; color: #12233a;
+    display: block; width: 100%; box-sizing: border-box;
+    margin: 0; padding: 10px 12px; text-align: left;
+    background: #f0f4fa; border: 1px solid #d5deea; border-radius: 6px; color: #12233a;
     font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     white-space: pre; overflow-x: auto; max-height: 280px; overflow-y: auto;
+    resize: vertical; min-height: 120px;
   }
+  .room-config:read-only { background: #f0f4fa; color: #12233a; }
   .room-config:empty { display: none; }
+  .room-config-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+  .room-config-actions[hidden] { display: none; }
+  .room-config-actions button {
+    font: 600 13px/1.2 system-ui, sans-serif; padding: 6px 12px; border-radius: 6px;
+    border: 1px solid #1565c0; background: #1565c0; color: #fff; cursor: pointer;
+  }
+  .room-config-actions button.secondary { background: #fff; color: #1565c0; }
+  .room-config-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .room-config-status { font-size: 12px; color: #a33; flex: 1; min-width: 8em; }
+  .room-config-status.ok { color: #2a6; }
+  .room-config-hint { font-size: 11px; color: #8a96a8; margin: 6px 0 0; }
   #msg { color: #a33; min-height: 1.4em; }
   footer { margin-top: 28px; font-size: 12px; color: #8a96a8; }
   footer a { color: inherit; }
@@ -56,11 +73,13 @@
   <footer>__BUILD_FOOTER__</footer>
 </main>
 <script src="perf-charts.js"></script>
+<script src="room-admin.js"></script>
 <script>
   const api = (new URLSearchParams(location.search).get('api') || '').replace(/\/$/, '');
   const list = document.getElementById('rooms');
   const msg = document.getElementById('msg');
   const charts = new Map(); // id → createPerfChart result
+  const SECRET_KEY = 'sailzone.adminSecret';
 
   function ensureChart(id) {
     let c = charts.get(id);
@@ -68,6 +87,143 @@
     c = window.LandingPerfCharts.createPerfChart(id);
     charts.set(id, c);
     return c;
+  }
+
+  function getSecret() {
+    try { return localStorage.getItem(SECRET_KEY) || ''; } catch (_) { return ''; }
+  }
+  function setSecret(v) {
+    try {
+      if (v) localStorage.setItem(SECRET_KEY, v);
+      else localStorage.removeItem(SECRET_KEY);
+    } catch (_) { /* private mode */ }
+  }
+  function ensureSecret() {
+    let s = getSecret();
+    if (s) return s;
+    s = window.prompt('Admin secret (ADMIN_SECRET). Stored in localStorage for this site only.');
+    if (s == null) return '';
+    s = String(s).trim();
+    if (s) setSecret(s);
+    return s;
+  }
+
+  function setStatus(li, text, ok) {
+    const el = li.querySelector('.room-config-status');
+    if (!el) return;
+    el.textContent = text || '';
+    el.classList.toggle('ok', !!ok);
+  }
+
+  function isDirty(li) { return li.dataset.dirty === '1'; }
+  function markDirty(li, on) {
+    if (on) li.dataset.dirty = '1';
+    else delete li.dataset.dirty;
+  }
+
+  function bindConfigEditors(li, room) {
+    const ta = li.querySelector('textarea.room-config');
+    const actions = li.querySelector('.room-config-actions');
+    const hint = li.querySelector('.room-config-hint');
+    const admin = !!room.admin;
+    if (ta) {
+      ta.readOnly = !admin;
+      if (!isDirty(li) && document.activeElement !== ta) {
+        ta.value = (typeof room.config === 'string' && room.config) ? room.config : '';
+      }
+    }
+    if (actions) actions.hidden = !admin;
+    if (hint) {
+      hint.hidden = admin;
+      hint.textContent = admin ? '' : 'Admin editing disabled (server has no ADMIN_SECRET).';
+    }
+  }
+
+  function buildRoomCard(room) {
+    const li = document.createElement('li');
+    li.className = 'room';
+    li.dataset.id = room.id;
+    const row = document.createElement('div'); row.className = 'row';
+    const name = document.createElement('span'); name.className = 'name'; name.textContent = room.id;
+    const count = document.createElement('span'); count.className = 'count';
+    const join = document.createElement('a'); join.className = 'join'; join.textContent = 'Join room';
+    join.href = api + '/play/?room=' + encodeURIComponent(room.id);
+    row.append(name, count, join);
+    const perf = document.createElement('div'); perf.className = 'perf';
+    const meta = document.createElement('div'); meta.className = 'meta';
+    meta.innerHTML = '<span>Frame time (physics + field)</span><span class="latest">—</span>';
+    const chart = ensureChart(room.id);
+    perf.append(meta, chart.el);
+    const wrap = document.createElement('div'); wrap.className = 'room-config-wrap';
+    const ta = document.createElement('textarea');
+    ta.className = 'room-config';
+    ta.spellcheck = false;
+    ta.setAttribute('autocomplete', 'off');
+    ta.rows = 14;
+    ta.addEventListener('input', () => { markDirty(li, true); setStatus(li, ''); });
+    const actions = document.createElement('div'); actions.className = 'room-config-actions';
+    const commit = document.createElement('button'); commit.type = 'button'; commit.textContent = 'Commit';
+    const reset = document.createElement('button'); reset.type = 'button'; reset.textContent = 'Reset'; reset.className = 'secondary';
+    const status = document.createElement('span'); status.className = 'room-config-status';
+    actions.append(commit, reset, status);
+    const hint = document.createElement('p'); hint.className = 'room-config-hint';
+    wrap.append(ta, actions, hint);
+    li.append(row, perf, wrap);
+
+    commit.addEventListener('click', async () => {
+      const secret = ensureSecret();
+      if (!secret) { setStatus(li, 'Admin secret required.'); return; }
+      commit.disabled = true;
+      setStatus(li, 'Applying…');
+      try {
+        const r = await fetch(api + '/api/rooms/' + encodeURIComponent(room.id) + '/config', {
+          method: 'PUT',
+          headers: {
+            'content-type': 'text/plain; charset=utf-8',
+            'authorization': 'Bearer ' + secret,
+          },
+          body: ta.value,
+          cache: 'no-store',
+        });
+        const body = await r.json().catch(() => ({}));
+        if (r.status === 401) {
+          setSecret('');
+          setStatus(li, body.error || 'Unauthorized — secret cleared; try Commit again.');
+          return;
+        }
+        if (!r.ok) {
+          setStatus(li, body.error || ('HTTP ' + r.status));
+          return;
+        }
+        if (typeof body.config === 'string') ta.value = body.config;
+        markDirty(li, false);
+        setStatus(li, 'Applied.', true);
+      } catch (e) {
+        setStatus(li, e.message || 'request failed');
+      } finally {
+        commit.disabled = false;
+      }
+    });
+
+    reset.addEventListener('click', () => {
+      const dims = window.LandingRoomAdmin.mapDimsFromToml(ta.value);
+      const mapW = Number.isFinite(dims.mapW) ? dims.mapW : undefined;
+      const mapH = Number.isFinite(dims.mapH) ? dims.mapH : undefined;
+      ta.value = window.LandingRoomAdmin.defaultToml(mapW, mapH);
+      markDirty(li, true);
+      setStatus(li, '');
+    });
+
+    updateRoomCard(li, room);
+    return li;
+  }
+
+  function updateRoomCard(li, room) {
+    const count = li.querySelector('.count');
+    if (count) count.textContent = room.players + (room.players === 1 ? ' player' : ' players');
+    const join = li.querySelector('a.join');
+    if (join) join.href = api + '/play/?room=' + encodeURIComponent(room.id);
+    bindConfigEditors(li, room);
   }
 
   async function refreshRooms() {
@@ -79,28 +235,18 @@
       for (const id of [...charts.keys()]) {
         if (!keep.has(id)) { charts.get(id).destroy(); charts.delete(id); }
       }
-      list.replaceChildren(...rooms.map((room) => {
-        const li = document.createElement('li');
-        li.className = 'room';
-        li.dataset.id = room.id;
-        const row = document.createElement('div'); row.className = 'row';
-        const name = document.createElement('span'); name.className = 'name'; name.textContent = room.id;
-        const count = document.createElement('span'); count.className = 'count';
-        count.textContent = room.players + (room.players === 1 ? ' player' : ' players');
-        const join = document.createElement('a'); join.className = 'join'; join.textContent = 'Join room';
-        join.href = api + '/play/?room=' + encodeURIComponent(room.id);
-        row.append(name, count, join);
-        const perf = document.createElement('div'); perf.className = 'perf';
-        const meta = document.createElement('div'); meta.className = 'meta';
-        meta.innerHTML = '<span>Frame time (physics + field)</span><span class="latest">—</span>';
-        const chart = ensureChart(room.id);
-        perf.append(meta, chart.el);
-        const cfg = document.createElement('pre');
-        cfg.className = 'room-config';
-        cfg.textContent = (typeof room.config === 'string' && room.config) ? room.config : '';
-        li.append(row, perf, cfg);
-        return li;
-      }));
+      for (const el of [...list.querySelectorAll('li.room')]) {
+        if (!keep.has(el.dataset.id)) el.remove();
+      }
+      const byId = new Map([...list.querySelectorAll('li.room')].map((el) => [el.dataset.id, el]));
+      const next = [];
+      for (const room of rooms) {
+        let li = byId.get(room.id);
+        if (!li) li = buildRoomCard(room);
+        else updateRoomCard(li, room);
+        next.push(li);
+      }
+      list.replaceChildren(...next);
       msg.textContent = rooms.length ? '' : 'No rooms.';
     } catch (e) {
       msg.textContent = 'Server unreachable (' + e.message + ').';

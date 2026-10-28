@@ -31,7 +31,7 @@ import { SimCore } from '../../src/host.js';
 import { answer, eventForClient, EXACT_JSON } from '../../src/host-protocol.js';
 import { BOAT_ACTIONS } from '../../src/sim.js';
 import { MAX_WIND_MPS, ROOM_COMMANDS, SIM_RES_MODES, validateRoomSettingCommand, settingDefault } from '../../src/settings-registry.js';
-import { validateRoomConfig, commandsFromConfig, configFromRoomState, stringifyRoomConfig } from '../../src/room-config.js';
+import { validateRoomConfig, parseAndValidateRoomConfig, commandsFromConfig, configFromRoomState, stringifyRoomConfig, defaultRoomConfig } from '../../src/room-config.js';
 import { hashSeed } from '../../src/gusts.js';
 import { encodeFieldGrids, decodeFieldGrids } from '../../src/fieldPainter.js';
 import { encodeFieldText } from '../../src/field-codec.js';
@@ -284,6 +284,28 @@ export class Room {
     const mapW = this.core.map.width;
     const mapH = this.core.map.height;
     return stringifyRoomConfig(configFromRoomState(this.core.roomState(), { mapW, mapH }));
+  }
+
+  /** Default room TOML for Reset (keeps this room's map size). */
+  defaultTomlConfig() {
+    if (!this.core) return stringifyRoomConfig(defaultRoomConfig());
+    return stringifyRoomConfig(defaultRoomConfig(this.core.map.width, this.core.map.height));
+  }
+
+  /**
+   * Parse + validate TOML and apply as the atomic `config` room command
+   * (same path as a WebSocket config command), then broadcast room state.
+   * Returns { ok, config } or { error }.
+   */
+  applyTomlConfig(text) {
+    if (!this.core) return { error: 'room not ready' };
+    const parsed = parseAndValidateRoomConfig(text, { core: this.core });
+    if (parsed.error) return { error: parsed.error };
+    const v = validateRoomCommand({ type: 'config', config: parsed.config }, this.core);
+    if (v.error) return { error: v.error };
+    this._roomCommand(v.c);
+    this.broadcast({ type: 'event', ev: { type: 'room', room: this.core.roomState() } });
+    return { ok: true, config: this.tomlConfig() };
   }
 
   join(client) {
