@@ -19,6 +19,7 @@ import { roomGuidesFromState, contactGuidesFromState, penaltyGuidesFromState, pa
 import { hudFromState } from './hud.js';
 import { markTouchGuidesFromState } from './mark-touch.js';
 import { ladderGuidesFromState } from './ladder-lines.js';
+import { gustGuidesFromState } from './gusts.js';
 
 // Smooth circle per boat disk. A field island has a mask and no disk, so
 // only its staircase is drawn. The light staircase is the union of every
@@ -174,6 +175,7 @@ export function buildGuides(state, statics, view) {
     pushRefinementGuides(guides, state.amr.d.map((d) => new DomainOutline(d)), bm);
   }
   if (state.ladder) guides.push(...ladderGuidesFromState(state.ladder));
+  if (state.gust) guides.push(...gustGuidesFromState(state.gust));
   if (state.wind !== undefined && view) {
     // The arrow points downwind, along the flow.
     const ox = view.camera_position_x - 14;

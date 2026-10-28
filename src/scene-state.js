@@ -34,6 +34,8 @@
 //   ladder downwind-distance ladder polylines from the first mark
 //          (ladder-lines.js): [[x0,y0,…], …] for 20 m and 40 m when
 //          sim.options.ladder is on and a mark exists
+//   gust   moving-column 1σ ellipses (gusts.js): [[x,y,σ_along,σ_cross,ax,ay], …]
+//          for each alive column; (ax,ay) = along-wind unit, cross = (−ay,ax)
 //   bt     transforms of the moving bodies, flat, in statics.bodies order
 // sceneStatics(sim) → statics:
 //   lat    { w, h, res } root lattice (for the refinement outlines)
@@ -52,6 +54,7 @@ import { markTouchState } from './mark-touch.js';
 import { hudState } from './hud.js';
 import { markExact } from './host-protocol.js';
 import { ladderState } from './ladder-lines.js';
+import { gustState } from './gusts.js';
 
 // Mask (Uint8Array, refined = 1) → run lengths, alternating starting with
 // unrefined, base 36, comma separated.
@@ -163,6 +166,11 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
     const m = sim.marks[0];
     const p = m.physics_model.getPosition();
     s.ladder = ladderState((x, y) => map.get_wind(x, y), p.x, p.y);
+  }
+  // Moving-column gust 1σ outlines (gusts.js): centre + σ axes + along unit.
+  if (sim.gusts && sim.gusts.columns.length) {
+    const g = gustState(sim.gusts, map);
+    if (g) s.gust = g;
   }
   const seq = sim.startSequence;
   if (seq) s.start = startGuideState(seq, racing[0]);

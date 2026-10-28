@@ -15,6 +15,7 @@ import { setupBoundaryTest } from './boundary-scenario.js';
 import { chargePendingPenalty, PENALTY_MANEUVER_WINDOW_S } from './rules.js';
 import { incidentCode, incidentReason, incidentLabel } from './rule-text.js';
 import { range_map } from './utils.js';
+import { GUST_DEMO } from './gusts.js';
 
 // Scenario 18 start positions (four boats upwind, the refinement-budget case).
 export const FLEET4 = [
@@ -595,6 +596,27 @@ export function buildScenarios(sim) {
     sim.emit({ type: 'view', zoom: 50 });
   };
 
+
+
+  // Moving-column gust demo (gusts.js). Steady free stream; one or two
+  // elliptical momentum columns (long axis ⊥ wind) spawn upwind and drift
+  // down. Wind overlay shows the cross-wind bar while injecting, then the
+  // advected streak. Fluid mode (not dev). ?scenario_selector=22
+  scenarios[22] = makeScenario(
+    "Moving-column gusts: elliptical momentum puffs",
+    "Steady wind from +Y. Two soft elliptical gust columns (long axis across the wind, thin along it) spawn upwind and keep injecting lattice momentum while they live, then stop so the field carries the streak downwind. A pale cyan 1σ ellipse outlines each live column. Only boats inside or near a column feel the pressure — a local lane of stronger wind, not a whole-map gust. Boat 0 starts below on starboard close-hauled autopilot and beats up into them. Arrows steer, Space toggles the autopilot. Prefer fluid / 2f so the wind overlay shows the insertion."
+  );
+  scenarios[22].frames[0] = () => {
+    const L = GUST_DEMO;
+    sim.players.push(new Boat(sim.map, L.boat.x, L.boat.y, L.boat.heading));
+    for (const c of L.columns) sim.gusts.add({ ...c });
+  };
+  scenarios[22].frames[1] = () => {
+    sim.players[0].input_autopilot_enabled_toggle();
+    sim.emit({ type: 'bindControls' });
+    sim.emit({ type: 'view', follow: true });
+    sim.emit({ type: 'view', zoom: 55 });
+  };
 
   return scenarios;
 }

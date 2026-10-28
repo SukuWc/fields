@@ -238,7 +238,7 @@ function renderScenarioCard(scenario, index) {
     bodyEl.textContent = scenario.description || "";
   } else {
     titleEl.textContent = "No scenario";
-    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 21 each have a description.";
+    bodyEl.textContent = "Nothing is defined for this number. Scenarios 0 through 22 each have a description.";
   }
   card.classList.toggle("collapsed", scenarioCardCollapsed);
   if (toggle) {
