@@ -6,7 +6,8 @@
 // tracers" (the old Toggle Field box, view.show_fields) is on. The client
 // keeps a fixed pool of tracers (FlowTracers) and draws each one with a
 // tail along its own past path, one LineSegments buffer for all of them
-// (renderer.js).
+// (renderer.js). Live segments are packed densely; the renderer draws only
+// that many via setDrawRange (no alpha-0 padding submitted).
 //
 // Tracers spawn at random points on the map, accepted with probability
 // |v| / max|v| (rejection sampling), so spawn density is proportional to the
@@ -34,12 +35,17 @@ export const FIELD_TO_MPS = 400 * WIND_UNIT_MPS;
 export const FLOW_GRID_MAX_X = 75;
 // Host sends the grid every Nth presented tick (30 Hz ticks → 10 Hz).
 export const FLOW_GRID_EVERY = 3;
-// Pool size on the 100 × 200 map; scaled with map area (clamped), halved on
-// coarse-pointer (touch) devices but never below TRACER_COUNT_MIN. UI / URL: Tracers (?tracers=N, empty =
-// this auto count), Life (?tracerLife=s), Tail (?tracerTail=s).
+// Pool size on the 100 × 200 map; scaled with map area (clamped). On
+// coarse-pointer (touch) devices the auto count is /5 (never below
+// TRACER_COUNT_TOUCH_MIN) and tails use the lite quality below — Firefox
+// mobile WebGL was dropping ~30→8 FPS at the old 125×20-segment defaults
+// from per-frame DynamicDraw uploads of transparent LineSegments (including
+// alpha-0 padding). UI / URL: Tracers (?tracers=N, empty = this auto count),
+// Life (?tracerLife=s), Tail (?tracerTail=s).
 export const TRACER_COUNT = 250;
 export const TRACER_COUNT_MIN = 100;
 export const TRACER_COUNT_MAX = 500;
+export const TRACER_COUNT_TOUCH_MIN = 40;
 export const TRACER_COUNT_LIMIT = 20000;
 export const TRACER_LIFETIME_S = 6;
 // Fraction of the lifetime spent fading in (and again fading out).
@@ -48,10 +54,19 @@ export const TRACER_FADE = 0.25;
 export const TRACER_TAIL_S = 1.5;
 export const TRACER_TAIL_MAX_S = 10;
 // Stored past positions per tracer, and Catmull-Rom segments per interval.
+// "lite" (touch): fewer history points, polyline (subdiv 1) — ~4× less
+// geometry per tracer; desktop keeps the smooth Catmull-Rom.
 export const TRACER_TAIL_POINTS = 10;
 export const TRACER_TAIL_SUBDIV = 2;
-// LineSegments segments per tracer: head → newest, then each stored interval.
+export const TRACER_TAIL_POINTS_LITE = 5;
+export const TRACER_TAIL_SUBDIV_LITE = 1;
+// LineSegments segments per tracer at full quality (buffer sizing / checks).
 export const TRACER_SEGMENTS = TRACER_TAIL_POINTS * TRACER_TAIL_SUBDIV;
+export const TRACER_SEGMENTS_LITE = TRACER_TAIL_POINTS_LITE * TRACER_TAIL_SUBDIV_LITE;
+export const TRACER_QUALITY = {
+  full: { points: TRACER_TAIL_POINTS, subdiv: TRACER_TAIL_SUBDIV },
+  lite: { points: TRACER_TAIL_POINTS_LITE, subdiv: TRACER_TAIL_SUBDIV_LITE },
+};
 // Spawn tries before a point is taken anyway (all-calm field).
 export const TRACER_SPAWN_TRIES = 30;
 
@@ -59,7 +74,14 @@ export function tracerCountFor(mapW, mapH, { touch = false, override } = {}) {
   if (Number.isFinite(override) && override > 0) return Math.min(TRACER_COUNT_LIMIT, Math.round(override));
   let n = Math.round(TRACER_COUNT * (mapW * mapH) / (100 * 200));
   n = Math.max(TRACER_COUNT_MIN, Math.min(TRACER_COUNT_MAX, n));
-  return touch ? Math.max(TRACER_COUNT_MIN, Math.round(n / 2)) : n;
+  // Touch: /5 keeps Firefox/mobile near 30 FPS with the colour field on;
+  // never below TOUCH_MIN so the field still reads.
+  return touch ? Math.max(TRACER_COUNT_TOUCH_MIN, Math.round(n / 5)) : n;
+}
+
+export function tracerSegmentsFor(quality = 'full') {
+  const q = TRACER_QUALITY[quality] || TRACER_QUALITY.full;
+  return q.points * q.subdiv;
 }
 
 // Host side. map: Map (map.js). Returns plain data (survives postMessage and
@@ -103,7 +125,7 @@ export function mulberry32(seed) {
 }
 
 export class FlowTracers {
-  constructor({ count = TRACER_COUNT, lifetime = TRACER_LIFETIME_S, tail = TRACER_TAIL_S, fade = TRACER_FADE, rng = Math.random } = {}) {
+  constructor({ count = TRACER_COUNT, lifetime = TRACER_LIFETIME_S, tail = TRACER_TAIL_S, fade = TRACER_FADE, quality = 'full', rng = Math.random } = {}) {
     this.lifetime = lifetime;
     this.fade = fade;
     this.rng = rng;
@@ -111,9 +133,31 @@ export class FlowTracers {
     this.maxSpeed = 0;
     this.minSpeed = 0;
     this.spawned = 0; // total spawns (checks)
+    this.quality = 'full';
     this.H = TRACER_TAIL_POINTS;
+    this.subdiv = TRACER_TAIL_SUBDIV;
+    this.segments = TRACER_SEGMENTS;
+    this.setQuality(quality);
     this.setTail(tail);
     this._alloc(count);
+  }
+
+  // 'full' = desktop Catmull-Rom; 'lite' = touch polyline, fewer points.
+  // Returns true when the history / segment layout changed (caller rebuilds the GPU buffer).
+  setQuality(quality) {
+    const q = TRACER_QUALITY[quality] || TRACER_QUALITY.full;
+    const name = TRACER_QUALITY[quality] ? quality : 'full';
+    if (this.H === q.points && this.subdiv === q.subdiv && this.quality === name) return false;
+    this.quality = name;
+    this.H = q.points;
+    this.subdiv = q.subdiv;
+    this.segments = q.points * q.subdiv;
+    this.setTail(this.tail ?? TRACER_TAIL_S);
+    if (this.x) {
+      this._alloc(this.count);
+      if (this.grid) this._fill();
+    }
+    return true;
   }
 
   _alloc(count) {
@@ -274,20 +318,26 @@ export class FlowTracers {
     return n + 1;
   }
 
-  // Fill LineSegments buffers: positions (2 vertices × 3 floats) and RGBA
-  // colours (2 × 4) for TRACER_SEGMENTS segments per tracer. The tail is a uniform
-  // Catmull-Rom curve through the control points, TRACER_TAIL_SUBDIV pieces
-  // per interval; alpha falls off linearly to 0 at the tail end, times the
-  // life fade; colour runs slow → fast over the grid's speed range.
-  // Unused segments collapse onto the head with alpha 0.
+  // Pack live LineSegments densely into the buffers and return the segment
+  // count. The renderer draws only that many (geometry.setDrawRange) so
+  // alpha-0 padding is never submitted — that padding was free on desktop
+  // Chrome and expensive on Firefox mobile WebGL. The curve is Catmull-Rom
+  // at full quality (subdiv > 1) or a polyline through the history (lite).
+  // Alpha falls off linearly to 0 at the tail end, times the life fade;
+  // colour runs slow → fast over the grid's speed range.
   write(positions, colors, z = 0, slow = [0.15, 0.3, 0.75], fast = [0.85, 1, 1]) {
     const v = this._w || (this._w = { x: 0, y: 0 });
     const span = this.maxSpeed - this.minSpeed, inv = span > 1e-6 ? 1 / span : 0;
-    const S = TRACER_TAIL_SUBDIV, SEG = TRACER_SEGMENTS;
-    const px = this._px || (this._px = new Float32Array(this.H + 1));
-    const py = this._py || (this._py = new Float32Array(this.H + 1));
+    const S = this.subdiv;
+    if (!this._px || this._px.length < this.H + 1) {
+      this._px = new Float32Array(this.H + 1);
+      this._py = new Float32Array(this.H + 1);
+    }
+    const px = this._px, py = this._py;
+    let o = 0, oc = 0, totalSegs = 0;
     for (let i = 0; i < this.count; i++) {
       const n = this.tailPoints(i, px, py);
+      if (n < 2) continue;
       this.velocityAt(px[0], py[0], v);
       const a = this.alpha(i);
       const u = inv ? Math.max(0, Math.min(1, (Math.hypot(v.x, v.y) - this.minSpeed) * inv)) : 1;
@@ -295,8 +345,7 @@ export class FlowTracers {
       const gg = slow[1] + (fast[1] - slow[1]) * u;
       const b = slow[2] + (fast[2] - slow[2]) * u;
       const total = (n - 1) * S;
-      let o = i * SEG * 6, oc = i * SEG * 8, seg = 0;
-      let lx = px[0], ly = py[0], lf = 1;
+      let lx = px[0], ly = py[0], lf = 1, seg = 0;
       for (let k = 0; k < n - 1; k++) {
         const k0 = k > 0 ? k - 1 : 0, k3 = k + 2 < n ? k + 2 : n - 1;
         const p0x = px[k0], p0y = py[k0], p1x = px[k], p1y = py[k], p2x = px[k + 1], p2y = py[k + 1], p3x = px[k3], p3y = py[k3];
@@ -309,14 +358,10 @@ export class FlowTracers {
           positions[o + 3] = cx; positions[o + 4] = cy; positions[o + 5] = z;
           colors[oc] = r; colors[oc + 1] = gg; colors[oc + 2] = b; colors[oc + 3] = a * lf;
           colors[oc + 4] = r; colors[oc + 5] = gg; colors[oc + 6] = b; colors[oc + 7] = a * f;
-          lx = cx; ly = cy; lf = f; o += 6; oc += 8; seg++;
+          lx = cx; ly = cy; lf = f; o += 6; oc += 8; seg++; totalSegs++;
         }
       }
-      for (; seg < SEG; seg++, o += 6, oc += 8) {
-        positions[o] = positions[o + 3] = px[0]; positions[o + 1] = positions[o + 4] = py[0];
-        positions[o + 2] = positions[o + 5] = z;
-        for (let c = 0; c < 8; c++) colors[oc + c] = 0;
-      }
     }
+    return totalSegs;
   }
 }

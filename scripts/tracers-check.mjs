@@ -83,8 +83,9 @@ function grid(w, h, cell, f) {
   tr.age[0] = life / 2; assert(tr.alpha(0) === 1, "alpha 1 mid-life");
   tr.age[0] = life * 0.999; assert(tr.alpha(0) < 0.01, "alpha → 0 at death");
   const pos = new Float32Array(n * T.TRACER_SEGMENTS * 6), col = new Float32Array(n * T.TRACER_SEGMENTS * 8);
-  tr.write(pos, col);
-  assert([...pos].every(Number.isFinite) && [...col].every((c) => c >= 0 && c <= 1), "buffers: finite positions, colours 0..1");
+  const segs = tr.write(pos, col);
+  assert(segs > 0 && segs <= n * tr.segments, `write packs ${segs} live segments (≤ ${n * tr.segments})`);
+  assert([...pos.slice(0, segs * 6)].every(Number.isFinite) && [...col.slice(0, segs * 8)].every((c) => c >= 0 && c <= 1), "buffers: finite positions, colours 0..1");
 }
 
 // --- Tail follows the head's own past path ---
@@ -105,25 +106,24 @@ function grid(w, h, cell, f) {
   assert(maxDev < 0.05, `stored tail points lie on the 20 m arc (max off ${maxDev.toFixed(3)} m)`);
   assert(Math.abs((a0 - aEnd) - w * tailS) < w * tailS * 0.12, `tail spans ≈ tail time along the path: ${(a0 - aEnd).toFixed(3)} rad (expect ${(w * tailS).toFixed(2)})`);
   const pos = new Float32Array(T.TRACER_SEGMENTS * 6), col = new Float32Array(T.TRACER_SEGMENTS * 8);
-  tr.write(pos, col);
+  let segs = tr.write(pos, col);
+  assert(segs === T.TRACER_SEGMENTS, `full history writes ${segs} packed segments (= ${T.TRACER_SEGMENTS})`);
   let curveDev = 0;
-  for (let k = 0; k < pos.length; k += 3) curveDev = Math.max(curveDev, Math.abs(Math.hypot(pos[k], pos[k + 1]) - R0));
+  for (let k = 0; k < segs * 6; k += 3) curveDev = Math.max(curveDev, Math.abs(Math.hypot(pos[k], pos[k + 1]) - R0));
   assert(curveDev < 0.1, `Catmull-Rom tail stays on the arc (max off ${curveDev.toFixed(3)} m)`);
   assert(pos[0] === tr.x[0] && pos[1] === tr.y[0], "tail starts at the head");
   let fadeOk = true;
-  for (let sg = 1; sg < T.TRACER_SEGMENTS; sg++) if (col[sg * 8 + 3] > col[(sg - 1) * 8 + 3] + 1e-6) fadeOk = false;
-  assert(fadeOk && Math.abs(col[3] - tr.alpha(0)) < 1e-6 && col[(T.TRACER_SEGMENTS - 1) * 8 + 7] < 1e-6, "alpha falls along the tail from the head to 0 at its end");
+  for (let sg = 1; sg < segs; sg++) if (col[sg * 8 + 3] > col[(sg - 1) * 8 + 3] + 1e-6) fadeOk = false;
+  assert(fadeOk && Math.abs(col[3] - tr.alpha(0)) < 1e-6 && col[(segs - 1) * 8 + 7] < 1e-6, "alpha falls along the tail from the head to 0 at its end");
   // Respawn clears the history: no segment jumps from the old place.
   tr.age[0] = 200; tr.step(1 / 30);
   assert(tr.hLen[0] === 0, "respawn resets the history");
-  tr.write(pos, col);
-  let span = 0;
-  for (let k = 0; k < pos.length; k += 3) span = Math.max(span, Math.hypot(pos[k] - tr.x[0], pos[k + 1] - tr.y[0]));
-  assert(span === 0, "right after a respawn the tail is empty (no line across the map)");
+  segs = tr.write(pos, col);
+  assert(segs === 0, "right after a respawn the tail is empty (no line across the map)");
   for (let k = 0; k < 15; k++) tr.step(1 / 30);
-  tr.write(pos, col);
-  span = 0;
-  for (let k = 0; k < pos.length; k += 3) span = Math.max(span, Math.hypot(pos[k] - tr.x[0], pos[k + 1] - tr.y[0]));
+  segs = tr.write(pos, col);
+  let span = 0;
+  for (let k = 0; k < segs * 6; k += 3) span = Math.max(span, Math.hypot(pos[k] - tr.x[0], pos[k + 1] - tr.y[0]));
   const flown = 15 / 30 * w * Math.hypot(tr.x[0], tr.y[0]) + 1e-3;
   assert(span <= flown * 1.05, `new tail only covers the new path (${span.toFixed(2)} m ≤ ${flown.toFixed(2)} m flown)`);
   // Tail 0: no tail at all.
@@ -152,8 +152,23 @@ function grid(w, h, cell, f) {
   const c = (w, h, o) => T.tracerCountFor(w, h, o);
   assert(c(100, 200) === T.TRACER_COUNT && c(50, 100) === T.TRACER_COUNT_MIN && c(200, 400) === T.TRACER_COUNT_MAX, `count: 50×100 ${c(50, 100)}, 100×200 ${c(100, 200)}, 200×400 ${c(200, 400)}`);
   assert(c(100, 200) === 250 && c(50, 100) === 100 && c(200, 400) === 500, "defaults: 250 on 100×200, 100 on 50×100, 500 on 200×400");
-  assert(c(100, 200, { touch: true }) === 125 && c(50, 100, { touch: true }) === T.TRACER_COUNT_MIN && c(100, 200, { override: 800 }) === 800, "touch halves it (not below the minimum); ?tracers=N overrides");
+  assert(c(100, 200, { touch: true }) === 50 && c(50, 100, { touch: true }) === T.TRACER_COUNT_TOUCH_MIN && c(200, 400, { touch: true }) === 100 && c(100, 200, { override: 800 }) === 800, "touch: /5 (min 40); ?tracers=N overrides");
   assert(T.TRACER_LIFETIME_S === 6 && T.TRACER_TAIL_S === 1.5, "defaults: 6 s life, 1.5 s tail");
+  assert(T.TRACER_SEGMENTS_LITE === 5 && T.tracerSegmentsFor('lite') === 5 && T.tracerSegmentsFor('full') === T.TRACER_SEGMENTS, "lite quality: 5 polyline segments; full: 20 Catmull-Rom");
+}
+
+// --- Lite quality (touch): fewer points, packed write still fades ---
+{
+  const tr = new T.FlowTracers({ count: 1, lifetime: 100, tail: 2, quality: 'lite', rng: T.mulberry32(9) });
+  assert(tr.quality === 'lite' && tr.segments === T.TRACER_SEGMENTS_LITE && tr.H === T.TRACER_TAIL_POINTS_LITE, "lite: 5 history points, 5 segments");
+  tr.setGrid(grid(100, 200, 0.5, (x, y) => [-0.5 * y, 0.5 * x]));
+  tr.x[0] = 20; tr.y[0] = 0; tr.age[0] = 1; tr.hLen[0] = 0; tr.hAcc[0] = 0;
+  for (let k = 0; k < 120; k++) tr.step(1 / 30);
+  const pos = new Float32Array(tr.segments * 6), col = new Float32Array(tr.segments * 8);
+  const segs = tr.write(pos, col);
+  assert(segs === tr.segments, `lite write packs ${segs} segments`);
+  assert(tr.setQuality('full') && tr.segments === T.TRACER_SEGMENTS && tr.H === T.TRACER_TAIL_POINTS, "setQuality('full') restores desktop layout");
+  assert(!tr.setQuality('full'), "same quality: no change");
 }
 
 // --- Host grid on every map size: dev mode and full fluid ---
