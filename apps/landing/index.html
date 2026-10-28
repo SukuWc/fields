@@ -6,8 +6,9 @@
      drawn as SVG polylines (same technique as boat stats) with hover readout.
      Each room card also shows the current room TOML config from /api/rooms
      (refreshed with the room list). When the server has ADMIN_SECRET set,
-     the TOML is editable here with Commit / Reset (Bearer token remembered
-     in localStorage for this origin — never baked into the client bundle).
+     a Login button unlocks editable Commit / Reset (Bearer secret remembered
+     in localStorage for this origin — never baked into the client bundle);
+     Logout clears it. Pre-login the textarea stays visible but read-only.
      ?api=https://host points it at another server (CORS is open). -->
 <html lang="en">
 <head>
@@ -47,7 +48,6 @@
     resize: vertical; min-height: 120px;
   }
   .room-config:read-only { background: #f0f4fa; color: #12233a; }
-  .room-config:empty { display: none; }
   .room-config-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
   .room-config-actions[hidden] { display: none; }
   .room-config-actions button {
@@ -98,14 +98,14 @@
       else localStorage.removeItem(SECRET_KEY);
     } catch (_) { /* private mode */ }
   }
-  function ensureSecret() {
-    let s = getSecret();
-    if (s) return s;
-    s = window.prompt('Admin secret (ADMIN_SECRET). Stored in localStorage for this site only.');
+  function isLoggedIn() { return !!getSecret(); }
+
+  function promptAndStoreSecret() {
+    const s = window.prompt('Admin secret (ADMIN_SECRET). Stored in localStorage for this site only.');
     if (s == null) return '';
-    s = String(s).trim();
-    if (s) setSecret(s);
-    return s;
+    const trimmed = String(s).trim();
+    if (trimmed) setSecret(trimmed);
+    return trimmed;
   }
 
   function setStatus(li, text, ok) {
@@ -121,21 +121,40 @@
     else delete li.dataset.dirty;
   }
 
+  /** Sync textarea + Login/Logout/Commit/Reset from room.admin and localStorage secret. */
   function bindConfigEditors(li, room) {
     const ta = li.querySelector('textarea.room-config');
     const actions = li.querySelector('.room-config-actions');
     const hint = li.querySelector('.room-config-hint');
+    const btnLogin = li.querySelector('button.login');
+    const btnLogout = li.querySelector('button.logout');
+    const btnCommit = li.querySelector('button.commit');
+    const btnReset = li.querySelector('button.reset');
     const admin = !!room.admin;
+    const loggedIn = admin && isLoggedIn();
     if (ta) {
-      ta.readOnly = !admin;
-      if (!isDirty(li) && document.activeElement !== ta) {
-        ta.value = (typeof room.config === 'string' && room.config) ? room.config : '';
+      ta.readOnly = !loggedIn;
+      // Only overwrite when refreshRooms supplied a string; auth-only rebinds pass no config.
+      if (!isDirty(li) && document.activeElement !== ta && typeof room.config === 'string') {
+        ta.value = room.config;
       }
     }
     if (actions) actions.hidden = !admin;
+    if (btnLogin) btnLogin.hidden = !admin || loggedIn;
+    if (btnLogout) btnLogout.hidden = !loggedIn;
+    if (btnCommit) btnCommit.hidden = !loggedIn;
+    if (btnReset) btnReset.hidden = !loggedIn;
     if (hint) {
-      hint.hidden = admin;
-      hint.textContent = admin ? '' : 'Admin editing disabled (server has no ADMIN_SECRET).';
+      if (!admin) {
+        hint.hidden = false;
+        hint.textContent = 'Admin editing disabled (server has no ADMIN_SECRET).';
+      } else if (!loggedIn) {
+        hint.hidden = false;
+        hint.textContent = 'Read-only until you log in with ADMIN_SECRET.';
+      } else {
+        hint.hidden = true;
+        hint.textContent = '';
+      }
     }
   }
 
@@ -162,17 +181,45 @@
     ta.rows = 14;
     ta.addEventListener('input', () => { markDirty(li, true); setStatus(li, ''); });
     const actions = document.createElement('div'); actions.className = 'room-config-actions';
-    const commit = document.createElement('button'); commit.type = 'button'; commit.textContent = 'Commit';
-    const reset = document.createElement('button'); reset.type = 'button'; reset.textContent = 'Reset'; reset.className = 'secondary';
+    const login = document.createElement('button'); login.type = 'button'; login.textContent = 'Login'; login.className = 'login secondary';
+    const logout = document.createElement('button'); logout.type = 'button'; logout.textContent = 'Logout'; logout.className = 'logout secondary';
+    const commit = document.createElement('button'); commit.type = 'button'; commit.textContent = 'Commit'; commit.className = 'commit';
+    const reset = document.createElement('button'); reset.type = 'button'; reset.textContent = 'Reset'; reset.className = 'reset secondary';
     const status = document.createElement('span'); status.className = 'room-config-status';
-    actions.append(commit, reset, status);
+    actions.append(login, logout, commit, reset, status);
     const hint = document.createElement('p'); hint.className = 'room-config-hint';
     wrap.append(ta, actions, hint);
     li.append(row, perf, wrap);
 
-    commit.addEventListener('click', async () => {
-      const secret = ensureSecret();
+    login.addEventListener('click', () => {
+      const secret = promptAndStoreSecret();
       if (!secret) { setStatus(li, 'Admin secret required.'); return; }
+      setStatus(li, '');
+      // Re-bind all cards so Commit/Reset appear everywhere after one Login.
+      for (const card of list.querySelectorAll('li.room')) {
+        bindConfigEditors(card, { id: card.dataset.id, admin: card.dataset.admin === '1', config: null });
+      }
+    });
+
+    logout.addEventListener('click', () => {
+      setSecret('');
+      setStatus(li, '');
+      for (const card of list.querySelectorAll('li.room')) {
+        markDirty(card, false);
+        // No config: keep current textarea text; next refreshRooms syncs from server.
+        bindConfigEditors(card, { id: card.dataset.id, admin: card.dataset.admin === '1' });
+      }
+    });
+
+    commit.addEventListener('click', async () => {
+      const secret = getSecret();
+      if (!secret) {
+        setStatus(li, 'Log in first.');
+        for (const card of list.querySelectorAll('li.room')) {
+          bindConfigEditors(card, { id: card.dataset.id, admin: card.dataset.admin === '1', config: null });
+        }
+        return;
+      }
       commit.disabled = true;
       setStatus(li, 'Applying…');
       try {
@@ -188,7 +235,10 @@
         const body = await r.json().catch(() => ({}));
         if (r.status === 401) {
           setSecret('');
-          setStatus(li, body.error || 'Unauthorized — secret cleared; try Commit again.');
+          setStatus(li, body.error || 'Unauthorized — secret cleared; log in again.');
+          for (const card of list.querySelectorAll('li.room')) {
+            bindConfigEditors(card, { id: card.dataset.id, admin: card.dataset.admin === '1', config: null });
+          }
           return;
         }
         if (!r.ok) {
@@ -219,6 +269,7 @@
   }
 
   function updateRoomCard(li, room) {
+    li.dataset.admin = room.admin ? '1' : '0';
     const count = li.querySelector('.count');
     if (count) count.textContent = room.players + (room.players === 1 ? ' player' : ' players');
     const join = li.querySelector('a.join');
