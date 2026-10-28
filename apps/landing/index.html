@@ -9,6 +9,8 @@
      a Login button unlocks editable Commit / Reset (Bearer secret remembered
      in localStorage for this origin — never baked into the client bundle);
      Logout clears it. Pre-login the textarea stays visible but read-only.
+     Room-list refresh reuses card nodes (syncListChildren) so editing the
+     TOML keeps focus and scroll across the 5 s poll.
      ?api=https://host points it at another server (CORS is open). -->
 <html lang="en">
 <head>
@@ -135,8 +137,13 @@
     if (ta) {
       ta.readOnly = !loggedIn;
       // Only overwrite when refreshRooms supplied a string; auth-only rebinds pass no config.
-      if (!isDirty(li) && document.activeElement !== ta && typeof room.config === 'string') {
+      // Never touch value while focused or dirty (keeps caret + scroll). Skip no-ops.
+      if (!isDirty(li) && document.activeElement !== ta && typeof room.config === 'string' && ta.value !== room.config) {
+        const scrollTop = ta.scrollTop;
+        const start = ta.selectionStart, end = ta.selectionEnd;
         ta.value = room.config;
+        ta.scrollTop = scrollTop;
+        try { ta.selectionStart = start; ta.selectionEnd = end; } catch (_) {}
       }
     }
     if (actions) actions.hidden = !admin;
@@ -297,7 +304,9 @@
         else updateRoomCard(li, room);
         next.push(li);
       }
-      list.replaceChildren(...next);
+      // Avoid replaceChildren when the same <li>s are already in order — that
+      // detaches/reattaches nodes and drops textarea focus + scrollTop.
+      window.LandingRoomAdmin.syncListChildren(list, next);
       msg.textContent = rooms.length ? '' : 'No rooms.';
     } catch (e) {
       msg.textContent = 'Server unreachable (' + e.message + ').';
