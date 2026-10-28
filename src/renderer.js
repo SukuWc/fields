@@ -3,6 +3,7 @@ import { ghostOutlines, GHOST_AHEAD_S, GHOST_OPACITY, GHOST_MAX_AHEAD_S } from '
 import { boatColor } from './boat-colors.js';
 import { BoatTrails, TRAIL_COLORS, TRAIL_INTERVAL_S, TRAIL_DURATION_S, TRAIL_SIZE_M, colorRgb } from './boat-trails.js';
 import { FlowTracers, tracerCountFor, TRACER_LIFETIME_S, TRACER_TAIL_S, TRACER_SEGMENTS, TRACER_COUNT_LIMIT } from './flow-tracers.js';
+// TRACER_SEGMENTS is the full-quality max; live segment count is tracers.segments.
 
 let camera, scene, renderer, fluidPlane;
 let _planeBase = null;
@@ -505,8 +506,9 @@ export function setFluidPlaneSize(width, height) {
 }
 
 // Flow tracers (flow-tracers.js): one LineSegments buffer for the whole pool
-// (TRACER_SEGMENTS per tracer), created on the first grid and rebuilt when
-// the count changes. Shown while view.show_fields (Flow tracers box).
+// (tracers.segments per tracer), created on the first grid and rebuilt when
+// the count or quality changes. Live segments are packed densely and drawn
+// via setDrawRange. Shown while view.show_fields (Flow tracers box).
 let tracers = null, tracerLines = null, _tracerT = null;
 // Tail colour, slow (wind shadow) → fast. Over the colour field plot the
 // tracers are dark (navy → black) so they read on the bright palette; on the
@@ -516,17 +518,22 @@ const TRACER_SLOW_ON_FIELD = [0.05, 0.12, 0.45], TRACER_FAST_ON_FIELD = [0, 0, 0
 // Live settings from the Tracers / Life / Tail inputs (setTracerParams).
 // count null = auto (tracerCountFor the map size and device).
 const _tracerParams = { count: null, lifetime: TRACER_LIFETIME_S, tail: TRACER_TAIL_S };
-function autoTracerCount() {
-  const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-  const mw = _planeBase ? _planeBase.w : 100, mh = _planeBase ? _planeBase.h : 200;
-  return tracerCountFor(mw, mh, { touch });
+function isTouchDevice() {
+  return typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 }
-function tracerBuffers(count) {
-  const v = count * TRACER_SEGMENTS * 2;
+function autoTracerCount() {
+  const mw = _planeBase ? _planeBase.w : 100, mh = _planeBase ? _planeBase.h : 200;
+  return tracerCountFor(mw, mh, { touch: isTouchDevice() });
+}
+function autoTracerQuality() { return isTouchDevice() ? 'lite' : 'full'; }
+function tracerBuffers(count, segments) {
+  const segs = segments || (tracers ? tracers.segments : TRACER_SEGMENTS);
+  const v = count * segs * 2;
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(v * 3), 3).setUsage(THREE.DynamicDrawUsage));
   // RGBA: the alpha carries the life fade and the fade along the tail.
   geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(v * 4), 4).setUsage(THREE.DynamicDrawUsage));
+  geo.setDrawRange(0, 0);
   if (tracerLines) { tracerLines.geometry.dispose(); tracerLines.geometry = geo; return; }
   const mat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true });
   markOverlay(mat);
@@ -544,21 +551,23 @@ export function setTracerParams(p = {}) {
   if (!tracers) return;
   tracers.setLifetime(_tracerParams.lifetime);
   tracers.setTail(_tracerParams.tail);
-  if (tracers.setCount(_tracerParams.count || autoTracerCount())) tracerBuffers(tracers.count);
+  let rebuild = tracers.setQuality(autoTracerQuality());
+  rebuild = tracers.setCount(_tracerParams.count || autoTracerCount()) || rebuild;
+  if (rebuild) tracerBuffers(tracers.count, tracers.segments);
 }
 export function getTracerParams() { return { ..._tracerParams, count: tracers ? tracers.count : (_tracerParams.count || autoTracerCount()) }; }
 export function setFlowGrid(grid) {
   if (!grid || !scene) return;
   if (!tracers) {
     const count = Math.min(TRACER_COUNT_LIMIT, _tracerParams.count || autoTracerCount());
-    tracers = new FlowTracers({ count, lifetime: _tracerParams.lifetime, tail: _tracerParams.tail });
-    tracerBuffers(count);
+    tracers = new FlowTracers({ count, lifetime: _tracerParams.lifetime, tail: _tracerParams.tail, quality: autoTracerQuality() });
+    tracerBuffers(count, tracers.segments);
   }
   tracers.setGrid(grid);
 }
 export function getTracers() { return tracers; }
-// Headless browser checks read the live pool (count, lifetime, tail).
-if (typeof window !== 'undefined') window.__tracers = () => tracers && { count: tracers.count, lifetime: tracers.lifetime, tail: tracers.tail, visible: !!(tracerLines && tracerLines.visible) };
+// Headless browser checks read the live pool (count, lifetime, tail, quality).
+if (typeof window !== 'undefined') window.__tracers = () => tracers && { count: tracers.count, lifetime: tracers.lifetime, tail: tracers.tail, quality: tracers.quality, segments: tracers.segments, visible: !!(tracerLines && tracerLines.visible) };
 
 function renderTracers() {
   const now = performance.now();
@@ -570,8 +579,9 @@ function renderTracers() {
   tracers.step(dt);
   const g = tracerLines.geometry;
   const onField = !!(fluidPlane && fluidPlane.visible);
-  tracers.write(g.attributes.position.array, g.attributes.color.array, 0.005,
+  const segs = tracers.write(g.attributes.position.array, g.attributes.color.array, 0.005,
     onField ? TRACER_SLOW_ON_FIELD : TRACER_SLOW_RGB, onField ? TRACER_FAST_ON_FIELD : TRACER_FAST_RGB);
+  g.setDrawRange(0, segs * 2);
   g.attributes.position.needsUpdate = true;
   g.attributes.color.needsUpdate = true;
 }
