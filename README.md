@@ -113,7 +113,7 @@ Last updated: 2026-10-28
 - [ ] Rule-stack labels (partial: [#12](https://github.com/SukuWc/fields/pull/12) shows the active rule and inhibited rules)
 
 ### 6. Closed beta polish
-- [ ] Performance (including profiling the render side) (partial: [#42](https://github.com/SukuWc/fields/pull/42) batches `#info` readout writes into one `innerHTML` update, cutting median live DOM nodes from about 28,800 to about 6,000; still open: wider render-side profiling)
+- [ ] Performance (including profiling the render side) (partial: [#42](https://github.com/SukuWc/fields/pull/42) batches `#info` readout writes into one `innerHTML` update, cutting median live DOM nodes from about 28,800 to about 6,000; [#110](https://github.com/SukuWc/fields/pull/110) restores Firefox mobile FPS with flow tracers on by drawing only live tracer segments and using fewer, lighter tracers on touch screens (about 11× less geometry upload per frame); still open: wider render-side profiling)
 - [ ] Crash recovery
 - [ ] Spectator mode
 - [x] Hamburger settings menu on phones and touch screens: [#29](https://github.com/SukuWc/fields/pull/29)
