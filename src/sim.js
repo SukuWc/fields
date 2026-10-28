@@ -18,6 +18,7 @@ import {
 } from './rules.js';
 import { markRoomTarget } from './course.js';
 import { buildScenarios } from './scenarios.js';
+import { GustField } from './gusts.js';
 import { Boat } from './boat.js';
 import { settingDefault } from './settings-registry.js';
 
@@ -55,6 +56,7 @@ export { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps };
 //   { type: 'simRes', mode }           SIM_RES_MODES key; returns true if the lattice was rebuilt
 //   { type: 'amrMode', mode }          'auto' | 'fixed'; returns true if the lattice was rebuilt
 //   { type: 'sailWake', gain }         sail → lattice momentum multiple (SAIL_WAKE_GAIN 16)
+// Gusts (gusts.js GustField on sim.gusts): scenarios call sim.gusts.add(...); stepped each tick.
 //   { type: 'refine', maxLevel?, boatRefineRadius? }  boat refinement levels (int) and
 //                                      finest disk radius (m); null = mode default;
 //                                      returns true if the lattice was rebuilt
@@ -104,6 +106,9 @@ export class Sim {
     // Scenario 19: virtual boundary (boundary.js) and its boat script.
     this.boundary = null;
     this.boundaryScript = null;
+    // Moving-column gusts (gusts.js): cleared on every scenario load.
+    if (this.gusts) this.gusts.clear();
+    else this.gusts = new GustField();
     this.frame = 0;
   }
 
@@ -357,6 +362,11 @@ export class Sim {
     // Marks: anchor spring + damper once per world.step (planck clears
     // forces after each step).
     if (stepped) for (const mark of this.marks) mark.physics_model_step();
+
+    // Moving-column gusts: elliptical momentum into the lattice (skipped in
+    // dev mode inside GustColumn.step). Same tick as sail→lattice energy,
+    // before advance_frame.
+    if (stepped && this.gusts) this.gusts.step(simDt, bm, map);
 
     // Start sequence: the clock runs on sim time; each boat's OCS / start
     // state is evaluated once per world step, before course progress.
