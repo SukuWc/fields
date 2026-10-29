@@ -8,6 +8,7 @@ import { encodeFieldText } from '../src/field-codec.js';
 import { startServer } from '../apps/server/index.js';
 import { SEND_BUF_MAX } from '../apps/server/room.js';
 import { RemoteHost } from '../src/remote-host.js';
+import { parseServerMessage } from '../src/wire-codec.js';
 
 let failed = 0;
 const quiet = console.log;
@@ -36,7 +37,7 @@ function fieldPair() {
 
 // 1. Unit: stash without paint; drop delta while behind; keyframe replaces stash.
 {
-  class FakeWS { constructor() { this.readyState = 1; this.sent = []; } send(s) { this.sent.push(JSON.parse(s)); } close() {} }
+  class FakeWS { constructor() { this.readyState = 1; this.sent = []; } send(s) { this.sent.push(parseServerMessage(s)); } close() {} }
   const { k1, d2, k3 } = fieldPair();
   const paints = [];
   const h = new RemoteHost('ws://fake', opts, tex(), { WebSocketImpl: FakeWS });
@@ -106,7 +107,7 @@ function fieldPair() {
   const fields = [];
   const prev = host.ws.onmessage;
   host.ws.onmessage = (e) => {
-    if (typeof e.data === 'string' && e.data.startsWith('{"type":"field"')) fields.push(JSON.parse(e.data));
+    { const m = parseServerMessage(e.data); if (m.type === 'field') fields.push(m); }
     prev.call(host.ws, e);
   };
   host.setField({ on: true, plotType: 3, contrastExp: 0 });

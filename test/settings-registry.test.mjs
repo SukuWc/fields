@@ -12,6 +12,7 @@ import {
 import { SIM_RES_MODES as SIM_SIM_RES_MODES } from '../src/sim.js';
 import { MAP_SIZES, MAP_SIZE_ORDER, DEFAULT_MAP_SIZE as MAP_DEFAULT, mapDims, mapSizeFromQuery, fitMapSize, scenarioExtent, WALL_INSET_M } from '../src/map-size.js';
 import { applySettingDefaults, PANEL_IDS } from '../src/settings-panel.js';
+import { parseServerMessage } from '../src/wire-codec.js';
 
 let failed = 0;
 const check = (name, ok, extra = '') => { console.log((ok ? 'PASS  ' : 'FAIL  ') + name + (extra ? '  ' + extra : '')); if (!ok) failed++; };
@@ -97,7 +98,7 @@ const core = new SimCore({ mapW: 50, mapH: 100, simRes: '4' });
 // a good value is accepted and lands in the room state, a bad one is
 // refused, through a real Room.
 const sent = [];
-const client = { send: (s) => sent.push(JSON.parse(s)) };
+const client = { send: (s) => sent.push(parseServerMessage(s)) };
 const room = new Room('t', { lockstep: true, graceMs: 0 });
 room.join(client);
 room.message(client, { type: 'init', opts: { mapW: 50, mapH: 100, simRes: '4', scenario: 0 } });

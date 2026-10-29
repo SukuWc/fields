@@ -7,6 +7,7 @@ import { WebSocket } from 'ws';
 import { Room, CHAT_MAX_LEN, CHAT_HISTORY, CHAT_RATE_N, CHAT_RATE_MS } from '../apps/server/room.js';
 import { startServer } from '../apps/server/index.js';
 import { RemoteHost } from '../src/remote-host.js';
+import { parseServerMessage } from '../src/wire-codec.js';
 
 let failed = 0;
 const quiet = console.log;
@@ -16,7 +17,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let T = 0;
 const room = new Room('chat', { lockstep: true, fieldHz: 0, now: () => T, graceMs: 0 });
-const client = () => { const c = { got: [], send(s) { c.got.push(JSON.parse(s)); } }; room.join(c); return c; };
+const client = () => { const c = { got: [], send(s) { c.got.push(parseServerMessage(s)); } }; room.join(c); return c; };
 const chats = (c) => c.got.filter((m) => m.type === 'event' && m.ev.type === 'chat').map((m) => m.ev.msg);
 const result = (c) => c.got.filter((m) => m.type === 'result').pop().r;
 const say = (c, text) => { room.message(c, { type: 'chat', id: 1, text }); return result(c); };

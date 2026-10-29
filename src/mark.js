@@ -38,6 +38,11 @@ export const MARK_ANCHOR_COLOR = 0xffd34d;
 // Displacement below which the anchor line is not drawn (metres).
 export const MARK_LINE_MIN_M = 0.05;
 
+// Mark mass for layouts with no boat to measure (TOML custom scenarios):
+// MARK_MASS_RATIO × the current hull mass (26.6). test/custom-scenario.test.mjs
+// checks it against markMassForBoat on a real boat.
+export const DEFAULT_MARK_MASS = 2.66;
+
 export function markMassForBoat(boatBody) {
   return boatBody.getMass() * MARK_MASS_RATIO;
 }

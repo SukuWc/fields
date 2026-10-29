@@ -90,7 +90,8 @@ Last updated: 2026-10-29
 - [x] Landing TOML textarea keeps focus, caret and scroll across the room-list refresh: [#115](https://github.com/SukuWc/fields/pull/115)
 - [x] Room config Commit no longer leaves orphan player boats: restart removes leftover player boats before respawn and defers joins during the restart window, so each client keeps one boat: [#109](https://github.com/SukuWc/fields/pull/109)
 - [x] Default room TOML preset matches live `europe-1` (gusts on at 10 per minute, max refinement level 2, `budget_target` 50000), applied to fixed remote rooms at server startup and used by Reset: [#116](https://github.com/SukuWc/fields/pull/116)
-- [ ] Binary wire format for server hot-path messages: frames, field keyframes, flow and perf as binary WebSocket messages (about 22–27% smaller than JSON), welcome/statics/events/chat/results stay JSON (in progress, [#119](https://github.com/SukuWc/fields/pull/119))
+- [x] Binary wire format for server hot-path messages: frames, field keyframes, flow and perf as binary WebSocket messages (about 22–27% smaller than JSON), welcome/statics/events/chat/results stay JSON: [#119](https://github.com/SukuWc/fields/pull/119)
+- [ ] Live room resize in remote mode: a room TOML commit with a new `map_width_m` / `map_height_m` rebuilds the server core at the new size and clients rebuild the field, plane and camera without reconnecting (in progress, [#121](https://github.com/SukuWc/fields/pull/121))
 
 ### 4. Core race loop
 - [ ] Course: start line, marks, finish, boundary (partial: [#27](https://github.com/SukuWc/fields/pull/27) adds anchored mark buoy physics and scenario 11; [#28](https://github.com/SukuWc/fields/pull/28) adds anticlockwise triangle course progress, mark rounding, and scenario 12; [#31](https://github.com/SukuWc/fields/pull/31) adds gate marks and windward-leeward scenario 13; [#33](https://github.com/SukuWc/fields/pull/33) adds start line, RRS 26 start sequence, and scenario 14; [#38](https://github.com/SukuWc/fields/pull/38) adds the finish line and scenario 16; [#45](https://github.com/SukuWc/fields/pull/45) adds SailGP-style virtual boundaries, boundary room, crossing penalty, and scenario 19; still open: wider course use of the boundary)
@@ -98,6 +99,7 @@ Last updated: 2026-10-29
 - [x] Live leaderboard (distance only) and three-boat test race, scenario 17: [#39](https://github.com/SukuWc/fields/pull/39)
 - [x] Distance ladder lines: 20 m and 40 m downwind path-length contours from the first mark, traced through the local wind so sail wakes bend them (room setting, `?ladder=1`, scenario 21): [#100](https://github.com/SukuWc/fields/pull/100)
 - [x] Moving-column gusts: elliptical lattice momentum columns (long axis ⊥ wind, advected free-stream), scenario 22: [#111](https://github.com/SukuWc/fields/pull/111)
+- [x] Custom scenario statics from the room TOML (`scenario = "custom"` with a validated `[custom]` table for marks, start, course legs and laps, finish and boundary): [#118](https://github.com/SukuWc/fields/pull/118)
 - [ ] Equal boats
 - [ ] Race states
 - [ ] Replay scrub

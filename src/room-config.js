@@ -10,6 +10,8 @@
 //   root_cell_m + steps_per_frame → simRes mode (metres for the root cell)
 //   gusts = false         → rate spawner off (no inject / outlines from spawner)
 //   gust_* = number | [mean, sd]  → per-column sample knobs (sd optional, default 0)
+//   scenario = "custom" + [custom] → marks / start / course / finish /
+//                           boundary from the TOML (custom-scenario.js)
 //
 // Browser and Node: smol-toml. Used by the admin textarea, the server's
 // atomic `config` room command, and tests.
@@ -19,6 +21,7 @@ import { MAP_SIZES, parseMapSize, mapDimsError, scenarioExtent, WALL_INSET_M } f
 import {
   GUST_FORCE_GAIN, GUST_ALONG_SIGMA_M, GUST_CROSS_SIGMA_M, GUST_LIFE_S,
 } from './gusts.js';
+import { CUSTOM_SCENARIO, validateCustomLayout, customLayoutToToml } from './custom-scenario.js';
 
 export const ROOM_CONFIG_KEYS = [
   'scenario',
@@ -45,6 +48,8 @@ export const ROOM_CONFIG_KEYS = [
   'gust_life_s',
   'gust_dir_deg',
   'gust_ramp_s',
+  // Only with scenario = "custom": static layout table (custom-scenario.js).
+  'custom',
 ];
 
 export const ROOM_CONFIG_DEFAULTS = Object.freeze({
@@ -196,10 +201,10 @@ export function gustConfigFromSettings(g) {
 /** Build a config object from SimCore.settings + scenario index + map size. */
 export function configFromRoomState(roomOrSettings, { scenarioIndex = 0, mapW, mapH } = {}) {
   const settings = roomOrSettings && roomOrSettings.settings ? roomOrSettings.settings : roomOrSettings;
-  const sc = roomOrSettings && roomOrSettings.scenario && Number.isInteger(roomOrSettings.scenario.index)
-    ? roomOrSettings.scenario.index
-    : scenarioIndex;
+  const idx = roomOrSettings && roomOrSettings.scenario ? roomOrSettings.scenario.index : undefined;
   const st = settings || {};
+  const isCustom = idx === CUSTOM_SCENARIO && st.custom && typeof st.custom === 'object';
+  const sc = Number.isInteger(idx) ? idx : scenarioIndex;
   const wind = st.wind || {};
   const refine = st.refine || {};
   const budget = st.cellBudget || {};
@@ -217,7 +222,7 @@ export function configFromRoomState(roomOrSettings, { scenarioIndex = 0, mapW, m
     budget_target = -1;
   }
   return defaultsConfig({
-    scenario: Number.isInteger(sc) ? sc : 0,
+    scenario: isCustom ? CUSTOM_SCENARIO : Number.isInteger(sc) ? sc : 0,
     map_width_m: mapW ?? ROOM_CONFIG_DEFAULTS.map_width_m,
     map_height_m: mapH ?? ROOM_CONFIG_DEFAULTS.map_height_m,
     wind_angle_deg: Number.isFinite(wind.angle) ? wind.angle : ROOM_CONFIG_DEFAULTS.wind_angle_deg,
@@ -240,17 +245,53 @@ export function configFromRoomState(roomOrSettings, { scenarioIndex = 0, mapW, m
       : ROOM_CONFIG_DEFAULTS.boat_refine_radius_m,
     budget_target,
     ...gustConfigFromSettings(st.gusts),
+    ...(isCustom ? { custom: JSON.parse(JSON.stringify(st.custom)) } : {}),
   });
+}
+
+// TOML value for the hand-written [custom] tables (smol-toml's writer would
+// expand the course legs into [[custom.course.legs]] blocks).
+function tomlValue(v) {
+  if (typeof v === 'string') return JSON.stringify(v);
+  if (typeof v === 'number') return String(v);
+  if (typeof v === 'boolean') return String(v);
+  if (Array.isArray(v)) return '[' + v.map(tomlValue).join(', ') + ']';
+  if (v && typeof v === 'object') return '{ ' + Object.entries(v).map(([k, x]) => k + ' = ' + tomlValue(x)).join(', ') + ' }';
+  throw new Error('no TOML form for ' + v);
+}
+
+/** [custom] block in a fixed order: scalars, then marks/start/course/finish/boundary. */
+export function stringifyCustomToml(t) {
+  const lines = ['[custom]'];
+  for (const k of ['title', 'description']) if (t[k] !== undefined) lines.push(k + ' = ' + tomlValue(t[k]));
+  const table = (name, obj) => {
+    if (!obj) return;
+    lines.push('', '[custom.' + name + ']');
+    for (const [k, v] of Object.entries(obj)) {
+      if (name === 'course' && k === 'legs') {
+        lines.push('legs = [');
+        for (const leg of v) lines.push('  ' + tomlValue(leg) + ',');
+        lines.push(']');
+      } else lines.push(k + ' = ' + tomlValue(v));
+    }
+  };
+  table('marks', t.marks);
+  table('start', t.start);
+  table('course', t.course);
+  table('finish', t.finish);
+  table('boundary', t.boundary);
+  return lines.join('\n') + '\n';
 }
 
 /** Stable TOML for the textarea (key order fixed, bools/numbers plain). */
 export function stringifyRoomConfig(cfg) {
   const ordered = {};
   for (const k of ROOM_CONFIG_KEYS) {
-    if (cfg[k] === undefined) continue;
+    if (cfg[k] === undefined || k === 'custom') continue;
     ordered[k] = cfg[k];
   }
-  return stringifyToml(ordered).trim() + '\n';
+  const head = stringifyToml(ordered).trim() + '\n';
+  return cfg.custom && cfg.scenario === CUSTOM_SCENARIO ? head + '\n' + stringifyCustomToml(cfg.custom) : head;
 }
 
 /**
@@ -303,8 +344,10 @@ export function validateRoomConfig(cfg, checks = {}) {
     // scenario
     {
       const v = cfg.scenario;
-      need(Number.isInteger(v) && v >= 0, 'scenario must be an integer ≥ 0');
+      need((Number.isInteger(v) && v >= 0) || v === CUSTOM_SCENARIO, 'scenario must be an integer ≥ 0 or "custom"');
       out.scenario = v;
+      if (v !== CUSTOM_SCENARIO) need(cfg.custom === undefined, '[custom] needs scenario = "custom"');
+      else need(cfg.custom !== undefined, 'scenario = "custom" needs a [custom] table');
     }
     // map
     {
@@ -396,8 +439,17 @@ export function validateRoomConfig(cfg, checks = {}) {
       }
     }
 
-    // Scenario exists / fits (when a core or map is provided).
+    // Custom layout: checked against the map it will run on (the live room
+    // map when there is a core and no map change, else the config's map).
     const core = checks.core;
+    if (out.scenario === CUSTOM_SCENARIO) {
+      const w = out.map_width_m, h = out.map_height_m;
+      const layout = validateCustomLayout(cfg.custom, w, h);
+      out.custom = customLayoutToToml(layout);
+      out._custom = layout;
+      return { config: out };
+    }
+    // Scenario exists / fits (when a core or map is provided).
     const mapW = core ? core.map.width : checks.mapW;
     const mapH = core ? core.map.height : (checks.mapH ?? out.map_height_m);
     const mapWUse = checks.mapW ?? out.map_width_m;
@@ -499,7 +551,10 @@ export function commandsFromConfig(cfg, prev = null) {
   }
 
   // Scenario restart last (also triggered by lattice rebuild on the server).
-  if (changed('scenario')) cmds.push({ type: 'restart', scenario: cfg.scenario });
+  if (cfg.scenario === CUSTOM_SCENARIO) {
+    const layout = cfg._custom || validateCustomLayout(cfg.custom, cfg.map_width_m, cfg.map_height_m);
+    cmds.push({ type: 'restart', scenario: CUSTOM_SCENARIO, layout });
+  } else if (changed('scenario')) cmds.push({ type: 'restart', scenario: cfg.scenario });
 
   return cmds;
 }
