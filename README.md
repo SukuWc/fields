@@ -97,6 +97,7 @@ Last updated: 2026-10-29
 - [x] Live leaderboard (distance only) and three-boat test race, scenario 17: [#39](https://github.com/SukuWc/fields/pull/39)
 - [x] Distance ladder lines: 20 m and 40 m downwind path-length contours from the first mark, traced through the local wind so sail wakes bend them (room setting, `?ladder=1`, scenario 21): [#100](https://github.com/SukuWc/fields/pull/100)
 - [x] Moving-column gusts: elliptical lattice momentum columns (long axis ⊥ wind, advected free-stream), scenario 22: [#111](https://github.com/SukuWc/fields/pull/111)
+- [x] Custom scenario statics from the room TOML (`scenario = "custom"` with a validated `[custom]` table for marks, start, course legs and laps, finish and boundary): [#118](https://github.com/SukuWc/fields/pull/118)
 - [ ] Equal boats
 - [ ] Race states
 - [ ] Replay scrub
