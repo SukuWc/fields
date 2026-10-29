@@ -241,6 +241,30 @@ gust_ramp_s = 1.5
   check('gusts=false disables spawner', core.sim.gusts.spawner.enabled === false);
 }
 
+
+// PR A: arbitrary room sizes (map-size.js mapDimsError limits).
+{
+  const base = { ...ROOM_CONFIG_DEFAULTS };
+  const v = (w, h) => validateRoomConfig({ ...base, map_width_m: w, map_height_m: h });
+  const ok = v(60, 120);
+  check('arbitrary 60x120 accepted', !ok.error && ok.config.map_width_m === 60 && ok.config.map_height_m === 120 && ok.config._mapKey === '60x120', ok.error);
+  check('non-preset 300x500 accepted (area 150k)', !v(300, 500).error, v(300, 500).error);
+  check('presets still accepted (incl. legacy 75x75)', !v(50, 100).error && !v(200, 400).error && !v(75, 75).error);
+  check('off-step 62x120 rejected', /multiple of 4/.test(v(62, 120).error || ''), v(62, 120).error);
+  check('fractional 60.5x120 rejected', !!v(60.5, 120).error);
+  check('too small 16x100 rejected', /at least 20/.test(v(16, 100).error || ''), v(16, 100).error);
+  check('too long 100x516 rejected', /at most 512/.test(v(100, 516).error || ''), v(100, 516).error);
+  check('area 400x404 rejected', /area/.test(v(400, 404).error || ''), v(400, 404).error);
+  check('non-positive rejected', !!v(0, 100).error && !!v(-4, 100).error);
+  // Scenario fit still applies to arbitrary sizes.
+  const fit = validateRoomConfig({ ...base, scenario: 18, map_width_m: 60, map_height_m: 120 }, { scenarioFit: true });
+  check('scenario fit checked on arbitrary size', !!fit.error, fit.error);
+  // Server room create path: allowed arbitrary size kept, bad size falls back.
+  const mk = (opts) => { const r = new Room('size-' + Math.random(), { lockstep: true, graceMs: 0 }); const c = { send() {} }; r.join(c); r.message(c, { type: 'init', opts: { simRes: '2f', scenario: 0, ...opts } }); const d = [r.core.map.width, r.core.map.height]; r.leave(c); return d; };
+  check('room create keeps arbitrary 60x120', mk({ mapW: 60, mapH: 120 }).join() === '60,120', mk({ mapW: 60, mapH: 120 }).join());
+  check('room create rejects 2000x2000 → default', mk({ mapW: 2000, mapH: 2000 }).join() === '100,200');
+}
+
 if (failed) { console.log(failed + ' FAILED'); process.exit(1); }
 console.log('all room-config checks passed');
 process.exit(0);

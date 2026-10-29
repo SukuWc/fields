@@ -25,6 +25,7 @@ Last updated: 2026-10-29
 - [x] Experimental fast-wind grid modes (2 m cell every frame / 1.2×) and 150 m map: [#40](https://github.com/SukuWc/fields/pull/40)
 - [x] Refinement budget: cell updates per root step (curl-threshold controller, `?cellBudget`, 4-boat scenario): [#43](https://github.com/SukuWc/fields/pull/43)
 - [x] Configurable map size (50×100, 100×200, 200×400 m): [#44](https://github.com/SukuWc/fields/pull/44)
+- [x] Arbitrary room sizes in the room TOML / `?map_size=WxH` (multiples of 4 m, 20–512 m per side, ≤ 160 000 m²)
 - [x] Perf overlay: cells per level and field step time: [#26](https://github.com/SukuWc/fields/pull/26)
 - [x] Perf panel: per-level share of cell updates vs time, plus field / track / other ms per tick: [#72](https://github.com/SukuWc/fields/pull/72)
 - [x] Fixed-step sim loop so simulation speed no longer depends on the display refresh rate (replaces the `planck-renderer` Runner; sim/client split, phase 1): [#46](https://github.com/SukuWc/fields/pull/46)

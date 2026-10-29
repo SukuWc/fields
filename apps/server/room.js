@@ -37,7 +37,7 @@ import { encodeFieldGrids, decodeFieldGrids } from '../../src/fieldPainter.js';
 import { encodeFieldText } from '../../src/field-codec.js';
 import { FrameTimeHistory } from './frame-times.js';
 export { FRAME_TIME_WINDOW_S, FRAME_TIME_HZ, FRAME_TIME_CAP } from './frame-times.js';
-import { scenarioExtent, WALL_INSET_M } from '../../src/map-size.js';
+import { scenarioExtent, WALL_INSET_M, mapDimsError } from '../../src/map-size.js';
 import { TRAIL_COLORS } from '../../src/boat-trails.js';
 
 // Chat ({ type: 'chat', id, text }, answered with { type: 'result', id, r }):
@@ -250,8 +250,11 @@ export class Room {
   // later clients join it as it is.
   _create(opts) {
     const o = opts || {};
+    // Any allowed size (map-size.js mapDimsError); anything else gets the
+    // default, so a client cannot create a room past the size/area caps.
+    const sizeOk = !mapDimsError(o.mapW, o.mapH);
     const core = new SimCore({
-      mapW: o.mapW || 100, mapH: o.mapH || 200, windAngle: o.windAngle ?? settingDefault('windAngle'), windSpeed: o.windSpeed ?? settingDefault('windSpeed'),
+      mapW: sizeOk ? o.mapW : 100, mapH: sizeOk ? o.mapH : 200, windAngle: o.windAngle ?? settingDefault('windAngle'), windSpeed: o.windSpeed ?? settingDefault('windSpeed'),
       simRes: Object.prototype.hasOwnProperty.call(SIM_RES_MODES, o.simRes) ? o.simRes : settingDefault('simRes'),
       // No texture: the server never paints RGBA (the painter is inert);
       // field messages are encoded from the lattice when due (_fieldMessages).

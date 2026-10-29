@@ -22,7 +22,7 @@ import { setupPinchZoom } from './pinch-zoom.js';
 import { setupChat } from './chat-panel.js';
 import { windCeilingMps } from './sim-modes.js';
 
-import { MAP_SIZES, DEFAULT_MAP_SIZE, mapSizeFromQuery, fitMapSize, cameraLimits } from './map-size.js';
+import { mapDims, DEFAULT_MAP_SIZE, mapSizeFromQuery, fitMapSize, cameraLimits } from './map-size.js';
 
 
 
@@ -36,8 +36,8 @@ const mapSizeKey = fitMapSize(_scenarioParam, _askedMapSize);
 const mapSizeClamped = mapSizeKey !== _askedMapSize;
 // A server room has its own size (its creator's); the page takes it from
 // host.info once connected (startClient), so these may change there.
-let map_w = MAP_SIZES[mapSizeKey].w;
-let map_h = MAP_SIZES[mapSizeKey].h;
+let map_w = mapDims(mapSizeKey).w;
+let map_h = mapDims(mapSizeKey).h;
 // UI wind, and the uniform wind used while dev mode is on.
 // Angle is where the wind comes from: 0 = from +X, 90 = from +Y (blows toward −Y).
 // Speed is true-wind speed (the value boats report as TWS).
@@ -69,7 +69,7 @@ planeMat.needsUpdate = true;
 // The simulation runs behind a SimHost (host.js): this file and the other
 // client modules only send it commands and draw the plain frames it returns.
 // Root cell: the size's default simRes (map-size.js) unless ?simRes is set.
-const _simResKey = _query.get('simRes') || MAP_SIZES[mapSizeKey].simRes;
+const _simResKey = _query.get('simRes') || mapDims(mapSizeKey).simRes;
 // Host (host-choice.js): a Web Worker (worker-host.js) by default;
 // ?worker=0 or ?host=local keeps the Sim on the main thread (LocalHost);
 // ?host=remote&server=ws://... (or a VITE_SIM_HOST=remote build) connects to

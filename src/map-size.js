@@ -1,6 +1,6 @@
 // Map size: width × length in metres, the length along the wind axis (wind
-// from +Y, so length is Y). ?map_size=100x200 or the #mapSize select picks
-// it; changing it reloads the page (the lattice, walls, texture and camera
+// from +Y, so length is Y). ?map_size=100x200 (any allowed WxH, see
+// mapDimsError) or the room TOML picks it; the presets are shortcuts; changing it reloads the page (the lattice, walls, texture and camera
 // are all built from it at load).
 //
 // Root lattice cost scales with the area; the boat refinement stack (finest
@@ -34,13 +34,60 @@ export { DEFAULT_MAP_SIZE };
 // Walls sit 2 m inside the map edge (map.js).
 export const WALL_INSET_M = 2;
 
-// "100x200", "100×200", "100X200", or a legacy single side "75" / "150".
+// Arbitrary sizes (any "WxH" besides the presets). Limits, from what the
+// code needs:
+// - MAP_STEP_M: both sides a whole multiple of 4 m, the coarsest root cell
+//   (simRes 4 / 4f). The lattice is ceil(side / cell) cells, so on a
+//   multiple of 4 the lattice edge is the map edge on every root mode (no
+//   partial cell past the walls). The presets are multiples; the legacy 75 m
+//   square is grandfathered.
+// - MAP_MIN_SIDE_M: 20 m. Walls sit 2 m inside the edge and the camera keeps
+//   a 7.5 m pan margin; below ~20 m there is no water left to sail. Scenarios
+//   with a bigger layout are checked separately (scenarioFits).
+// - MAP_MAX_SIDE_M: 512 m. The field texture is 8 texels per metre
+//   (main.js texture_oversampling), so 512 m = 4096 texels, the WebGL
+//   MAX_TEXTURE_SIZE every desktop/mobile GPU supports.
+// - MAP_MAX_AREA_M2: 160 000 m² (2× the 200 × 400 preset). Root cost scales
+//   with area (table above): at the default 2 m root that is 40k root cells,
+//   about 2× the 100 × 200 / 1 m case (16 ms per frame), so one room cannot
+//   take a whole server core. A 1 m root on such a map is 160k cells; use a
+//   coarser root for big rooms.
+export const MAP_STEP_M = 4;
+export const MAP_MIN_SIDE_M = 20;
+export const MAP_MAX_SIDE_M = 512;
+export const MAP_MAX_AREA_M2 = 160000;
+
+/** Why w × h m is not an allowed size, or null if it is (presets always are). */
+export function mapDimsError(w, h) {
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return 'map_width_m / map_height_m must be positive numbers';
+  if (MAP_SIZES[w + 'x' + h]) return null;
+  if (!Number.isInteger(w) || !Number.isInteger(h) || w % MAP_STEP_M || h % MAP_STEP_M) return 'map size ' + w + 'x' + h + ' m: each side must be a whole multiple of ' + MAP_STEP_M + ' m';
+  if (w < MAP_MIN_SIDE_M || h < MAP_MIN_SIDE_M) return 'map size ' + w + 'x' + h + ' m: each side must be at least ' + MAP_MIN_SIDE_M + ' m';
+  if (w > MAP_MAX_SIDE_M || h > MAP_MAX_SIDE_M) return 'map size ' + w + 'x' + h + ' m: each side must be at most ' + MAP_MAX_SIDE_M + ' m';
+  if (w * h > MAP_MAX_AREA_M2) return 'map size ' + w + 'x' + h + ' m: area must be at most ' + MAP_MAX_AREA_M2 + ' m²';
+  return null;
+}
+
+// "100x200", "100×200", "100X200", a legacy single side "75" / "150", or
+// any allowed "WxH" (mapDimsError). Returns the key "WxH" or null.
 export function parseMapSize(value) {
   if (value === null || value === undefined) return null;
   const s = String(value).trim().toLowerCase().replace('×', 'x').replace(/\s+/g, '');
   if (MAP_SIZES[s]) return s;
   if (/^\d+$/.test(s) && MAP_SIZES[s + 'x' + s]) return s + 'x' + s;
+  const m = /^(\d+)x(\d+)$/.exec(s);
+  if (m && !mapDimsError(Number(m[1]), Number(m[2]))) return Number(m[1]) + 'x' + Number(m[2]);
   return null;
+}
+
+/** { w, h, simRes, label } for a size key (preset or "WxH"), or null. */
+export function mapDims(key) {
+  if (MAP_SIZES[key]) return MAP_SIZES[key];
+  const k = parseMapSize(key);
+  if (!k) return null;
+  if (MAP_SIZES[k]) return MAP_SIZES[k];
+  const [w, h] = k.split('x').map(Number);
+  return { w, h, simRes: DEFAULT_SIM_RES, label: w + ' × ' + h + ' m' };
 }
 
 // Map size from a query string; the old ?mapSize key is accepted too.
@@ -76,7 +123,7 @@ export function scenarioExtent(n) {
 }
 
 export function scenarioFits(n, key) {
-  const m = MAP_SIZES[key];
+  const m = mapDims(key);
   if (!m) return false;
   const e = scenarioExtent(n);
   return e.x <= m.w / 2 - WALL_INSET_M && e.y <= m.h / 2 - WALL_INSET_M;
@@ -86,7 +133,7 @@ export function scenarioFits(n, key) {
 // else the smallest dropdown size that does (never smaller than asked).
 export function fitMapSize(n, key) {
   if (scenarioFits(n, key)) return key;
-  const want = MAP_SIZES[key] || MAP_SIZES[DEFAULT_MAP_SIZE];
+  const want = mapDims(key) || MAP_SIZES[DEFAULT_MAP_SIZE];
   for (const k of MAP_SIZE_ORDER) {
     const m = MAP_SIZES[k];
     if (m.w >= want.w && m.h >= want.h && scenarioFits(n, k)) return k;

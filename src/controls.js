@@ -17,7 +17,7 @@ import {
   mapKeyFromDims, ROOM_CONFIG_DEFAULTS, rootFromSimRes, defaultRoomConfig,
 } from './room-config.js';
 import { windCeilingMps } from './sim-modes.js';
-import { MAP_SIZES, DEFAULT_MAP_SIZE } from './map-size.js';
+import { MAP_SIZES, DEFAULT_MAP_SIZE, mapDims } from './map-size.js';
 
 let _host, _view, _getCamera;
 let _remote = false;
@@ -435,7 +435,7 @@ export function setupControls(host, view, getCamera) {
       Object.assign(seed, configFromRoomState(host.room, { mapW: _mapW, mapH: _mapH }));
     } else {
       const key = mapKeyFromDims(_mapW, _mapH);
-      const mode = (key && MAP_SIZES[key] && MAP_SIZES[key].simRes) || '2f';
+      const mode = (key && mapDims(key) && mapDims(key).simRes) || '2f';
       const root = rootFromSimRes(mode);
       seed.root_cell_m = root.root_cell_m;
       seed.steps_per_frame = root.steps_per_frame;
