@@ -5,7 +5,7 @@ import { SimCore } from '../src/host.js';
 import { Room, validateRoomCommand } from '../apps/server/room.js';
 import {
   parseAndValidateRoomConfig, stringifyRoomConfig, configFromRoomState, commandsFromConfig,
-  ROOM_CONFIG_DEFAULTS,
+  ROOM_CONFIG_DEFAULTS, ROOM_CONFIG_BASE,
 } from '../src/room-config.js';
 import { Gate, PORT, STARBOARD } from '../src/course.js';
 import { COMPRESSED_START_TIMINGS } from '../src/start.js';
@@ -19,7 +19,7 @@ const say = console.log;
 const check = (name, ok, extra = '') => { say((ok ? 'PASS  ' : 'FAIL  ') + name + (extra ? '  ' + extra : '')); if (!ok) failed++; };
 console.log = () => {};
 
-const base = stringifyRoomConfig(ROOM_CONFIG_DEFAULTS).replace(/^scenario = 0$/m, 'scenario = "custom"');
+const base = stringifyRoomConfig(ROOM_CONFIG_BASE).replace(/^scenario = 0$/m, 'scenario = "custom"');
 const withCustom = (custom) => base + '\n' + custom;
 const err = (text, checks = {}) => parseAndValidateRoomConfig(text, checks).error || '';
 
@@ -46,7 +46,7 @@ const err = (text, checks = {}) => parseAndValidateRoomConfig(text, checks).erro
 // 2. Validation errors name the TOML path / problem.
 {
   const cases = [
-    ['[custom] without scenario = "custom"', stringifyRoomConfig(ROOM_CONFIG_DEFAULTS) + '\n[custom]\ntitle = "x"\n', '[custom] needs scenario = "custom"'],
+    ['[custom] without scenario = "custom"', stringifyRoomConfig(ROOM_CONFIG_BASE) + '\n[custom]\ntitle = "x"\n', '[custom] needs scenario = "custom"'],
     ['scenario = "custom" without [custom]', base, 'needs a [custom] table'],
     ['bad scenario string', base.replace('"custom"', '"foo"'), 'or "custom"'],
     ['unknown key in custom', withCustom('[custom]\ncolour = 1\n'), 'unknown key(s) in [custom]: colour'],
