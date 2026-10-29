@@ -3,7 +3,7 @@
 import { SimCore } from '../src/host.js';
 import { Room, validateRoomCommand } from '../apps/server/room.js';
 import {
-  ROOM_CONFIG_DEFAULTS, ROOM_CONFIG_KEYS, stringifyRoomConfig, parseRoomConfigToml,
+  ROOM_CONFIG_DEFAULTS, ROOM_CONFIG_BASE, ROOM_CONFIG_KEYS, stringifyRoomConfig, parseRoomConfigToml,
   parseAndValidateRoomConfig, validateRoomConfig, configFromRoomState,
   commandsFromConfig, simResForRoot, rootFromSimRes, roomConfigCommit,
   defaultRoomConfig, parseMeanSd, meanSdToToml, gustSpawnerFromConfig,
@@ -62,7 +62,7 @@ budget_target = -1
 
 {
   const on = parseAndValidateRoomConfig(stringifyRoomConfig({
-    ...ROOM_CONFIG_DEFAULTS, refine_max_level: 2, sail_wake_gain: 8, budget_target: 50000,
+    ...ROOM_CONFIG_BASE, refine_max_level: 2, sail_wake_gain: 8, budget_target: 50000,
   })).config;
   const cmds = commandsFromConfig(on);
   check('refine > 0 → amr true + refine command',
@@ -77,11 +77,11 @@ budget_target = -1
   const bad = [
     ['not toml {', 'TOML'],
     ['scenario = -1\nmap_width_m=100\nmap_height_m=200\nwind_angle_deg=90\nwind_speed_mps=4.5\ndev_mode=false\nbarrier=false\nladder_lines=false\namr_auto=true\nroot_cell_m=2\nsteps_per_frame=1\nsail_wake_gain=16\nfield_skip=0\nrefine_max_level=3\nboat_refine_radius_m=3\nbudget_target=-1\n', 'scenario'],
-    [stringifyRoomConfig({ ...ROOM_CONFIG_DEFAULTS, root_cell_m: 3, steps_per_frame: 1 }), 'root_cell'],
-    [stringifyRoomConfig({ ...ROOM_CONFIG_DEFAULTS, budget_target: 10 }), 'budget'],
-    [stringifyRoomConfig({ ...ROOM_CONFIG_DEFAULTS, refine_max_level: 9 }), 'refine'],
-    [stringifyRoomConfig({ ...ROOM_CONFIG_DEFAULTS, map_width_m: 99, map_height_m: 200 }), 'map'],
-    ['bogus_key = 1\n' + stringifyRoomConfig(ROOM_CONFIG_DEFAULTS), 'unknown'],
+    [stringifyRoomConfig({ ...ROOM_CONFIG_BASE, root_cell_m: 3, steps_per_frame: 1 }), 'root_cell'],
+    [stringifyRoomConfig({ ...ROOM_CONFIG_BASE, budget_target: 10 }), 'budget'],
+    [stringifyRoomConfig({ ...ROOM_CONFIG_BASE, refine_max_level: 9 }), 'refine'],
+    [stringifyRoomConfig({ ...ROOM_CONFIG_BASE, map_width_m: 99, map_height_m: 200 }), 'map'],
+    ['bogus_key = 1\n' + stringifyRoomConfig(ROOM_CONFIG_BASE), 'unknown'],
   ];
   for (const [text, tip] of bad) {
     const r = parseAndValidateRoomConfig(text);
@@ -116,7 +116,7 @@ budget_target = -1
   room.join(client);
   room.message(client, { type: 'init', opts: { mapW: 100, mapH: 200, simRes: '2f', scenario: 0 } });
   sent.length = 0;
-  const okText = stringifyRoomConfig({ ...ROOM_CONFIG_DEFAULTS, wind_speed_mps: 5, ladder_lines: true });
+  const okText = stringifyRoomConfig({ ...ROOM_CONFIG_BASE, wind_speed_mps: 5, ladder_lines: true });
   const okCfg = parseAndValidateRoomConfig(okText, { mapW: 100, mapH: 200 }).config;
   room.message(client, { type: 'command', id: 1, c: { type: 'config', config: okCfg } });
   const result = sent.find((m) => m.type === 'result' && m.id === 1);
@@ -150,8 +150,10 @@ check('roomConfigCommit returns commands', !roomConfigCommit(stringifyRoomConfig
 {
   const d = defaultRoomConfig(50, 100);
   check('defaultRoomConfig keeps map size', d.map_width_m === 50 && d.map_height_m === 100);
+  check('defaultRoomConfig on another map size drops the course (scenario 0)',
+    d.scenario === 0 && d.custom === undefined);
   check('defaultRoomConfig other fields are ROOM_CONFIG_DEFAULTS',
-    d.scenario === ROOM_CONFIG_DEFAULTS.scenario
+    true
     && d.wind_speed_mps === ROOM_CONFIG_DEFAULTS.wind_speed_mps
     && d.sail_wake_gain === ROOM_CONFIG_DEFAULTS.sail_wake_gain
     && d.refine_max_level === ROOM_CONFIG_DEFAULTS.refine_max_level
@@ -161,6 +163,9 @@ check('roomConfigCommit returns commands', !roomConfigCommit(stringifyRoomConfig
   check('defaultRoomConfig without map = full defaults',
     plain.map_width_m === ROOM_CONFIG_DEFAULTS.map_width_m
     && plain.map_height_m === ROOM_CONFIG_DEFAULTS.map_height_m);
+  check('default preset is the live custom race course',
+    plain.scenario === 'custom' && plain.custom && plain.custom.title === 'Race course'
+    && JSON.stringify(plain.custom.marks.w) === '[0,65]' && plain.custom.course.legs.length === 3);
   const text = stringifyRoomConfig(defaultRoomConfig(100, 200));
   check('Reset preset TOML validates', !parseAndValidateRoomConfig(text).error);
 }
@@ -225,7 +230,7 @@ gust_ramp_s = 1.5
   check('gustSpawnerFromConfig flat snapshot', sp.enabled && sp.alongSigmaM === 2.5 && sp.alongSigmaMSd === 0.4);
 
   const badLen = parseAndValidateRoomConfig(stringifyRoomConfig({
-    ...ROOM_CONFIG_DEFAULTS, gust_force_gain: [0.003, 0.0005, 1],
+    ...ROOM_CONFIG_BASE, gust_force_gain: [0.003, 0.0005, 1],
   }));
   check('refuse gust array length 3', !!badLen.error && /gust_force_gain/i.test(badLen.error), badLen.error);
 
@@ -237,7 +242,7 @@ gust_ramp_s = 1.5
   check('GustField spawner enabled', core.sim.gusts.spawner.enabled === true && core.sim.gusts.spawner.ratePerMin === 6);
 
   // Off → no inject activity from spawner (explicitly disable; defaults now enable gusts).
-  const off = validateRoomConfig({ ...ROOM_CONFIG_DEFAULTS, gusts: false, gust_rate_per_min: 0 }, { core }).config;
+  const off = validateRoomConfig({ ...ROOM_CONFIG_BASE, gusts: false, gust_rate_per_min: 0 }, { core }).config;
   core.command({ type: 'config', config: off });
   check('gusts=false disables spawner', core.sim.gusts.spawner.enabled === false);
 }
@@ -245,7 +250,7 @@ gust_ramp_s = 1.5
 
 // PR A: arbitrary room sizes (map-size.js mapDimsError limits).
 {
-  const base = { ...ROOM_CONFIG_DEFAULTS };
+  const base = { ...ROOM_CONFIG_BASE };
   const v = (w, h) => validateRoomConfig({ ...base, map_width_m: w, map_height_m: h });
   const ok = v(60, 120);
   check('arbitrary 60x120 accepted', !ok.error && ok.config.map_width_m === 60 && ok.config.map_height_m === 120 && ok.config._mapKey === '60x120', ok.error);

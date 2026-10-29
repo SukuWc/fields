@@ -112,7 +112,7 @@ await srv.close();
 
 // Admin TOML apply via HTTP (ADMIN_SECRET).
 {
-  const { stringifyRoomConfig, ROOM_CONFIG_DEFAULTS } = await import('../src/room-config.js');
+  const { stringifyRoomConfig, ROOM_CONFIG_DEFAULTS, ROOM_CONFIG_BASE } = await import('../src/room-config.js');
   const admin = await startServer({ port: 0, fixedRooms: ['europe-1'], graceMs: 50, adminSecret: 'test-admin-secret' });
   const abase = `http://127.0.0.1:${admin.port}`;
   const listed = await (await fetch(abase + '/api/rooms')).json();
@@ -138,7 +138,7 @@ await srv.close();
   check('PUT config with invalid TOML is 400', badToml.status === 400, await badToml.text());
 
   const before = admin.rooms.get('europe-1').core.roomState().settings;
-  const next = stringifyRoomConfig({ ...ROOM_CONFIG_DEFAULTS, wind_speed_mps: 6.5, field_skip: 2 });
+  const next = stringifyRoomConfig({ ...ROOM_CONFIG_BASE, wind_speed_mps: 6.5, field_skip: 2 });
   const ok = await fetch(abase + '/api/rooms/europe-1/config', {
     method: 'PUT',
     headers: { 'content-type': 'text/plain; charset=utf-8', authorization: 'Bearer test-admin-secret' },
@@ -158,7 +158,7 @@ await srv.close();
   const jsonBody = await fetch(abase + '/api/rooms/europe-1/config', {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: 'Bearer test-admin-secret' },
-    body: JSON.stringify({ toml: stringifyRoomConfig({ ...ROOM_CONFIG_DEFAULTS, wind_speed_mps: 5 }) }),
+    body: JSON.stringify({ toml: stringifyRoomConfig({ ...ROOM_CONFIG_BASE, wind_speed_mps: 5 }) }),
   });
   check('POST JSON { toml } also applies', jsonBody.status === 200 && (await jsonBody.json()).ok === true);
 

@@ -52,10 +52,27 @@ export const ROOM_CONFIG_KEYS = [
   'custom',
 ];
 
+function deepFreeze(o) {
+  if (o && typeof o === 'object') { for (const v of Object.values(o)) deepFreeze(v); Object.freeze(o); }
+  return o;
+}
+
+// Live europe-1 race course ([custom] table), part of the remote default.
+export const DEFAULT_CUSTOM_COURSE = deepFreeze({
+  title: 'Race course',
+  description: 'Start, windward mark to port, leeward gate, windward mark to port again, finish downwind through the start line.',
+  marks: { rc: [16, -70], pin: [-16, -70], w: [0, 65], g_l: [-8, -45], g_r: [8, -45] },
+  start: { committee: 'rc', pin: 'pin', timings: 'compressed', lead_s: 2 },
+  course: { laps: 1, legs: [{ mark: 'w', round: 'port' }, { gate: ['g_l', 'g_r'] }, { mark: 'w', round: 'port' }] },
+  finish: { committee: 'rc', pin: 'pin' },
+  boundary: { inset_m: 8, zone_m: 15, y_min_m: -90, y_max_m: 90 },
+});
+
 export const ROOM_CONFIG_DEFAULTS = Object.freeze({
-  // Remote/server Reset preset (matches live sailzone.app europe-1).
-  // Local solo also seeds from this shared source on first Commit.
-  scenario: 0,
+  // Remote/server Reset preset (matches live sailzone.app europe-1, incl. the
+  // custom race course). Local solo seeds from this too but keeps scenario 0
+  // (see controls.js).
+  scenario: CUSTOM_SCENARIO,
   map_width_m: 100,
   map_height_m: 200,
   wind_angle_deg: 90,
@@ -79,7 +96,14 @@ export const ROOM_CONFIG_DEFAULTS = Object.freeze({
   gust_life_s: [10, 5],
   gust_dir_deg: [0, 45],
   gust_ramp_s: 1.5,
+  custom: DEFAULT_CUSTOM_COURSE,
 });
+
+// Same settings without the race course (scenario 0, no [custom]): the
+// local solo seed and the fallback when the course does not fit the map.
+export const ROOM_CONFIG_BASE = Object.freeze(
+  Object.fromEntries(Object.entries({ ...ROOM_CONFIG_DEFAULTS, scenario: 0 }).filter(([k]) => k !== 'custom')),
+);
 
 function approxEq(a, b) {
   return Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
@@ -159,7 +183,8 @@ export function mapKeyFromDims(w, h) {
 }
 
 export function defaultsConfig(overrides = {}) {
-  return { ...ROOM_CONFIG_DEFAULTS, ...overrides };
+  // State-derived configs carry [custom] only when the room is on it.
+  return { ...ROOM_CONFIG_BASE, ...overrides };
 }
 
 /** Room-config gust keys from SimCore.settings.gusts (spawner snapshot). */
@@ -301,7 +326,12 @@ export function stringifyRoomConfig(cfg) {
  * does not send a room command.
  */
 export function defaultRoomConfig(mapW, mapH) {
-  const cfg = { ...ROOM_CONFIG_DEFAULTS };
+  // The default course is laid out for the default map; another size gets
+  // the same settings on scenario 0.
+  const fits = (!(Number.isFinite(mapW) && mapW > 0) || mapW === ROOM_CONFIG_DEFAULTS.map_width_m)
+    && (!(Number.isFinite(mapH) && mapH > 0) || mapH === ROOM_CONFIG_DEFAULTS.map_height_m);
+  const cfg = fits ? { ...ROOM_CONFIG_DEFAULTS } : { ...ROOM_CONFIG_BASE };
+  if (cfg.custom) cfg.custom = JSON.parse(JSON.stringify(cfg.custom));
   if (Number.isFinite(mapW) && mapW > 0) cfg.map_width_m = mapW;
   if (Number.isFinite(mapH) && mapH > 0) cfg.map_height_m = mapH;
   return cfg;
@@ -327,6 +357,10 @@ export function parseRoomConfigToml(text) {
   for (const k of ROOM_CONFIG_KEYS) {
     if (k in raw) config[k] = raw[k];
   }
+  // The default [custom] course only goes with the default scenario: a TOML
+  // that sets its own scenario without a [custom] table gets none.
+  if ('scenario' in raw && !('custom' in raw)) delete config.custom;
+  else if (config.custom === ROOM_CONFIG_DEFAULTS.custom) config.custom = JSON.parse(JSON.stringify(config.custom));
   return { config };
 }
 

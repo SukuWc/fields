@@ -14,7 +14,7 @@ import * as THREE from 'three';
 import { settingDefault } from './settings-registry.js';
 import {
   configFromRoomState, stringifyRoomConfig, parseAndValidateRoomConfig,
-  mapKeyFromDims, ROOM_CONFIG_DEFAULTS, rootFromSimRes, defaultRoomConfig,
+  mapKeyFromDims, ROOM_CONFIG_DEFAULTS, ROOM_CONFIG_BASE, rootFromSimRes, defaultRoomConfig,
 } from './room-config.js';
 import { windCeilingMps } from './sim-modes.js';
 import { MAP_SIZES, DEFAULT_MAP_SIZE, mapDims } from './map-size.js';
@@ -280,7 +280,7 @@ function currentConfigFromHost(room) {
   if (room) return configFromRoomState(room, { mapW, mapH });
   if (_host && _host.room) return configFromRoomState(_host.room, { mapW, mapH });
   // Local: synthesise from last applied + host info wind.
-  const base = _appliedConfig ? { ..._appliedConfig } : { ...ROOM_CONFIG_DEFAULTS };
+  const base = _appliedConfig ? { ..._appliedConfig } : { ...ROOM_CONFIG_BASE };
   base.map_width_m = mapW;
   base.map_height_m = mapH;
   base.wind_angle_deg = _wind.angle;
@@ -434,7 +434,8 @@ export function setupControls(host, view, getCamera) {
     // Seed applied config from defaults + host wind/map, then Commit once so
     // the sim starts on scenario 0 (and any TOML-equivalent defaults).
     const seed = {
-      ...ROOM_CONFIG_DEFAULTS,
+      // Local solo keeps scenario 0; the custom course is the remote default.
+      ...ROOM_CONFIG_BASE,
       map_width_m: _mapW,
       map_height_m: _mapH,
       wind_angle_deg: _wind.angle,
