@@ -12,6 +12,7 @@ import { COMPRESSED_START_TIMINGS } from '../src/start.js';
 import { DEFAULT_MARK_MASS, markMassForBoat } from '../src/mark.js';
 import { sceneStatics } from '../src/scene-state.js';
 import { EXAMPLE_CUSTOM_TOML } from './custom-scenario-example.mjs';
+import { parseServerMessage } from '../src/wire-codec.js';
 
 let failed = 0;
 const say = console.log;
@@ -137,7 +138,7 @@ const err = (text, checks = {}) => parseAndValidateRoomConfig(text, checks).erro
 // 4. Server Room: config path keeps the player boat and loads the layout;
 //    restart "custom"; a forged restart with a layout drops it.
 {
-  const client = () => { const c = { got: [], send(s) { c.got.push(JSON.parse(s)); } }; return c; };
+  const client = () => { const c = { got: [], send(s) { c.got.push(parseServerMessage(s)); } }; return c; };
   const step = (room, n = 1) => { for (let i = 0; i < n; i++) room.step({ dt: 1 / 30, held: [], present: true, view: {} }); };
   const room = new Room('custom-toml', { lockstep: true, fieldHz: 0, graceMs: 0 });
   const A = client();
