@@ -448,7 +448,7 @@ function addMomentum(cell, fx, fy) {
 // corners that can, in proportion to the weight they already hold, so the
 // sample's momentum is not dropped. If none of the four can take it, the
 // nearest ring of nodes that can takes the whole sample.
-function depositBilinear(iCont, jCont, fx, fy, accept, push) {
+function depositBilinear(iCont, jCont, fx, fy, accept, push, noFallback = false) {
 	const i0 = Math.floor(iCont);
 	const j0 = Math.floor(jCont);
 	const hf = iCont - i0;
@@ -479,6 +479,9 @@ function depositBilinear(iCont, jCont, fx, fy, accept, push) {
 		}
 		return;
 	}
+	// Callers that sample a wide kernel (gusts) drop the sample instead of
+	// paying for the ring search below (up to ~350k checks per sample).
+	if (noFallback) return;
 	const iCenter = Math.round(iCont);
 	const jCenter = Math.round(jCont);
 	for (let r = 1; r <= 64; r++) {
@@ -2566,7 +2569,9 @@ export class Boltzmann {
 	// by 1/dx per substep, so the physical momentum matches the share and the
 	// speed plot reads the fine field. Outside any disk the root nodes around
 	// the sample take the same bilinear weights, once.
-	apply_energy(wx, wy, fx, fy) {
+	// opts.dropIfBlocked: a sample whose four root corners cannot take force
+	// is dropped (no nearest-ring redistribution). Used by gust kernels.
+	apply_energy(wx, wy, fx, fy, opts) {
 		if (!Number.isFinite(wx) || !Number.isFinite(wy) || !Number.isFinite(fx) || !Number.isFinite(fy)) return;
 		const cx_cont = this.width/2  + wx * this.resolution;
 		const cy_cont = this.height/2 + wy * this.resolution;
@@ -2575,7 +2580,8 @@ export class Boltzmann {
 		const self = this;
 		depositBilinear(cx_cont, cy_cont, fx, fy,
 			(i, j) => self._rootCanTake(i, j),
-			(i, j, sx, sy) => self.apply_force_to_cell(i, j, sx, sy));
+			(i, j, sx, sy) => self.apply_force_to_cell(i, j, sx, sy),
+			!!(opts && opts.dropIfBlocked));
 	}
 
 	// Distribute a total force (fx, fy) evenly along a world-space line segment.

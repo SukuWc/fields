@@ -201,6 +201,15 @@ export function injectEllipticalKernel(bm, cx, cy, fx, fy, along, cross, alongSi
   const ref = 1; // world metres: gain defined on a 1 m sample lattice
   const area = (step / ref) * (step / ref);
   const scale = gustLatticeScale(bm);
+  // Clip to the root interior (cells 1..width-2): samples off the map are
+  // dropped rather than redistributed onto the nearest water.
+  const res = bm.resolution || 1;
+  const hasGrid = Number.isFinite(bm.width) && Number.isFinite(bm.height);
+  const minX = hasGrid ? (1 - bm.width / 2) / res : -Infinity;
+  const maxX = hasGrid ? (bm.width - 2 - bm.width / 2) / res : Infinity;
+  const minY = hasGrid ? (1 - bm.height / 2) / res : -Infinity;
+  const maxY = hasGrid ? (bm.height - 2 - bm.height / 2) / res : Infinity;
+  const opts = { dropIfBlocked: true };
   let n = 0;
   for (let dy = -extY; dy <= extY + 1e-9; dy += step) {
     for (let dx = -extX; dx <= extX + 1e-9; dx += step) {
@@ -209,8 +218,10 @@ export function injectEllipticalKernel(bm, cx, cy, fx, fy, along, cross, alongSi
       if (Math.abs(da) > halfA || Math.abs(dc) > halfC) continue;
       const w = Math.exp(-0.5 * ((da / alongSigma) ** 2 + (dc / crossSigma) ** 2));
       if (w < WEIGHT_EPS) continue;
+      const wx = cx + dx, wy = cy + dy;
+      if (wx < minX || wx > maxX || wy < minY || wy > maxY) continue;
       const s = w * area * scale;
-      bm.apply_energy(cx + dx, cy + dy, fx * s, fy * s);
+      bm.apply_energy(wx, wy, fx * s, fy * s, opts);
       n++;
     }
   }

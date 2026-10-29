@@ -251,5 +251,26 @@ check('demo layout exports two columns and a boat',
     `maxGapX ${maxGapX} maxGapY ${maxGapY} cell ${cell}`);
 }
 
+// Regression: a column at the map edge used to send every off-map sample into
+// depositBilinear's nearest-ring search (~350k _rootCanTake calls each),
+// ramping the server tick to >1 s. Off-map samples are now dropped.
+{
+  const core = new SimCore({ mapW: 100, mapH: 200, simRes: '2f' });
+  const bm = core.bm;
+  const along = flowUnitFromWind(90);
+  const cross = { x: -along.y, y: along.x };
+  const orig = bm._rootCanTake.bind(bm);
+  let calls = 0;
+  bm._rootCanTake = (i, j) => { calls++; return orig(i, j); };
+  const t0 = performance.now();
+  const n = injectEllipticalKernel(bm, 50, 100, along.x * 0.0005, along.y * 0.0005, along, cross, 10, 10);
+  const ms = performance.now() - t0;
+  check('edge gust: off-map samples dropped, no ring search',
+    n > 0 && calls <= 4 * n + 16, `n ${n} rootCanTake ${calls}`);
+  check('edge gust: kernel cheap', ms < 200, `${ms.toFixed(1)} ms`);
+  const far = injectEllipticalKernel(bm, 500, 500, 1, 0, along, cross, 10, 10);
+  check('gust fully off map injects nothing', far === 0, `n ${far}`);
+}
+
 if (failed) { console.log(`${failed} check(s) failed`); process.exit(1); }
 console.log('all gusts checks passed');
