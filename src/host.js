@@ -37,6 +37,7 @@ import { bodyOutlines, perfStats } from './present.js';
 import { sceneFrame } from './scene-state.js';
 import { eventForClient } from './host-protocol.js';
 import { sampleFlowGrid, FLOW_GRID_EVERY } from './flow-tracers.js';
+import { CUSTOM_SCENARIO, customLayoutToToml } from './custom-scenario.js';
 
 // The Sim and everything around it that a host runs (shared by LocalHost and
 // the worker). texture: the painter target, a three.js DataTexture or a plain
@@ -108,17 +109,19 @@ export class SimCore {
       let last = undefined;
       let rebuilt = false;
       let restartScenario = null;
+      let layout;
       for (const cmd of cmds) {
-        if (cmd.type === 'restart') { restartScenario = cmd.scenario; continue; }
+        if (cmd.type === 'restart') { restartScenario = cmd.scenario; layout = cmd.layout; continue; }
         const r = this.command(cmd);
         last = r;
         if (r && r.rebuilt) rebuilt = true;
       }
       if (restartScenario !== null || rebuilt) {
         const n = restartScenario !== null ? restartScenario : this.sim.scenarioIndex;
-        if (Number.isInteger(n)) {
-          const r = this.sim.command({ type: 'restart', scenario: n });
-          this._trackSetting({ type: 'restart', scenario: n }, r);
+        if (Number.isInteger(n) || n === CUSTOM_SCENARIO) {
+          const rc = n === CUSTOM_SCENARIO ? { type: 'restart', scenario: n, layout } : { type: 'restart', scenario: n };
+          const r = this.sim.command(rc);
+          this._trackSetting(rc, r);
           last = r ? { title: r.title, description: r.description, rebuilt, lattice: this.lattice() } : { rebuilt, lattice: this.lattice() };
         } else {
           last = { rebuilt, lattice: this.lattice() };
@@ -142,6 +145,9 @@ export class SimCore {
       case 'restart':
         // Scenario scripts may flip options (e.g. scenario 21 enables ladder).
         st.ladder = this.sim.options.ladder;
+        // Custom layout (TOML shape) so configFromRoomState round-trips it.
+        if (this.sim.scenarioIndex === CUSTOM_SCENARIO && this.sim.customLayout) st.custom = customLayoutToToml(this.sim.customLayout);
+        else delete st.custom;
         break;
       case 'devMode': st.devMode = !!c.on; break;
       case 'barrier': st.barrier = !!c.on; break;
@@ -176,9 +182,10 @@ export class SimCore {
   // welcome snapshot and the room event of a server room).
   roomState() {
     const i = this.sim.scenarioIndex;
-    const sc = Number.isInteger(i) ? this.sim.scenarios[i] : null;
+    const custom = i === CUSTOM_SCENARIO && this.sim.customLayout;
+    const sc = custom ? this.sim.customLayout : Number.isInteger(i) ? this.sim.scenarios[i] : null;
     return {
-      scenario: { index: Number.isInteger(i) ? i : null, title: sc ? sc.title : null, description: sc ? sc.description : null },
+      scenario: { index: Number.isInteger(i) || custom ? i : null, title: sc ? sc.title : null, description: sc ? sc.description : null },
       settings: JSON.parse(JSON.stringify(this.settings)),
       lattice: this.lattice(),
     };

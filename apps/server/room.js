@@ -39,6 +39,7 @@ import { encodeWire, fieldForWire } from '../../src/wire-codec.js';
 import { FrameTimeHistory } from './frame-times.js';
 export { FRAME_TIME_WINDOW_S, FRAME_TIME_HZ, FRAME_TIME_CAP } from './frame-times.js';
 import { scenarioExtent, WALL_INSET_M } from '../../src/map-size.js';
+import { CUSTOM_SCENARIO } from '../../src/custom-scenario.js';
 import { TRAIL_COLORS } from '../../src/boat-trails.js';
 
 // Chat ({ type: 'chat', id, text }, answered with { type: 'result', id, r }):
@@ -163,6 +164,12 @@ export function validateRoomCommand(c, core) {
     if (Number.isFinite(c.seed)) out.seed = c.seed >>> 0;
     return { c: out };
   }
+  // Restart of the room's custom layout (loaded by a config commit; the
+  // layout itself only comes in through config, where it is validated).
+  if (c && c.type === 'restart' && c.scenario === CUSTOM_SCENARIO) {
+    if (!core.sim.customLayout) return { error: 'no custom layout in this room (commit a TOML with scenario = "custom")' };
+    return { c: { type: 'restart', scenario: CUSTOM_SCENARIO } };
+  }
   return validateRoomSettingCommand(c, {
     scenario: (n, raw) => {
       const sc = core.sim.scenarios;
@@ -173,6 +180,9 @@ export function validateRoomCommand(c, core) {
     },
   });
 }
+
+// A numbered scenario or a loaded custom layout is in play.
+const hasScenario = (sim) => Number.isInteger(sim.scenarioIndex) || (sim.scenarioIndex === CUSTOM_SCENARIO && !!sim.customLayout);
 
 export const TICK_HZ = 30;
 
@@ -533,22 +543,23 @@ export class Room {
       let last;
       let rebuilt = false;
       let restartScenario = null;
+      let layout;
       for (const cmd of cmds) {
-        if (cmd.type === 'restart') { restartScenario = cmd.scenario; continue; }
+        if (cmd.type === 'restart') { restartScenario = cmd.scenario; layout = cmd.layout; continue; }
         const r = this.core.command(cmd);
         last = r;
         if ((cmd.type === 'simRes' || cmd.type === 'amrMode' || cmd.type === 'refine') && r && r.rebuilt) rebuilt = true;
       }
       if (restartScenario !== null || rebuilt) {
         const n = restartScenario !== null ? restartScenario
-          : (Number.isInteger(this.core.sim.scenarioIndex) ? this.core.sim.scenarioIndex : c.config.scenario);
-        last = this._restart(n);
+          : (hasScenario(this.core.sim) ? this.core.sim.scenarioIndex : c.config.scenario);
+        last = this._restart(n, n === CUSTOM_SCENARIO ? layout : undefined);
       }
       return last;
     }
     const r = this.core.command(c);
     // A rebuilt lattice restarts the scenario (the page used to click Restart).
-    if ((c.type === 'simRes' || c.type === 'amrMode' || c.type === 'refine') && r && r.rebuilt && Number.isInteger(this.core.sim.scenarioIndex)) {
+    if ((c.type === 'simRes' || c.type === 'amrMode' || c.type === 'refine') && r && r.rebuilt && hasScenario(this.core.sim)) {
       this._restart(this.core.sim.scenarioIndex);
     }
     return r;
@@ -556,7 +567,7 @@ export class Room {
 
   // Room-wide restart that keeps player boats (spawned again after the
   // scenario's first tick, see _compute).
-  _restart(n) {
+  _restart(n, layout) {
     const keep = new Map();
     // A prior restart may still be waiting to respawn (owned already cleared).
     if (this._respawn) {
@@ -569,7 +580,7 @@ export class Room {
     for (const e of this.parked.values()) if (e.boats.length) { keep.set(e, e.boats.map((b) => ({ name: b.name, color: b.color }))); }
     this._restarting = true;
     let r;
-    try { r = this.core.command({ type: 'restart', scenario: n }); } finally { this._restarting = false; }
+    try { r = this.core.command(layout ? { type: 'restart', scenario: n, layout } : { type: 'restart', scenario: n }); } finally { this._restarting = false; }
     // Scenario restart clears sim.players; drop any stray player boats that
     // appeared between stacked restarts, then arm a single respawn pass.
     this._removeAllPlayerBoats();
