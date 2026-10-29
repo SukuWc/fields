@@ -13,6 +13,7 @@
 //   5. The readout / HUD panels the client writes from the server JSON read
 //      exactly as the local ones (HUD values travel unrounded), and no state
 //      carries prebuilt HTML or guide records.
+import { parseServerMessage } from '../src/wire-codec.js';
 import { SimCore } from '../src/host.js';
 import { buildScene } from '../src/scene-build.js';
 import { Room, roundJson } from '../apps/server/room.js';
@@ -80,7 +81,7 @@ check('the round trip covered every kind of state', want.every((k) => seen.has(k
 // 3. Statics delivery through a Room (lockstep: client a drives the ticks).
 {
   const room = new Room('statics-test', { lockstep: true, fieldHz: 0 });
-  const mk = (name) => ({ name, got: [], send(s) { if (typeof s === 'string') this.got.push(JSON.parse(s)); } });
+  const mk = (name) => ({ name, got: [], send(s) { this.got.push(parseServerMessage(s)); } });
   const a = mk('a'), b = mk('b');
   const tick = () => room.message(a, { type: 'tick', req: { dt: 1 / 30, held: [], present: true, view } });
   const types = (c) => c.got.filter((m) => m.type === 'statics' || m.type === 'frame').map((m) => m.type[0]).join('');

@@ -35,6 +35,7 @@ import { validateRoomConfig, parseAndValidateRoomConfig, commandsFromConfig, con
 import { hashSeed } from '../../src/gusts.js';
 import { encodeFieldGrids, decodeFieldGrids } from '../../src/fieldPainter.js';
 import { encodeFieldText } from '../../src/field-codec.js';
+import { encodeWire, fieldForWire } from '../../src/wire-codec.js';
 import { FrameTimeHistory } from './frame-times.js';
 export { FRAME_TIME_WINDOW_S, FRAME_TIME_HZ, FRAME_TIME_CAP } from './frame-times.js';
 import { scenarioExtent, WALL_INSET_M } from '../../src/map-size.js';
@@ -676,7 +677,8 @@ export class Room {
       const e = encodeFieldText(grids, seq, null, 0);
       st.seq = seq;
       this.fieldKeys++;
-      const msg = JSON.stringify(e.m);
+      // Binary (src/wire-codec.js): payload as packed 6-bit symbols, no base64 text.
+      const msg = encodeWire(fieldForWire(e.m), { exact: true });
       this.fieldEncodeMs = this.now() - t0;
       this.fieldEncodeMsTotal += this.fieldEncodeMs;
       this.fieldEncodes++;
@@ -770,7 +772,7 @@ export class Room {
         if (!this.clients.has(c)) continue;
         if (!this._sendOk(c)) { this._skipClient(c); continue; }
         c.send(f.msg);
-        this.fieldBytesSent += f.msg.length;
+        this.fieldBytesSent += f.msg.byteLength;
       }
     }
     if (statics && statics.statics) {
@@ -786,7 +788,7 @@ export class Room {
     }
     // Flow grid and perf counters: before the frame they belong to.
     if (flow) {
-      const m = roundJson({ type: 'flow', flow });
+      const m = encodeWire({ type: 'flow', flow });
       for (const c of this.flowSubs) {
         if (!this.clients.has(c)) continue;
         if (!this._sendOk(c)) { this._skipClient(c); continue; }
@@ -794,22 +796,23 @@ export class Room {
       }
     }
     if (perf) {
-      const m = JSON.stringify({ type: 'perf', perf });
+      const m = encodeWire({ type: 'perf', perf }, { exact: true });
       for (const c of this.perfSubs) {
         if (!this.clients.has(c)) continue;
         if (!this._sendOk(c)) { this._skipClient(c); continue; }
         c.send(m);
       }
     }
-    const s = roundJson({ type: 'frame', frame });
+    // Binary frame (src/wire-codec.js; same values as roundJson).
+    const s = encodeWire({ type: 'frame', frame });
     let sent = 0;
     for (const c of this.clients) {
       if (!this._sendOk(c)) { this._skipClient(c); continue; }
       c.send(s);
       sent++;
     }
-    this.lastFrameBytes = s.length;
-    this.frameBytesSent += s.length * sent;
+    this.lastFrameBytes = s.byteLength;
+    this.frameBytesSent += s.byteLength * sent;
     this.broadcasts++;
   }
 

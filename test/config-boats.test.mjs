@@ -4,13 +4,14 @@
 // leave an orphan beside the kept boat.
 import { Room } from '../apps/server/room.js';
 import { configFromRoomState } from '../src/room-config.js';
+import { parseServerMessage } from '../src/wire-codec.js';
 
 let failed = 0;
 const quiet = console.log;
 const check = (name, ok, extra = '') => { quiet((ok ? 'PASS  ' : 'FAIL  ') + name + (extra ? '  ' + extra : '')); if (!ok) failed++; };
 console.log = () => {};
 
-const client = () => { const c = { got: [], send(s) { c.got.push(JSON.parse(s)); } }; return c; };
+const client = () => { const c = { got: [], send(s) { c.got.push(parseServerMessage(s)); } }; return c; };
 const spawned = (room) => room.core.sim.players.filter((p) => p.spawnId);
 const step = (room, n = 1) => { for (let i = 0; i < n; i++) room.step({ dt: 1 / 30, held: [], present: true, view: {} }); };
 
