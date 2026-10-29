@@ -17,7 +17,7 @@
 // atomic `config` room command, and tests.
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import { SIM_RES_MODES, DEFAULT_SIM_RES, MAX_WIND_MPS, DEFAULT_MAP_SIZE } from './settings-registry.js';
-import { MAP_SIZES, parseMapSize, scenarioExtent, WALL_INSET_M } from './map-size.js';
+import { MAP_SIZES, parseMapSize, mapDimsError, scenarioExtent, WALL_INSET_M } from './map-size.js';
 import {
   GUST_FORCE_GAIN, GUST_ALONG_SIGMA_M, GUST_CROSS_SIGMA_M, GUST_LIFE_S,
 } from './gusts.js';
@@ -352,12 +352,11 @@ export function validateRoomConfig(cfg, checks = {}) {
     // map
     {
       const w = cfg.map_width_m, h = cfg.map_height_m;
-      need(Number.isFinite(w) && w > 0 && Number.isFinite(h) && h > 0, 'map_width_m / map_height_m must be positive numbers');
-      const key = mapKeyFromDims(w, h);
-      need(!!key, 'map size ' + w + 'x' + h + ' m is not a known size (' + Object.keys(MAP_SIZES).filter((k) => !MAP_SIZES[k].legacy).join(', ') + ')');
-      out.map_width_m = MAP_SIZES[key].w;
-      out.map_height_m = MAP_SIZES[key].h;
-      out._mapKey = key;
+      const err = mapDimsError(w, h);
+      need(!err, err);
+      out.map_width_m = w;
+      out.map_height_m = h;
+      out._mapKey = w + 'x' + h;
     }
     // wind
     {

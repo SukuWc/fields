@@ -10,7 +10,7 @@ import {
   urlSettingIds, roomCommandFor, roomStateValue, settingDefault, SUBSCRIPTION_IDS, MAX_WIND_MPS,
 } from '../src/settings-registry.js';
 import { SIM_RES_MODES as SIM_SIM_RES_MODES } from '../src/sim.js';
-import { MAP_SIZES, MAP_SIZE_ORDER, DEFAULT_MAP_SIZE as MAP_DEFAULT, scenarioExtent, WALL_INSET_M } from '../src/map-size.js';
+import { MAP_SIZES, MAP_SIZE_ORDER, DEFAULT_MAP_SIZE as MAP_DEFAULT, mapDims, mapSizeFromQuery, fitMapSize, scenarioExtent, WALL_INSET_M } from '../src/map-size.js';
 import { applySettingDefaults, PANEL_IDS } from '../src/settings-panel.js';
 import { parseServerMessage } from '../src/wire-codec.js';
 
@@ -230,6 +230,9 @@ for (const m of html.matchAll(/<(input|select|textarea)\b([^>]*)>/g)) {
 
 // 6. Defaults from one place.
 check('simRes default: the registry\'s, for every map size; sim.js modes are the registry\'s', settingDefault('simRes') === DEFAULT_SIM_RES && Object.values(MAP_SIZES).every((m) => m.simRes === DEFAULT_SIM_RES) && SIM_SIM_RES_MODES === SIM_RES_MODES && !!SIM_RES_MODES[DEFAULT_SIM_RES]);
+check('arbitrary map size via ?map_size: 60x120 parsed with the default simRes', mapSizeFromQuery('?map_size=60x120') === '60x120' && mapDims('60x120').w === 60 && mapDims('60x120').h === 120 && mapDims('60x120').simRes === DEFAULT_SIM_RES);
+check('bad ?map_size falls back to the default', mapSizeFromQuery('?map_size=61x120') === DEFAULT_MAP_SIZE && mapSizeFromQuery('?map_size=1000x1000') === DEFAULT_MAP_SIZE);
+check('fitMapSize keeps a fitting arbitrary size, grows a too-small one to a preset', fitMapSize(0, '60x120') === '60x120' && fitMapSize(18, '60x120') === '100x200');
 check('map size default: the registry\'s', MAP_DEFAULT === DEFAULT_MAP_SIZE && settingDefault('map_size') === DEFAULT_MAP_SIZE && !!MAP_SIZES[DEFAULT_MAP_SIZE]);
 {
   const st = core.roomState().settings;

@@ -23,7 +23,7 @@ const SIZES = MS.MAP_SIZE_ORDER;
 // --- URL param parsing ---
 assert(MS.parseMapSize("100x200") === "100x200" && MS.parseMapSize("200×400") === "200x400" && MS.parseMapSize(" 50X100 ") === "50x100", "parses 100x200 / 200×400 / 50X100");
 assert(MS.parseMapSize("75") === "75x75" && MS.parseMapSize("150") === "150x150", "legacy single side 75 / 150");
-assert(MS.parseMapSize("60x60") === null && MS.parseMapSize("") === null && MS.parseMapSize(null) === null, "unknown sizes rejected");
+assert(MS.parseMapSize("60x60") === "60x60" && MS.parseMapSize("62x60") === null && MS.parseMapSize("16x100") === null && MS.parseMapSize("600x100") === null && MS.parseMapSize("400x404") === null && MS.parseMapSize("") === null && MS.parseMapSize(null) === null, "arbitrary multiples of 4 m accepted; off-step, too small, too big rejected");
 assert(MS.mapSizeFromQuery("") === MS.DEFAULT_MAP_SIZE && MS.DEFAULT_MAP_SIZE === "100x200", "default is 100x200");
 assert(MS.mapSizeFromQuery("?map_size=200x400&scenario_selector=3") === "200x400", "?map_size=200x400");
 assert(MS.mapSizeFromQuery("?mapSize=150") === "150x150", "legacy ?mapSize=150");
