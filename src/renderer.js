@@ -505,6 +505,18 @@ export function setFluidPlaneSize(width, height) {
   fluidPlane.scale.set(width / _planeBase.w, height / _planeBase.h, 1);
 }
 
+// Live map resize (remote room config with new map dims): rebuild the field
+// plane at the new map size, scale it to the lattice, and stretch the far
+// plane to the new zoom-out limit.
+export function resetFluidPlane(mapW, mapH, latticeW, latticeH, zoomMax) {
+  if (!fluidPlane) return;
+  fluidPlane.geometry.dispose();
+  fluidPlane.geometry = new THREE.PlaneGeometry(mapW, mapH);
+  _planeBase = { w: mapW, h: mapH };
+  setFluidPlaneSize(latticeW, latticeH);
+  if (camera && zoomMax) { camera.far = Math.max(85, zoomMax + 15); camera.updateProjectionMatrix(); }
+}
+
 // Flow tracers (flow-tracers.js): one LineSegments buffer for the whole pool
 // (tracers.segments per tracer), created on the first grid and rebuilt when
 // the count or quality changes. Live segments are packed densely and drawn

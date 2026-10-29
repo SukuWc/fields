@@ -26,6 +26,7 @@ Last updated: 2026-10-29
 - [x] Refinement budget: cell updates per root step (curl-threshold controller, `?cellBudget`, 4-boat scenario): [#43](https://github.com/SukuWc/fields/pull/43)
 - [x] Configurable map size (50×100, 100×200, 200×400 m): [#44](https://github.com/SukuWc/fields/pull/44)
 - [x] Arbitrary room sizes in the room TOML / `?map_size=WxH` (multiples of 4 m, 20–512 m per side, ≤ 160 000 m²)
+- [x] Live room resize in remote mode: a TOML commit with new map dims rebuilds the server room at the new size; clients stay connected and rebuild their field texture, plane and camera
 - [x] Perf overlay: cells per level and field step time: [#26](https://github.com/SukuWc/fields/pull/26)
 - [x] Perf panel: per-level share of cell updates vs time, plus field / track / other ms per tick: [#72](https://github.com/SukuWc/fields/pull/72)
 - [x] Fixed-step sim loop so simulation speed no longer depends on the display refresh rate (replaces the `planck-renderer` Runner; sim/client split, phase 1): [#46](https://github.com/SukuWc/fields/pull/46)
