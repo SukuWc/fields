@@ -126,10 +126,7 @@ export function validateRoomCommand(c, core) {
   if (c && c.type === 'config') {
     const v = validateRoomConfig(c.config, { core });
     if (v.error) return v;
-    // Map size is create-time only on the server.
-    if (v.config.map_width_m !== core.map.width || v.config.map_height_m !== core.map.height) {
-      return { error: 'map size is fixed for a server room (set when the room was created)' };
-    }
+    // A different map size rebuilds the room's core (Room._resize).
     return { c: { type: 'config', config: v.config } };
   }
   if (c && c.type === 'gusts') {
@@ -264,14 +261,28 @@ export class Room {
     // Any allowed size (map-size.js mapDimsError); anything else gets the
     // default, so a client cannot create a room past the size/area caps.
     const sizeOk = !mapDimsError(o.mapW, o.mapH);
-    const core = new SimCore({
+    const core = this._makeCore({
       mapW: sizeOk ? o.mapW : 100, mapH: sizeOk ? o.mapH : 200, windAngle: o.windAngle ?? settingDefault('windAngle'), windSpeed: o.windSpeed ?? settingDefault('windSpeed'),
       simRes: Object.prototype.hasOwnProperty.call(SIM_RES_MODES, o.simRes) ? o.simRes : settingDefault('simRes'),
+    });
+    if (o.scenario !== undefined && o.scenario !== null) {
+      const v = validateRoomCommand({ type: 'restart', scenario: o.scenario }, core);
+      if (v.c) core.command(v.c);
+    }
+    if (!this.lockstep) this._start();
+  }
+
+  // A SimCore wired to this room (events broadcast, gust seed from the name).
+  _makeCore({ mapW, mapH, windAngle, windSpeed, simRes }) {
+    const core = new SimCore({
+      mapW, mapH, windAngle, windSpeed, simRes,
       // No texture: the server never paints RGBA (the painter is inert);
       // field messages are encoded from the lattice when due (_fieldMessages).
       texture: undefined,
     });
     core.sim.on((ev) => {
+      // Events from a core replaced by _resize are dropped.
+      if (this.core !== core) return;
       if (!this.lockstep) {
         // Key bindings are per client (_sendBindings), not the scenario's.
         if (ev.type === 'bindControls') return;
@@ -282,12 +293,29 @@ export class Room {
     this.core = core;
     // Deterministic gust PRNG seed from room name (local hosts keep seed 1).
     core.command({ type: 'gusts', ...core.settings.gusts, seed: hashSeed(this.name) });
-    // Re-sync settings after seed apply (gusts command clears columns; none yet).
-    if (o.scenario !== undefined && o.scenario !== null) {
-      const v = validateRoomCommand({ type: 'restart', scenario: o.scenario }, core);
-      if (v.c) core.command(v.c);
-    }
-    if (!this.lockstep) this._start();
+    return core;
+  }
+
+  // Live map-size change (a config commit with new map_width_m /
+  // map_height_m): build a new core at the new size (lattice, walls, AMR,
+  // field buffers), keep every client connected, and tell them the new
+  // dims with an 'info' message so they rebuild texture, plane and camera.
+  // The caller applies the config on the new core and restarts, which
+  // respawns the kept player boats as any restart does (_restart).
+  _resize(mapW, mapH) {
+    const old = this.core;
+    const keep = new Map();
+    for (const [client, list] of this.owned) if (list.length) keep.set(client, list.map((b) => ({ name: b.name, color: b.color })));
+    if (this._respawn) for (const [k, specs] of this._respawn) if (specs && specs.length && !keep.has(k)) keep.set(k, specs);
+    for (const e of this.parked.values()) if (e.boats.length) keep.set(e, e.boats.map((b) => ({ name: b.name, color: b.color })));
+    const st = old.roomState().settings;
+    this._makeCore({ mapW, mapH, windAngle: old.map.wind_direction, windSpeed: old.map.wind_speed, simRes: st.simRes });
+    // Old boat ids are gone with the old core; _restart respawns from _respawn.
+    for (const key of keep.keys()) { if (key.parked) key.boats = []; else this.owned.set(key, []); }
+    this._respawn = keep.size ? keep : null;
+    // Statics (walls, marks) are new: resend to everyone.
+    this.staticsSent.clear();
+    this.broadcast({ type: 'info', info: this.info() });
   }
 
   info() { return { ...this.core.info(), mode: this.lockstep ? 'client' : 'server', room: this.name }; }
@@ -542,6 +570,8 @@ export class Room {
     if (c.type === 'restart') return this._restart(c.scenario);
     if (c.type === 'config') {
       // Expand and apply here so a lattice rebuild uses _restart (keeps boats).
+      const resized = c.config.map_width_m !== this.core.map.width || c.config.map_height_m !== this.core.map.height;
+      if (resized) this._resize(c.config.map_width_m, c.config.map_height_m);
       const cmds = commandsFromConfig(c.config);
       let last;
       let rebuilt = false;
@@ -553,6 +583,7 @@ export class Room {
         last = r;
         if ((cmd.type === 'simRes' || cmd.type === 'amrMode' || cmd.type === 'refine') && r && r.rebuilt) rebuilt = true;
       }
+      if (resized && restartScenario === null) restartScenario = c.config.scenario;
       if (restartScenario !== null || rebuilt) {
         const n = restartScenario !== null ? restartScenario
           : (hasScenario(this.core.sim) ? this.core.sim.scenarioIndex : c.config.scenario);

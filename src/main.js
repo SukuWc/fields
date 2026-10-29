@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { FixedStepLoop } from './loop.js';
 
-import { initRenderer, startAnimation, renderNow, getCamera, setFluidPlaneSize, setFieldVisible, setFlowGrid, setTracerParams, getTracerParams, updateBoatTrails, setTrailParams, setBoatTrailsOn, setGhostParams } from './renderer.js';
+import { initRenderer, startAnimation, renderNow, getCamera, setFluidPlaneSize, resetFluidPlane, setFieldVisible, setFlowGrid, setTracerParams, getTracerParams, updateBoatTrails, setTrailParams, setBoatTrailsOn, setGhostParams } from './renderer.js';
 import { setupControls, setWindCeiling, heldCommands, onHeldChange, deferUiToFrames, flushFrameUi, onRoomLattice } from './controls.js';
 import { LocalHost } from './host.js';
 import { buildScene } from './scene-build.js';
@@ -151,14 +151,15 @@ function startClient() {
   }
   // Camera and drawing toggles (view.js), client side.
   const view = new View();
-  {
-    // Pan limits keep the 7.5 m margin of the 75 m map (±30); the zoom-out
-    // limit shows the whole length (map-size.js cameraLimits).
+  // Pan limits keep the 7.5 m margin of the 75 m map (±30); the zoom-out
+  // limit shows the whole length (map-size.js cameraLimits).
+  function applyCameraLimits() {
     const lim = cameraLimits(map_w, map_h);
     view.camera_position_x_max = lim.xMax; view.camera_position_x_min = -lim.xMax;
     view.camera_position_y_max = lim.yMax; view.camera_position_y_min = -lim.yMax;
     view.camera_zoom_max = lim.zoomMax;
   }
+  applyCameraLimits();
   // Renderer and controls — must init renderer before controls (controls needs getCamera).
   initRenderer({ width: map_w, height: map_h }, planeMat, view);
   let lattice = remote && host.room ? host.room.lattice : host.info.lattice;
@@ -193,6 +194,20 @@ function startClient() {
       }
     });
     document.getElementById('admin_scope').hidden = false;
+    // Live map resize (room config commit with new map dims): new texture
+    // at the new size, camera limits, and the field plane; walls and marks
+    // come with the new statics, boats with the restart that follows.
+    host.on((ev) => {
+      if (ev.type !== 'mapSize') return;
+      map_w = ev.mapW; map_h = ev.mapH;
+      dataTextureMaterial = makeTexture(map_w, map_h);
+      planeMat.map = dataTextureMaterial;
+      planeMat.needsUpdate = true;
+      host.setTexture(dataTextureMaterial);
+      applyCameraLimits();
+      lattice = ev.info.lattice || lattice;
+      resetFluidPlane(map_w, map_h, lattice.w, lattice.h, view.camera_zoom_max);
+    });
     // A room-wide change (any client's): the grid may have been rebuilt.
     host.on((ev) => {
       if (ev.type !== 'room' || !ev.room.lattice) return;

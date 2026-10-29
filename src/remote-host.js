@@ -232,11 +232,24 @@ export class RemoteHost {
         this._setStatus('connected', { again });
         break;
       }
-      case 'info':
+      case 'info': {
+        // Also sent mid-session when the room's map size changes (a config
+        // commit with new map dims rebuilds the server core): drop the held
+        // field and tell the page ('mapSize') so it rebuilds its texture,
+        // field plane and camera limits.
+        const prev = this.info;
         this.info = m.info;
         this.mode = m.info.mode;
         this._resolveReady(m.info);
+        if (prev && (prev.mapW !== m.info.mapW || prev.mapH !== m.info.mapH)) {
+          this._fieldHeld = null;
+          this._latestField = null;
+          this.mapResizes = (this.mapResizes || 0) + 1;
+          const ev = { type: 'mapSize', mapW: m.info.mapW, mapH: m.info.mapH, info: m.info };
+          for (const fn of this._listeners) fn(ev);
+        }
         break;
+      }
       case 'event':
         if (m.ev.type === 'room') this.room = m.ev.room;
         else if (m.ev.type === 'ownBoats') this.own = m.ev.boats || [];

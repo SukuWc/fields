@@ -129,7 +129,7 @@ budget_target = -1
   const badCfg = { ...okCfg, map_width_m: 50, map_height_m: 100, _mapKey: '50x100' };
   room.message(client, { type: 'command', id: 2, c: { type: 'config', config: badCfg } });
   const bad = sent.find((m) => m.type === 'result' && m.id === 2);
-  check('Room refuses map-size change via config', bad && bad.r && /map size/i.test(bad.r.error), JSON.stringify(bad));
+  check('Room resizes live on a map-size change via config (Room._resize)', bad && !(bad.r && bad.r.error) && room.core.map.width === 50 && room.core.map.height === 100 && sent.some((m) => m.type === 'info' && m.info.mapW === 50), JSON.stringify(bad && bad.r && bad.r.error));
 
   const vCmd = validateRoomCommand({ type: 'config', config: okCfg }, room.core);
   check('validateRoomCommand accepts config', !vCmd.error && vCmd.c.type === 'config');

@@ -296,7 +296,7 @@ export function stringifyRoomConfig(cfg) {
 
 /**
  * Default room TOML for Reset: ROOM_CONFIG_DEFAULTS, with map dims overridden
- * to the live room size (remote map is create-time fixed; local keeps the
+ * to the live room size (a remote size change rebuilds the server core; local keeps the
  * page's current map so Reset does not imply a reload). Local-only fill —
  * does not send a room command.
  */
@@ -469,7 +469,7 @@ export function validateRoomConfig(cfg, checks = {}) {
     // Prefer the room's live map for fit when committing without a map change
     // that will reload; map dims in the config are still validated as a known size.
     if (core && (out.map_width_m !== core.map.width || out.map_height_m !== core.map.height)) {
-      // Map change is create-time / reload; still check scenario against the NEW size.
+      // Map change rebuilds the core (server) or reloads (local); still check scenario against the NEW size.
       const e = scenarioExtent(out.scenario);
       if (e.x > out.map_width_m / 2 - WALL_INSET_M || e.y > out.map_height_m / 2 - WALL_INSET_M) {
         return { error: 'scenario ' + out.scenario + ' does not fit this ' + out.map_width_m + ' x ' + out.map_height_m + ' m room' };

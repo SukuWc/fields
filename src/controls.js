@@ -308,9 +308,6 @@ function commitRoomConfig(cfg) {
     location.href = u.toString();
     return Promise.resolve({ reloading: true });
   }
-  if (_remote && mapKey && (cfg.map_width_m !== _mapW || cfg.map_height_m !== _mapH)) {
-    return Promise.resolve({ error: 'map size is fixed for a server room (set when the room was created)' });
-  }
   return _host.command({ type: 'config', config: cfg }).then((r) => {
     if (r && r.error) return r;
     _appliedConfig = { ...cfg };
@@ -358,6 +355,8 @@ export function setupControls(host, view, getCamera) {
   _remote = host.kind === "remote";
   host.on(onSimEvent);
   if (_remote) host.on((ev) => { if (ev.type === "room") { applyRoomState(ev.room); showRoomError(null); } });
+  // Live map resize in a server room: the TOML and Reset use the new size.
+  if (_remote) host.on((ev) => { if (ev.type === "mapSize") { _mapW = ev.mapW; _mapH = ev.mapH; } });
   const info = host.info;
   _infoScenarios = info.scenarios || [];
   _mapW = info.mapW;

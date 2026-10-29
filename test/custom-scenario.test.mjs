@@ -175,7 +175,7 @@ const err = (text, checks = {}) => parseAndValidateRoomConfig(text, checks).erro
   }
   const v = validateRoomCommand({ type: 'restart', scenario: 'custom', layout: { marks: [] } }, room.core);
   check('restart "custom" validates, layout dropped', v.c && v.c.layout === undefined, JSON.stringify(v));
-  check('map change refused on the server', !!validateRoomCommand({ type: 'config', config: parseAndValidateRoomConfig(EXAMPLE_CUSTOM_TOML.replace('map_width_m = 100', 'map_width_m = 200').replace('map_height_m = 200', 'map_height_m = 400')).config }, room.core).error);
+  check('map change accepted on the server (live resize, #121)', !validateRoomCommand({ type: 'config', config: parseAndValidateRoomConfig(EXAMPLE_CUSTOM_TOML.replace('map_width_m = 100', 'map_width_m = 200').replace('map_height_m = 200', 'map_height_m = 400')).config }, room.core).error);
 }
 
 console.log = say;
