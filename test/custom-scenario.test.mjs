@@ -72,6 +72,11 @@ const err = (text, checks = {}) => parseAndValidateRoomConfig(text, checks).erro
     const e = err(text);
     check('error: ' + name, e.includes(want), JSON.stringify(e));
   }
+  // A course mark may be rounded on several legs, and the finish may reuse the start line.
+  const reuse = withCustom('[custom.marks]\nrc = [16, -70]\npin = [-16, -70]\nw = [0, 65]\ngl = [-8, -45]\ngr = [8, -45]\n[custom.start]\ncommittee = "rc"\npin = "pin"\n[custom.course]\nlaps = 1\nlegs = [{ mark = "w" }, { gate = ["gl", "gr"] }, { mark = "w" }]\n[custom.finish]\ncommittee = "rc"\npin = "pin"\n');
+  check('repeated course mark + finish on the start line validate', !err(reuse), err(reuse));
+  check('error: finish swaps start ends', err(reuse.replace('[custom.finish]\ncommittee = "rc"\npin = "pin"', '[custom.finish]\ncommittee = "pin"\npin = "rc"')).includes('used twice'));
+  check('error: course mark also a gate end', err(reuse.replace('{ mark = "w" }]', '{ mark = "gl" }]')).includes('used twice'));
   // The same layout is checked against the map it runs on.
   const small = EXAMPLE_CUSTOM_TOML.replace('map_width_m = 100', 'map_width_m = 50').replace('map_height_m = 200', 'map_height_m = 100');
   check('error: layout outside a smaller map', err(small).includes('outside this 50 x 100 m room'), err(small));

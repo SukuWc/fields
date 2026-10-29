@@ -89,11 +89,14 @@ export function validateCustomLayout(raw, mapW, mapH) {
 
   // Each mark has at most one role.
   const roles = new Map();
-  const use = (id, role, path) => {
+  // group: marks may be reused within the same group only (a course mark
+  // rounded on several legs; the start line reused as the finish line).
+  const use = (id, role, path, group = null) => {
     if (typeof id !== 'string') throw path + ' must be a mark id';
     if (!byId.has(id)) throw path + ': no mark "' + id + '"';
-    if (roles.has(id)) throw 'mark ' + id + ' is used twice (' + roles.get(id) + ' and ' + role + ')';
-    roles.set(id, role);
+    const prev = roles.get(id);
+    if (prev && !(group && prev.group === group)) throw 'mark ' + id + ' is used twice (' + prev.role + ' and ' + role + ')';
+    if (!prev) roles.set(id, { role, group });
     return byId.get(id);
   };
   const lineLen = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -102,8 +105,8 @@ export function validateCustomLayout(raw, mapW, mapH) {
     const s = raw.start;
     if (!isTable(s)) throw '[custom.start] must be a table';
     noUnknown(s, START_KEYS, 'custom.start');
-    const c = use(s.committee, 'start committee', 'custom.start.committee');
-    const p = use(s.pin, 'start pin', 'custom.start.pin');
+    const c = use(s.committee, 'start committee', 'custom.start.committee', 'start committee');
+    const p = use(s.pin, 'start pin', 'custom.start.pin', 'start pin');
     const L = lineLen(c, p);
     if (L < CUSTOM_LINE_MIN_M) throw 'start line ' + c.id + '–' + p.id + ' is ' + fmt(L) + ' m long (min ' + CUSTOM_LINE_MIN_M + ' m)';
     let timings;
@@ -140,17 +143,18 @@ export function validateCustomLayout(raw, mapW, mapH) {
         noUnknown(leg, ['gate'], path);
         const g = leg.gate;
         if (!Array.isArray(g) || g.length !== 2) throw path + '.gate must be ["a", "b"]';
-        const a = use(g[0], 'gate ' + (i + 1), path + '.gate[0]');
-        const b = use(g[1], 'gate ' + (i + 1), path + '.gate[1]');
+        const a = use(g[0], 'gate ' + (i + 1), path + '.gate[0]', 'gate ' + g[0] + '/' + g[1]);
+        const b = use(g[1], 'gate ' + (i + 1), path + '.gate[1]', 'gate ' + g[0] + '/' + g[1]);
+        if (a === b) throw path + '.gate needs two different marks';
         const w = lineLen(a, b);
         if (w < CUSTOM_GATE_MIN_M) throw 'gate ' + a.id + '–' + b.id + ' is ' + fmt(w) + ' m wide (min ' + CUSTOM_GATE_MIN_M + ' m)';
         return { gate: [a.id, b.id] };
       }
       if ('mark' in leg) {
         noUnknown(leg, ['mark', 'round'], path);
-        const m = use(leg.mark, 'course leg ' + (i + 1), path + '.mark');
         const round = leg.round === undefined ? 'port' : leg.round;
         if (round !== 'port' && round !== 'starboard') throw path + '.round must be "port" or "starboard"';
+        const m = use(leg.mark, 'course leg ' + (i + 1), path + '.mark', 'mark ' + round);
         return { mark: m.id, round };
       }
       throw path + ': give mark = "id" or gate = ["a", "b"]';
@@ -163,8 +167,9 @@ export function validateCustomLayout(raw, mapW, mapH) {
     if (!isTable(f)) throw '[custom.finish] must be a table';
     noUnknown(f, FINISH_KEYS, 'custom.finish');
     if (!out.course || out.course.laps === null) throw 'custom.finish needs custom.course with a finite laps';
-    const c = use(f.committee, 'finish boat', 'custom.finish.committee');
-    const p = use(f.pin, 'finish pin', 'custom.finish.pin');
+    // The finish may reuse the start line (same committee and pin).
+    const c = use(f.committee, 'finish boat', 'custom.finish.committee', 'start committee');
+    const p = use(f.pin, 'finish pin', 'custom.finish.pin', 'start pin');
     const L = lineLen(c, p);
     if (L < CUSTOM_LINE_MIN_M) throw 'finish line ' + c.id + '–' + p.id + ' is ' + fmt(L) + ' m long (min ' + CUSTOM_LINE_MIN_M + ' m)';
     out.finish = { committee: c.id, pin: p.id };
