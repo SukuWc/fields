@@ -4,6 +4,7 @@ import { WebSocket } from 'ws';
 import { FrameTimeHistory, FRAME_TIME_CAP, FRAME_TIME_WINDOW_S, FRAME_TIME_HZ } from '../apps/server/frame-times.js';
 import { Room } from '../apps/server/room.js';
 import { startServer } from '../apps/server/index.js';
+import { parseServerMessage } from '../src/wire-codec.js';
 
 let failed = 0;
 const quiet = console.log;
@@ -70,8 +71,8 @@ check('cap is 180 s × 30 Hz', FRAME_TIME_CAP === FRAME_TIME_WINDOW_S * FRAME_TI
   const ws = new WebSocket(`ws://127.0.0.1:${srv.port}/?room=europe-1`);
   await new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('ws timeout')), 5000);
-    ws.on('message', (d) => {
-      const m = JSON.parse(String(d));
+    ws.on('message', (d, isBinary) => {
+      const m = parseServerMessage(isBinary ? new Uint8Array(d) : String(d));
       if (m.type === 'welcome') { clearTimeout(t); resolve(); }
     });
     ws.on('open', () => ws.send(JSON.stringify({ type: 'init', opts: { mapW: 50, mapH: 100, simRes: '2f', scenario: 0 } })));

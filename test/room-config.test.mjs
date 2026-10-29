@@ -9,6 +9,7 @@ import {
   defaultRoomConfig, parseMeanSd, meanSdToToml, gustSpawnerFromConfig,
 } from '../src/room-config.js';
 import { DEFAULT_SIM_RES } from '../src/sim-modes.js';
+import { parseServerMessage } from '../src/wire-codec.js';
 
 let failed = 0;
 const check = (name, ok, extra = '') => {
@@ -110,7 +111,7 @@ budget_target = -1
 // 5. Server Room atomic config + refusal.
 {
   const sent = [];
-  const client = { send: (s) => sent.push(JSON.parse(s)) };
+  const client = { send: (s) => sent.push(parseServerMessage(s)) };
   const room = new Room('toml', { lockstep: true, graceMs: 0 });
   room.join(client);
   room.message(client, { type: 'init', opts: { mapW: 100, mapH: 200, simRes: '2f', scenario: 0 } });

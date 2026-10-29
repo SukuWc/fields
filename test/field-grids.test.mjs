@@ -17,6 +17,7 @@ import { SimCore } from '../src/host.js';
 import { FieldPainter, encodeFieldGrids, decodeFieldGrids, decodeFieldValue, FIELD_HIDDEN } from '../src/fieldPainter.js';
 import { startServer } from '../apps/server/index.js';
 import { RemoteHost } from '../src/remote-host.js';
+import { parseServerMessage } from '../src/wire-codec.js';
 
 let failed = 0;
 const quiet = console.log;
@@ -126,10 +127,10 @@ await measure('scenario 0, 4f, 3 boats', 3, 5);
   A.setField({ on: true });
   let bin = 0;
   const orig = B.ws.onmessage;
-  B.ws.onmessage = (e) => { if (typeof e.data !== 'string') bin++; orig(e); };
+  B.ws.onmessage = (e) => { if (parseServerMessage(e.data).type === 'field') bin++; orig(e); };
   await sleep(1500);
   check('client with the field on gets field messages', A.fieldsReceived >= 3, `A=${A.fieldsReceived}`);
-  check('client with the field off gets no field messages', B.fieldsReceived === 0 && B.fieldBytes === 0 && bin === 0 && B.framesReceived > 10, `B fields=${B.fieldsReceived} binary=${bin} frames=${B.framesReceived}`);
+  check('client with the field off gets no field messages', B.fieldsReceived === 0 && B.fieldBytes === 0 && bin === 0 && B.framesReceived > 10, `B fields=${B.fieldsReceived} fieldMsgs=${bin} frames=${B.framesReceived}`);
   // Different plots: one message per plot, each client gets its own.
   B.setField({ on: true, plotType: 0 });
   const e0 = room.fieldEncodes;
