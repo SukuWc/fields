@@ -48,6 +48,7 @@ Last updated: 2026-10-29
 - [x] Rule data: sim sends rule codes and boat indices, every client writes the rule text and builds the overlay geometry (sim/client split; about 4.7% fewer bytes per frame in scenario 18): [#82](https://github.com/SukuWc/fields/pull/82)
 - [x] Configurable boat refinement: max refinement level and boat refine radius (room setting, settings panel, URL), new default of 3 levels with a 3 m finest disk on every mode (about 10.6 ms per tick on 2f and 6 ms on 4f with one boat, vs about 20 and 38 ms with the full stack): [#86](https://github.com/SukuWc/fields/pull/86)
 - [x] Headless scenario checks for scenarios 3–9 and 18 on a shared harness, plus `npm run check:all` to run every check (scenarios 7 and 9 marked as known sim discrepancies): [#84](https://github.com/SukuWc/fields/pull/84)
+- [x] Gust kernels drop off-map samples instead of ring-searching for nearby water (fixes the periodic europe-1 slowdown to >1 s per tick): [#123](https://github.com/SukuWc/fields/pull/123)
 
 ### 2. Wind and boat feel
 - [x] Fluid sim on, stable from wind 5 through 25 with the sail wake on the fine grid: [#9](https://github.com/SukuWc/fields/pull/9)
