@@ -5,6 +5,7 @@
 import { WebSocket } from 'ws';
 import { startServer } from '../apps/server/index.js';
 import { RemoteHost } from '../src/remote-host.js';
+import { parseServerMessage } from '../src/wire-codec.js';
 import { Room } from '../apps/server/room.js';
 import { configFromRoomState } from '../src/room-config.js';
 
@@ -20,7 +21,7 @@ const spawned = (room) => room.core.sim.players.filter((p) => p.spawnId);
 // 1. Lockstep Room: core dims, lattice, boats, refusals.
 {
   const got = [];
-  const A = { send(s) { got.push(JSON.parse(s)); } };
+  const A = { send(s) { got.push(parseServerMessage(s)); } };
   const room = new Room('resize-unit', { lockstep: true, fieldHz: 0, graceMs: 0 });
   room.join(A);
   room.message(A, { type: 'init', opts });
