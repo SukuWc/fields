@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-10-28
+Last updated: 2026-10-29
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -89,6 +89,7 @@ Last updated: 2026-10-28
 - [x] Landing TOML textarea keeps focus, caret and scroll across the room-list refresh: [#115](https://github.com/SukuWc/fields/pull/115)
 - [x] Room config Commit no longer leaves orphan player boats: restart removes leftover player boats before respawn and defers joins during the restart window, so each client keeps one boat: [#109](https://github.com/SukuWc/fields/pull/109)
 - [x] Default room TOML preset matches live `europe-1` (gusts on at 10 per minute, max refinement level 2, `budget_target` 50000), applied to fixed remote rooms at server startup and used by Reset: [#116](https://github.com/SukuWc/fields/pull/116)
+- [ ] Binary wire format for server hot-path messages: frames, field keyframes, flow and perf as binary WebSocket messages (about 22–27% smaller than JSON), welcome/statics/events/chat/results stay JSON (in progress, [#119](https://github.com/SukuWc/fields/pull/119))
 
 ### 4. Core race loop
 - [ ] Course: start line, marks, finish, boundary (partial: [#27](https://github.com/SukuWc/fields/pull/27) adds anchored mark buoy physics and scenario 11; [#28](https://github.com/SukuWc/fields/pull/28) adds anticlockwise triangle course progress, mark rounding, and scenario 12; [#31](https://github.com/SukuWc/fields/pull/31) adds gate marks and windward-leeward scenario 13; [#33](https://github.com/SukuWc/fields/pull/33) adds start line, RRS 26 start sequence, and scenario 14; [#38](https://github.com/SukuWc/fields/pull/38) adds the finish line and scenario 16; [#45](https://github.com/SukuWc/fields/pull/45) adds SailGP-style virtual boundaries, boundary room, crossing penalty, and scenario 19; still open: wider course use of the boundary)
