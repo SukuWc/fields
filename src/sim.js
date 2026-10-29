@@ -18,6 +18,7 @@ import {
 } from './rules.js';
 import { markRoomTarget } from './course.js';
 import { buildScenarios } from './scenarios.js';
+import { CUSTOM_SCENARIO, customScenario } from './custom-scenario.js';
 import { GustField } from './gusts.js';
 import { Boat } from './boat.js';
 import { settingDefault } from './settings-registry.js';
@@ -85,6 +86,8 @@ export class Sim {
     this.rules = createRulesState();
     this.scenarios = buildScenarios(this);
     this.scenarioIndex = null;
+    // Last layout loaded with loadScenario('custom', layout).
+    this.customLayout = null;
     this.rulesTime = 0;
     this.leaderboard = null;
     this.ticks = 0;
@@ -142,7 +145,19 @@ export class Sim {
     this.emit({ type: 'cleared' });
   }
 
-  loadScenario(index) {
+  // index: a scenario number, or 'custom' with a validated layout from the
+  // room TOML (custom-scenario.js). A bare 'custom' reloads the last layout.
+  loadScenario(index, layout) {
+    if (index === CUSTOM_SCENARIO) {
+      const L = layout || this.customLayout;
+      if (!L) return null;
+      this.clear();
+      this.customLayout = L;
+      const scenario = customScenario(this, L);
+      this.scenarioIndex = CUSTOM_SCENARIO;
+      this.descriptor = scenario.frames;
+      return scenario;
+    }
     this.clear();
     const scenario = this.scenarios[index];
     this.scenarioIndex = Number(index);
@@ -161,7 +176,7 @@ export class Sim {
     if (BOAT_ACTIONS[c.type]) { this.activate(); this._boatCommand(c); return undefined; }
     const map = this.map, bm = this.bm;
     switch (c.type) {
-      case 'restart': return this.loadScenario(c.scenario);
+      case 'restart': return this.loadScenario(c.scenario, c.layout);
       case 'spawnBoat': return this.spawnBoat(c);
       case 'removeBoat': return this.removeBoat(c.id);
       case 'wind':

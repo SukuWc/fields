@@ -54,6 +54,7 @@
 import { plainView } from './host-protocol.js';
 import { FieldPainter } from './fieldPainter.js';
 import { decodeFieldText } from './field-codec.js';
+import { decodeWire, WireVersionError } from './wire-codec.js';
 
 export class RemoteHost {
   constructor(url, opts, texture, { maxInFlight = 0, WebSocketImpl, coalesce = true, token = null, reconnect = false, backoffMs = [500, 1000, 2000, 4000, 8000] } = {}) {
@@ -80,6 +81,8 @@ export class RemoteHost {
     this.fieldsReceived = 0;
     this.fieldsDropped = 0;
     this.fieldBytes = 0;
+    this.bytesReceived = 0;
+    this.protocolError = null;
     this.fieldResyncs = 0;
     this._fieldHeld = null;
     this._latestField = null;
@@ -160,9 +163,26 @@ export class RemoteHost {
     };
     ws.onmessage = (e) => {
       if (this.ws !== ws) return;
-      if (typeof e.data !== 'string') return;
-      const m = JSON.parse(e.data);
-      if (m.type === 'field') this._onField(m, e.data.length);
+      // Hot path (frame / field / flow / perf) is binary (src/wire-codec.js);
+      // the rest is JSON text. A binary message from another build's wire
+      // version closes the connection with a clear error, not garbage.
+      let m, bytes;
+      if (typeof e.data === 'string') { m = JSON.parse(e.data); bytes = e.data.length; }
+      else {
+        try { m = decodeWire(e.data); bytes = e.data.byteLength; }
+        catch (err) {
+          if (!(err instanceof WireVersionError)) throw err;
+          this.protocolError = err.message;
+          console.error('sim server protocol mismatch: ' + err.message);
+          this._closed = true;
+          this._setStatus('disconnected', { error: err.message });
+          this._rejectReady(err);
+          try { ws.close(); } catch { /* closed */ }
+          return;
+        }
+      }
+      this.bytesReceived += bytes;
+      if (m.type === 'field') this._onField(m, bytes);
       else this._onMessage(m);
     };
   }

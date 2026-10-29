@@ -222,6 +222,17 @@ let _mapW = ROOM_CONFIG_DEFAULTS.map_width_m;
 let _mapH = ROOM_CONFIG_DEFAULTS.map_height_m;
 let _onLattice = null;
 let _infoScenarios = [];
+// sessionStorage key: room TOML committed just before a local map-size reload.
+const PENDING_TOML_KEY = "sailzone_pending_room_toml";
+
+// Title / description for the card: numbered from info, custom from the TOML.
+function scenarioCardFor(idx) {
+  if (idx === "custom") {
+    const c = (_appliedConfig && _appliedConfig.custom) || (_host && _host.room && _host.room.settings && _host.room.settings.custom);
+    return c ? { title: c.title || "Custom course", description: c.description || "" } : null;
+  }
+  return _infoScenarios[idx];
+}
 
 export function onRoomLattice(fn) { _onLattice = fn; }
 
@@ -292,6 +303,8 @@ function commitRoomConfig(cfg) {
     u.searchParams.delete('map_width_m');
     u.searchParams.delete('map_height_m');
     if (mapKey !== DEFAULT_MAP_SIZE) u.searchParams.set('map_size', mapKey);
+    // Carry the committed TOML (e.g. a custom layout) over the reload.
+    try { sessionStorage.setItem(PENDING_TOML_KEY, stringifyRoomConfig(cfg)); } catch (e) { /* storage off */ }
     location.href = u.toString();
     return Promise.resolve({ reloading: true });
   }
@@ -300,13 +313,14 @@ function commitRoomConfig(cfg) {
     _appliedConfig = { ...cfg };
     delete _appliedConfig._mapKey;
     delete _appliedConfig._simRes;
+    delete _appliedConfig._custom;
     _wind.angle = cfg.wind_angle_deg;
     _wind.speed = cfg.wind_speed_mps;
     _devMode = !!cfg.dev_mode;
     setWindCeiling(windCeilingMps(cfg._simRes));
     syncDevModeUi();
     const idx = cfg.scenario;
-    const sc = _infoScenarios[idx] || (r && r.title ? r : null);
+    const sc = scenarioCardFor(idx) || (r && r.title ? r : null);
     renderScenarioCard(sc || (_host.room && _host.room.scenario), idx);
     if (!_remote && r && r.lattice && _onLattice) _onLattice(r.lattice, r);
     fillRoomConfigTextarea(_appliedConfig);
@@ -368,7 +382,7 @@ export function setupControls(host, view, getCamera) {
   document.getElementById("scenario_card_toggle").addEventListener("click", () => {
     scenarioCardCollapsed = !scenarioCardCollapsed;
     const idx = _appliedConfig ? _appliedConfig.scenario : 0;
-    renderScenarioCard(_infoScenarios[idx], idx);
+    renderScenarioCard(scenarioCardFor(idx), idx);
   });
 
   document.getElementById("show_field").addEventListener("change", () => {
@@ -438,6 +452,13 @@ export function setupControls(host, view, getCamera) {
       const root = rootFromSimRes(mode);
       seed.root_cell_m = root.root_cell_m;
       seed.steps_per_frame = root.steps_per_frame;
+    }
+    // A TOML committed right before a map-size reload wins over the seed.
+    let pending = null;
+    try { pending = sessionStorage.getItem(PENDING_TOML_KEY); sessionStorage.removeItem(PENDING_TOML_KEY); } catch (e) { /* storage off */ }
+    if (pending) {
+      const p = parseAndValidateRoomConfig(pending, { scenarios: _infoScenarios });
+      if (!p.error && p.config.map_width_m === _mapW && p.config.map_height_m === _mapH) Object.assign(seed, p.config);
     }
     _appliedConfig = seed;
     fillRoomConfigTextarea(seed);

@@ -143,7 +143,9 @@ export function sceneStatics(sim, ids, bodies = bodyScene(sim.map.world, ids)) {
   };
   if (sim.startSequence) st.start = lineState(sim.startSequence.line);
   const course = sim.course;
-  if (course && racing[0]) st.course = courseStatics(course);
+  // A custom (TOML) layout sends its course before any boat joins, so the
+  // statics are ready when the first player spawns.
+  if (course && (racing[0] || sim.scenarioIndex === 'custom')) st.course = courseStatics(course);
   if (course && course.finish && sim.raceResults) st.finish = finishLineState(course.finish);
   if (sim.boundary) st.boundary = sim.boundary.boundaryState();
   return st;

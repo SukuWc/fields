@@ -147,7 +147,7 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
   };
   const status = () => ({
     ok: true, lockstep,
-    rooms: [...rooms.values()].map((r) => ({ name: r.name, clients: r.clients.size, ticks: r.ticks, tickMs: Math.round(r.tickMs * 10) / 10, frameMs: Math.round(r.frameMs * 10) / 10, fieldEncodes: r.fieldEncodes, fieldKeys: r.fieldKeys, fieldBytesSent: r.fieldBytesSent, fieldEncodeMs: Math.round(r.fieldEncodeMs * 100) / 100 })),
+    rooms: [...rooms.values()].map((r) => ({ name: r.name, clients: r.clients.size, ticks: r.ticks, tickMs: Math.round(r.tickMs * 10) / 10, frameMs: Math.round(r.frameMs * 10) / 10, fieldEncodes: r.fieldEncodes, fieldKeys: r.fieldKeys, fieldBytesSent: r.fieldBytesSent, frameBytesSent: r.frameBytesSent, lastFrameBytes: r.lastFrameBytes, staticsBytesSent: r.staticsBytesSent, wire: 'binary-v1', fieldEncodeMs: Math.round(r.fieldEncodeMs * 100) / 100 })),
   });
   const corsHeaders = {
     'access-control-allow-origin': '*',

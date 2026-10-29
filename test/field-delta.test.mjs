@@ -12,6 +12,7 @@ import { encodeFieldText, decodeFieldText } from '../src/field-codec.js';
 import { startServer } from '../apps/server/index.js';
 import { RemoteHost } from '../src/remote-host.js';
 import { settingDefault } from '../src/settings-registry.js';
+import { parseServerMessage, encodeWire, fieldForWire } from '../src/wire-codec.js';
 
 let failed = 0;
 const quiet = console.log;
@@ -39,9 +40,9 @@ function streamKeys(core, ticks) {
     const t0 = performance.now();
     const m = gridsOf(core);
     const e = encodeFieldText(m, ++seq, null, 0);
-    const s = JSON.stringify(e.m);
+    const s = encodeWire(fieldForWire(e.m), { exact: true });
     r.encMs += performance.now() - t0;
-    const d = decodeFieldText(JSON.parse(s), null);
+    const d = decodeFieldText(parseServerMessage(s), null);
     if (!d) { r.decoded = false; break; }
     for (let k = 0; k < m.grids.length; k++) {
       const a = d.msg.grids[k].values, v = m.grids[k].values;
@@ -131,7 +132,7 @@ if (Object.keys(bandwidth).length) quiet('BANDWIDTH_KB_S ' + JSON.stringify(band
   const room = srv.rooms.get('keys');
   check('room default fieldSkip is 0', room.core.settings.fieldSkip === 0);
   const msgs = [];
-  const tap = (h, list) => { const o = h.ws.onmessage; h.ws.onmessage = (e) => { if (typeof e.data === 'string' && e.data.startsWith('{"type":"field"')) list.push(JSON.parse(e.data)); o(e); }; };
+  const tap = (h, list) => { const o = h.ws.onmessage; h.ws.onmessage = (e) => { { const m = parseServerMessage(e.data); if (m.type === 'field') list.push(m); } o(e); }; };
   tap(A, msgs);
   A.setField({ on: true, plotType: 3, contrastExp: 0 });
   const run = async (n) => { const f0 = A.framesReceived; for (let k = 0; k < n; k++) A.tick({ dt: 1 / 30, held: [], present: true, view }); for (let w = 0; w < 500 && A.framesReceived < f0 + n; w++) await sleep(10); await sleep(30); };
