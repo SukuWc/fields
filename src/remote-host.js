@@ -56,9 +56,27 @@ import { FieldPainter } from './fieldPainter.js';
 import { decodeFieldText } from './field-codec.js';
 import { decodeWire, WireVersionError } from './wire-codec.js';
 
+/** localStorage key shared with the landing page (apps/landing/index.html). */
+export const ADMIN_SECRET_KEY = 'sailzone.adminSecret';
+export function readAdminSecret() {
+  try { return (typeof localStorage !== 'undefined' && localStorage.getItem(ADMIN_SECRET_KEY)) || ''; } catch (_) { return ''; }
+}
+export function writeAdminSecret(v) {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    if (v) localStorage.setItem(ADMIN_SECRET_KEY, v); else localStorage.removeItem(ADMIN_SECRET_KEY);
+  } catch (_) { /* private mode */ }
+}
+
 export class RemoteHost {
-  constructor(url, opts, texture, { maxInFlight = 0, WebSocketImpl, coalesce = true, token = null, reconnect = false, backoffMs = [500, 1000, 2000, 4000, 8000] } = {}) {
+  constructor(url, opts, texture, { maxInFlight = 0, WebSocketImpl, coalesce = true, token = null, reconnect = false, backoffMs = [500, 1000, 2000, 4000, 8000], adminSecret } = {}) {
     this.kind = 'remote';
+    // Room admin login (same secret as the landing page, localStorage
+    // ADMIN_SECRET_KEY). Sent with every init so a reconnect stays logged in.
+    this.adminSecret = adminSecret !== undefined ? (adminSecret || '') : readAdminSecret();
+    // Server answer: { gate, enabled, authed } (welcome / auth result).
+    this.admin = null;
+    this._adminListeners = [];
     this.url = url;
     this.texture = texture;
     this.maxInFlight = maxInFlight;
@@ -139,6 +157,7 @@ export class RemoteHost {
     ws.onopen = () => {
       const init = { type: 'init', opts: this._initOpts };
       if (this.token) init.token = this.token;
+      if (this.adminSecret) init.adminSecret = this.adminSecret;
       ws.send(JSON.stringify(init));
       this._fieldHeld = null;
       this._latestField = null;
@@ -219,6 +238,7 @@ export class RemoteHost {
         this.bindings = m.bindings || 0;
         this.info = m.info;
         this.mode = m.info.mode;
+        this._setAdmin(m.admin || null);
         this._lastInput = '';
         if (again) {
           // A reconnect: the page applies the snapshot as it applies events.
@@ -364,6 +384,31 @@ export class RemoteHost {
       this._send({ type, id, [key]: value });
     });
   }
+
+  /** Admin state changes ({ gate, enabled, authed }). */
+  onAdmin(fn) { this._adminListeners.push(fn); }
+  _setAdmin(a) {
+    this.admin = a;
+    for (const fn of this._adminListeners) fn(a);
+  }
+  /**
+   * Log in with the room admin secret ('' logs out). Stores it in
+   * localStorage (shared with the landing page) only when the server accepts it.
+   */
+  async login(secret) {
+    const s = typeof secret === 'string' ? secret.trim() : '';
+    const r = await this._call('auth', 'secret', s);
+    if (r && r.admin) this._setAdmin(r.admin);
+    if (r && r.ok) {
+      this.adminSecret = s;
+      writeAdminSecret(s);
+    } else if (r && r.error === 'unauthorized') {
+      this.adminSecret = '';
+      writeAdminSecret('');
+    }
+    return r;
+  }
+  logout() { return this.login(''); }
 
   on(fn) { this._listeners.push(fn); }
   onFrame(fn) { this._frameListeners.push(fn); }

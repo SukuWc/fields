@@ -207,7 +207,7 @@ for (const m of html.matchAll(/<(input|select|textarea)\b([^>]*)>/g)) {
   const byPanel = (p) => controls.filter((c) => c.panel === p).map((c) => c.id).join();
   const playerIds = SETTINGS.filter((s) => s.panel === 'player' && s.control !== false).map((s) => s.id).join();
   check('the Player panel holds exactly the player-panel settings, in order', byPanel('player') === playerIds, byPanel('player'));
-  check('the Room settings panel is the TOML editor (room_config + buttons are not registry settings)', byPanel('room') === 'room_config', byPanel('room'));
+  check('the Room settings panel is the TOML editor plus the admin login field (not registry settings)', byPanel('room') === 'room_admin_secret,room_config', byPanel('room'));
   check('room_config textarea is in #admin_panel', /id="room_config"/.test(html) && html.indexOf('id="room_config"') > panels.room[0] && html.indexOf('id="room_config"') < panels.room[1]);
   check('Commit and Reset buttons are in #admin_panel', /id="room_config_commit"/.test(html) && /id="room_config_reset"/.test(html));
   check('Reset heading describes default TOML preset (not discard-to-applied)',

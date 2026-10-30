@@ -45,7 +45,7 @@ const tex = () => ({ image: { data: new Uint8Array(0) } });
 
 // Server: two clients.
 {
-  const srv = await startServer({ port: 0, fieldHz: 0 });
+  const srv = await startServer({ port: 0, adminGate: false, fieldHz: 0 });
   const url = `ws://127.0.0.1:${srv.port}/?room=own`;
   const A = new RemoteHost(url, opts, tex(), { WebSocketImpl: WebSocket });
   await A.ready;

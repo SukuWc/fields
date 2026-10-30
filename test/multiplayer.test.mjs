@@ -22,7 +22,7 @@ const until = async (fn, ms = 3000) => { const t = Date.now(); while (!fn() && D
 
 // Server clock rooms.
 {
-  const srv = await startServer({ port: 0, fieldHz: 0 });
+  const srv = await startServer({ port: 0, adminGate: false, fieldHz: 0 });
   const url = (r) => `ws://127.0.0.1:${srv.port}/?room=${r}`;
 
   // 1. Joining: the creator's scenario loads once; a second client changes nothing.
@@ -184,7 +184,7 @@ const until = async (fn, ms = 3000) => { const t = Date.now(); while (!fn() && D
 // 7. Readouts: each client's readout is its own boat's (lockstep: the
 // server state is still when the last frame arrives).
 {
-  const srv = await startServer({ port: 0, lockstep: true, fieldHz: 0 });
+  const srv = await startServer({ port: 0, adminGate: false, lockstep: true, fieldHz: 0 });
   const url = `ws://127.0.0.1:${srv.port}/?room=hud`;
   const A = new RemoteHost(url, { ...opts, scenario: 14 }, tex(), { WebSocketImpl: WebSocket, coalesce: false });
   await A.ready;

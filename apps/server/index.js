@@ -26,9 +26,8 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import { WebSocketServer } from 'ws';
-import { Room, FIELD_HZ, FIELD_TOL, GRACE_MS } from './room.js';
+import { Room, FIELD_HZ, FIELD_TOL, GRACE_MS, adminSecretsEqual } from './room.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
@@ -85,12 +84,7 @@ export function normalizeAdminSecret(raw) {
   return s ? s : null;
 }
 
-/** Constant-time secret compare (hashes first so lengths need not match). */
-export function adminSecretsEqual(a, b) {
-  const ha = crypto.createHash('sha256').update(String(a ?? '')).digest();
-  const hb = crypto.createHash('sha256').update(String(b ?? '')).digest();
-  return crypto.timingSafeEqual(ha, hb);
-}
+export { adminSecretsEqual };
 
 function bearerToken(req) {
   const h = req.headers.authorization;
@@ -127,12 +121,12 @@ export function tomlFromBody(raw, contentType) {
   return { toml: text };
 }
 
-export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, fieldHz = FIELD_HZ, fieldTol = FIELD_TOL, graceMs = GRACE_MS, fixedRooms = [], staticDir = null, adminSecret = process.env.ADMIN_SECRET } = {}) {
+export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, fieldHz = FIELD_HZ, fieldTol = FIELD_TOL, graceMs = GRACE_MS, fixedRooms = [], staticDir = null, adminSecret = process.env.ADMIN_SECRET, adminGate = true } = {}) {
   const secret = normalizeAdminSecret(adminSecret);
   const adminEnabled = !!secret;
   const rooms = new Map();
   for (const name of fixedRooms) {
-    const room = new Room(name, { lockstep, fieldHz, fieldTol, graceMs, persistent: true });
+    const room = new Room(name, { lockstep, fieldHz, fieldTol, graceMs, persistent: true, adminGate, adminSecret: secret });
     // The sim exists and ticks from startup (even with no clients).
     if (!lockstep) room._create({});
     // Fixed remote rooms start on the shared Reset preset (live europe-1 baseline).
@@ -227,7 +221,7 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
     let room = rooms.get(name);
     if (!room && fixedRooms.length) { ws.close(1008, 'no such room'); return; }
     if (!room) {
-      room = new Room(name, { lockstep, fieldHz, fieldTol, graceMs });
+      room = new Room(name, { lockstep, fieldHz, fieldTol, graceMs, adminGate, adminSecret: secret });
       room.onDispose = (r) => { if (rooms.get(name) === r) rooms.delete(name); };
       rooms.set(name, room);
     }

@@ -23,7 +23,7 @@ mute();
 
 // 1. Lockstep: the client drives ticks, same frames as a LocalHost.
 {
-  const srv = await startServer({ port: 0, lockstep: true });
+  const srv = await startServer({ port: 0, adminGate: false, lockstep: true });
   let rh, info;
   // A fresh room per scenario: a room keeps its lattice across restarts, as
   // a page does, and the reference is a fresh LocalHost.
@@ -57,7 +57,7 @@ mute();
 
 // 2. Authoritative: the server ticks at 30 Hz by itself.
 {
-  const srv = await startServer({ port: 0, fieldHz: 5 });
+  const srv = await startServer({ port: 0, adminGate: false, fieldHz: 5 });
   const url = `ws://127.0.0.1:${srv.port}/?room=t2`;
   const a = new RemoteHost(url, opts, tex(), { WebSocketImpl: WebSocket });
   const info = await a.ready;

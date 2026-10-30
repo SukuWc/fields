@@ -265,6 +265,38 @@ export function showRoomError(msg) {
   el.hidden = !msg;
 }
 
+// Remote admin gate (server ADMIN_SECRET): read-only until logged in.
+// host.admin = { gate, enabled, authed }; no gate (local / worker) = editable.
+export function adminCanWrite(admin) {
+  return !admin || !admin.gate || (admin.enabled && admin.authed);
+}
+
+export function updateAdminUi() {
+  const admin = _remote && _host ? _host.admin : null;
+  const gated = !!(admin && admin.gate);
+  const can = adminCanWrite(admin);
+  const box = document.getElementById("room_admin_auth");
+  if (box) box.style.display = gated ? "flex" : "none";
+  const state = document.getElementById("room_admin_state");
+  if (state) {
+    state.textContent = !gated ? "" : !admin.enabled ? "Read-only: admin writes disabled (ADMIN_SECRET not set)"
+      : admin.authed ? "Logged in as admin" : "Read-only: log in to change room settings";
+  }
+  const secret = document.getElementById("room_admin_secret");
+  const login = document.getElementById("room_admin_login");
+  const logout = document.getElementById("room_admin_logout");
+  const showLogin = gated && admin.enabled && !admin.authed;
+  if (secret) secret.hidden = !showLogin;
+  if (login) login.hidden = !showLogin;
+  if (logout) logout.hidden = !(gated && admin.authed);
+  const ta = roomConfigEl();
+  if (ta) ta.readOnly = !can;
+  for (const id of ["room_config_commit", "room_config_reset"]) {
+    const b = document.getElementById(id);
+    if (b) b.disabled = !can;
+  }
+}
+
 function roomConfigEl() { return document.getElementById("room_config"); }
 
 function fillRoomConfigTextarea(cfg) {
@@ -405,8 +437,30 @@ export function setupControls(host, view, getCamera) {
   const ta = roomConfigEl();
   if (ta) ta.addEventListener("input", markDirty);
 
+  const loginBtn = document.getElementById("room_admin_login");
+  const secretEl = document.getElementById("room_admin_secret");
+  const doLogin = () => {
+    if (!_host || typeof _host.login !== "function") return;
+    const v = secretEl ? secretEl.value : "";
+    if (!v.trim()) { showRoomError("Enter the admin secret"); return; }
+    _host.login(v).then((r) => {
+      if (secretEl) secretEl.value = "";
+      showRoomError(r && r.error ? (r.error === "unauthorized" ? "Wrong admin secret" : r.error) : null);
+      updateAdminUi();
+    });
+  };
+  if (loginBtn) loginBtn.addEventListener("click", doLogin);
+  if (secretEl) secretEl.addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); e.stopPropagation(); });
+  const logoutBtn = document.getElementById("room_admin_logout");
+  if (logoutBtn) logoutBtn.addEventListener("click", () => {
+    if (_host && typeof _host.logout === "function") _host.logout().then(() => { showRoomError(null); updateAdminUi(); });
+  });
+  if (_remote && typeof host.onAdmin === "function") host.onAdmin(() => updateAdminUi());
+  updateAdminUi();
+
   const commitBtn = document.getElementById("room_config_commit");
   if (commitBtn) commitBtn.addEventListener("click", () => {
+    if (!adminCanWrite(_remote && _host ? _host.admin : null)) { showRoomError("Log in as admin to change room settings"); return; }
     const text = ta ? ta.value : "";
     // Scenario fit uses the TOML map size (local Commit may reload onto it).
     const parsed = parseAndValidateRoomConfig(text, { scenarios: _infoScenarios });
@@ -418,6 +472,7 @@ export function setupControls(host, view, getCamera) {
 
   const resetBtn = document.getElementById("room_config_reset");
   if (resetBtn) resetBtn.addEventListener("click", () => {
+    if (!adminCanWrite(_remote && _host ? _host.admin : null)) return;
     // Default preset; keep the room's current map size (fixed on the server).
     // Local only — does not Commit. Mark dirty so a peer's room event does
     // not overwrite the preset before the user Commits.
