@@ -7,13 +7,13 @@ import { WebSocket } from 'ws';
 import { RemoteHost } from '../src/remote-host.js';
 
 const port = 8700 + Math.floor(Math.random() * 200);
-const srv = spawn(process.execPath, ['dist-server/server.mjs', '--port', String(port)], { stdio: ['ignore', 'pipe', 'inherit'] });
+const srv = spawn(process.execPath, ['dist-server/server.mjs', '--port', String(port)], { stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, ADMIN_SECRET: 'smoke-admin' } });
 const fail = (msg) => { console.error('FAIL ' + msg); srv.kill(); process.exit(1); };
 setTimeout(() => fail('timeout'), 60000).unref();
 await new Promise((resolve) => srv.stdout.on('data', (d) => { process.stdout.write(d); if (String(d).includes('listening')) resolve(); }));
 
 const tex = { image: { data: new Uint8Array(0) } };
-const host = new RemoteHost(`ws://127.0.0.1:${port}/ws?room=europe-1`, { mapW: 100, mapH: 200, simRes: '4f' }, tex, { WebSocketImpl: WebSocket });
+const host = new RemoteHost(`ws://127.0.0.1:${port}/ws?room=europe-1`, { mapW: 100, mapH: 200, simRes: '4f' }, tex, { WebSocketImpl: WebSocket, adminSecret: 'smoke-admin' });
 const info = await host.ready.catch((e) => fail(String(e)));
 host.setField({ on: true });
 console.log('info: mode', info.mode, 'map', info.mapW + 'x' + info.mapH, 'scenarios', info.scenarios.length);

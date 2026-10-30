@@ -123,7 +123,7 @@ if (Object.keys(bandwidth).length) quiet('BANDWIDTH_KB_S ' + JSON.stringify(band
 
 // 5. Server: keyframes only + fieldSkip cadence.
 {
-  const srv = await startServer({ port: 0, lockstep: true });
+  const srv = await startServer({ port: 0, adminGate: false, lockstep: true });
   const url = `ws://127.0.0.1:${srv.port}/?room=keys`;
   const opts = { mapW: 50, mapH: 100, simRes: '2f', oversampling: 8 };
   const A = new RemoteHost(url, opts, tex(), { WebSocketImpl: WebSocket, coalesce: false });

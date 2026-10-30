@@ -30,6 +30,7 @@
 import { SimCore } from '../../src/host.js';
 import { answer, eventForClient, EXACT_JSON } from '../../src/host-protocol.js';
 import { BOAT_ACTIONS } from '../../src/sim.js';
+import crypto from 'node:crypto';
 import { MAX_WIND_MPS, ROOM_COMMANDS, SIM_RES_MODES, validateRoomSettingCommand, settingDefault } from '../../src/settings-registry.js';
 import { validateRoomConfig, parseAndValidateRoomConfig, commandsFromConfig, configFromRoomState, stringifyRoomConfig, defaultRoomConfig } from '../../src/room-config.js';
 import { hashSeed } from '../../src/gusts.js';
@@ -120,6 +121,13 @@ export const MAX_PLAYER_BOATS = 8;
 // scenario exists and fits this room's map) is checked here.
 export { MAX_WIND_MPS, ROOM_COMMANDS };
 
+/** Constant-time secret compare (hashes first so lengths need not match). */
+export function adminSecretsEqual(a, b) {
+  const ha = crypto.createHash('sha256').update(String(a ?? '')).digest();
+  const hb = crypto.createHash('sha256').update(String(b ?? '')).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
 // A room-wide command checked against the room: { c } (normalised) or
 // { error }.
 export function validateRoomCommand(c, core) {
@@ -197,8 +205,15 @@ export const FIELD_HZ = 30;
 export const FIELD_TOL = 1;
 
 export class Room {
-  constructor(name, { lockstep = false, persistent = false, fieldHz = FIELD_HZ, fieldTol = FIELD_TOL, now = () => performance.now(), graceMs = GRACE_MS } = {}) {
+  constructor(name, { lockstep = false, persistent = false, fieldHz = FIELD_HZ, fieldTol = FIELD_TOL, now = () => performance.now(), graceMs = GRACE_MS, adminGate = false, adminSecret = null } = {}) {
     this.name = name;
+    // Admin gate (index.js turns it on): room-wide commands (ROOM_COMMANDS:
+    // config, restart, wind, …) need a client that sent the right
+    // ADMIN_SECRET ('auth' / init.adminSecret). With the gate on and no
+    // secret set, room commands are refused for everyone (read-only).
+    this.adminGate = !!adminGate;
+    this.adminSecret = adminSecret || null;
+    this.admins = new Set();
     this.graceMs = graceMs;
     // Per client: its token (init). Per absent token: { boats, timer, until }.
     this.tokens = new Map();
@@ -358,6 +373,7 @@ export class Room {
   }
 
   leave(client) {
+    this.admins.delete(client);
     const token = this.tokens.get(client);
     const list = this.owned.get(client) || [];
     const specs = this._respawn && this._respawn.get(client);
@@ -487,14 +503,37 @@ export class Room {
     return Math.min((this.owned.get(client) || []).length, 2);
   }
 
+  /** Admin state for one client: enabled (writes possible) and authed. */
+  adminState(client) {
+    if (!this.adminGate) return { gate: false, enabled: true, authed: true };
+    return { gate: true, enabled: !!this.adminSecret, authed: this.admins.has(client) };
+  }
+
+  _auth(client, secret) {
+    if (secret === null || secret === undefined || secret === '') {
+      this.admins.delete(client);
+      return { ok: true, admin: this.adminState(client) };
+    }
+    if (!this.adminGate) return { ok: true, admin: this.adminState(client) };
+    if (!this.adminSecret) return { error: 'admin writes disabled (set ADMIN_SECRET)', admin: this.adminState(client) };
+    if (typeof secret === 'string' && adminSecretsEqual(secret, this.adminSecret)) {
+      this.admins.add(client);
+      return { ok: true, admin: this.adminState(client) };
+    }
+    this.admins.delete(client);
+    return { error: 'unauthorized', admin: this.adminState(client) };
+  }
+
   message(client, m) {
+    if (m.type === 'auth') { this.send(client, { type: 'result', id: m.id, r: this._auth(client, m.secret) }); return; }
     if (m.type === 'init') {
+      if (typeof m.adminSecret === 'string' && m.adminSecret) this._auth(client, m.adminSecret);
       if (!this.core) this._create(m.opts);
       if (typeof m.token === 'string' && TOKEN_RE.test(m.token) && !this.tokens.has(client)) {
         this.tokens.set(client, m.token);
         this._reclaim(client, m.token);
       }
-      this.send(client, { type: 'welcome', info: this.info(), room: this.core.roomState(), own: this._ownList(client), bindings: this._bindings(client), chat: this.chat });
+      this.send(client, { type: 'welcome', info: this.info(), room: this.core.roomState(), own: this._ownList(client), bindings: this._bindings(client), chat: this.chat, admin: this.adminState(client) });
       return;
     }
     if (m.type === 'chat') { this.send(client, { type: 'result', id: m.id, r: this._chat(client, m.text) }); return; }
@@ -557,6 +596,9 @@ export class Room {
       return mapped ? this.core.command(mapped) : undefined;
     }
     if (ROOM_COMMANDS.has(c.type)) {
+      if (this.adminGate && !this.admins.has(client)) {
+        return { error: this.adminSecret ? 'admin login required' : 'admin writes disabled (set ADMIN_SECRET)' };
+      }
       const v = validateRoomCommand(c, this.core);
       if (v.error) return { error: v.error };
       const r = this._roomCommand(v.c);

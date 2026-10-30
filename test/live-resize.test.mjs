@@ -62,7 +62,7 @@ const spawned = (room) => room.core.sim.players.filter((p) => p.spawnId);
 
 // 2. Real server, two RemoteHosts: both get the new dims, frames continue.
 {
-  const srv = await startServer({ port: 0, fieldHz: 0 });
+  const srv = await startServer({ port: 0, adminGate: false, fieldHz: 0 });
   const url = `ws://127.0.0.1:${srv.port}/?room=resize`;
   const A = new RemoteHost(url, opts, tex(), { WebSocketImpl: WebSocket });
   await A.ready;

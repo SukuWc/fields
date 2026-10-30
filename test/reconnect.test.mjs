@@ -20,7 +20,7 @@ const opts = { mapW: 100, mapH: 200, simRes: '4f' };
 const tex = () => ({ image: { data: new Uint8Array(0) } });
 const until = async (fn, ms = 4000) => { const t = Date.now(); while (!fn() && Date.now() - t < ms) await sleep(20); return fn(); };
 const GRACE = 1500;
-const srv = await startServer({ port: 0, fieldHz: 0, graceMs: GRACE });
+const srv = await startServer({ port: 0, adminGate: false, fieldHz: 0, graceMs: GRACE });
 const url = (r) => `ws://127.0.0.1:${srv.port}/?room=${r}`;
 const connect = async (r, token, extra = {}) => { const h = new RemoteHost(url(r), { ...opts, scenario: 0 }, tex(), { WebSocketImpl: WebSocket, token, ...extra }); await h.ready; return h; };
 const TA = 'token-aaaa-1111', TX = 'token-xxxx-9999';
@@ -130,7 +130,7 @@ const awayLabels = (f) => buildScene(f.state, f.statics, view).guides.filter((g)
 const awOf = (h, room, id) => { const f = h.lastFrame; const i = room.core.sim.players.findIndex((p) => p.spawnId === id); return f && f.state.aw && i >= 0 ? f.state.aw[i] : null; };
 const tickFor = async (h, ms) => { const t = Date.now(); while (Date.now() - t < ms) { h.tick({ dt: 1 / 30, held: [], present: true, view }); await sleep(33); } };
 {
-  const srv2 = await startServer({ port: 0, fieldHz: 0 });
+  const srv2 = await startServer({ port: 0, adminGate: false, fieldHz: 0 });
   const url2 = `ws://127.0.0.1:${srv2.port}/?room=cd`;
   const conn2 = async (token) => { const h = new RemoteHost(url2, { ...opts, scenario: 0 }, tex(), { WebSocketImpl: WebSocket, token }); await h.ready; return h; };
   check('default grace period is 10 s', GRACE_MS === 10000 && srv2.rooms.size === 0);
