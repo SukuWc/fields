@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-10-29
+Last updated: 2026-10-30
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -50,6 +50,7 @@ Last updated: 2026-10-29
 - [x] Headless scenario checks for scenarios 3–9 and 18 on a shared harness, plus `npm run check:all` to run every check (scenarios 7 and 9 marked as known sim discrepancies): [#84](https://github.com/SukuWc/fields/pull/84)
 - [x] Gust kernels drop off-map samples instead of ring-searching for nearby water (fixes the periodic europe-1 slowdown to >1 s per tick): [#123](https://github.com/SukuWc/fields/pull/123)
 - [x] Remote default preset matches live europe-1, including the custom race course (local solo stays on scenario 0): [#124](https://github.com/SukuWc/fields/pull/124)
+- [x] In-game room settings locked behind admin login for remote games (server rejects room commands without `ADMIN_SECRET` auth; Login / Logout shared with the landing page): [#125](https://github.com/SukuWc/fields/pull/125)
 
 ### 2. Wind and boat feel
 - [x] Fluid sim on, stable from wind 5 through 25 with the sail wake on the fine grid: [#9](https://github.com/SukuWc/fields/pull/9)
