@@ -44,6 +44,7 @@ export function pushRefinementGuides(guides, domains, bm) {
         color: seg.dim ? 0x8899aa : 0x000000,
         opacity: seg.dim ? 0.35 : 1,
         type: 'guide',
+        refine: true,
         x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2,
       });
     }
@@ -52,7 +53,7 @@ export function pushRefinementGuides(guides, domains, bm) {
   for (const seg of unionMaskBorderLines(masked, bm)) {
     // Full-opacity light line: the 0.35 gray sat on the dark speed field
     // and the merged border could not be told from the black per-boat circles.
-    guides.push({ color: 0x9ad0ff, opacity: 1, type: 'guide', x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2 });
+    guides.push({ color: 0x9ad0ff, opacity: 1, type: 'guide', refine: true, x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2 });
   }
   const children = [];
   for (const domain of domains) children.push(...domain.domains);

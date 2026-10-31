@@ -67,11 +67,25 @@ function fireKeydown(match) {
   });
 }
 
+// W / S zoom the camera one step in / out (same step and limits as the +/-
+// buttons). They also steer a second local boat's heading target (boat 1 in
+// autokeybind); while a second boat is bound, W / S keep steering it.
+export const ZOOM_IN_KEY = 87;  // W
+export const ZOOM_OUT_KEY = 83; // S
+export function zoomKeyStep(keyCode, boundBoats) {
+  if (boundBoats > 1) return 0;
+  if (keyCode === ZOOM_IN_KEY) return -2;
+  if (keyCode === ZOOM_OUT_KEY) return +2;
+  return 0;
+}
+
 function checkKeyPress(e) {
   e = e || window.event;
   // Letter keys (Q, E) also sit on the settings panel. Ignore them, and the
   // helm keys, while a control has focus so typing does not steer the boat.
   if (typingInControl(e)) return;
+  const zoom = e.ctrlKey || e.metaKey || e.altKey ? 0 : zoomKeyStep(e.keyCode, _boundBoats);
+  if (zoom && _view) { _view.input_camera_zoom_relative(zoom); return; }
   const was = key_state[e.keyCode];
   key_state[e.keyCode] = true;
   fireKeydown(bind => key_state[bind.activation_key]);
@@ -100,11 +114,23 @@ export function setVirtualKey(keyCode, down) {
 
 // Held boat commands for this tick, in binding order (sim.step reads them
 // after the scenario frames, where the old processKeys ran).
+// "Sticky autopilot" (player setting, localStorage): Left / Right (and A / D)
+// move the autopilot heading target instead of the rudder, so the helm keys
+// never switch the autopilot off. Mapped here, so local, worker and server
+// games all get the same autopilotTurn command.
+export const STICKY_AUTOPILOT_KEY = 'fields.stickyAutopilot';
+let _stickyAutopilot = true; // on by default
+export function setStickyAutopilot(on) { _stickyAutopilot = !!on; heldChanged(); }
+export function stickyAutopilot() { return _stickyAutopilot; }
+export function helmCommand(command, sticky) {
+  return sticky && command.type === 'helm' ? { ...command, type: 'autopilotTurn' } : command;
+}
+
 export function heldCommands() {
   const out = [];
   key_bind_list.forEach(bind => {
     if (bind.type === "PRESSED" && key_state[bind.activation_key] === true && (key_state[bind.prohibition_key] === false || key_state[bind.prohibition_key] === undefined)) {
-      out.push(bind.command);
+      out.push(helmCommand(bind.command, _stickyAutopilot));
     }
   });
   return out;
@@ -116,7 +142,9 @@ export function heldCommands() {
 // server room this client's own boats (0 when spectating: no keys at all);
 // "boat 0" is then the client's own boat (the server maps it).
 
+let _boundBoats = 0;
 function autokeybind(boats) {
+  _boundBoats = boats || 0;
   key_bind_list = [];
   const P = (key, not, command) => key_bind_list.push({ type: "PRESSED", activation_key: key, prohibition_key: not, command });
   const K = (key, not, command) => key_bind_list.push({ type: "KEYDOWN", activation_key: key, prohibition_key: not, command });
@@ -149,7 +177,7 @@ function autokeybind(boats) {
 // during the step that emits them (as the old in-script DOM calls were).
 function onSimEvent(ev) {
   if (ev.type === "bindControls") autokeybind(ev.boats);
-  else if (ev.type === "cleared") { key_bind_list = []; heldChanged(); }
+  else if (ev.type === "cleared") { key_bind_list = []; _boundBoats = 0; heldChanged(); }
   else if (ev.type === "view") {
     if (ev.follow) {
       const follow = document.getElementById('camera_follow');
@@ -401,6 +429,8 @@ export function setupControls(host, view, getCamera) {
 
   document.getElementById("camera_follow").checked = settingDefault("camera_follow");
   document.getElementById("show_forces").checked = settingDefault("show_forces");
+  document.getElementById("show_refinement").checked = settingDefault("show_refinement");
+  view.input_show_refinement(settingDefault("show_refinement"));
   document.getElementById("show_field").checked = settingDefault("show_field");
   view.input_show_fields(settingDefault("show_field"));
 
@@ -409,6 +439,9 @@ export function setupControls(host, view, getCamera) {
 
   document.getElementById("show_forces").addEventListener("change", () => {
     view.input_show_forces(document.getElementById("show_forces").checked);
+  });
+  document.getElementById("show_refinement").addEventListener("change", () => {
+    view.input_show_refinement(document.getElementById("show_refinement").checked);
   });
 
   document.getElementById("scenario_card_toggle").addEventListener("click", () => {
@@ -421,6 +454,23 @@ export function setupControls(host, view, getCamera) {
     view.input_show_fields(document.getElementById("show_field").checked);
   });
 
+  const sticky = document.getElementById("sticky_autopilot");
+  if (sticky) {
+    // On by default: an explicit ?sticky_autopilot= wins, then a stored '0'
+    // (user turned it off) keeps it off; anything else is on.
+    let on = true;
+    try { on = localStorage.getItem(STICKY_AUTOPILOT_KEY) !== '0'; } catch (_) { /* no storage */ }
+    try {
+      const q = new URLSearchParams(location.search).get('sticky_autopilot');
+      if (q !== null) on = !(q === '0' || q === 'false');
+    } catch (_) { /* no location */ }
+    sticky.checked = on;
+    setStickyAutopilot(sticky.checked);
+    sticky.addEventListener("change", () => {
+      setStickyAutopilot(sticky.checked);
+      try { localStorage.setItem(STICKY_AUTOPILOT_KEY, sticky.checked ? '1' : '0'); } catch (_) { /* no storage */ }
+    });
+  }
   document.getElementById("camera_follow").addEventListener("change", () => {
     view.input_camera_follow(document.getElementById("camera_follow").checked);
   });

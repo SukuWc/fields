@@ -77,6 +77,18 @@ function sail(s, lead, length, boomAngle, fat) {
   return p;
 }
 
+// Autopilot engage snap (Space). t = signed heading target (−TWA convention):
+// |t| in 80..100 (inclusive) → ±90; else ±bv1 (close-hauled) when |t| < 90,
+// ±bv2 (run) otherwise. Pure; shared by Boat.input_autopilot_enabled_toggle
+// and the dashed preview line so they cannot diverge.
+export function autopilotSnapTarget(t, bv1 = 50, bv2 = 160) {
+  const a = Math.abs(t), sg = t < 0 ? -1 : 1;
+  if (a >= 80 && a <= 100) return sg * 90;
+  return sg * (a < 90 ? bv1 : bv2);
+}
+function wrap180(x) { x = ((x + 180) % 360 + 360) % 360 - 180; return x; }
+export const AUTOPILOT_PREVIEW_LENGTH = 14;
+
 export function boatGuides(s, d) {
   const graphics = [];
   const f = s.f || [];
@@ -94,6 +106,18 @@ export function boatGuides(s, d) {
   a.color = 0x556677;
   a.type = "autopilot";
   graphics.push(a);
+  // Snap preview: dashed, longer than the target line, where Space would put
+  // the target from the current TWA (aht tracks −TWA while the autopilot is off).
+  const cur = Number.isFinite(s.twa) ? wrap180(-s.twa) : s.aht;
+  if (Number.isFinite(cur)) {
+    const ang = (s.wd + autopilotSnapTarget(cur, s.bv1 ?? 50, s.bv2 ?? 160)) / 180 * Math.PI;
+    const ux = Math.cos(ang), uy = Math.sin(ang);
+    for (let k = 0; k < AUTOPILOT_PREVIEW_LENGTH; k += 1.2) {
+      const e = Math.min(AUTOPILOT_PREVIEW_LENGTH, k + 0.7);
+      graphics.push({ color: 0x556677, type: "guide", role: "ap-preview", opacity: 0.7,
+        x1: o.x + ux * k, y1: o.y + uy * k, x2: o.x + ux * e, y2: o.y + uy * e });
+    }
+  }
   // True wind chevron: upwind of the boat, tip pointing downwind.
   chevron(graphics, s, s.tw + Math.PI, 0x554477, "tw");
   // Apparent wind: awa + hull − 90° is where it comes from.

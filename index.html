@@ -720,6 +720,9 @@
       <label class="setting-row" id="field_plane_row" hidden title="Server mode only: the field plot. Off, the server sends this page no field data. Also ?field_plane=0"><input id="field_plane" autocomplete="off" type="checkbox">Show field (server)</label>
       <br id="field_plane_br" hidden>
       <label class="setting-row"><input id="show_forces" autocomplete="off" type="checkbox">Toggle Forces</label>
+      <label class="setting-row"><input id="show_refinement" autocomplete="off" type="checkbox">Show refinement region border</label>
+      <br>
+      <label class="setting-row" title="Left / Right (A / D) turn the autopilot heading target with no angle limit (tack and gybe through it) instead of the rudder, so the autopilot stays on. On by default; saved in this browser."><input id="sticky_autopilot" autocomplete="off" type="checkbox">Sticky autopilot</label>
       <br>
       <label class="setting-row"><input id="camera_follow" autocomplete="off" type="checkbox">Camera Follow</label>
       <br>
@@ -727,7 +730,7 @@
       <br>
       <label class="setting-row"><input id="touch" autocomplete="off" type="checkbox" title="Boat 1 touch buttons at the bottom of the screen. On by default on phones and touch screens. Also ?touch=1 / ?touch=0">Touch controls</label>
       <br>
-      <span class="setting-row setting-buttons"><input id="camera_zoom_in" type="button" value="+"><input id="camera_zoom_out" type="button" value="-">Zoom</span>
+      <span class="setting-row setting-buttons"><input id="camera_zoom_in" type="button" value="+" title="Zoom in (W)"><input id="camera_zoom_out" type="button" value="-" title="Zoom out (S)">Zoom <span title="W / S zoom unless a second local boat is bound (then W / S steer it)">(W / S)</span></span>
       <br>
       <span class="setting-row setting-buttons">
       <input id="camera_move_left" type="button" value="◄">

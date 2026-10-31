@@ -81,9 +81,9 @@ export function buildScenarios(sim) {
   scenarios[4].frames[1] = () => { console.log(1); sim.players[0].input_autopilot_enabled_toggle(); sim.players[1].input_autopilot_enabled_toggle(); };
   scenarios[4].frames[2] = () => { sim.emit({ type: 'bindControls' }); };
   scenarios[4].frames[300] = () => { sim.players[0].input_autopilot_tack_toggle(); };
-  scenarios[4].frames[700] = () => { sim.players[1].input_autopilot_heading_decrease(); };
-  scenarios[4].frames[701] = () => { sim.players[1].input_autopilot_heading_decrease(); };
-  scenarios[4].frames[702] = () => { sim.players[1].input_autopilot_heading_decrease(); };
+  scenarios[4].frames[700] = () => { sim.players[1].input_autopilot_heading_decrease(1); };
+  scenarios[4].frames[701] = () => { sim.players[1].input_autopilot_heading_decrease(1); };
+  scenarios[4].frames[702] = () => { sim.players[1].input_autopilot_heading_decrease(1); };
   scenarios[4].frames[2000] = () => { sim.clear(); };
 
   scenarios[5] = makeScenario(
@@ -164,7 +164,7 @@ export function buildScenarios(sim) {
   // Windward boat bears away onto a port beam reach (TWA 90°) so she sails
   // across the leeward boat's starboard course instead of climbing away.
   scenarios[7].frames[6] = () => {
-    for (let n = 0; n < 40; n++) sim.players[1].input_autopilot_heading_increase();
+    for (let n = 0; n < 40; n++) sim.players[1].input_autopilot_heading_increase(1);
   };
   scenarios[7].frames[36] = () => { sim.players[0].input_autopilot_tack_toggle(); };
 
@@ -251,7 +251,7 @@ export function buildScenarios(sim) {
     const luff = frame >= 60 && frame < 90;
     scenarios[9].frames[frame] = () => {
       sim.players[1].motor_input = 1;
-      if (luff) sim.players[1].input_autopilot_heading_decrease();
+      if (luff) sim.players[1].input_autopilot_heading_decrease(1);
     };
   }
 

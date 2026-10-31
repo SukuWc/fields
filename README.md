@@ -138,6 +138,7 @@ Last updated: 2026-10-31
 - [ ] Accessibility
 - [ ] Telemetry export
 - [x] Sail flapping animation for luffing sails (visual only): [#54](https://github.com/SukuWc/fields/pull/54)
+- [ ] 2 px map lines (course, marks, boundary, guides, ghost outlines) for readability, refinement region border off by default (Show refinement region border checkbox): [#136](https://github.com/SukuWc/fields/pull/136)
 - [x] Jib downwind shadow flap only while eased (× depower ramp, visual only): [#58](https://github.com/SukuWc/fields/pull/58)
 - [x] Boat trails: fading dot per boat every 1 s of sim time in the boat's colour, live interval/duration/size settings (`?boat_trails`, `?trailInterval`, `?trailDuration`, `?trailSize`, visual only): [#71](https://github.com/SukuWc/fields/pull/71)
 - [x] Ghost boat: predicted hull outline 2 s ahead on a constant turn-rate arc, off by default (`?ghost`, `?ghostAhead`, visual only): [#74](https://github.com/SukuWc/fields/pull/74)
@@ -145,6 +146,11 @@ Last updated: 2026-10-31
 - [x] Boat stats panel: collapsible 60 s rolling charts of heading, TWA, AWA, boat speed and VMG per boat, sampled at 4 Hz only while open, nothing added to the frame; fixed per-boat colour palette with filled hulls, used by trails, ghost hull and chart lines: [#91](https://github.com/SukuWc/fields/pull/91)
 - [x] Boat stats readout: colour-coded numeric current value per boat under each chart (angles in whole degrees, speed and VMG in m/s): [#92](https://github.com/SukuWc/fields/pull/92)
 - [x] Pinch-to-zoom on the sim canvas on phones (client-only camera zoom, same limits as the +/- buttons, no browser page zoom): [#108](https://github.com/SukuWc/fields/pull/108)
+- [x] W / S zoom keys (same step as +/-, not while typing; W / S still steer a second local boat) and Up / Down autopilot heading 1.5× faster (1° → 1.5° per tick), rudder returns to centre 3× faster, rudder max 60° → 45° (autopilot limit stays 30°): [#127](https://github.com/SukuWc/fields/pull/127)
+- [x] Sticky autopilot setting (player checkbox, saved in this browser): Left / Right move the autopilot heading target like Up / Down (1.5°/tick), helm never disconnects the autopilot; works in server rooms: [#131](https://github.com/SukuWc/fields/pull/131)
+- [x] Sticky autopilot tacks and gybes: Left / Right turn the target with no angle limit (wraps through head-to-wind and dead downwind, target capped 90° ahead of the boat), Up / Down unchanged; sticky on by default: [#132](https://github.com/SukuWc/fields/pull/132)
+- [x] Autopilot beam-reach snap: engaging at |TWA| 80–100° (inclusive) jumps the target to exactly 90° on the same side; close-hauled / run snaps unchanged: [#133](https://github.com/SukuWc/fields/pull/133)
+- [x] Autopilot snap preview: always-on dashed line (longer than the target line) showing where Space would set the target; shared `autopilotSnapTarget` helper: [#135](https://github.com/SukuWc/fields/pull/135)
 
 ### Other
 - [x] SailZone logo: [#14](https://github.com/SukuWc/fields/pull/14)
