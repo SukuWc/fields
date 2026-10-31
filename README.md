@@ -138,7 +138,7 @@ Last updated: 2026-10-31
 - [ ] Accessibility
 - [ ] Telemetry export
 - [x] Sail flapping animation for luffing sails (visual only): [#54](https://github.com/SukuWc/fields/pull/54)
-- [ ] 2 px map lines (course, marks, boundary, guides, ghost outlines) for readability, refinement region border off by default (Show refinement region border checkbox): [#136](https://github.com/SukuWc/fields/pull/136)
+- [x] 2 px map lines (course, marks, boundary, guides, ghost outlines) for readability, refinement region border off by default (Show refinement region border checkbox): [#136](https://github.com/SukuWc/fields/pull/136)
 - [x] Jib downwind shadow flap only while eased (× depower ramp, visual only): [#58](https://github.com/SukuWc/fields/pull/58)
 - [x] Boat trails: fading dot per boat every 1 s of sim time in the boat's colour, live interval/duration/size settings (`?boat_trails`, `?trailInterval`, `?trailDuration`, `?trailSize`, visual only): [#71](https://github.com/SukuWc/fields/pull/71)
 - [x] Ghost boat: predicted hull outline 2 s ahead on a constant turn-rate arc, off by default (`?ghost`, `?ghostAhead`, visual only): [#74](https://github.com/SukuWc/fields/pull/74)
