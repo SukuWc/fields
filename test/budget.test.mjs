@@ -28,9 +28,8 @@ const check = (name, cond, detail) => { if (!cond) failed++; console.log(`${cond
 	const r = H.scenario0(1);
 	check(// Fixed 30 FPS: −49.4282 / 2.1290 → −49.3048 / 2.8465; #90 ring → −49.3557 / 2.8526;
 	// #103 point true wind (Default, no force undo) → −49.3048 / 2.8465.
-	// #127 rudder centres 3× faster, max 45° (autopilot rudder still 30°) → −49.0860 / 2.8319.
-	'1 boat, default budget: unchanged (twa −49.0860 / bs 2.8319)',
-		Math.abs(r.twa + 49.0860) < 1e-4 && Math.abs(r.bs - 2.8319) < 1e-4,
+	'1 boat, default budget: unchanged (twa −49.3048 / bs 2.8465)',
+		Math.abs(r.twa + 49.3048) < 1e-4 && Math.abs(r.bs - 2.8465) < 1e-4,
 		`${r.twa.toFixed(4)} / ${r.bs.toFixed(4)}`);
 }
 

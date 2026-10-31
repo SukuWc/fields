@@ -217,9 +217,8 @@ for (const k of KS) {
 check(// Fixed 30 FPS (one pass per tick, boat terms ×3): −49.4023 / 2.1314 → −49.3314 / 2.8466.
 // #90 (1 m ring): −49.3314 / 2.8466 → −49.3106 / 2.8521.
 // #103 point true wind (Default has no force undo): → −49.3314 / 2.8466.
-// #127 rudder centres 3× faster, max 45° (autopilot rudder still 30°): → −49.0790 / 2.8333.
-'Default scenario 0 with ?amrMode=fixed pinned (twa −49.08, bs 2.833)',
-	near(s0[1].twa, -49.0790, 0.01) && near(s0[1].bs, 2.8333, 0.002), `twa=${s0[1].twa.toFixed(4)} bs=${s0[1].bs.toFixed(4)}`);
+'Default scenario 0 with ?amrMode=fixed pinned (twa −49.33, bs 2.847)',
+	near(s0[1].twa, -49.3314, 0.01) && near(s0[1].bs, 2.8466, 0.002), `twa=${s0[1].twa.toFixed(4)} bs=${s0[1].bs.toFixed(4)}`);
 // With the outer rings the boat keeps Default's fine levels, so refinement
 // costs about what it does at Default. Coarse settings must not be slower.
 check('x2 and x4 with refinement are no slower per frame than Default',
@@ -244,8 +243,7 @@ for (const k of KS) {
 	const off = H.scenario1(k, { energy: false });
 	s1[k] = on.tws0 - on.tws1;
 	check(`x${k} scenario 1 grids carry one flow; leeward boat sails in less wind`,
-		on.overlapGap < 1e-12 && s1[k] > (k === 4 ? 0.05 : 0.1) && // #127: x4 gap 0.10 → 0.09 after rudder change
-		 near(off.tws0, 15, 1e-6) && near(off.tws1, 15, 1e-6) && on.bad === 0 && on.maxU < 0.3,
+		on.overlapGap < 1e-12 && s1[k] > 0.1 && near(off.tws0, 15, 1e-6) && near(off.tws1, 15, 1e-6) && on.bad === 0 && on.maxU < 0.3,
 		`windward ${on.tws0.toFixed(2)} leeward ${on.tws1.toFixed(2)} gap=${on.overlapGap.toExponential(1)}`);
 	const w = H.wakeShadow(k, INWAKE);
 	wk[k] = w.shadow;
@@ -366,9 +364,8 @@ for (const k of [2, 4]) {
 	check(// Fixed 30 FPS: −49.428 / 2.129 → −49.305 / 2.8465.
 	// #90 (1 m ring): −49.3048 / 2.8465 → −49.3557 / 2.8526.
 	// #103 point true wind (Default has no force undo): → −49.3048 / 2.8465.
-	// #127 rudder centres 3× faster, max 45° (autopilot rudder still 30°): → −49.0860 / 2.8319.
-	'auto Default scenario 0 pinned: twa −49.09, bs 2.833',
-		near(s0.twa, -49.0860, 0.01) && near(s0.bs, 2.8319, 0.002), `twa=${s0.twa.toFixed(4)} bs=${s0.bs.toFixed(4)}`);
+	'auto Default scenario 0 pinned: twa −49.30, bs 2.847',
+		near(s0.twa, -49.3048, 0.01) && near(s0.bs, 2.8465, 0.002), `twa=${s0.twa.toFixed(4)} bs=${s0.bs.toFixed(4)}`);
 	H.setAmrMode('fixed');
 	check('auto Default scenario 0 close-hauled and the in-wake shadow is at least the fixed one',
 		s0.twa < -45 && s0.twa > -54 && s0.bs > 2.4 && s0.bs < 3.1 && wk.shadow > 0.4 && wk.overlapGap < 1e-12,

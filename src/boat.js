@@ -103,8 +103,9 @@ export const PENALTY_TURN_DONE_RATE_DEG_S = 10;
 /**
  * Rudder return-to-centre with no helm input: the per-pass decay factor
  * (0.98 - speed/80) is raised to this power, so the centring half-life is
- * 1/RUDDER_RETURN_SPEEDUP of the old one at every speed. Penalty-turn rudder
- * is a separate branch and unaffected.
+ * 1/RUDDER_RETURN_SPEEDUP of the old one at every speed. Only when the
+ * autopilot is off: autopilot steering keeps the old decay, and the
+ * penalty-turn rudder is a separate branch, so both are unchanged.
  */
 export const RUDDER_RETURN_SPEEDUP = 3;
 
@@ -464,7 +465,7 @@ export class Boat{
         dmod = -1
       }
 
-      this.rudder_angle = this.rudder_angle * Math.pow(0.98 - dmod / 80, RUDDER_RETURN_SPEEDUP * N)
+      this.rudder_angle = this.rudder_angle * Math.pow(0.98 - dmod / 80, (this.autopilot_enabled ? 1 : RUDDER_RETURN_SPEEDUP) * N)
 
     }
     
