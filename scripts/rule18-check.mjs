@@ -263,7 +263,7 @@ const RUN = -10 * D; // heading 10° west of south: starboard run (TWA ≈ −17
   const d = Math.hypot(inc.x - L.gate[0].x, inc.y - L.gate[0].y);
   assert(d < R.RULE18_ZONE_M, `contact inside the zone (${d.toFixed(1)} m from the gate mark)`);
   assert(R.pendingPenaltyCount(boats[1]) >= 1 && R.pendingPenaltyCount(boats[0]) === 0, "penalty on boat 1 only");
-  assert(R.faultBadgeText(boats[1]).startsWith("FAULT") && R.faultBadgeText(boats[1]).includes("Rule 18.2 · mark-room"), `FAULT badge: "${R.faultBadgeText(boats[1])}"`);
+  assert(R.faultBadgeText(boats[1]) === "1x", `FAULT badge: "${R.faultBadgeText(boats[1])}"`);
 }
 
 if (!process.exitCode) console.log("rule18-check: all passed");
