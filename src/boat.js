@@ -115,6 +115,9 @@ export const AUTOPILOT_RUDDER_MAX = 30;
 
 /** Autopilot heading-target change per sim tick while Up / Down is held (was 1°). */
 export const AUTOPILOT_HEADING_STEP_DEG = 1.5;
+// Sticky helm: max degrees the target may run ahead of the boat's heading.
+export const AUTOPILOT_TURN_MAX_LEAD_DEG = 90;
+export function wrapDeg180(a){ a = ((a + 180) % 360 + 360) % 360 - 180; return a === -180 ? 180 : a; }
 
 export class Boat{
 
@@ -491,7 +494,7 @@ export class Boat{
 
       let comp_p = error * this.autopilot_compensator_p 
       let comp_i = this.autopilot_compensator_sum_error * this.autopilot_compensator_i 
-      let comp_d = (error - this.autopilot_compensator_last_error) * this.autopilot_compensator_d
+      let comp_d = wrapDeg180(error - this.autopilot_compensator_last_error) * this.autopilot_compensator_d
 
       
 
@@ -864,14 +867,24 @@ export class Boat{
   }
   // Sticky-autopilot helm (Left / Right with the "Sticky autopilot" setting):
   // dir -1 (Left) turns her counter-clockwise like left rudder, +1 (Right)
-  // clockwise, by moving the heading target. The target is -TWA, so a CCW turn
-  // raises it: on a positive target that is the Up / Down increase (bear
-  // away), on a negative one the decrease (head up). Same step and 5..175°
-  // clamp, so she never tacks or gybes through it. Engages the autopilot.
-  input_autopilot_turn(dir){
-    const ccw = dir < 0;
-    if (ccw === (this.autopilot_heading_target >= 0)) this.input_autopilot_heading_increase()
-    else this.input_autopilot_heading_decrease()
+  // clockwise, by moving the heading target (-TWA, so CCW raises it). No
+  // 5..175° clamp: the target wraps through ±180 (dead downwind) and 0 (head
+  // to wind), so holding Left / Right tacks and gybes continuously. The
+  // autopilot error is wrapped to ±180 (shortest way); the target never leads
+  // the boat by more than AUTOPILOT_TURN_MAX_LEAD_DEG in the turn direction,
+  // so shortest way is always the held direction (no reversing at the wrap).
+  // Engages the autopilot. Up / Down keep their clamped behaviour.
+  input_autopilot_turn(dir, step = AUTOPILOT_HEADING_STEP_DEG){
+    this._cancelPenaltyTurn()
+    if (!this.autopilot_enabled) {
+      this.autopilot_enabled = true
+      this.autopilot_heading_target = wrapDeg180(-this.twa)
+    }
+    const sgn = dir < 0 ? 1 : -1
+    const lead = wrapDeg180(this.autopilot_heading_target - (-this.twa)) * sgn
+    const room = AUTOPILOT_TURN_MAX_LEAD_DEG - lead
+    if (room <= 0) return
+    this.autopilot_heading_target = wrapDeg180(this.autopilot_heading_target + sgn * Math.min(step, room))
   }
   input_autopilot_heading_decrease(step = AUTOPILOT_HEADING_STEP_DEG){
     this._cancelPenaltyTurn()

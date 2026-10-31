@@ -119,7 +119,7 @@ export function setVirtualKey(keyCode, down) {
 // never switch the autopilot off. Mapped here, so local, worker and server
 // games all get the same autopilotTurn command.
 export const STICKY_AUTOPILOT_KEY = 'fields.stickyAutopilot';
-let _stickyAutopilot = false;
+let _stickyAutopilot = true; // on by default
 export function setStickyAutopilot(on) { _stickyAutopilot = !!on; heldChanged(); }
 export function stickyAutopilot() { return _stickyAutopilot; }
 export function helmCommand(command, sticky) {
@@ -451,7 +451,15 @@ export function setupControls(host, view, getCamera) {
 
   const sticky = document.getElementById("sticky_autopilot");
   if (sticky) {
-    try { sticky.checked = localStorage.getItem(STICKY_AUTOPILOT_KEY) === '1'; } catch (_) { /* no storage */ }
+    // On by default: an explicit ?sticky_autopilot= wins, then a stored '0'
+    // (user turned it off) keeps it off; anything else is on.
+    let on = true;
+    try { on = localStorage.getItem(STICKY_AUTOPILOT_KEY) !== '0'; } catch (_) { /* no storage */ }
+    try {
+      const q = new URLSearchParams(location.search).get('sticky_autopilot');
+      if (q !== null) on = !(q === '0' || q === 'false');
+    } catch (_) { /* no location */ }
+    sticky.checked = on;
     setStickyAutopilot(sticky.checked);
     sticky.addEventListener("change", () => {
       setStickyAutopilot(sticky.checked);
