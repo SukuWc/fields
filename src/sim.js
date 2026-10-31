@@ -10,7 +10,7 @@ import { SAIL_LATTICE_COUPLING, SAIL_WAKE_GAIN } from './boat.js';
 import { boatTrueWind } from './wind.js';
 import { trackBoats, resetTracking } from './domainTrack.js';
 import { Leaderboard } from './leaderboard.js';
-import { resetMarkTouches, recordMarkTouches } from './mark-touch.js';
+import { resetMarkTouches, recordMarkTouches, activeTouchMarks } from './mark-touch.js';
 import {
   beginRule15Step, createRulesState, evaluateAllPairs, penaltyAutopilotRemainingDeg,
   penaltyJustCleared, penaltyManeuverText, penaltyManeuverView, pendingPenaltyCount,
@@ -482,7 +482,9 @@ export class Sim {
     recordContacts(rec.resolutions, rulesTime, players);
     // Rule 31: boat-versus-mark touches. Racing from the preparatory signal
     // when there is a start sequence, else always.
-    recordMarkTouches(players, this.marks, { simTime: rulesTime, racing: !startSeq || startSeq.racing });
+    // Only the boat's own next mark / gate ends / line ends count.
+    const activeMarks = course ? (boat) => activeTouchMarks(course, startSeq, boat) : null;
+    recordMarkTouches(players, this.marks, { simTime: rulesTime, racing: !startSeq || startSeq.racing, activeMarks });
 
     // Refinement windows follow the boats (and curl islands). Tracking reads
     // curl, which only changes on a lattice step, so it runs on stepping
