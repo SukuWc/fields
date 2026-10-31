@@ -177,7 +177,7 @@ assert(getIncidents().length === 1, "one contact, one incident");
 assert(pendingPenaltyCount(port) === 1, "the fault boat has one pending penalty");
 assert(pendingPenaltyCount(starboard) === 0, "the right-of-way boat is not charged");
 assert(pendingPenaltiesOf(port)[0].incident === getIncidents()[0], "the pending entry is that incident");
-assert(faultText([port, starboard], 0) === "FAULT", "one pending penalty shows FAULT");
+assert(faultText([port, starboard], 0) === "1x", "one pending penalty shows FAULT");
 
 t += SIM_STEP_S;
 step([port, starboard], t);
@@ -194,7 +194,7 @@ t += SIM_STEP_S;
 step([port, starboard], t);
 assert(getIncidents().length === 2, "a new closure after separating is a new incident");
 assert(pendingPenaltyCount(port) === 2, "a second collision stacks a second penalty");
-assert(faultText([port], 0) === "FAULT x2", "the badge shows the stack count");
+assert(faultText([port], 0) === "2x", "the badge shows the stack count");
 const firstIncident = getIncidents()[0];
 const secondIncident = getIncidents()[1];
 notePenaltyManeuver(port, 60, { nowMs: 1000 });
@@ -205,7 +205,7 @@ assert(r.clears === 1 && pendingPenaltyCount(port) === 1, "tack + gybe clears on
 assert(pendingPenaltiesOf(port)[0].incident === secondIncident, "FIFO clears the oldest incident");
 assert(pendingPenaltiesOf(port)[0].incident !== firstIncident, "the first incident is the one removed");
 assert(labelsOf([port], 1000).some((g) => g.lines[0].id === "cleared" && g.lines[0].text === "CLEARED"), "clearing flashes CLEARED");
-assert(faultText([port], 1000) === "FAULT", "the remaining penalty is a plain FAULT");
+assert(faultText([port], 1000) === "1x", "the remaining penalty shows 1x");
 assert(!labelsOf([port], 1000 + PENALTY_CLEARED_MS + 1).some((g) => g.lines[0].id === "cleared"), "the cleared flash expires");
 
 // --- Tack and gybe detector ---
@@ -292,7 +292,7 @@ assert(r.clears === 1, "tack + gybe after the charge clears");
 b = fresh(60);
 charge(b, 8);
 charge(b, 9);
-assert(faultText([b], 0) === "FAULT x2", "two pending show FAULT x2");
+assert(faultText([b], 0) === "2x", "two pending show 2x");
 sweepTwa(b, 60, -60);
 sweepTwa(b, -60, -240);
 assert(pendingPenaltyCount(b) === 1, "first pair clears one of two");

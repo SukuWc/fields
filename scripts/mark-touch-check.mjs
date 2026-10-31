@@ -89,7 +89,7 @@ const plainMark = (x, y, name) => ({ x, y, radius: 0.5, anchor: { x, y }, markNa
   const q = pendingPenaltiesOf(b);
   assert(q.every((e) => e.incident.rule === "31" && e.incident.kind === "mark"), "both queued as rule 31 mark touches");
   const labels = penaltyGuides([b], 0).filter((g) => g.type === "label").map((g) => g.lines[0].text);
-  assert(labels.includes("FAULT x2 · Rule 31 · touched mark 2"), `FAULT badge shows the reason: ${labels.join(", ")}`);
+  assert(labels.includes("2x"), `FAULT badge shows the count: ${labels.join(", ")}`);
   assert(markTouchGuides(0).some((g) => g.color === 0xff3b30), "touched buoy flashes red");
   assert(markTouchGuides(5000).length === 0, "flash ends");
   assert(getIncidents().length === 0, "no boat-boat incident from mark touches");
@@ -209,7 +209,7 @@ const plainMark = (x, y, name) => ({ x, y, radius: 0.5, anchor: { x, y }, markNa
   assert(hit && inc.finalRule !== "31" && getMarkTouches().length === 0, `boat-boat contact still makes a pair incident (rule ${inc && inc.finalRule}), no mark touch`);
   const fault = inc.faultBoat;
   assert(pendingPenaltyCount(fault) === 1 && pendingPenaltyReason(fault) === null, "boat-boat penalty charged as before, plain FAULT badge");
-  assert(faultBadgeText(fault) === "FAULT", "badge text unchanged for boat-boat faults");
+  assert(faultBadgeText(fault) === "1x", "badge text for boat-boat faults");
 }
 
 if (!process.exitCode) console.log("mark-touch-check: all passed");

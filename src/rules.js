@@ -2191,16 +2191,14 @@ export function roomGuidesFromState(list, kind, boats) {
   return g;
 }
 
-// "FAULT", "FAULT x2"; with the oldest pending penalty's reason when it has
-// one (mark touches: "FAULT · Rule 31 · touched mark 2").
+// "1x", "2x" (the reason is only in the info line).
 export function faultBadgeText(boat, count = pendingPenaltyCount(boat)) {
-  return faultText(count, pendingPenaltyLabel(boat));
+  return faultText(count);
 }
 
-// The badge text from the count and the oldest penalty's label (or null).
-export function faultText(count, label) {
-  const base = count > 1 ? 'FAULT x' + count : 'FAULT';
-  return label ? base + ' · ' + label : base;
+// The badge text from the count.
+export function faultText(count) {
+  return count + 'x';
 }
 
 // Label of the oldest pending penalty ("Rule 31 · touched mark 2"), or null.
@@ -2285,7 +2283,7 @@ export function penaltyGuidesFromState(s, boats) {
     const boat = { x: b.x, y: b.y, hull_angle: b.ha };
     if (e.c > 0) {
       const at = sternOffset(boat, 2.5);
-      guides.push({ type: 'label', badge: true, x: boat.x + at.x, y: boat.y + at.y, lines: [{ text: faultText(e.c, incidentLabel(e.ic)), role: 'badge', id: 'fault' }] });
+      guides.push({ type: 'label', badge: true, x: boat.x + at.x, y: boat.y + at.y, lines: [{ text: faultText(e.c), role: 'badge', id: 'fault' }] });
     }
     const ahead = bowOffset(boat, 4.3);
     if (e.t) {

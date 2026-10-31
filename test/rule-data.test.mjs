@@ -43,7 +43,7 @@ for (const [ic, reason, label] of texts) {
   check('incident ' + JSON.stringify(ic) + ' is compact', ic.every((x) => (typeof x === 'string' && x.length <= 3) || x === 1));
 }
 check('no code, no text', T.incidentReason(null) === null && T.incidentLabel(undefined) === null && T.incidentReason(['10']) === null);
-check('FAULT badge', R.faultText(2, T.incidentLabel(['31', 'g2'])) === 'FAULT x2 · Rule 31 · touched gate 2' && R.faultText(1, T.incidentLabel(null)) === 'FAULT');
+check('FAULT badge', R.faultText(2) === '2x' && R.faultText(1) === '1x');
 const pens = [
   [{ rule: '31', kind: 'mark' }, '31', 'Rule 31'],
   [{ finalId: '18' }, '18', 'Rule 18.2'],
@@ -188,7 +188,7 @@ for (const [n, ticks, fin] of [[8, 300], [9, 300], [15, 300], [19, 450], [16, 15
         if (sceneDiff(R.roomGuidesFromState(s[key] || [], kind, s.boats), host) !== 0) hostSame = false;
       }
       for (const e of (s.pen && s.pen.boats) || []) {
-        if (e.c > 0 && R.faultText(e.c, T.incidentLabel(e.ic)) !== R.faultBadgeText(players.find((b) => b.boatId === e.i))) badgeSame = false;
+        if (e.c > 0 && R.faultText(e.c) !== R.faultBadgeText(players.find((b) => b.boatId === e.i))) badgeSame = false;
       }
       s.hud.b.forEach((b, i) => { if ((T.incidentReason(b.ic) || null) !== (rec.boats[i].reason || null)) reasonSame = false; });
       // From the server's rounded JSON: same text, geometry within 1e-3.
