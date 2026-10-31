@@ -22,7 +22,7 @@ let fpsFrameCount = 0;
 
 // Map geometry lines are Line2 fat lines, LINE_WIDTH_PX screen pixels wide
 // (plain WebGL lines are always 1px). Flow tracers stay 1px LineSegments for perf.
-export const LINE_WIDTH_PX = 3;
+export const LINE_WIDTH_PX = 2;
 const _lineResolution = new THREE.Vector2(1, 1);
 function fatMaterial(params = {}) {
   const m = new LineMaterial({ linewidth: LINE_WIDTH_PX, ...params });
@@ -862,6 +862,7 @@ function animation(t) {
     }
     if (r.type === 'rule') updateRuleRibbon(ruleRibbon(ruleIdx++), r);
     if (_view.show_forces === false && r.type === 'force') continue;
+    if (r.refine && !_view.show_refinement) continue;
 
     if (poolIdx >= guidePool.length) {
       const line = fatLine(2, markOverlay(fatMaterial({ transparent: true })));
