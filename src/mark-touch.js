@@ -25,6 +25,14 @@
 // Simplification: any touch while entitled, whether or not the outside boat
 // pushed her onto it. opts.exonerate overrides the predicate (tests).
 //
+// Active marks only. A touch is charged only when the buoy is one the boat
+// is currently required to sail to (opts.activeMarks(boat) -> Set or null;
+// null = every mark counts, used when there is no course). See
+// activeTouchMarks: before her start the start-line ends (RC and pin) count;
+// after starting, only the next course mark or both ends of the next gate;
+// on the finish leg, the finish-line ends. Touching any other buoy is no
+// penalty and no red flash. Each boat's own course progress decides.
+//
 // Names. nameMarks(course, startSequence) gives every mark a name for the
 // reason text: course marks "mark n", gate marks "gate n", start-line ends
 // "RC" and "pin"; anything else is "mark".
@@ -132,12 +140,14 @@ export function recordMarkTouches(boats, marks, opts = {}) {
     if (!boat) continue;
     let m = T().latch.get(boat);
     if (!m) { m = new Map(); T().latch.set(boat, m); }
+    const active = typeof opts.activeMarks === 'function' ? opts.activeMarks(boat) : null;
     for (const mark of marks || []) {
       const gap = hullMarkClearance(boat, mark);
       const touching = gap <= MARK_TOUCH_M || planckTouching(boat, mark);
       const latched = m.get(mark) === true;
       if (touching && !latched) {
         m.set(mark, true);
+        if (active && !active.has(mark)) continue;
         T().flashes.push({ mark, startedAtMs: now });
         if (racing) {
           const c = markCentre(mark);
@@ -208,4 +218,30 @@ export function markTouchGuidesFromState(flashes) {
     }
   }
   return g;
+}
+
+// Buoys whose touch counts for this boat (Set), or null when there is no
+// course (every mark counts). course: course.js Course; startSeq: optional
+// StartSequence. A boat still to start: the start-line ends. Racing: the
+// highlighted next mark, or both ends of the next gate. Finish leg: the
+// finish-line ends. Course complete with no finish (or finished): none.
+export function activeTouchMarks(course, startSeq, boat) {
+  if (!course || !boat) return null;
+  const out = new Set();
+  const p = course.progressFor(boat);
+  if (p.waitingForStart) {
+    const L = startSeq && startSeq.line;
+    if (L) { out.add(L.committee); out.add(L.pin); }
+    return out;
+  }
+  const k = p.display;
+  if (k >= course.totalRoundings) {
+    const F = course.finish;
+    if (F) { out.add(F.committee); out.add(F.pin); }
+    return out;
+  }
+  const el = course.marks[k % course.length];
+  if (el && Array.isArray(el.gate)) { out.add(el.gate[0]); out.add(el.gate[1]); }
+  else out.add(el);
+  return out;
 }
