@@ -5,6 +5,7 @@
 export class View {
   constructor() {
     this.show_forces = false;
+    this.show_refinement = false;
     this.show_fields = false;
 
     this.camera_follow_target = undefined;
@@ -45,6 +46,7 @@ export class View {
 
   input_show_fields(e) { this.show_fields = e; }
   input_show_forces(e) { this.show_forces = e; }
+  input_show_refinement(e) { this.show_refinement = !!e; }
   input_camera_follow(e) { this.camera_follow = e; }
 
   input_camera_zoom_relative(e) {

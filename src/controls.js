@@ -429,6 +429,8 @@ export function setupControls(host, view, getCamera) {
 
   document.getElementById("camera_follow").checked = settingDefault("camera_follow");
   document.getElementById("show_forces").checked = settingDefault("show_forces");
+  document.getElementById("show_refinement").checked = settingDefault("show_refinement");
+  view.input_show_refinement(settingDefault("show_refinement"));
   document.getElementById("show_field").checked = settingDefault("show_field");
   view.input_show_fields(settingDefault("show_field"));
 
@@ -437,6 +439,9 @@ export function setupControls(host, view, getCamera) {
 
   document.getElementById("show_forces").addEventListener("change", () => {
     view.input_show_forces(document.getElementById("show_forces").checked);
+  });
+  document.getElementById("show_refinement").addEventListener("change", () => {
+    view.input_show_refinement(document.getElementById("show_refinement").checked);
   });
 
   document.getElementById("scenario_card_toggle").addEventListener("click", () => {
