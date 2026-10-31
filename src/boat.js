@@ -2,7 +2,7 @@ import planck from 'planck-js';
 import { aeroCoefficients } from './utils.js';
 import { resetPenaltyManeuvers, updatePenaltyManeuvers, updateTackingState } from './rules.js';
 import { WIND_UNIT_MPS, boatTrueWind } from './wind.js';
-import { boatGuides } from './boat-draw.js';
+import { boatGuides, autopilotSnapTarget } from './boat-draw.js';
 
 // Lattice momentum per frame = sail reaction × SAIL_LATTICE_COUPLING.
 //
@@ -121,6 +121,7 @@ export function wrapDeg180(a){ a = ((a + 180) % 360 + 360) % 360 - 180; return a
 
 export const AUTOPILOT_BEAM_SNAP_MIN = 80;
 export const AUTOPILOT_BEAM_SNAP_MAX = 100;
+export { autopilotSnapTarget } from './boat-draw.js';
 
 export class Boat{
 
@@ -749,6 +750,7 @@ export class Boat{
       id: this.boatId, vx: r3(lv.x), vy: r3(lv.y), w: r3(body.getAngularVelocity()),
       awa: this.awa, tw: Math.atan2(this.wind_vy_smooth, this.wind_vx_smooth),
       ap: this.autopilot_enabled ? 1 : 0, wd: this.wind_direction, aht: this.autopilot_heading_target,
+      twa: this.twa, bv1: this.autopilot_heading_best_vmg_1, bv2: this.autopilot_heading_best_vmg_2,
       ra: this.rudder_angle, mba: this.mainsail_boom_angle_actual, jba: this.jib_boom_angle_actual,
       mf: flapScale, jf: this.jibFlap, ph: flapPhase, f,
     };
@@ -813,30 +815,7 @@ export class Boat{
   input_autopilot_enabled_toggle(){
     this._cancelPenaltyTurn()
 
-    const abs_target = Math.abs(this.autopilot_heading_target)
-    if (abs_target >= AUTOPILOT_BEAM_SNAP_MIN && abs_target <= AUTOPILOT_BEAM_SNAP_MAX){
-      // Beam reach band (80..100° TWA, inclusive): snap to exactly 90° on the same side.
-      this.autopilot_heading_target = this.autopilot_heading_target < 0 ? -90 : 90
-    }
-    else if (this.autopilot_heading_target < 0){
-
-      if (this.autopilot_heading_target > -90){
-        this.autopilot_heading_target = -this.autopilot_heading_best_vmg_1
-      }
-      else{
-        this.autopilot_heading_target = -this.autopilot_heading_best_vmg_2
-      }
-
-    }
-    else{
-      if (this.autopilot_heading_target < 90){
-        this.autopilot_heading_target = this.autopilot_heading_best_vmg_1
-      }
-      else{
-        this.autopilot_heading_target = this.autopilot_heading_best_vmg_2
-      }
-    }
-
+    this.autopilot_heading_target = autopilotSnapTarget(this.autopilot_heading_target, this.autopilot_heading_best_vmg_1, this.autopilot_heading_best_vmg_2)
 
     this.autopilot_enabled = true;
 
