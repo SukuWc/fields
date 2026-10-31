@@ -2,7 +2,7 @@
 // step for held Up / Down (src/boat.js).
 import './dom-stub.mjs';
 const { zoomKeyStep, ZOOM_IN_KEY, ZOOM_OUT_KEY } = await import('../src/controls.js');
-const { AUTOPILOT_HEADING_STEP_DEG } = await import('../src/boat.js');
+const { AUTOPILOT_HEADING_STEP_DEG, RUDDER_RETURN_SPEEDUP } = await import('../src/boat.js');
 const { SimCore } = await import('../src/host.js');
 
 let failed = 0;
@@ -31,6 +31,8 @@ check('autopilot heading step is 1.5° per tick (was 1°)', AUTOPILOT_HEADING_ST
   b.input_autopilot_heading_decrease();
   check('clamped at 5°', b.autopilot_heading_target === 5);
 }
+
+check('rudder return-to-centre is 3x faster (decay factor cubed)', RUDDER_RETURN_SPEEDUP === 3);
 
 if (failed) { console.log(`${failed} FAILED`); process.exit(1); }
 console.log('all keys checks passed');
