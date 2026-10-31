@@ -48,7 +48,7 @@ Last updated: 2026-10-31
 - [x] Rule data: sim sends rule codes and boat indices, every client writes the rule text and builds the overlay geometry (sim/client split; about 4.7% fewer bytes per frame in scenario 18): [#82](https://github.com/SukuWc/fields/pull/82)
 - [x] Configurable boat refinement: max refinement level and boat refine radius (room setting, settings panel, URL), new default of 3 levels with a 3 m finest disk on every mode (about 10.6 ms per tick on 2f and 6 ms on 4f with one boat, vs about 20 and 38 ms with the full stack): [#86](https://github.com/SukuWc/fields/pull/86)
 - [x] Headless scenario checks for scenarios 3–9 and 18 on a shared harness, plus `npm run check:all` to run every check (scenarios 7 and 9 marked as known sim discrepancies): [#84](https://github.com/SukuWc/fields/pull/84)
-- [x] Gust kernels drop off-map samples instead of ring-searching for nearby water (fixes the periodic europe-1 slowdown to >1 s per tick): [#123](https://github.com/SukuWc/fields/pull/123)
+- [x] Gust kernels drop off-map samples instead of ring-searching for nearby water (fixes the periodic europe-1 slowdown to >1 s per tick): [#128](https://github.com/SukuWc/fields/pull/128)
 - [x] Remote default preset matches live europe-1, including the custom race course (local solo stays on scenario 0): [#124](https://github.com/SukuWc/fields/pull/124)
 - [x] In-game room settings locked behind admin login for remote games (server rejects room commands without `ADMIN_SECRET` auth; Login / Logout shared with the landing page): [#125](https://github.com/SukuWc/fields/pull/125)
 
@@ -127,7 +127,7 @@ Last updated: 2026-10-31
 - [ ] Rule-stack labels (partial: [#12](https://github.com/SukuWc/fields/pull/12) shows the active rule and inhibited rules)
 
 ### 6. Closed beta polish
-- [ ] Remove the two hardcoded collision test circles (r=0.5 m and r=5 m) from the physics world: [#123](https://github.com/SukuWc/fields/pull/123)
+- [ ] Remove the two hardcoded collision test circles (r=0.5 m and r=5 m) from the physics world: [#128](https://github.com/SukuWc/fields/pull/128)
 - [ ] Performance (including profiling the render side) (partial: [#42](https://github.com/SukuWc/fields/pull/42) batches `#info` readout writes into one `innerHTML` update, cutting median live DOM nodes from about 28,800 to about 6,000; [#110](https://github.com/SukuWc/fields/pull/110) restores Firefox mobile FPS with flow tracers on by drawing only live tracer segments and using fewer, lighter tracers on touch screens (about 11× less geometry upload per frame); still open: wider render-side profiling)
 - [ ] Crash recovery
 - [ ] Spectator mode
