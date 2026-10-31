@@ -114,11 +114,23 @@ export function setVirtualKey(keyCode, down) {
 
 // Held boat commands for this tick, in binding order (sim.step reads them
 // after the scenario frames, where the old processKeys ran).
+// "Sticky autopilot" (player setting, localStorage): Left / Right (and A / D)
+// move the autopilot heading target instead of the rudder, so the helm keys
+// never switch the autopilot off. Mapped here, so local, worker and server
+// games all get the same autopilotTurn command.
+export const STICKY_AUTOPILOT_KEY = 'fields.stickyAutopilot';
+let _stickyAutopilot = false;
+export function setStickyAutopilot(on) { _stickyAutopilot = !!on; heldChanged(); }
+export function stickyAutopilot() { return _stickyAutopilot; }
+export function helmCommand(command, sticky) {
+  return sticky && command.type === 'helm' ? { ...command, type: 'autopilotTurn' } : command;
+}
+
 export function heldCommands() {
   const out = [];
   key_bind_list.forEach(bind => {
     if (bind.type === "PRESSED" && key_state[bind.activation_key] === true && (key_state[bind.prohibition_key] === false || key_state[bind.prohibition_key] === undefined)) {
-      out.push(bind.command);
+      out.push(helmCommand(bind.command, _stickyAutopilot));
     }
   });
   return out;
@@ -437,6 +449,15 @@ export function setupControls(host, view, getCamera) {
     view.input_show_fields(document.getElementById("show_field").checked);
   });
 
+  const sticky = document.getElementById("sticky_autopilot");
+  if (sticky) {
+    try { sticky.checked = localStorage.getItem(STICKY_AUTOPILOT_KEY) === '1'; } catch (_) { /* no storage */ }
+    setStickyAutopilot(sticky.checked);
+    sticky.addEventListener("change", () => {
+      setStickyAutopilot(sticky.checked);
+      try { localStorage.setItem(STICKY_AUTOPILOT_KEY, sticky.checked ? '1' : '0'); } catch (_) { /* no storage */ }
+    });
+  }
   document.getElementById("camera_follow").addEventListener("change", () => {
     view.input_camera_follow(document.getElementById("camera_follow").checked);
   });
