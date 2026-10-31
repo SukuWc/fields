@@ -1579,7 +1579,7 @@
         <label class="setting-row" title="Rule number between two boats while a rule applies (e.g. Rule 10, Rule 15 blocks Rule 12)"><input id="show_rule_labels" autocomplete="off" type="checkbox">Rule labels</label>
         <label class="setting-row"><input id="camera_follow" autocomplete="off" type="checkbox">Camera Follow</label>
         <label class="setting-row" id="field_plane_row" hidden title="Server mode only: the field plot. Off, the server sends this page no field data. Also ?field_plane=0"><input id="field_plane" autocomplete="off" type="checkbox">Show field (server)</label>
-        <span class="setting-row setting-buttons"><input id="camera_zoom_in" type="button" value="+" title="Zoom in (W)"><input id="camera_zoom_out" type="button" value="-" title="Zoom out (S)">Zoom <span title="W / S zoom unless a second local boat is bound (then W / S steer it)">(W / S)</span></span>
+        <span class="setting-row setting-buttons"><input id="camera_zoom_in" type="button" value="+" title="Zoom in (W or =)"><input id="camera_zoom_out" type="button" value="-" title="Zoom out (S or -)">Zoom <span title="W / S zoom unless a second local boat is bound (then W / S steer it)">(W / S)</span></span>
         <span class="setting-row setting-buttons">
       <input id="camera_move_left" type="button" value="◄">
       <input id="camera_move_right" type="button" value="►">
@@ -1589,6 +1589,7 @@
       </fieldset>
       <fieldset class="pref-group"><legend>Controls</legend>
         <label class="setting-row"><input id="touch" autocomplete="off" type="checkbox" title="Boat 1 Overlay touch buttons over the map. On by default on phones and touch screens. Also ?touch=1 / ?touch=0">Touch controls</label>
+        <label class="setting-row"><input id="gamepad" autocomplete="off" type="checkbox" title="Use a PlayStation gamepad. Cross: autopilot (best VMG), Circle: ease sails (depower), Square: tack, L1 / L2: zoom in / out, left stick: arrow keys. Press a button once so the browser sees the pad. Also ?gamepad=1">Gamepad</label>
         <label class="setting-row"><input id="vibrate" autocomplete="off" type="checkbox" title="A short buzz when your boat tacks and a double buzz on a new penalty. Phones that support vibration only (not iPhone). On by default; saved in this browser. Also ?vibrate=0">Vibrate</label>
       </fieldset>
       <div id="wind_info"></div>
