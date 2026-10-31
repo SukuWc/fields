@@ -116,6 +116,9 @@ export const AUTOPILOT_RUDDER_MAX = 30;
 /** Autopilot heading-target change per sim tick while Up / Down is held (was 1°). */
 export const AUTOPILOT_HEADING_STEP_DEG = 1.5;
 
+export const AUTOPILOT_BEAM_SNAP_MIN = 80;
+export const AUTOPILOT_BEAM_SNAP_MAX = 100;
+
 export class Boat{
 
   constructor(map, x, y, hull_angle){
@@ -807,7 +810,12 @@ export class Boat{
   input_autopilot_enabled_toggle(){
     this._cancelPenaltyTurn()
 
-    if (this.autopilot_heading_target < 0){
+    const abs_target = Math.abs(this.autopilot_heading_target)
+    if (abs_target >= AUTOPILOT_BEAM_SNAP_MIN && abs_target <= AUTOPILOT_BEAM_SNAP_MAX){
+      // Beam reach band (80..100° TWA, inclusive): snap to exactly 90° on the same side.
+      this.autopilot_heading_target = this.autopilot_heading_target < 0 ? -90 : 90
+    }
+    else if (this.autopilot_heading_target < 0){
 
       if (this.autopilot_heading_target > -90){
         this.autopilot_heading_target = -this.autopilot_heading_best_vmg_1
