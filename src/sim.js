@@ -39,6 +39,7 @@ export { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps };
 // step() (held: rudder and heading-target keys, applied once per tick).
 //   { type: 'helm', boat, dir: -1 (left) | +1 (right) }        held
 //   { type: 'headingTarget', boat, dir: +1 (increase) | -1 }    held
+//   { type: 'autopilotTurn', boat, dir: -1 (left, CCW) | +1 }   held: sticky-autopilot helm
 //   { type: 'autopilot', boat }        toggle
 //   { type: 'tack', boat }             autopilot tack toggle
 //   { type: 'penaltyTurn', boat, dir: 'ccw' | 'cw' }
@@ -68,6 +69,7 @@ export { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps };
 //                                      the grid default (domainTrack defaultCellUpdateTarget)
 export const BOAT_ACTIONS = {
   helm: (b, c) => (c.dir < 0 ? b.input_rudder_left() : b.input_rudder_right()),
+  autopilotTurn: (b, c) => b.input_autopilot_turn(c.dir),
   headingTarget: (b, c) => (c.dir > 0 ? b.input_autopilot_heading_increase() : b.input_autopilot_heading_decrease()),
   autopilot: (b) => b.input_autopilot_enabled_toggle(),
   tack: (b) => b.input_autopilot_tack_toggle(),

@@ -862,6 +862,17 @@ export class Boat{
       this.autopilot_heading_target = t > 0 ? m : -m
     }
   }
+  // Sticky-autopilot helm (Left / Right with the "Sticky autopilot" setting):
+  // dir -1 (Left) turns her counter-clockwise like left rudder, +1 (Right)
+  // clockwise, by moving the heading target. The target is -TWA, so a CCW turn
+  // raises it: on a positive target that is the Up / Down increase (bear
+  // away), on a negative one the decrease (head up). Same step and 5..175°
+  // clamp, so she never tacks or gybes through it. Engages the autopilot.
+  input_autopilot_turn(dir){
+    const ccw = dir < 0;
+    if (ccw === (this.autopilot_heading_target >= 0)) this.input_autopilot_heading_increase()
+    else this.input_autopilot_heading_decrease()
+  }
   input_autopilot_heading_decrease(step = AUTOPILOT_HEADING_STEP_DEG){
     this._cancelPenaltyTurn()
     this.autopilot_enabled = true
