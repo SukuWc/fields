@@ -53,6 +53,7 @@ export const SETTINGS = [
   { id: 'ghostAhead', scope: 'player', panel: 'player', type: 'number', default: 2, min: 0, max: 30 },
   { id: 'field_plane', scope: 'player', panel: 'player', type: 'bool', default: true, subscription: 'field' },
   { id: 'show_forces', scope: 'player', panel: 'player', type: 'bool', default: false },
+  { id: 'sticky_autopilot', scope: 'player', panel: 'player', type: 'bool', default: false },
   { id: 'camera_follow', scope: 'player', panel: 'player', type: 'bool', default: false },
   { id: 'perf', scope: 'player', panel: 'player', type: 'bool', default: false, subscription: 'perf' },
   // Default off; touch-controls.js turns it on for phones and touch screens.
