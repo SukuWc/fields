@@ -94,14 +94,14 @@ export function buildScenarios(sim) {
   // Rule 13 demo. Wind-from defaults to +Y. Both boats start starboard
   // close-hauled and overlapped, inside the 12 m gate, so the pair is Rule 11
   // until boat 0 tacks. Frame 90 is an animation frame (the scenario clock
-  // follows the display refresh). Enter tacks boat 0 again; Shift tacks boat 1.
+  // follows the display refresh). Enter tacks boat 0 again; G tacks boat 1.
   // While her |TWA| is still under 40° the pair is Rule 13: green to the
   // stand-on boat, red to the tacker. Once she is close-hauled on the new tack
   // the pair is Rule 10. Dev mode keeps the wind steady:
   // ?devmode=1&scenario_selector=6
   scenarios[6] = makeScenario(
     "Tack through Rule 13 into Rule 10",
-    "Both boats start on starboard close-hauled and overlapped, inside 12 m, so the pair opens on Rule 11. Boat 0 then tacks: Rule 13 applies while she is short of close-hauled, and she must keep clear. Once she is close-hauled on the new tack she is on port, the other boat is still on starboard, and Rule 10 applies. Enter tacks boat 0 again; Shift tacks boat 1."
+    "Both boats start on starboard close-hauled and overlapped, inside 12 m, so the pair opens on Rule 11. Boat 0 then tacks: Rule 13 applies while she is short of close-hauled, and she must keep clear. Once she is close-hauled on the new tack she is on port, the other boat is still on starboard, and Rule 10 applies. Enter tacks boat 0 again; G tacks boat 1."
   );
   scenarios[6].frames[0] = () => {
     // 8 m to starboard of boat 0. Hull clearance is about 6.5 m, so the pair

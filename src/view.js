@@ -2,6 +2,16 @@
 // (forces, field). Moved out of map.js so the simulation world carries no
 // camera. The renderer reads it; controls.js, touch and scenario view hints
 // change it.
+// Camera follow point for a client's own boats ({ x, y } each): the boat
+// itself, or the geometric midpoint of two or more; null without any.
+export function cameraTarget(boats) {
+  if (!boats || boats.length === 0) return null;
+  if (boats.length === 1) return boats[0];
+  let x = 0, y = 0;
+  for (const b of boats) { x += b.x; y += b.y; }
+  return { x: x / boats.length, y: y / boats.length };
+}
+
 export class View {
   constructor() {
     this.show_forces = false;

@@ -113,7 +113,7 @@ export const GRACE_MS = 10000;
 export const SEND_BUF_MAX = 256 * 1024;
 export const TOKEN_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
-export const MAX_BOATS_PER_CLIENT = 1;
+export const MAX_BOATS_PER_CLIENT = 2;
 export const MAX_PLAYER_BOATS = 8;
 // Room-wide settings come from the settings registry
 // (src/settings-registry.js): which commands are room commands, and each
@@ -568,13 +568,13 @@ export class Room {
       // first ticks. Spawning in that window would orphan the mid-restart boat
       // when _respawnDue runs; record the join as the pending respawn instead.
       if (this._respawn) {
-        const list = this.owned.get(client) || [];
-        if (list.length >= MAX_BOATS_PER_CLIENT) return { error: 'at most ' + MAX_BOATS_PER_CLIENT + ' boat per client' };
-        this._respawn.set(client, [{ name, color }]);
+        const pending = this._respawn.get(client) || [];
+        if (pending.length >= MAX_BOATS_PER_CLIENT) return { error: 'at most ' + MAX_BOATS_PER_CLIENT + ' boats per client' };
+        this._respawn.set(client, [...pending, { name, color }]);
         return { ok: true, pending: true };
       }
       const list = this.owned.get(client) || [];
-      if (list.length >= MAX_BOATS_PER_CLIENT) return { error: 'at most ' + MAX_BOATS_PER_CLIENT + ' boat per client' };
+      if (list.length >= MAX_BOATS_PER_CLIENT) return { error: 'at most ' + MAX_BOATS_PER_CLIENT + ' boats per client' };
       if (this.core.sim.players.filter((b) => b.spawnId).length >= MAX_PLAYER_BOATS) return { error: 'the room is full (' + MAX_PLAYER_BOATS + ' player boats)' };
       const r = this._spawn(client, { name, color });
       this._sendOwn(client);

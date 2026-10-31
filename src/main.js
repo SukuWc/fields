@@ -10,7 +10,7 @@ import { RemoteHost } from './remote-host.js';
 import { hostChoice } from './host-choice.js';
 import { setupOwnBoat } from './own-boat.js';
 import { setupBoatStats } from './boat-stats-panel.js';
-import { View } from './view.js';
+import { View, cameraTarget } from './view.js';
 import { installUrlSettings } from './url-settings.js';
 import { settingDefault, urlSettingIds, SUBSCRIPTION_IDS } from './settings-registry.js';
 import { applySettingDefaults } from './settings-panel.js';
@@ -350,16 +350,18 @@ function startClient() {
   // in a server room. Cleared with the scenario.
   let followTarget;
   let ownBoatId = null;
+  let ownBoatIds = [];
   // Boat stats panel (#boat_stats): own boat only in a server room.
   const boatStats = setupBoatStats({ remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
-  setupOwnBoat(host, (ids) => { ownBoatId = ids[0] || null; boatStats.setOwnId(ownBoatId); });
+  setupOwnBoat(host, (ids) => { ownBoatIds = ids; ownBoatId = ids[0] || null; boatStats.setOwnId(ownBoatId); });
   host.on((ev) => { if (ev.type === 'cleared') followTarget = undefined; });
   host.onFrame((frame) => {
     lastFrame = frame;
     devMode = frame.devMode;
     // In a remote room with an own boat, follow that one.
-    const mine = ownBoatId && frame.spawned ? frame.spawned.find((b) => b.id === ownBoatId) : null;
-    followTarget = mine || (ownBoatId ? undefined : frame.boat0) || undefined;
+    // With two own boats the camera sits at the midpoint of the two.
+    const mine = frame.spawned ? ownBoatIds.map((id) => frame.spawned.find((b) => b.id === id)).filter(Boolean) : [];
+    followTarget = cameraTarget(mine) || (ownBoatId ? undefined : frame.boat0) || undefined;
     if (frame.fieldSteps > 0 && isPerfOverlayOn()) recordFieldStep(frame.fieldMs);
     if (frame.state && frame.statics) {
       // The readout shows this client's own boat in a server room.

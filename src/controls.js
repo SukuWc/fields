@@ -67,12 +67,17 @@ function fireKeydown(match) {
   });
 }
 
-// W / S zoom the camera one step in / out (same step and limits as the +/-
-// buttons). They also steer a second local boat's heading target (boat 1 in
-// autokeybind); while a second boat is bound, W / S keep steering it.
+// = / - (and numpad + / -) zoom the camera one step in / out (same step and
+// limits as the +/- buttons) in every mode. W / S do the same while one boat
+// is bound; with two boats bound they steer the second player's heading
+// target, so zoom stays on = / - only.
 export const ZOOM_IN_KEY = 87;  // W
 export const ZOOM_OUT_KEY = 83; // S
+const ZOOM_IN_KEYS = [187, 61, 107];   // = (Chrome, Firefox), numpad +
+const ZOOM_OUT_KEYS = [189, 173, 109]; // - (Chrome, Firefox), numpad -
 export function zoomKeyStep(keyCode, boundBoats) {
+  if (ZOOM_IN_KEYS.includes(keyCode)) return -2;
+  if (ZOOM_OUT_KEYS.includes(keyCode)) return +2;
   if (boundBoats > 1) return 0;
   if (keyCode === ZOOM_IN_KEY) return -2;
   if (keyCode === ZOOM_OUT_KEY) return +2;
@@ -136,11 +141,16 @@ export function heldCommands() {
   return out;
 }
 
-// Boat 0: arrows steer / heading target, Space autopilot, Enter tack, Q / E
-// penalty circles. Boat 1: A / D, W / S, Ctrl, Shift. boats: from the
+// One boat: arrows steer / heading target, Space autopilot, Enter tack, Q / E
+// penalty circles, X depower; W / S / = / - zoom. Two boats (a second local
+// player, or a client's second boat in a server room): player 1 keeps the
+// arrows, Space, Enter and takes , . / for penalty circles and depower;
+// player 2 has A / D helm, W / S heading target, F autopilot, G tack, Q / E
+// penalty circles, X depower; zoom is = / - only. boats: from the
 // bindControls event: the scenario's player count (local, worker), or in a
 // server room this client's own boats (0 when spectating: no keys at all);
-// "boat 0" is then the client's own boat (the server maps it).
+// "boat 0" is then the client's first own boat (the server maps it) and
+// "boat 1" its second.
 
 let _boundBoats = 0;
 function autokeybind(boats) {
@@ -155,20 +165,25 @@ function autokeybind(boats) {
     P(38, 40, { type: "headingTarget", boat: 0, dir: -1 });
     K(32, -1, { type: "autopilot", boat: 0 });
     K(13, -1, { type: "tack", boat: 0 });
-    // Q counter-clockwise, E clockwise. Separate keys: holding one does not
-    // flip the other, and a repeat of the same key does not restart the turn.
-    K(81, 69, { type: "penaltyTurn", boat: 0, dir: "ccw" });
-    K(69, 81, { type: "penaltyTurn", boat: 0, dir: "cw" });
-    // X: depower toggle (D is boat 2's rudder).
-    K(88, -1, { type: "depower", boat: 0 });
+    // Penalty circles: Q counter-clockwise, E clockwise (one boat), or
+    // , / . (two boats; Q / E are player 2's). Separate keys: holding one
+    // does not flip the other, and a repeat of the same key does not restart
+    // the turn. Depower toggle: X (one boat), / (two boats).
+    const two = boats > 1;
+    K(two ? 188 : 81, two ? 190 : 69, { type: "penaltyTurn", boat: 0, dir: "ccw" });
+    K(two ? 190 : 69, two ? 188 : 81, { type: "penaltyTurn", boat: 0, dir: "cw" });
+    K(two ? 191 : 88, -1, { type: "depower", boat: 0 });
   }
   if (boats > 1) {
     P(65, 68, { type: "helm", boat: 1, dir: -1 });
     P(68, 65, { type: "helm", boat: 1, dir: +1 });
     P(83, 87, { type: "headingTarget", boat: 1, dir: +1 });
     P(87, 83, { type: "headingTarget", boat: 1, dir: -1 });
-    K(17, -1, { type: "autopilot", boat: 1 });
-    K(16, -1, { type: "tack", boat: 1 });
+    K(70, -1, { type: "autopilot", boat: 1 });
+    K(71, -1, { type: "tack", boat: 1 });
+    K(81, 69, { type: "penaltyTurn", boat: 1, dir: "ccw" });
+    K(69, 81, { type: "penaltyTurn", boat: 1, dir: "cw" });
+    K(88, -1, { type: "depower", boat: 1 });
   }
   heldChanged();
 }

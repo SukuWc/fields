@@ -34,5 +34,9 @@ check('autopilot heading step is 1.5° per tick (was 1°)', AUTOPILOT_HEADING_ST
 
 check('rudder return-to-centre is 3x faster (decay factor cubed)', RUDDER_RETURN_SPEEDUP === 3);
 
+check('= / - (and numpad, Firefox codes) zoom in every mode, even with two boats bound', [187, 61, 107].every((k) => zoomKeyStep(k, 0) === -2 && zoomKeyStep(k, 2) === -2) && [189, 173, 109].every((k) => zoomKeyStep(k, 1) === +2 && zoomKeyStep(k, 2) === +2));
+const { cameraTarget } = await import('../src/view.js');
+check('camera target: none, one boat, midpoint of two', cameraTarget([]) === null && cameraTarget([{ x: 3, y: 4 }]).x === 3 && JSON.stringify(cameraTarget([{ x: 0, y: 10 }, { x: 10, y: -4 }])) === '{"x":5,"y":3}');
+
 if (failed) { console.log(`${failed} FAILED`); process.exit(1); }
 console.log('all keys checks passed');

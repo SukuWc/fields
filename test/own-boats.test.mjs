@@ -92,6 +92,21 @@ const tex = () => ({ image: { data: new Uint8Array(0) } });
   for (let i = 0; i < 50 && !(ownA.at(-1).length === 1 && ownA.at(-1)[0].id !== ra.id); i++) await sleep(50);
   const again = ownA.at(-1)[0];
   check('a room-wide restart keeps player boats (spawned again, same name, owned again)', !byId(ra.id) && again && byId(again.id) && byId(again.id).spawnName === 'A');
+  // Second player: one client owns two boats, boat 1 is the second, a third is refused.
+  const binds = [];
+  A.on((e) => { if (e.type === 'bindControls') binds.push(e.boats); });
+  const r2 = await A.command({ type: 'spawnBoat', name: 'A2' });
+  const r3 = await A.command({ type: 'spawnBoat', name: 'A3' });
+  for (let i = 0; i < 40 && ownA.at(-1).length !== 2; i++) await sleep(50);
+  check('a client may own a second boat; a third is refused', r2.id && r2.id !== again.id && ownA.at(-1).length === 2 && r3.error && /at most 2/.test(r3.error), JSON.stringify([r2, r3]));
+  check('two own boats bind two players', binds.at(-1) === 2, JSON.stringify(binds));
+  const before = [byId(again.id).autopilot_heading_target, byId(r2.id).autopilot_heading_target];
+  await A.command({ type: 'tack', boat: 1 });
+  const after = [byId(again.id).autopilot_heading_target, byId(r2.id).autopilot_heading_target];
+  check('boat 1 commands hit the second boat only', after[0] === before[0] && after[1] === -before[1] && before[1] !== 0, JSON.stringify([before, after]));
+  await A.command({ type: 'restart', scenario: 0 });
+  for (let i = 0; i < 60 && !(ownA.at(-1).length === 2 && ownA.at(-1).every((b) => b.id !== again.id && b.id !== r2.id)); i++) await sleep(50);
+  check('a restart keeps both boats of the client, in order', ownA.at(-1).length === 2 && ownA.at(-1).map((b) => b.name).join() === 'A,A2', JSON.stringify(ownA.at(-1)));
   A.terminate();
   await srv.close();
 }

@@ -96,7 +96,7 @@ In a remote room, the settings panel (the ☰ menu on phones) shows a name field
 - the camera follows it;
 - it has a name badge and a hull colour picked from the name.
 
-**Leave** (`removeBoat`, own boats only) removes the boat; closing the page removes it after the grace period (see Reconnect). One boat per client (`MAX_BOATS_PER_CLIENT`), at most 8 player boats per room (`MAX_PLAYER_BOATS`); a refused spawn answers `{ error }`.
+**Leave** (`removeBoat`, own boats only) removes the boat; closing the page removes it after the grace period (see Reconnect). Up to two boats per client (`MAX_BOATS_PER_CLIENT`; the second is the page's second player, boat index 1 in its key binding), at most 8 player boats per room (`MAX_PLAYER_BOATS`); a refused spawn answers `{ error }`.
 
 A client without a boat is **spectating**: the server drops its boat commands and held keys (never applied to scenario boats or other players' boats), it has no key binding (the server sends each client `bindControls` with its own boat count, not the scenario's), and the player panel and the touch panel say "Spectating: join with your boat to sail". After **Leave** it is a spectator again. Each boat has one owner, so keys from several clients never combine on one boat. (A `--lockstep` room, tests only, still lets a client without a boat drive scenario boats 0/1, so lockstep runs match LocalHost.)
 
