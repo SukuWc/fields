@@ -18,6 +18,7 @@ import { setInfo, flushInfo } from './info.js';
 import { setupPerfOverlay, isPerfOverlayOn, recordFieldStep, perfOverlayFrame } from './perf-overlay.js';
 import { setupMobileMenu } from './mobile-menu.js';
 import { setupTouchControls } from './touch-controls.js';
+import { setupGamepad } from './gamepad.js';
 import { setupPinchZoom } from './pinch-zoom.js';
 import { setupChat } from './chat-panel.js';
 import { windCeilingMps } from './sim-modes.js';
@@ -287,6 +288,7 @@ function startClient() {
   document.getElementById(SUBSCRIPTION_IDS.perf).addEventListener('change', (e) => host.setPerf(e.target.checked));
   // Before installUrlSettings: the device default must be the checkbox default.
   setupTouchControls();
+  setupGamepad();
   // After the WebGL canvas exists (#sim_canvas): two-finger pinch zooms the client camera.
   setupPinchZoom(view);
   installUrlSettings(undefined, { ids: urlSettingIds({ remote }) });

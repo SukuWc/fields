@@ -60,6 +60,8 @@ export const SETTINGS = [
   { id: 'perf', scope: 'player', panel: 'player', type: 'bool', default: false, subscription: 'perf' },
   // Default off; touch-controls.js turns it on for phones and touch screens.
   { id: 'touch', scope: 'player', panel: 'player', type: 'bool', default: false },
+  // Default off: a PlayStation pad drives player 1 through the keyboard keys (gamepad.js).
+  { id: 'gamepad', scope: 'player', panel: 'player', type: 'bool', default: false },
   // The plot shapes only this page's field messages ('plot' is a per-client
   // command, never a room command). The URL holds the option text.
   { id: 'plotSelect', scope: 'player', panel: 'player', type: 'enum', default: 'Plot speed', values: ['Plot density', 'Plot x velocity', 'Plot y velocity', 'Plot speed', 'Plot curl'], command: { type: 'plot', field: 'plotType' }, devModeDisabled: true },

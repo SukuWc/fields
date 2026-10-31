@@ -103,6 +103,11 @@ function checkKeyRelease(e) {
   heldChanged();
 }
 
+// Gamepad (gamepad.js): camera zoom step, and the key that toggles depower
+// for the current binding (X with one boat, / with two).
+export function zoomCamera(step) { if (_view) _view.input_camera_zoom_relative(step); }
+export function depowerKeyCode() { return _boundBoats > 1 ? 191 : 88; }
+
 // Touch controls press the same keys. Held keys (helm, heading) are read by
 // heldCommands each tick; KEYDOWN bindings fire once on press, as a real key.
 export function setVirtualKey(keyCode, down) {
