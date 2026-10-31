@@ -100,6 +100,22 @@ export const PENALTY_TURN_DONE_RATE_DEG_S = 10;
 
 
 
+/**
+ * Rudder return-to-centre with no helm input: the per-pass decay factor
+ * (0.98 - speed/80) is raised to this power, so the centring half-life is
+ * 1/RUDDER_RETURN_SPEEDUP of the old one at every speed. Only when the
+ * autopilot is off: autopilot steering keeps the old decay, and the
+ * penalty-turn rudder is a separate branch, so both are unchanged.
+ */
+export const RUDDER_RETURN_SPEEDUP = 3;
+
+/** Autopilot rudder limit. Was rudder_angle_max / 2 (60 / 2); pinned at 30° so
+ *  the 60° → 45° manual limit does not slow autopilot tacks and bear-aways. */
+export const AUTOPILOT_RUDDER_MAX = 30;
+
+/** Autopilot heading-target change per sim tick while Up / Down is held (was 1°). */
+export const AUTOPILOT_HEADING_STEP_DEG = 1.5;
+
 export class Boat{
 
   constructor(map, x, y, hull_angle){
@@ -133,7 +149,7 @@ export class Boat{
 
     this.rudder_angle = 0;
     this.rudder_angle_last = 0;
-    this.rudder_angle_max = 60;
+    this.rudder_angle_max = 45; // was 60
     this.rudder_position = 1.8
     this.rudder_lenght = 0.5
 
@@ -427,15 +443,15 @@ export class Boat{
       this.rudder_angle += (target - this.rudder_angle) * PENALTY_RUDDER_BLEND;
     } else if (this.rudder_input === -1) {
 
-      // N passes of +rate, each stopping once past the max.
-      for (let i = 0; i < N && this.rudder_angle < this.rudder_angle_max; i++) this.rudder_angle += rudder_turn_rate;
+      // N passes of +rate, clamped at the max (no overshoot).
+      for (let i = 0; i < N && this.rudder_angle < this.rudder_angle_max; i++) this.rudder_angle = Math.min(this.rudder_angle + rudder_turn_rate, this.rudder_angle_max);
       // The pump term was per pass (cube of a one-pass step), summed over N
       // passes by FORCE_PASSES: use the per-pass step here.
       const stepPerPass = (this.rudder_angle - this.rudder_angle_last) / N;
       pumpfactor = 1.5 * stepPerPass * stepPerPass * stepPerPass
     } else if (this.rudder_input === 1) {
       
-      for (let i = 0; i < N && this.rudder_angle > -this.rudder_angle_max; i++) this.rudder_angle -= rudder_turn_rate;
+      for (let i = 0; i < N && this.rudder_angle > -this.rudder_angle_max; i++) this.rudder_angle = Math.max(this.rudder_angle - rudder_turn_rate, -this.rudder_angle_max);
       const stepPerPass = (this.rudder_angle - this.rudder_angle_last) / N;
       pumpfactor = 1.5 * stepPerPass * stepPerPass * stepPerPass
     }
@@ -449,7 +465,7 @@ export class Boat{
         dmod = -1
       }
 
-      this.rudder_angle = this.rudder_angle * Math.pow(0.98 - dmod / 80, N)
+      this.rudder_angle = this.rudder_angle * Math.pow(0.98 - dmod / 80, (this.autopilot_enabled ? 1 : RUDDER_RETURN_SPEEDUP) * N)
 
     }
     
@@ -481,11 +497,11 @@ export class Boat{
 
       this.rudder_angle_target = (comp_p + comp_i + comp_d)*Math.sign(d)
 
-      if (this.rudder_angle_target>this.rudder_angle_max/2){
-        this.rudder_angle_target = this.rudder_angle_max/2;
+      if (this.rudder_angle_target>AUTOPILOT_RUDDER_MAX){
+        this.rudder_angle_target = AUTOPILOT_RUDDER_MAX;
       }
-      if (this.rudder_angle_target<-this.rudder_angle_max/2){
-        this.rudder_angle_target = -this.rudder_angle_max/2;
+      if (this.rudder_angle_target<-AUTOPILOT_RUDDER_MAX){
+        this.rudder_angle_target = -AUTOPILOT_RUDDER_MAX;
       }
 
       this.rudder_angle += (this.rudder_angle_target - this.rudder_angle) * AUTOPILOT_RUDDER_BLEND
@@ -833,34 +849,27 @@ export class Boat{
     this._startPenaltyTurn(1)
   }
 
-  input_autopilot_heading_increase(){
+  // Held Up / Down (and boat 2's W / S): the target moves
+  // AUTOPILOT_HEADING_STEP_DEG per sim tick (1.5° = 45°/s at 30 Hz), kept
+  // within 5°..175° off the wind on its current tack. Scripted scenarios pass
+  // step 1 so their degree-per-frame scripts are unchanged.
+  input_autopilot_heading_increase(step = AUTOPILOT_HEADING_STEP_DEG){
     this._cancelPenaltyTurn()
-
     this.autopilot_enabled = true
-    if (Math.abs(this.autopilot_heading_target)<175){
-      if (this.autopilot_heading_target>0){
-        this.autopilot_heading_target += 1
-      } 
-      else{
-        this.autopilot_heading_target -= 1        
-      }
+    const t = this.autopilot_heading_target
+    if (Math.abs(t) < 175){
+      const m = Math.min(175, Math.abs(t) + step)
+      this.autopilot_heading_target = t > 0 ? m : -m
     }
-
   }
-  input_autopilot_heading_decrease(){
+  input_autopilot_heading_decrease(step = AUTOPILOT_HEADING_STEP_DEG){
     this._cancelPenaltyTurn()
-
     this.autopilot_enabled = true
-    if (Math.abs(this.autopilot_heading_target)>5){
-      if (this.autopilot_heading_target>0){
-        this.autopilot_heading_target -= 1
-      } 
-      else{
-        this.autopilot_heading_target += 1        
-      }
+    const t = this.autopilot_heading_target
+    if (Math.abs(t) > 5){
+      const m = Math.max(5, Math.abs(t) - step)
+      this.autopilot_heading_target = t > 0 ? m : -m
     }
-    
   }
-
 
 }
