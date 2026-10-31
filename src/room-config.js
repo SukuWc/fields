@@ -65,7 +65,7 @@ export const DEFAULT_CUSTOM_COURSE = deepFreeze({
   start: { committee: 'rc', pin: 'pin', timings: 'compressed', lead_s: 2 },
   course: { laps: 1, legs: [{ mark: 'w', round: 'port' }, { gate: ['g_l', 'g_r'] }, { mark: 'w', round: 'port' }] },
   finish: { committee: 'rc', pin: 'pin' },
-  boundary: { inset_m: 8, zone_m: 15, y_min_m: -90, y_max_m: 90 },
+  boundary: { inset_m: 8, zone_m: 6, y_min_m: -90, y_max_m: 90 },
 });
 
 export const ROOM_CONFIG_DEFAULTS = Object.freeze({
