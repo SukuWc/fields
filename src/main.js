@@ -4,7 +4,7 @@ import { FixedStepLoop } from './loop.js';
 import { initRenderer, startAnimation, renderNow, getCamera, setFluidPlaneSize, resetFluidPlane, setFieldVisible, setFlowGrid, setTracerParams, getTracerParams, updateBoatTrails, setTrailParams, setBoatTrailsOn, setGhostParams } from './renderer.js';
 import { setupControls, setWindCeiling, heldCommands, onHeldChange, deferUiToFrames, flushFrameUi, onRoomLattice } from './controls.js';
 import { LocalHost } from './host.js';
-import { buildScene } from './scene-build.js';
+import { buildScene, setGiveWayOverlay } from './scene-build.js';
 import { WorkerHost } from './worker-host.js';
 import { RemoteHost } from './remote-host.js';
 import { hostChoice } from './host-choice.js';
@@ -256,6 +256,12 @@ function startClient() {
       if (el) { el.addEventListener('change', applyTrails); el.addEventListener('input', applyTrails); }
     }
     applyTrails();
+  }
+  // Give-way overlay toggle (?show_giveway=1, default off): live.
+  {
+    const box = document.getElementById('show_giveway');
+    if (box) box.addEventListener('change', () => setGiveWayOverlay(box.checked));
+    setGiveWayOverlay(!box || box.checked);
   }
   // Ghost boat toggle and lookahead (?ghost=0, ?ghostAhead=s): live.
   {

@@ -132,6 +132,11 @@ export function buildBodies(list, bt) {
   return out;
 }
 
+// Give-way overlays (rule labels, mark-room / boundary-room badges): the
+// "Give-way overlay" box (?show_giveway=1), set by main.js.
+let giveWayOn = true;
+export function setGiveWayOverlay(on) { giveWayOn = !!on; }
+
 // Guides in the order the old present.js presentStep drew them. view: the
 // client's View (dev-mode wind arrow position).
 export function buildGuides(state, statics, view) {
@@ -162,9 +167,9 @@ export function buildGuides(state, statics, view) {
   if (state.course && statics.course) guides.push(...courseGuidesFromState(statics.course, state.course, now));
   if (state.finish && statics.finish) guides.push(...finishGuidesFromState(statics.finish, state.finish, now));
   if (statics.boundary) guides.push(...boundaryGuides(statics.boundary));
-  if (state.br) guides.push(...roomGuidesFromState(state.br, 'boundaryRoom', boats));
-  if (state.mr) guides.push(...roomGuidesFromState(state.mr, 'markRoom', boats));
-  if (state.pair) {
+  if (giveWayOn && state.br) guides.push(...roomGuidesFromState(state.br, 'boundaryRoom', boats));
+  if (giveWayOn && state.mr) guides.push(...roomGuidesFromState(state.mr, 'markRoom', boats));
+  if (giveWayOn && state.pair) {
     const at = pairBoatsFromState(state.boats, statics.hulls);
     for (const p of state.pair) guides.push(...pairGuidesFromState(p, at));
   }

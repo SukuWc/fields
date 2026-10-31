@@ -45,6 +45,7 @@ export const SETTINGS = [
   { id: 'tracers', scope: 'player', panel: 'player', type: 'number', default: null, nullable: true, min: 10, max: 20000 },
   { id: 'tracerLife', scope: 'player', panel: 'player', type: 'number', default: 6, min: 0.5, max: 30 },
   { id: 'tracerTail', scope: 'player', panel: 'player', type: 'number', default: 1.5, min: 0, max: 10 },
+  { id: 'show_giveway', scope: 'player', panel: 'player', type: 'bool', default: false },
   { id: 'boat_trails', scope: 'player', panel: 'player', type: 'bool', default: true },
   { id: 'trailInterval', scope: 'player', panel: 'player', type: 'number', default: 1, min: 0.1, max: 30 },
   { id: 'trailDuration', scope: 'player', panel: 'player', type: 'number', default: 60, min: 1, max: 1200 },
