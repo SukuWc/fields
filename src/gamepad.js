@@ -6,7 +6,7 @@
 //   button 0 (Cross)    autopilot, snapping to the best-VMG heading (Space)
 //   button 1 (Circle)   sails ease: depower toggle (X, or / with two players)
 //   button 2 (Square)   tack (Enter)
-//   button 4 (L1)       zoom in         button 6 (L2)  zoom out
+//   button 4 (L1)       zoom in         button 5 (R1)  zoom out
 //   left stick          arrow keys: left / right helm, up / down heading target
 //
 // createGamepadPoller is pure (the pad and the actions are passed in) so a
@@ -18,7 +18,7 @@ export const PAD_AUTOPILOT = 0;
 export const PAD_EASE = 1;
 export const PAD_TACK = 2;
 export const PAD_ZOOM_IN = 4;
-export const PAD_ZOOM_OUT = 6;
+export const PAD_ZOOM_OUT = 5;
 export const STICK_DEADZONE = 0.45;
 export const ZOOM_REPEAT_DELAY_MS = 400;
 export const ZOOM_REPEAT_MS = 120;

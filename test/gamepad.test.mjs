@@ -50,8 +50,8 @@ function rig(depowerKey = 88) {
   p.update(pad([4]), ZOOM_REPEAT_DELAY_MS);
   p.update(pad([4]), ZOOM_REPEAT_DELAY_MS + ZOOM_REPEAT_MS);
   p.update(pad([]), 1000);
-  p.update(pad([6]), 1016);
-  check('button 4 zooms in (-2) once, repeating after the delay; button 6 zooms out (+2)', JSON.stringify(zooms) === '[-2,-2,-2,2]', JSON.stringify(zooms));
+  p.update(pad([5]), 1016);
+  check('button 4 zooms in (-2) once, repeating after the delay; button 5 zooms out (+2)', JSON.stringify(zooms) === '[-2,-2,-2,2]', JSON.stringify(zooms));
 }
 {
   const { p, log } = rig();
