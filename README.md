@@ -121,7 +121,7 @@ Last updated: 2026-10-31
 - [ ] Rule 18 (partial: [#35](https://github.com/SukuWc/fields/pull/35) adds Rule 18.1 scope, Rule 18.2 mark-room, and scenario 15; still open: Rules 18.3 and 18.4)
 - [x] Boundary room (SailGP-style virtual boundary rule, overrides Rules 10-13, scenario 19): [#45](https://github.com/SukuWc/fields/pull/45)
 - [x] Rule 31: [#34](https://github.com/SukuWc/fields/pull/34)
-- [ ] Rule 31 touches count only for the next active mark, gate ends, or start/finish line ends: [#129](https://github.com/SukuWc/fields/pull/129)
+- [x] Rule 31 touches count only for the next active mark, gate ends, or start/finish line ends: [#129](https://github.com/SukuWc/fields/pull/129)
 - [ ] Rule 28
 - [ ] Penalties and exoneration (partial: [#12](https://github.com/SukuWc/fields/pull/12) assigns fault on contact; [#20](https://github.com/SukuWc/fields/pull/20) adds a pending penalty cleared by a tack and a gybe in a row, or a Q/E autopilot circle; [#35](https://github.com/SukuWc/fields/pull/35) exonerates the mark-room boat under Rule 21; [#38](https://github.com/SukuWc/fields/pull/38) turns penalties still unserved at the finish into a 20 s time penalty, or DSQ; [#45](https://github.com/SukuWc/fields/pull/45) adds a boundary crossing penalty after 1 s outside and exonerates the boundary-room boat)
 - [ ] Incident log (partial: [#12](https://github.com/SukuWc/fields/pull/12) stores contact incidents and a FAULT badge)
@@ -138,7 +138,7 @@ Last updated: 2026-10-31
 - [ ] Accessibility
 - [ ] Telemetry export
 - [x] Sail flapping animation for luffing sails (visual only): [#54](https://github.com/SukuWc/fields/pull/54)
-- [ ] 2 px map lines (course, marks, boundary, guides, ghost outlines) for readability, refinement region border off by default (Show refinement region border checkbox): [#136](https://github.com/SukuWc/fields/pull/136)
+- [x] 2 px map lines (course, marks, boundary, guides, ghost outlines) for readability, refinement region border off by default (Show refinement region border checkbox): [#136](https://github.com/SukuWc/fields/pull/136)
 - [x] Jib downwind shadow flap only while eased (× depower ramp, visual only): [#58](https://github.com/SukuWc/fields/pull/58)
 - [x] Boat trails: fading dot per boat every 1 s of sim time in the boat's colour, live interval/duration/size settings (`?boat_trails`, `?trailInterval`, `?trailDuration`, `?trailSize`, visual only): [#71](https://github.com/SukuWc/fields/pull/71)
 - [x] Ghost boat: predicted hull outline 2 s ahead on a constant turn-rate arc, off by default (`?ghost`, `?ghostAhead`, visual only): [#74](https://github.com/SukuWc/fields/pull/74)
