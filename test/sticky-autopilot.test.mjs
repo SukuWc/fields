@@ -4,14 +4,14 @@ import './dom-stub.mjs';
 await import('./full-stack.mjs');
 const H = await import('../scripts/sim-res-harness.mjs');
 const { helmCommand, heldCommands, setStickyAutopilot, stickyAutopilot } = await import('../src/controls.js');
-const { Boat, AUTOPILOT_HEADING_STEP_DEG } = await import('../src/boat.js');
+const { Boat, AUTOPILOT_HEADING_STEP_DEG, wrapDeg180 } = await import('../src/boat.js');
 const { BOAT_ACTIONS } = await import('../src/sim.js');
 
 let failed = 0;
 const check = (name, ok, extra = '') => { console.log((ok ? 'PASS  ' : 'FAIL  ') + name + (extra ? '  ' + extra : '')); if (!ok) failed++; };
 
 const helmL = { type: 'helm', boat: 0, dir: -1 };
-check('off by default; helm unchanged when off', stickyAutopilot() === false && helmCommand(helmL, false) === helmL);
+check('on by default; helm unchanged when off', stickyAutopilot() === true && helmCommand(helmL, false) === helmL);
 const m = helmCommand(helmL, true);
 check('on: helm -> autopilotTurn, same boat and dir', m.type === 'autopilotTurn' && m.boat === 0 && m.dir === -1 && helmL.type === 'helm');
 check('on: other held commands unchanged', helmCommand({ type: 'headingTarget', boat: 0, dir: 1 }, true).type === 'headingTarget');
@@ -21,18 +21,25 @@ check('autopilotTurn is a boat action (server room honours it)', typeof BOAT_ACT
 // Target arithmetic: Left raises the signed target (CCW), Right lowers it.
 const { map } = H.makeWorld(1);
 const b = new Boat(map, 10, -9, 5 * Math.PI / 4);
-b.autopilot_enabled = false; b.autopilot_heading_target = 50;
+b.autopilot_enabled = true; b.twa = -50; b.autopilot_heading_target = 50;
 BOAT_ACTIONS.autopilotTurn(b, { dir: -1 });
-check('Left engages the autopilot, +1.5° on a positive target', b.autopilot_enabled === true && b.autopilot_heading_target === 50 + AUTOPILOT_HEADING_STEP_DEG);
+check('Left: +1.5° (CCW)', b.autopilot_heading_target === 50 + AUTOPILOT_HEADING_STEP_DEG);
 BOAT_ACTIONS.autopilotTurn(b, { dir: +1 });
 check('Right undoes it', b.autopilot_heading_target === 50);
-b.autopilot_heading_target = -50;
-BOAT_ACTIONS.autopilotTurn(b, { dir: -1 });
-check('Left on a negative target: -50 -> -48.5', b.autopilot_heading_target === -48.5);
-b.autopilot_heading_target = 5.5; BOAT_ACTIONS.autopilotTurn(b, { dir: +1 }); BOAT_ACTIONS.autopilotTurn(b, { dir: +1 });
-check('clamped at 5° (no tack through the wind)', b.autopilot_heading_target === 5);
-b.autopilot_heading_target = -174; BOAT_ACTIONS.autopilotTurn(b, { dir: +1 }); BOAT_ACTIONS.autopilotTurn(b, { dir: +1 });
-check('clamped at 175° (no gybe)', b.autopilot_heading_target === -175);
+b.twa = -5; b.autopilot_heading_target = 5.5; BOAT_ACTIONS.autopilotTurn(b, { dir: +1 }); BOAT_ACTIONS.autopilotTurn(b, { dir: +1 }); BOAT_ACTIONS.autopilotTurn(b, { dir: +1 }); BOAT_ACTIONS.autopilotTurn(b, { dir: +1 });
+check('Right goes through head-to-wind (tack, no 5° clamp)', b.autopilot_heading_target === -0.5);
+b.twa = -179; b.autopilot_heading_target = 179; BOAT_ACTIONS.autopilotTurn(b, { dir: -1 }); BOAT_ACTIONS.autopilotTurn(b, { dir: -1 });
+check('Left wraps through dead downwind (gybe, no 175° clamp)', b.autopilot_heading_target === -178);
+b.twa = 0; b.autopilot_heading_target = 89; for (let i = 0; i < 5; i++) BOAT_ACTIONS.autopilotTurn(b, { dir: -1 });
+check('target lead capped at 90° ahead of the boat', b.autopilot_heading_target === 90);
+b.autopilot_enabled = false; b.twa = -30; BOAT_ACTIONS.autopilotTurn(b, { dir: -1 });
+check('engaging starts from the current heading', b.autopilot_enabled && b.autopilot_heading_target === 30 + AUTOPILOT_HEADING_STEP_DEG);
+check('wrapDeg180', wrapDeg180(190) === -170 && wrapDeg180(-180) === 180 && wrapDeg180(-190) === 170 && wrapDeg180(720) === 0);
+// Up / Down unchanged: clamped 5..175 on the current side.
+b.autopilot_heading_target = 5.5; b.input_autopilot_heading_decrease(); b.input_autopilot_heading_decrease();
+check('Down still clamps at 5°', b.autopilot_heading_target === 5);
+b.autopilot_heading_target = -174; b.input_autopilot_heading_increase(); b.input_autopilot_heading_increase();
+check('Up still clamps at 175°', b.autopilot_heading_target === -175);
 
 // Physics: held Left turns her counter-clockwise like left rudder, autopilot on.
 for (const a of [5 * Math.PI / 4, 3 * Math.PI / 4]) {
@@ -45,6 +52,23 @@ for (const a of [5 * Math.PI / 4, 3 * Math.PI / 4]) {
 	for (let t = 0; t < 30; t++) tick();
 	const dA = boat.physics_model.getAngle() - h0;
 	check(`held Left turns CCW like left rudder, autopilot stays on (start ${(a * 180 / Math.PI).toFixed(0)}°)`, dA > 0.2 && boat.autopilot_enabled, `dAngle ${dA.toFixed(3)} rad`);
+}
+
+// Physics: holding Left / Right for a long time spins her through tacks and
+// gybes in one direction (unwrapped heading change > 360°, never reverses much).
+for (const dir of [-1, 1]) {
+	const { map } = H.makeWorld(1);
+	const boat = new Boat(map, 10, -9, 5 * Math.PI / 4);
+	const tick = () => { map.world.step(1 / 30); boat.physics_model_step(); };
+	for (let t = 0; t < 100; t++) tick();
+	let prev = boat.physics_model.getAngle(), total = 0, worstBack = 0;
+	for (let t = 0; t < 2400; t++) {
+		BOAT_ACTIONS.autopilotTurn(boat, { dir }); tick();
+		const a = boat.physics_model.getAngle(); total += a - prev; prev = a;
+		worstBack = Math.max(worstBack, dir < 0 ? -total : total);
+	}
+	const deg = total * 180 / Math.PI;
+	check(`held ${dir < 0 ? 'Left' : 'Right'} turns continuously through tacks and gybes`, (dir < 0 ? deg : -deg) > 360 && boat.autopilot_enabled, `turned ${deg.toFixed(0)}°`);
 }
 
 if (failed) { console.log(failed + ' FAILED'); process.exit(1); }

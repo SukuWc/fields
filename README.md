@@ -147,6 +147,7 @@ Last updated: 2026-10-31
 - [x] Pinch-to-zoom on the sim canvas on phones (client-only camera zoom, same limits as the +/- buttons, no browser page zoom): [#108](https://github.com/SukuWc/fields/pull/108)
 - [x] W / S zoom keys (same step as +/-, not while typing; W / S still steer a second local boat) and Up / Down autopilot heading 1.5× faster (1° → 1.5° per tick), rudder returns to centre 3× faster, rudder max 60° → 45° (autopilot limit stays 30°): [#127](https://github.com/SukuWc/fields/pull/127)
 - [x] Sticky autopilot setting (player checkbox, saved in this browser): Left / Right move the autopilot heading target like Up / Down (1.5°/tick), helm never disconnects the autopilot; works in server rooms: [#131](https://github.com/SukuWc/fields/pull/131)
+- [x] Sticky autopilot tacks and gybes: Left / Right turn the target with no angle limit (wraps through head-to-wind and dead downwind, target capped 90° ahead of the boat), Up / Down unchanged; sticky on by default: [#132](https://github.com/SukuWc/fields/pull/132)
 - [ ] Autopilot beam-reach snap: engaging at |TWA| 80–100° (inclusive) jumps the target to exactly 90° on the same side; close-hauled / run snaps unchanged: [#133](https://github.com/SukuWc/fields/pull/133)
 
 ### Other
