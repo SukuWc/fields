@@ -149,6 +149,7 @@ Last updated: 2026-10-31
 - [x] Sticky autopilot setting (player checkbox, saved in this browser): Left / Right move the autopilot heading target like Up / Down (1.5°/tick), helm never disconnects the autopilot; works in server rooms: [#131](https://github.com/SukuWc/fields/pull/131)
 - [x] Sticky autopilot tacks and gybes: Left / Right turn the target with no angle limit (wraps through head-to-wind and dead downwind, target capped 90° ahead of the boat), Up / Down unchanged; sticky on by default: [#132](https://github.com/SukuWc/fields/pull/132)
 - [x] Autopilot beam-reach snap: engaging at |TWA| 80–100° (inclusive) jumps the target to exactly 90° on the same side; close-hauled / run snaps unchanged: [#133](https://github.com/SukuWc/fields/pull/133)
+- [ ] Autopilot snap preview: always-on dashed line (longer than the target line) showing where Space would set the target; shared `autopilotSnapTarget` helper: [#135](https://github.com/SukuWc/fields/pull/135)
 
 ### Other
 - [x] SailZone logo: [#14](https://github.com/SukuWc/fields/pull/14)
