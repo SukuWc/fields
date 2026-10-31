@@ -144,7 +144,7 @@ Last updated: 2026-10-31
 - [x] Boat stats panel: collapsible 60 s rolling charts of heading, TWA, AWA, boat speed and VMG per boat, sampled at 4 Hz only while open, nothing added to the frame; fixed per-boat colour palette with filled hulls, used by trails, ghost hull and chart lines: [#91](https://github.com/SukuWc/fields/pull/91)
 - [x] Boat stats readout: colour-coded numeric current value per boat under each chart (angles in whole degrees, speed and VMG in m/s): [#92](https://github.com/SukuWc/fields/pull/92)
 - [x] Pinch-to-zoom on the sim canvas on phones (client-only camera zoom, same limits as the +/- buttons, no browser page zoom): [#108](https://github.com/SukuWc/fields/pull/108)
-- [x] W / S zoom keys (same step as +/-, not while typing; W / S still steer a second local boat) and Up / Down autopilot heading 1.5× faster (1° → 1.5° per tick), rudder returns to centre 3× faster, rudder max 60° → 45°: [#127](https://github.com/SukuWc/fields/pull/127)
+- [x] W / S zoom keys (same step as +/-, not while typing; W / S still steer a second local boat) and Up / Down autopilot heading 1.5× faster (1° → 1.5° per tick), rudder returns to centre 3× faster, rudder max 60° → 45° (autopilot limit stays 30°): [#127](https://github.com/SukuWc/fields/pull/127)
 
 ### Other
 - [x] SailZone logo: [#14](https://github.com/SukuWc/fields/pull/14)
