@@ -5,7 +5,9 @@
 // with boats 1), and the camera follows it. Without a boat (before joining,
 // after Leave) the page is spectating: the server drops its boat commands,
 // it has no key binding, and the player panel and touch panel say so.
-// Leave or a disconnect removes the boat; a room-wide restart keeps it (the
+// "Add second player" spawns a second boat owned by the same connection (the
+// server binds two players: see controls.js for the keys) and the camera
+// follows the midpoint of the two. Leave or a disconnect removes the boat(s); a room-wide restart keeps it (the
 // server spawns it again with the same name and colour).
 
 const PALETTE = [0xd81b60, 0x1e88e5, 0x43a047, 0xfb8c00, 0x8e24aa, 0x00897b, 0x6d4c41, 0x3949ab];
@@ -23,6 +25,8 @@ export function setupOwnBoat(host, onChange) {
   panel.hidden = false;
   const join = document.getElementById('own_boat_join');
   const leave = document.getElementById('own_boat_leave');
+  const add = document.getElementById('own_boat_add');
+  const remove2 = document.getElementById('own_boat_remove2');
   const nameEl = document.getElementById('boat_name');
   const status = document.getElementById('own_boat_status');
   const note = document.getElementById('spectating_note');
@@ -33,7 +37,11 @@ export function setupOwnBoat(host, onChange) {
     const spectating = own.length === 0;
     join.hidden = !spectating;
     leave.hidden = spectating;
-    status.textContent = error || (spectating ? '' : 'Sailing ' + own.map((b) => b.name).join(', ') + ' · arrows / touch steer it');
+    if (add) add.hidden = spectating || own.length >= 2;
+    if (remove2) remove2.hidden = own.length < 2;
+    status.textContent = error || (spectating ? '' : own.length > 1
+      ? 'Sailing ' + own[0].name + ' (arrows) and ' + own[1].name + ' (A / D, W / S) · zoom = / -'
+      : 'Sailing ' + own.map((b) => b.name).join(', ') + ' · arrows / touch steer it');
     if (note) note.hidden = !spectating;
     if (touch) touch.classList.toggle('spectating', spectating);
     document.body.classList.toggle('spectating', spectating);
@@ -56,6 +64,14 @@ export function setupOwnBoat(host, onChange) {
       if (r && r.error) { error = 'Cannot join: ' + r.error; render(); }
     });
   });
+  if (add) add.addEventListener('click', () => {
+    const base = nameEl.value.trim() || (own[0] && own[0].name) || 'Player';
+    const name = base + ' 2';
+    host.command({ type: 'spawnBoat', name, color: colorFor(name) }).then((r) => {
+      if (r && r.error) { error = 'Cannot add: ' + r.error; render(); }
+    });
+  });
+  if (remove2) remove2.addEventListener('click', () => { if (own[1]) host.command({ type: 'removeBoat', id: own[1].id }); });
   leave.addEventListener('click', () => { for (const b of own) host.command({ type: 'removeBoat', id: b.id }); });
   render();
   onChange(own.map((b) => b.id));

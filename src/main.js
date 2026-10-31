@@ -34,7 +34,7 @@ import { RemoteHost } from './remote-host.js';
 import { hostChoice } from './host-choice.js';
 import { setupOwnBoat } from './own-boat.js';
 import { setupBoatStats } from './boat-stats-panel.js';
-import { View } from './view.js';
+import { View, cameraTarget } from './view.js';
 import { installUrlSettings } from './url-settings.js';
 import { installPlayerPrefs } from './player-prefs.js';
 import { applyDevEffects, installDevPrefs } from './dev-prefs.js';
@@ -355,6 +355,7 @@ function startClient() {
   // in a server room. Cleared with the scenario.
   let followTarget;
   let ownBoatId = null;
+  let ownBoatIds = [];
   // Boat stats panel (#boat_stats): own boat only in a server room.
   const boatStats = setupBoatStats({ remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
   // Instrument panel (zone C): own boat by id, like the stats panel.
@@ -365,14 +366,24 @@ function startClient() {
   const vibrateBox = document.getElementById('vibrate');
   const haptics = createHaptics({ enabled: () => !vibrateBox || vibrateBox.checked });
   const ruleToasts = setupRuleToasts({ remote: host.kind === 'remote', lockstep: () => host.mode === 'client', onOwnPenalty: () => haptics.onOwnPenalty() });
-  setupOwnBoat(host, (ids) => { ownBoatId = ids[0] || null; boatStats.setOwnId(ownBoatId); instruments.setOwnId(ownBoatId); ruleToasts.setOwnId(ownBoatId); minimap.setOwnId(ownBoatId); mobileStrip.setOwnId(ownBoatId); rankChip.setOwnId(ownBoatId); });
+  setupOwnBoat(host, (ids) => {
+    ownBoatIds = ids;
+    ownBoatId = ids[0] || null;
+    boatStats.setOwnId(ownBoatId);
+    instruments.setOwnId(ownBoatId);
+    ruleToasts.setOwnId(ownBoatId);
+    minimap.setOwnId(ownBoatId);
+    mobileStrip.setOwnId(ownBoatId);
+    rankChip.setOwnId(ownBoatId);
+  });
   host.on((ev) => { if (ev.type === 'cleared') followTarget = undefined; });
   host.onFrame((frame) => {
     lastFrame = frame;
     devMode = frame.devMode;
     // In a remote room with an own boat, follow that one.
-    const mine = ownBoatId && frame.spawned ? frame.spawned.find((b) => b.id === ownBoatId) : null;
-    followTarget = mine || (ownBoatId ? undefined : frame.boat0) || undefined;
+    // With two own boats the camera sits at the midpoint of the two.
+    const mine = frame.spawned ? ownBoatIds.map((id) => frame.spawned.find((b) => b.id === id)).filter(Boolean) : [];
+    followTarget = cameraTarget(mine) || (ownBoatId ? undefined : frame.boat0) || undefined;
     if (frame.fieldSteps > 0 && isPerfOverlayOn()) recordFieldStep(frame.fieldMs);
     if (frame.state && frame.statics) {
       // The readout shows this client's own boat in a server room.
