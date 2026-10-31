@@ -144,7 +144,7 @@ export class Boat{
 
     this.rudder_angle = 0;
     this.rudder_angle_last = 0;
-    this.rudder_angle_max = 60;
+    this.rudder_angle_max = 45; // was 60
     this.rudder_position = 1.8
     this.rudder_lenght = 0.5
 
@@ -438,15 +438,15 @@ export class Boat{
       this.rudder_angle += (target - this.rudder_angle) * PENALTY_RUDDER_BLEND;
     } else if (this.rudder_input === -1) {
 
-      // N passes of +rate, each stopping once past the max.
-      for (let i = 0; i < N && this.rudder_angle < this.rudder_angle_max; i++) this.rudder_angle += rudder_turn_rate;
+      // N passes of +rate, clamped at the max (no overshoot).
+      for (let i = 0; i < N && this.rudder_angle < this.rudder_angle_max; i++) this.rudder_angle = Math.min(this.rudder_angle + rudder_turn_rate, this.rudder_angle_max);
       // The pump term was per pass (cube of a one-pass step), summed over N
       // passes by FORCE_PASSES: use the per-pass step here.
       const stepPerPass = (this.rudder_angle - this.rudder_angle_last) / N;
       pumpfactor = 1.5 * stepPerPass * stepPerPass * stepPerPass
     } else if (this.rudder_input === 1) {
       
-      for (let i = 0; i < N && this.rudder_angle > -this.rudder_angle_max; i++) this.rudder_angle -= rudder_turn_rate;
+      for (let i = 0; i < N && this.rudder_angle > -this.rudder_angle_max; i++) this.rudder_angle = Math.max(this.rudder_angle - rudder_turn_rate, -this.rudder_angle_max);
       const stepPerPass = (this.rudder_angle - this.rudder_angle_last) / N;
       pumpfactor = 1.5 * stepPerPass * stepPerPass * stepPerPass
     }

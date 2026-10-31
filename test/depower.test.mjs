@@ -51,7 +51,7 @@ for (let t = 0; t < 250; t++) tick();
 const bs2 = spd(boat);
 check('toggled off: speed recovers (> 90 %)', bs2 > 0.9 * bs0 && boat.depower === 0, `${bs2.toFixed(3)} m/s (${(100 * bs2 / bs0).toFixed(1)} %)`);
 const s0 = H.scenario0(1);
-check('scenario 0 never toggled: unchanged (twa −49.3048 / bs 2.8465; #103 point true wind)', Math.abs(s0.twa + 49.3048) < 1e-4 && Math.abs(s0.bs - 2.8465) < 1e-4, `${s0.twa.toFixed(4)} / ${s0.bs.toFixed(4)}`);
+check('scenario 0 never toggled: unchanged (twa −49.0935 / bs 2.8332; #127 rudder)', Math.abs(s0.twa + 49.0935) < 1e-4 && Math.abs(s0.bs - 2.8332) < 1e-4, `${s0.twa.toFixed(4)} / ${s0.bs.toFixed(4)}`);
 // Flap amplitude follows the main's angle of attack: full at 0, none at close-hauled trim.
 {
 	const { map: m2 } = H.makeWorld(1);
