@@ -67,11 +67,25 @@ function fireKeydown(match) {
   });
 }
 
+// W / S zoom the camera one step in / out (same step and limits as the +/-
+// buttons). They also steer a second local boat's heading target (boat 1 in
+// autokeybind); while a second boat is bound, W / S keep steering it.
+export const ZOOM_IN_KEY = 87;  // W
+export const ZOOM_OUT_KEY = 83; // S
+export function zoomKeyStep(keyCode, boundBoats) {
+  if (boundBoats > 1) return 0;
+  if (keyCode === ZOOM_IN_KEY) return -2;
+  if (keyCode === ZOOM_OUT_KEY) return +2;
+  return 0;
+}
+
 function checkKeyPress(e) {
   e = e || window.event;
   // Letter keys (Q, E) also sit on the settings panel. Ignore them, and the
   // helm keys, while a control has focus so typing does not steer the boat.
   if (typingInControl(e)) return;
+  const zoom = e.ctrlKey || e.metaKey || e.altKey ? 0 : zoomKeyStep(e.keyCode, _boundBoats);
+  if (zoom && _view) { _view.input_camera_zoom_relative(zoom); return; }
   const was = key_state[e.keyCode];
   key_state[e.keyCode] = true;
   fireKeydown(bind => key_state[bind.activation_key]);
@@ -116,7 +130,9 @@ export function heldCommands() {
 // server room this client's own boats (0 when spectating: no keys at all);
 // "boat 0" is then the client's own boat (the server maps it).
 
+let _boundBoats = 0;
 function autokeybind(boats) {
+  _boundBoats = boats || 0;
   key_bind_list = [];
   const P = (key, not, command) => key_bind_list.push({ type: "PRESSED", activation_key: key, prohibition_key: not, command });
   const K = (key, not, command) => key_bind_list.push({ type: "KEYDOWN", activation_key: key, prohibition_key: not, command });
@@ -149,7 +165,7 @@ function autokeybind(boats) {
 // during the step that emits them (as the old in-script DOM calls were).
 function onSimEvent(ev) {
   if (ev.type === "bindControls") autokeybind(ev.boats);
-  else if (ev.type === "cleared") { key_bind_list = []; heldChanged(); }
+  else if (ev.type === "cleared") { key_bind_list = []; _boundBoats = 0; heldChanged(); }
   else if (ev.type === "view") {
     if (ev.follow) {
       const follow = document.getElementById('camera_follow');

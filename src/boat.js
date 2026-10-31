@@ -100,6 +100,9 @@ export const PENALTY_TURN_DONE_RATE_DEG_S = 10;
 
 
 
+/** Autopilot heading-target change per sim tick while Up / Down is held (was 1°). */
+export const AUTOPILOT_HEADING_STEP_DEG = 1.5;
+
 export class Boat{
 
   constructor(map, x, y, hull_angle){
@@ -833,34 +836,26 @@ export class Boat{
     this._startPenaltyTurn(1)
   }
 
+  // Held Up / Down (and boat 2's W / S): the target moves
+  // AUTOPILOT_HEADING_STEP_DEG per sim tick (1.5° = 45°/s at 30 Hz), kept
+  // within 5°..175° off the wind on its current tack.
   input_autopilot_heading_increase(){
     this._cancelPenaltyTurn()
-
     this.autopilot_enabled = true
-    if (Math.abs(this.autopilot_heading_target)<175){
-      if (this.autopilot_heading_target>0){
-        this.autopilot_heading_target += 1
-      } 
-      else{
-        this.autopilot_heading_target -= 1        
-      }
+    const t = this.autopilot_heading_target
+    if (Math.abs(t) < 175){
+      const m = Math.min(175, Math.abs(t) + AUTOPILOT_HEADING_STEP_DEG)
+      this.autopilot_heading_target = t > 0 ? m : -m
     }
-
   }
   input_autopilot_heading_decrease(){
     this._cancelPenaltyTurn()
-
     this.autopilot_enabled = true
-    if (Math.abs(this.autopilot_heading_target)>5){
-      if (this.autopilot_heading_target>0){
-        this.autopilot_heading_target -= 1
-      } 
-      else{
-        this.autopilot_heading_target += 1        
-      }
+    const t = this.autopilot_heading_target
+    if (Math.abs(t) > 5){
+      const m = Math.max(5, Math.abs(t) - AUTOPILOT_HEADING_STEP_DEG)
+      this.autopilot_heading_target = t > 0 ? m : -m
     }
-    
   }
-
 
 }
