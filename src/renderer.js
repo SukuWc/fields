@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { Line2 } from 'three/examples/jsm/lines/Line2.js';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { ghostOutlines, GHOST_AHEAD_S, GHOST_OPACITY, GHOST_MAX_AHEAD_S } from './ghost-boat.js';
 import { boatColor } from './boat-colors.js';
 import { BoatTrails, TRAIL_COLORS, TRAIL_INTERVAL_S, TRAIL_DURATION_S, TRAIL_SIZE_M, colorRgb } from './boat-trails.js';
@@ -17,7 +20,40 @@ const fpsEl = document.getElementById('fps');
 let fpsLastTime = performance.now();
 let fpsFrameCount = 0;
 
-// Persistent fixture → THREE.Line mapping — only rebuilt when fixtures enter/leave the world
+// Map geometry lines are Line2 fat lines, LINE_WIDTH_PX screen pixels wide
+// (plain WebGL lines are always 1px). Flow tracers stay 1px LineSegments for perf.
+export const LINE_WIDTH_PX = 3;
+const _lineResolution = new THREE.Vector2(1, 1);
+function fatMaterial(params = {}) {
+  const m = new LineMaterial({ linewidth: LINE_WIDTH_PX, ...params });
+  m.uniforms.resolution.value = _lineResolution; // shared, updated on resize
+  return m;
+}
+// Fat polyline with room for maxPoints; positions are written in place.
+function fatLine(maxPoints, material) {
+  const geo = new LineGeometry();
+  geo.setPositions(new Float32Array(Math.max(maxPoints, 2) * 3));
+  const line = new Line2(geo, material);
+  line.frustumCulled = false;
+  return line;
+}
+// Write pts ([x0,y0,x1,y1,...], n points) at height z into the instanced segment buffer.
+function setFatPoints(line, pts, n, z = 0) {
+  const attr = line.geometry.attributes.instanceStart;
+  const buf = attr.data.array;
+  const segs = Math.min(n - 1, buf.length / 6);
+  for (let i = 0; i < segs; i++) {
+    const o = i * 6;
+    buf[o] = pts[i * 2]; buf[o + 1] = pts[i * 2 + 1]; buf[o + 2] = z;
+    buf[o + 3] = pts[i * 2 + 2]; buf[o + 4] = pts[i * 2 + 3]; buf[o + 5] = z;
+  }
+  attr.data.needsUpdate = true;
+  line.geometry.instanceCount = Math.max(segs, 0);
+}
+function fatCapacity(line) { return line.geometry.attributes.instanceStart.data.array.length / 6 + 1; }
+const _seg = [0, 0, 0, 0];
+
+// Persistent fixture → Line2 mapping — only rebuilt when fixtures enter/leave the world
 const fixtureLines = new Map();
 
 // Reusable pool for guide (force arrow) lines — shown/hidden rather than created/destroyed
@@ -69,27 +105,15 @@ let contactTexture = null;
 // buildBodies): { id, kind, stroke, pts: [x0, y0, x1, y1, ...] } in world coordinates.
 function createFixtureLine(body) {
   const pointCount = body.pts.length / 2;
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pointCount * 3), 3));
-  const material = markOverlay(new THREE.LineBasicMaterial({ color: body.stroke }));
-  const line = new THREE.Line(geometry, material);
+  const line = fatLine(pointCount, markOverlay(fatMaterial({ color: body.stroke })));
   line.renderOrder = ORDER_HULL;
-  line.frustumCulled = false;
 
   updateFixtureLine(line, body);
   return line;
 }
 
 function updateFixtureLine(line, body) {
-  const pos = line.geometry.attributes.position.array;
-  const pts = body.pts;
-  const n = Math.min(pts.length / 2, pos.length / 3);
-  for (let i = 0; i < n; i++) {
-    pos[i * 3] = pts[i * 2];
-    pos[i * 3 + 1] = pts[i * 2 + 1];
-    pos[i * 3 + 2] = 0;
-  }
-  line.geometry.attributes.position.needsUpdate = true;
+  setFatPoints(line, body.pts, Math.min(body.pts.length / 2, fatCapacity(line)));
 }
 
 function ruleRibbon(index) {
@@ -136,14 +160,12 @@ function updateRuleRibbon(mesh, r) {
 // Dashed stern mark. World-unit dashes, 1px wide, so it stays distinct from the red/green ribbon.
 function abeamLine(index) {
   while (abeamPool.length <= index) {
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
-    const line = new THREE.Line(geo, markOverlay(new THREE.LineDashedMaterial({
+    const line = fatLine(2, markOverlay(fatMaterial({
       color: 0x66eeff,
+      dashed: true,
       dashSize: 0.45,
       gapSize: 0.28,
     })));
-    line.frustumCulled = false;
     line.renderOrder = ORDER_ABEAM;
     scene.add(line);
     abeamPool.push(line);
@@ -152,12 +174,13 @@ function abeamLine(index) {
 }
 
 function updateAbeamLine(line, r) {
-  const pos = line.geometry.attributes.position.array;
   const z = r.z !== undefined ? r.z : 0.25;
-  pos[0] = r.x1; pos[1] = r.y1; pos[2] = z;
-  pos[3] = r.x2; pos[4] = r.y2; pos[5] = z;
-  line.geometry.attributes.position.needsUpdate = true;
-  line.computeLineDistances();
+  _seg[0] = r.x1; _seg[1] = r.y1; _seg[2] = r.x2; _seg[3] = r.y2;
+  setFatPoints(line, _seg, 2, z);
+  // One segment: dash distances are 0 → length, written in place.
+  const d = line.geometry.attributes.instanceDistanceStart;
+  if (d) { d.data.array[0] = 0; d.data.array[1] = Math.hypot(r.x2 - r.x1, r.y2 - r.y1); d.data.needsUpdate = true; }
+  else line.computeLineDistances();
   line.material.color.setHex(r.color !== undefined ? r.color : 0x66eeff);
   line.visible = true;
 }
@@ -464,6 +487,7 @@ function resizeRenderer() {
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
   renderer.setSize(width, height, false);
+  _lineResolution.set(width, height);
 }
 
 // size: { width, height } of the map in world units.
@@ -629,20 +653,14 @@ function renderGhosts() {
   for (const g of list) {
     const n = g.pts.length / 2;
     let line = ghostPool[k];
-    if (!line || line.geometry.attributes.position.count < n) {
+    if (!line || fatCapacity(line) < n) {
       if (line) { scene.remove(line); line.geometry.dispose(); line.material.dispose(); }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(Math.max(n, 16) * 3), 3).setUsage(THREE.DynamicDrawUsage));
-      line = new THREE.Line(geo, new THREE.LineBasicMaterial({ transparent: true, opacity: GHOST_OPACITY, depthTest: false, depthWrite: false }));
+      line = fatLine(Math.max(n, 16), fatMaterial({ transparent: true, opacity: GHOST_OPACITY, depthTest: false, depthWrite: false }));
       line.renderOrder = ORDER_HULL;
-      line.frustumCulled = false;
       scene.add(line);
       ghostPool[k] = line;
     }
-    const pos = line.geometry.attributes.position.array;
-    for (let q = 0; q < n; q++) { pos[q * 3] = g.pts[q * 2]; pos[q * 3 + 1] = g.pts[q * 2 + 1]; pos[q * 3 + 2] = 0; }
-    line.geometry.setDrawRange(0, n);
-    line.geometry.attributes.position.needsUpdate = true;
+    setFatPoints(line, g.pts, n);
     const rgb = trailColorOf(g.i) || [1, 1, 1];
     line.material.color.setRGB(rgb[0], rgb[1], rgb[2]);
     line.visible = true;
@@ -821,7 +839,7 @@ function animation(t) {
   }
 
   // Update guide pool — reuse existing lines, hide extras.
-  // Rule segments also get a filled stroke (WebGL lines stay 1px). Labels are HTML.
+  // Rule segments also get a filled stroke (guide lines are LINE_WIDTH_PX fat lines). Labels are HTML.
   const guides = sceneData.guides;
   let poolIdx = 0;
   let ruleIdx = 0;
@@ -846,21 +864,15 @@ function animation(t) {
     if (_view.show_forces === false && r.type === 'force') continue;
 
     if (poolIdx >= guidePool.length) {
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
-      const line = new THREE.Line(geo, markOverlay(new THREE.LineBasicMaterial()));
+      const line = fatLine(2, markOverlay(fatMaterial({ transparent: true })));
       line.renderOrder = ORDER_GUIDE;
-      line.frustumCulled = false;
       scene.add(line);
       guidePool.push(line);
     }
 
     const line = guidePool[poolIdx];
-    const pos = line.geometry.attributes.position.array;
-    const z = r.z !== undefined ? r.z : 0;
-    pos[0] = r.x1; pos[1] = r.y1; pos[2] = z;
-    pos[3] = r.x2; pos[4] = r.y2; pos[5] = z;
-    line.geometry.attributes.position.needsUpdate = true;
+    _seg[0] = r.x1; _seg[1] = r.y1; _seg[2] = r.x2; _seg[3] = r.y2;
+    setFatPoints(line, _seg, 2, r.z !== undefined ? r.z : 0);
     line.material.color.setHex(r.color !== undefined ? r.color : 0xff0000);
     line.material.opacity = r.opacity !== undefined ? r.opacity : 1.0;
     line.visible = true;
