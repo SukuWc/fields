@@ -1,5 +1,5 @@
 import planck from 'planck-js';
-import { World, Circle } from 'planck-js'
+import { World } from 'planck-js'
 import { meanAngleDeg } from './utils.js';
 import { FluidWind, ConstantWind, ringWindSample } from './wind.js';
 
@@ -54,10 +54,6 @@ export class Map{
 		// Bottom horizontal
 		ground.createFixture(pl.Edge(Vec2(-this.width/2+2, -this.height/2+2), Vec2(this.width/2-2, -this.height/2+2)), wallFD);
 
-		// init world entities. Two stray circles at fixed world positions
-		// (near the map centre on every map size; scenarios are laid out round them).
-		this.world.createDynamicBody(Vec2(0.0, 14.5)).createFixture(Circle(0.5), 10.0);
-		this.world.createDynamicBody(Vec2(0.0, 20.0)).createFixture(Circle(5.0), 10.0);
 		
 
 	}
