@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-10-30
+Last updated: 2026-10-31
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -127,6 +127,7 @@ Last updated: 2026-10-30
 - [ ] Rule-stack labels (partial: [#12](https://github.com/SukuWc/fields/pull/12) shows the active rule and inhibited rules)
 
 ### 6. Closed beta polish
+- [ ] Remove the two hardcoded collision test circles (r=0.5 m and r=5 m) from the physics world: [#123](https://github.com/SukuWc/fields/pull/123)
 - [ ] Performance (including profiling the render side) (partial: [#42](https://github.com/SukuWc/fields/pull/42) batches `#info` readout writes into one `innerHTML` update, cutting median live DOM nodes from about 28,800 to about 6,000; [#110](https://github.com/SukuWc/fields/pull/110) restores Firefox mobile FPS with flow tracers on by drawing only live tracer segments and using fewer, lighter tracers on touch screens (about 11× less geometry upload per frame); still open: wider render-side profiling)
 - [ ] Crash recovery
 - [ ] Spectator mode
