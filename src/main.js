@@ -20,6 +20,7 @@ import { setupMobileMenu } from './mobile-menu.js';
 import { setupTouchControls } from './touch-controls.js';
 import { setupPinchZoom } from './pinch-zoom.js';
 import { setupChat } from './chat-panel.js';
+import { setupDevView } from './dev-view.js';
 import { windCeilingMps } from './sim-modes.js';
 
 import { mapDims, DEFAULT_MAP_SIZE, mapSizeFromQuery, fitMapSize, cameraLimits } from './map-size.js';
@@ -227,6 +228,7 @@ function startClient() {
   }
   setupControls(host, view, getCamera);
   setupChat(host);
+  setupDevView();
   // Flow tracer inputs (count, life, tail): live, and before installUrlSettings
   // so ?tracers / ?tracerLife / ?tracerTail arrive through these listeners.
   {
