@@ -15,6 +15,7 @@ import { startGuidesFromState } from './start.js';
 import { courseGuidesFromState } from './course.js';
 import { finishGuidesFromState } from './finish.js';
 import { boundaryGuides } from './boundary.js';
+import { rowOutlineColors, rowPovId } from './row-outline.js';
 import { roomGuidesFromState, contactGuidesFromState, penaltyGuidesFromState, pairGuidesFromState, pairBoatsFromState } from './rules.js';
 import { hudFromState } from './hud.js';
 import { markTouchGuidesFromState } from './mark-touch.js';
@@ -192,5 +193,11 @@ export function buildGuides(state, statics, view) {
 // ownId: this client's player boat in a server room (its readout), or null.
 export function buildScene(state, statics, view, ownId = null) {
   if (!state || !statics) return { guides: [], bodies: [], hud: null };
-  return { guides: buildGuides(state, statics, view), bodies: buildBodies(statics.bodies, state.bt), hud: state.hud ? hudFromState(state.hud, ownId, state.boats) : null };
+  const scene = { guides: buildGuides(state, statics, view), bodies: buildBodies(statics.bodies, state.bt), hud: state.hud ? hudFromState(state.hud, ownId, state.boats) : null };
+  // Right-of-way outlines: the player's boat by id (no owned boat: boat 0).
+  if (view && view.show_row_outline) {
+    const me = rowPovId(ownId, state.boats);
+    scene.rowOutline = rowOutlineColors(me, state.pair, [...(state.br || []), ...(state.mr || [])]);
+  }
+  return scene;
 }

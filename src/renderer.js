@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
+import { ROW_NONE } from './row-outline.js';
 import { ghostOutlines, GHOST_AHEAD_S, GHOST_OPACITY, GHOST_MAX_AHEAD_S } from './ghost-boat.js';
 import { boatColor } from './boat-colors.js';
 import { BoatTrails, TRAIL_COLORS, TRAIL_INTERVAL_S, TRAIL_DURATION_S, TRAIL_SIZE_M, colorRgb } from './boat-trails.js';
@@ -674,7 +675,7 @@ function renderGhosts() {
 // (statics.hulls by boat id at the frame pose, ghostOutlines at t = 0)
 // as a triangle fan; Box2D hulls are convex. Pooled THREE.Meshes.
 const hullFillPool = [];
-function renderHullFills() {
+function renderHullFills(white = false) {
   let k = 0;
   const list = ghostOutlines(_ghostBoats, _ghostHulls, 0);
   for (const g of list) {
@@ -700,13 +701,43 @@ function renderHullFills() {
     }
     mesh.geometry.setDrawRange(0, o / 3);
     mesh.geometry.attributes.position.needsUpdate = true;
-    const rgb = trailColorOf(g.i);
+    // Right-of-way outline mode: every hull white.
+    const rgb = white ? [1, 1, 1] : trailColorOf(g.i);
     mesh.material.color.setRGB(rgb[0], rgb[1], rgb[2]);
+    mesh.material.opacity = white ? 1 : HULL_FILL_OPACITY;
     mesh.visible = true;
     k++;
   }
   for (; k < hullFillPool.length; k++) hullFillPool[k].visible = false;
   if (typeof window !== 'undefined') window.__hullFills = list.map((g) => ({ id: g.id, i: g.i, color: boatColor(g.i) }));
+}
+
+// Right-of-way outlines (row-outline.js). sceneData.rowOutline (Map boat id →
+// colour) is set only while the setting is on: then every hull gets a 2 px
+// fat outline at the hull-fill pose, black by default, the Map's colour for
+// an opponent with an active rule pair. Pooled.
+const rowOutlinePool = [];
+function renderRowOutlines(colors) {
+  let k = 0;
+  const list = colors ? ghostOutlines(_ghostBoats, _ghostHulls, 0) : [];
+  for (const g of list) {
+    const c = colors.has(g.id) ? colors.get(g.id) : ROW_NONE;
+    const n = g.pts.length / 2;
+    let line = rowOutlinePool[k];
+    if (!line || fatCapacity(line) < n) {
+      if (line) { scene.remove(line); line.geometry.dispose(); line.material.dispose(); }
+      line = fatLine(Math.max(n, 16), markOverlay(fatMaterial({ color: c })));
+      line.renderOrder = ORDER_HULL + 0.05;
+      scene.add(line);
+      rowOutlinePool[k] = line;
+    }
+    setFatPoints(line, g.pts, n);
+    line.material.color.setHex(c);
+    line.visible = true;
+    k++;
+  }
+  for (; k < rowOutlinePool.length; k++) rowOutlinePool[k].visible = false;
+  if (typeof window !== 'undefined') window.__rowOutlines = colors ? [...colors] : [];
 }
 
 function trailColorOf(i) {
@@ -827,7 +858,8 @@ function animation(t) {
   }
 
   renderGhosts();
-  renderHullFills();
+  renderHullFills(!!sceneData.rowOutline);
+  renderRowOutlines(sceneData.rowOutline);
 
   for (const [id, line] of fixtureLines) {
     if (!seenFixtures.has(id)) {
