@@ -431,6 +431,8 @@ export function setupControls(host, view, getCamera) {
   document.getElementById("show_forces").checked = settingDefault("show_forces");
   document.getElementById("show_refinement").checked = settingDefault("show_refinement");
   view.input_show_refinement(settingDefault("show_refinement"));
+  document.getElementById("show_row_outline").checked = settingDefault("show_row_outline");
+  view.input_show_row_outline(settingDefault("show_row_outline"));
   document.getElementById("show_field").checked = settingDefault("show_field");
   view.input_show_fields(settingDefault("show_field"));
 
@@ -442,6 +444,9 @@ export function setupControls(host, view, getCamera) {
   });
   document.getElementById("show_refinement").addEventListener("change", () => {
     view.input_show_refinement(document.getElementById("show_refinement").checked);
+  });
+  document.getElementById("show_row_outline").addEventListener("change", () => {
+    view.input_show_row_outline(document.getElementById("show_row_outline").checked);
   });
 
   document.getElementById("scenario_card_toggle").addEventListener("click", () => {

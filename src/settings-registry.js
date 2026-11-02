@@ -54,6 +54,7 @@ export const SETTINGS = [
   { id: 'field_plane', scope: 'player', panel: 'player', type: 'bool', default: true, subscription: 'field' },
   { id: 'show_forces', scope: 'player', panel: 'player', type: 'bool', default: false },
   { id: 'show_refinement', scope: 'player', panel: 'player', type: 'bool', default: false },
+  { id: 'show_row_outline', scope: 'player', panel: 'player', type: 'bool', default: false },
   { id: 'sticky_autopilot', scope: 'player', panel: 'player', type: 'bool', default: true },
   { id: 'camera_follow', scope: 'player', panel: 'player', type: 'bool', default: false },
   { id: 'perf', scope: 'player', panel: 'player', type: 'bool', default: false, subscription: 'perf' },
