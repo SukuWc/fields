@@ -709,6 +709,34 @@ function renderHullFills() {
   if (typeof window !== 'undefined') window.__hullFills = list.map((g) => ({ id: g.id, i: g.i, color: boatColor(g.i) }));
 }
 
+// Right-of-way outlines (row-outline.js): a 2 px fat line over the hull of
+// each opponent in sceneData.rowOutline (Map boat id → colour), drawn at the
+// same pose as the hull fill. Pooled.
+const rowOutlinePool = [];
+function renderRowOutlines(colors) {
+  let k = 0;
+  const list = colors && colors.size ? ghostOutlines(_ghostBoats, _ghostHulls, 0) : [];
+  for (const g of list) {
+    const c = colors.get(g.id);
+    if (c === undefined) continue;
+    const n = g.pts.length / 2;
+    let line = rowOutlinePool[k];
+    if (!line || fatCapacity(line) < n) {
+      if (line) { scene.remove(line); line.geometry.dispose(); line.material.dispose(); }
+      line = fatLine(Math.max(n, 16), markOverlay(fatMaterial({ color: c })));
+      line.renderOrder = ORDER_HULL + 0.05;
+      scene.add(line);
+      rowOutlinePool[k] = line;
+    }
+    setFatPoints(line, g.pts, n);
+    line.material.color.setHex(c);
+    line.visible = true;
+    k++;
+  }
+  for (; k < rowOutlinePool.length; k++) rowOutlinePool[k].visible = false;
+  if (typeof window !== 'undefined') window.__rowOutlines = colors ? [...colors] : [];
+}
+
 function trailColorOf(i) {
   return colorRgb(boatColor(i));
 }
@@ -828,6 +856,7 @@ function animation(t) {
 
   renderGhosts();
   renderHullFills();
+  renderRowOutlines(sceneData.rowOutline);
 
   for (const [id, line] of fixtureLines) {
     if (!seenFixtures.has(id)) {

@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-10-31
+Last updated: 2026-11-02
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -126,6 +126,7 @@ Last updated: 2026-10-31
 - [ ] Penalties and exoneration (partial: [#12](https://github.com/SukuWc/fields/pull/12) assigns fault on contact; [#20](https://github.com/SukuWc/fields/pull/20) adds a pending penalty cleared by a tack and a gybe in a row, or a Q/E autopilot circle; [#35](https://github.com/SukuWc/fields/pull/35) exonerates the mark-room boat under Rule 21; [#38](https://github.com/SukuWc/fields/pull/38) turns penalties still unserved at the finish into a 20 s time penalty, or DSQ; [#45](https://github.com/SukuWc/fields/pull/45) adds a boundary crossing penalty after 1 s outside and exonerates the boundary-room boat)
 - [ ] Incident log (partial: [#12](https://github.com/SukuWc/fields/pull/12) stores contact incidents and a FAULT badge)
 - [ ] Rule-stack labels (partial: [#12](https://github.com/SukuWc/fields/pull/12) shows the active rule and inhibited rules)
+- [ ] Right-of-way outlines setting (off by default): opponents inside the 12 m rule gate get a red (you keep clear), green (you have right of way) or yellow (Rule 15, room, both keep clear) hull outline: [#TBD](https://github.com/SukuWc/fields/pulls)
 
 ### 6. Closed beta polish
 - [ ] Remove the two hardcoded collision test circles (r=0.5 m and r=5 m) from the physics world: [#128](https://github.com/SukuWc/fields/pull/128)
