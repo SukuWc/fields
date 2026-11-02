@@ -11,6 +11,8 @@
 export const ROW_RED = 0xff3030;
 export const ROW_GREEN = 0x30e060;
 export const ROW_YELLOW = 0xffd030;
+// No active rule pair (setting on): black outline on a white hull.
+export const ROW_NONE = 0x000000;
 
 // pair: state.pair ([{ k, a: right-of-way id, b: give-way id }]); rooms:
 // [...state.br, ...state.mr] ([[entitled id, giving id]]). Returns

@@ -32,3 +32,9 @@ test('POV: own boat in multiplayer, boat 0 by id otherwise', () => {
   const m = rowOutlineColors(rowPovId(null, boats), [{ k: 'o', a: 0, b: 's7' }]);
   assert.equal(m.get('s7'), ROW_GREEN);
 });
+
+import { ROW_NONE } from '../src/row-outline.js';
+test('default (no rule) outline is black and distinct from rule colours', () => {
+  assert.equal(ROW_NONE, 0x000000);
+  assert.ok(![ROW_RED, ROW_GREEN, ROW_YELLOW].includes(ROW_NONE));
+});
