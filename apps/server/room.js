@@ -111,6 +111,16 @@ export const GRACE_MS = 10000;
 // (~a few frames / one keyframe). Skipped clients just miss that tick's
 // field; the next due keyframe arrives when the buffer has drained.
 export const SEND_BUF_MAX = 256 * 1024;
+// App-level flow control. bufferedAmount only sees bytes the server has not
+// yet handed to the kernel; a browser reads the socket off its main thread,
+// so a phone whose main thread is slower than the frame rate queues frames
+// in the browser and the server never sees backpressure (the lag then grows
+// without bound). Clients that send { type: 'ack', tick } (the newest frame
+// they processed) are skipped while they trail by more than ACK_LAG_MAX
+// ticks, except one probe frame every ACK_PROBE_TICKS so a stalled client
+// acks again. Clients that never ack keep the old behaviour.
+export const ACK_LAG_MAX = 15;
+export const ACK_PROBE_TICKS = 15;
 export const TOKEN_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
 export const MAX_BOATS_PER_CLIENT = 1;
@@ -262,6 +272,7 @@ export class Room {
     // Statics version last sent to each client; bytes of frame and statics
     // messages sent (all clients).
     this.staticsSent = new Map();
+    this.acks = new Map();
     this.frameBytesSent = 0;
     this.staticsBytesSent = 0;
     this.lastFrameBytes = 0;
@@ -402,6 +413,7 @@ export class Room {
     this.flowSubs.delete(client);
     this.perfSubs.delete(client);
     this.staticsSent.delete(client);
+    this.acks.delete(client);
     if (this.clients.size === 0) {
       // Non-persistent: pause while empty (no CPU), keep for graceMs, then drop.
       // Persistent: keep the clock running so the world and /api/perf advance.
@@ -534,6 +546,12 @@ export class Room {
         this._reclaim(client, m.token);
       }
       this.send(client, { type: 'welcome', info: this.info(), room: this.core.roomState(), own: this._ownList(client), bindings: this._bindings(client), chat: this.chat, admin: this.adminState(client) });
+      return;
+    }
+    if (m.type === 'ack') {
+      if (!Number.isFinite(m.tick)) return;
+      const a = this.acks.get(client);
+      if (a) a.tick = m.tick; else this.acks.set(client, { tick: m.tick, sent: m.tick });
       return;
     }
     if (m.type === 'chat') { this.send(client, { type: 'result', id: m.id, r: this._chat(client, m.text) }); return; }
@@ -833,7 +851,11 @@ export class Room {
   // historical backlog. The next due keyframe arrives once the buffer drains.
   // Field goes first so a client drawing on the frame already has the texture.
   _sendOk(client) {
-    return (client.bufferedAmount || 0) <= SEND_BUF_MAX;
+    if ((client.bufferedAmount || 0) > SEND_BUF_MAX) return false;
+    // Lockstep: the client drives ticks itself, no flow control.
+    const a = this.lockstep ? null : this.acks.get(client);
+    if (a && this.ticks - a.tick > ACK_LAG_MAX && this.ticks - a.sent < ACK_PROBE_TICKS) return false;
+    return true;
   }
 
   _skipClient(client) {
@@ -885,6 +907,8 @@ export class Room {
     for (const c of this.clients) {
       if (!this._sendOk(c)) { this._skipClient(c); continue; }
       c.send(s);
+      const a = this.acks.get(c);
+      if (a) a.sent = this.ticks;
       sent++;
     }
     this.lastFrameBytes = s.byteLength;

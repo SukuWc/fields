@@ -57,6 +57,9 @@ import { decodeFieldText } from './field-codec.js';
 import { decodeWire, WireVersionError } from './wire-codec.js';
 
 /** localStorage key shared with the landing page (apps/landing/index.html). */
+/** Send an ack at most every this many delivered ticks. */
+export const ACK_EVERY = 3;
+
 export const ADMIN_SECRET_KEY = 'sailzone.adminSecret';
 export function readAdminSecret() {
   try { return (typeof localStorage !== 'undefined' && localStorage.getItem(ADMIN_SECRET_KEY)) || ''; } catch (_) { return ''; }
@@ -318,8 +321,19 @@ export class RemoteHost {
     if (!frame) return;
     this.framesDelivered++;
     this.lastFrame = frame;
+    this._ack(frame.tick);
     for (const fn of this._frameListeners) fn(frame);
     if (this.inFlight === 0) { const w = this._idle; this._idle = []; for (const fn of w) fn(); }
+  }
+
+  // Flow control (apps/server/room.js ACK_LAG_MAX): tell the server the
+  // newest tick this page processed, at most every ACK_EVERY ticks, so it
+  // stops sending while we are behind instead of letting frames queue up.
+  _ack(tick) {
+    if (!Number.isFinite(tick) || !this.ws || this.ws.readyState !== 1) return;
+    if (this._ackTick != null && tick >= this._ackTick && tick - this._ackTick < ACK_EVERY) return;
+    this._ackTick = tick;
+    try { this.ws.send('{"type":"ack","tick":' + tick + '}'); } catch { /* closing */ }
   }
 
   // The page's field texture, when it is sized only after the welcome
