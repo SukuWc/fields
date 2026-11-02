@@ -34,13 +34,17 @@
 //                  to every client. The browser never calls tick() in remote
 //                  mode, so a page against a lockstep server does not advance.
 //
-// Slow clients: frames are counted as they arrive (framesReceived,
-// onFrameArrival) but delivered to onFrame listeners through one posted task
-// (MessageChannel): if several frames are queued when that task runs, only the
-// newest is delivered and the rest count as framesDropped. A client that keeps
-// up gets every frame; one that falls behind renders the latest state
-// instead of replaying old ones. coalesce: false delivers every frame.
-//
+// Slow clients: onmessage is near-zero cost for binary hot-path messages.
+// A frame / field / flow / perf message is only classified by its 3-byte
+// header and parked raw (newest wins; older frames and field keyframes are
+// dropped undecoded: framesDropped, fieldsDropped). Once per animation
+// frame (requestAnimationFrame; a posted task when there is none or the tab
+// is hidden) _pump decodes just the newest field and frame and delivers
+// them. A phone whose decode/paint is slower than 30 Hz therefore renders
+// the latest state instead of a growing backlog. Text (JSON) control
+// messages - welcome, events, chat, results, statics - are all processed in
+// order, never dropped. framesReceived counts every arrival; onFrameArrival
+// fires per decoded frame. coalesce: false decodes and delivers every frame.
 // Field messages are coalesced the same way: _onField only stashes the latest
 // message; decode + paintGrids run once in _deliver with the frame shown.
 // A newer keyframe replaces a pending stash (fieldsDropped). That stops a
@@ -54,7 +58,7 @@
 import { plainView } from './host-protocol.js';
 import { FieldPainter } from './fieldPainter.js';
 import { decodeFieldText } from './field-codec.js';
-import { decodeWire, WireVersionError } from './wire-codec.js';
+import { decodeWire, WireVersionError, WIRE_MAGIC, WIRE_VERSION } from './wire-codec.js';
 
 /** localStorage key shared with the landing page (apps/landing/index.html). */
 export const ADMIN_SECRET_KEY = 'sailzone.adminSecret';
@@ -94,7 +98,11 @@ export class RemoteHost {
     this._scheduled = false;
     if (this.coalesce) {
       this._channel = new MessageChannel();
-      this._channel.port1.onmessage = () => this._deliver();
+      this._channel.port1.onmessage = (e) => {
+        if (e.data === 1) { const f = this._pumpRun; this._pumpRun = null; if (f) f(); }
+        else this._deliver();
+      };
+      this._raw = { frame: null, field: null, flow: null, perf: null, nextFlow: null, nextPerf: null };
     }
     this.fieldsReceived = 0;
     this.fieldsDropped = 0;
@@ -161,6 +169,7 @@ export class RemoteHost {
       ws.send(JSON.stringify(init));
       this._fieldHeld = null;
       this._latestField = null;
+      if (this._raw) for (const k in this._raw) this._raw[k] = null;
       if (this._field.on) ws.send(JSON.stringify({ type: 'field', ...this._field }));
       if (this._flowOn) ws.send(JSON.stringify({ type: 'flow', on: true }));
       if (this._perfOn) ws.send(JSON.stringify({ type: 'perf', on: true }));
@@ -186,6 +195,10 @@ export class RemoteHost {
       // the rest is JSON text. A binary message from another build's wire
       // version closes the connection with a clear error, not garbage.
       let m, bytes;
+      // Coalescing: a binary frame / field / flow / perf is only parked raw
+      // (newest wins, older ones are dropped undecoded); decode runs once per
+      // animation frame in _pump. Text (control) messages run in order.
+      if (this.coalesce && typeof e.data !== 'string' && this._park(e.data)) return;
       if (typeof e.data === 'string') { m = JSON.parse(e.data); bytes = e.data.length; }
       else {
         try { m = decodeWire(e.data); bytes = e.data.byteLength; }
@@ -204,6 +217,60 @@ export class RemoteHost {
       if (m.type === 'field') this._onField(m, bytes);
       else this._onMessage(m);
     };
+  }
+
+  // Park one binary hot-path message (see onmessage). Returns false for a
+  // message this build can't classify (decoded at once, so a wire version
+  // mismatch still reports its error).
+  _park(data) {
+    const u = new Uint8Array(data, 0, Math.min(3, data.byteLength));
+    if (u.length < 3 || u[0] !== WIRE_MAGIC || u[1] !== WIRE_VERSION) return false;
+    const t = u[2];
+    this.bytesReceived += data.byteLength;
+    if (t === 1) {
+      this.framesReceived++;
+      if (this.inFlight > 0) this.inFlight--;
+      if (this._raw.frame) this.framesDropped++;
+      this._raw.frame = data;
+      // flow / perf belong to the frame right after them.
+      this._raw.flow = this._raw.nextFlow; this._raw.perf = this._raw.nextPerf;
+      this._raw.nextFlow = this._raw.nextPerf = null;
+    } else if (t === 2) {
+      if (this._raw.field) { this.fieldsDropped++; this.fieldBytes += this._raw.field.byteLength; }
+      this._raw.field = data;
+    } else if (t === 3) this._raw.nextFlow = data;
+    else if (t === 4) this._raw.nextPerf = data;
+    else return false;
+    this._schedulePump();
+    return true;
+  }
+
+  _schedulePump() {
+    if (this._pumpScheduled) return;
+    this._pumpScheduled = true;
+    const run = () => { this._pumpScheduled = false; this._pump(); };
+    const visible = typeof document === 'undefined' || document.visibilityState !== 'hidden';
+    if (typeof requestAnimationFrame === 'function' && visible) requestAnimationFrame(run);
+    else this._channel.port2.postMessage(1), this._pumpRun = run;
+  }
+
+  // Decode only the newest parked field and frame, then deliver.
+  _pump() {
+    const r = this._raw;
+    const field = r.field, frame = r.frame, flow = r.flow, perf = r.perf;
+    r.field = r.frame = r.flow = r.perf = null;
+    if (field) { const m = decodeWire(field); this._onField(m, field.byteLength); }
+    if (frame) {
+      if (flow) this._nextFlow = decodeWire(flow).flow;
+      if (perf) this._nextPerf = decodeWire(perf).perf;
+      const m = decodeWire(frame);
+      if (m.frame.state) m.frame.statics = this.statics;
+      if (this._nextFlow) { m.frame.flow = this._nextFlow; this._nextFlow = null; }
+      if (this._nextPerf) { m.frame.perf = this._nextPerf; this._nextPerf = null; }
+      for (const fn of this._arrivalListeners) fn(m.frame);
+      this._latest = m.frame;
+    }
+    this._deliver();
   }
 
   // Backoff: backoffMs[attempt] (the last value repeats).
@@ -264,6 +331,7 @@ export class RemoteHost {
         if (prev && (prev.mapW !== m.info.mapW || prev.mapH !== m.info.mapH)) {
           this._fieldHeld = null;
           this._latestField = null;
+          if (this._raw) this._raw.field = null;
           this.mapResizes = (this.mapResizes || 0) + 1;
           const ev = { type: 'mapSize', mapW: m.info.mapW, mapH: m.info.mapH, info: m.info };
           for (const fn of this._listeners) fn(ev);
