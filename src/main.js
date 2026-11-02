@@ -301,10 +301,12 @@ function startClient() {
   // Guides and body outlines: built here from the latest frame's scene state
   // (scene-build.js buildScene), the same code for every host.
   let frameBodies = [];
+  let frameRowOutline = null; // right-of-way outline colours (row-outline.js)
   // Remote mode: no animation loop; the frame handler below draws.
   startAnimation(view, () => ({
     bodies: frameBodies,
     guides: currentGuides,
+    rowOutline: frameRowOutline,
     devMode,
   }), { loop: !remoteDriven });
 
@@ -361,6 +363,7 @@ function startClient() {
       if (scene.hud) applyHud(scene.hud);
       currentGuides = scene.guides;
       frameBodies = scene.bodies;
+      frameRowOutline = scene.rowOutline || null;
     }
     if (frame.fieldReady) dataTextureMaterial.needsUpdate = true;
     if (frame.flow) setFlowGrid(frame.flow);
