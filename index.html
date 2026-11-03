@@ -112,17 +112,6 @@
       #settings .pref-footer { display: flex; align-items: center; gap: 8px; margin: 6px; }
       #settings .prefs-saved { font-size: 11px; opacity: 0.6; transition: color 0.3s; }
       #settings .prefs-saved.flash { color: #ffc400; opacity: 1; }
-      /* Room tab TOML editor (PR 4). Errors are amber, not red (red/green = port/starboard). */
-      #settings .room-config-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin: 8px 6px 4px; }
-      #settings .room-config-mode { font: 600 10px/1.6 'Albert Sans', system-ui, sans-serif; letter-spacing: 0.06em; text-transform: uppercase;
-        padding: 0 6px; border-radius: 3px; background: #ffc400; color: #0b1747; }
-      #settings .room-config-mode.ro { background: rgba(255,255,255,0.15); color: #fff; }
-      #settings #room_config[readonly] { opacity: 0.8; cursor: default; }
-      #settings #room_config.bad { border-color: #ff9f1a !important; box-shadow: 0 0 0 1px #ff9f1a; }
-      #settings .room-config-check { margin: 4px 6px; font-size: 12px; color: rgba(255,255,255,0.7); white-space: pre-wrap; }
-      #settings .room-config-check.bad { color: #ffb347; cursor: pointer; text-decoration: underline dotted; }
-      #settings .room-config-reject { margin: 4px 6px; padding: 4px 6px; border-left: 3px solid #ff9f1a; background: rgba(255,159,26,0.12); color: #ffd9a8; white-space: pre-wrap; }
-      #settings .room-apply:not(:disabled) { background: #ffc400; color: #0b1747; font-weight: 700; border: 1px solid #ffc400; }
       #scenario_card.collapsed #scenario_card_body {
         display: none;
       }      
@@ -871,27 +860,25 @@
       </div>
       </fieldset>
       <div id="wind_info"></div>
-      <div style="color:#ffc400;" id="dist_info"></div>
+      <div style="color:red;" id="dist_info"></div>
       <div class="pref-footer"><input id="reset_settings" type="button" value="Reset settings"><span id="prefs_saved" class="prefs-saved">Saved in this browser</span></div>
       </div>
 
       <div id="admin_panel" class="settings-section settings-pane" role="tabpanel" aria-labelledby="settings_tab_room">
-      <div class="settings-heading" title="Room-wide settings as one TOML document, checked as you type. Apply sends them to everyone in the room (or this page in local / worker mode); Revert goes back to the live config. Reset fills the default TOML preset (map size kept as this room's current size); it does not push to the server.">Room settings<span id="admin_scope" hidden> · everyone in the room</span></div>
+      <div class="settings-heading" title="Room-wide settings as one TOML document. Commit applies them to everyone in the room (or this page in local / worker mode). Reset fills the default TOML preset (map size kept as this room's current size); it does not push to the server.">Room settings<span id="admin_scope" hidden> · everyone in the room</span></div>
       <div id="room_admin_auth" class="setting-row" style="display:none; gap:8px; flex-wrap:wrap; align-items:center;">
         <span id="room_admin_state">Read-only</span>
         <input id="room_admin_secret" type="password" autocomplete="current-password" placeholder="Admin secret" style="flex:1; min-width:8em;">
         <input id="room_admin_login" type="button" value="Login">
         <input id="room_admin_logout" type="button" value="Logout" hidden>
       </div>
-      <div class="room-config-head"><label for="room_config">Room config (TOML)</label><span id="room_config_mode" class="room-config-mode">Read-only</span></div>
+      <label class="setting-row setting-field" for="room_config" style="display:block;">Room config (TOML)</label>
       <textarea id="room_config" autocomplete="off" spellcheck="false" rows="22" style="width:100%; max-width:100%; box-sizing:border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; line-height:1.35; background:#1a1a18; color:#f0e6d2; border:1px solid rgba(255,210,120,0.35); border-radius:4px; padding:8px; resize:vertical;"></textarea>
       <div class="setting-row" style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
-        <input id="room_config_commit" class="room-apply" type="button" value="Apply" disabled title="Send this config to the room (enabled when valid and changed)">
-        <input id="room_config_revert" type="button" value="Revert" disabled title="Discard edits: back to the live room config">
-        <input id="room_config_reset" type="button" value="Reset" title="Fill the default preset (does not apply)">
+        <input id="room_config_commit" type="button" value="Commit">
+        <input id="room_config_reset" type="button" value="Reset">
       </div>
-      <div id="room_config_check" class="room-config-check" role="status" aria-live="polite" title="Click an error to jump to its line"></div>
-      <div id="admin_status" class="setting-row room-config-reject" role="alert" hidden></div>
+      <div id="admin_status" class="setting-row" hidden style="color:#ffb4b4; white-space:pre-wrap;"></div>
       </div>
     </div>
 
