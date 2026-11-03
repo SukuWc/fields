@@ -20,18 +20,24 @@ const state = {
   hud: { tel: { tws: 45 }, co: { i: 1, gate: 1 }, own: { s2: { tel: { tws: 52 }, co: { i: 0, gate: 0 } } } },
 };
 const mine = readoutValues(state, { ownId: 's2', remote: true });
-check('own boat: speed, TWD wrapped, own TWS (tenths → m/s)', near(mine.bs, 2) && mine.twd === 90 && near(mine.tws, 5.2), JSON.stringify(mine));
+check('own boat: speed, own TWS (tenths → m/s)', near(mine.bs, 2) && near(mine.tws, 5.2), JSON.stringify(mine));
 check('own boat: next mark from its own course progress', near(mine.next, 40) && mine.nextLabel === 'mark 1');
-check('AWS is never filled (internal units in telemetry)', mine.aws === null);
+check('no aws_ms in the frame: AWS dash', mine.aws === null);
 const b0 = readoutValues(state, {});
 check('boat 0 without own: scenario course (gate midpoint)', near(b0.next, 0) && b0.nextLabel === 'gate 2');
 check('several boats, no own: scenario TWS is not attributed (dash)', b0.tws === null);
 check('one boat: scenario telemetry is its own', near(readoutValues({ boats: [boats[0]], hud: { tel: { tws: 45 } } }).tws, 4.5));
 check('no course in the frame: no next mark', readoutValues({ boats: [boats[0]] }).next === null);
 check('spectator: no values', readoutValues(state, { remote: true }) === null);
-check('dash for missing, fixed decimals', formatReadout('tws', null) === '–' && formatReadout('bs', 2.345) === '2.3' && formatReadout('twd', 359.6) === '0' && formatReadout('twa', -49.4) === '-49');
-check('nine tiles incl. TWS / AWS / NEXT', READOUT_TILES.length === 9 && ['tws', 'aws', 'next'].every((k) => READOUT_TILES.some((t) => t.key === k)));
+check('dash for missing, fixed decimals', formatReadout('tws', null) === '–' && formatReadout('bs', 2.345) === '2.3' && formatReadout('twd', 359.6) === '0' && formatReadout('twa', -49.4) === '-49' && formatReadout('heading', 359.6) === '0' && formatReadout('heading', 270) === '270');
+check('ten tiles incl. TWS / AWS / NEXT / FIN', READOUT_TILES.length === 10 && ['tws', 'aws', 'next', 'fin'].every((k) => READOUT_TILES.some((t) => t.key === k)));
 
+const fb = { id: 'f', ha: 0, vx: 1, vy: 0, wd: 90, heading_deg: 370, twd_deg: 45, tws_ms: 6.5, aws_ms: 7.25, next_mark_dist_m: 123.4, to_finish_m: null };
+const fr = readoutValues({ boats: [fb], hud: { tel: { tws: 10 }, co: { i: 0 } }, course: { c: [{ x: 0, y: 1000 }] } });
+check('sim fields: bearings 0–360, m/s winds', fr.heading === 10 && fr.twd === 45 && fr.tws === 6.5 && fr.aws === 7.25, JSON.stringify(fr));
+check('NEXT uses next_mark_dist_m (leaderboard), not straight line', fr.next === 123.4);
+check('to_finish_m null: FIN dash', fr.fin === null && readoutValues({ boats: [{ ...fb, to_finish_m: 800 }] }).fin === 800);
+check('older frame without sim fields: dashes / fallbacks', readoutValues({ boats: [boats[0]] }).heading === null);
 if (failed) { console.log(failed + ' FAILED'); process.exit(1); }
 console.log('all instrument-readout checks passed');
 process.exit(0);

@@ -27,8 +27,8 @@ export function setupInstrumentPanel({ remote = false, lockstep = () => false } 
     el.className = 'instr-tile';
     el.dataset.key = t.key;
     el.innerHTML = `<span class="instr-label">${t.label}</span><span class="instr-value">–</span><span class="instr-unit">${t.unit}</span>`;
-    if (t.key === 'aws') el.title = 'Apparent wind speed: not in the frame yet in m/s (needs sim work)';
-    if (t.key === 'next') el.title = 'Straight-line distance to the next mark (gate: its midpoint). The leaderboard shows the sailed distance (beats at 50°).';
+    if (t.key === 'next') el.title = 'Distance to the next mark as the leaderboard counts it (beats as sailed distance)';
+    if (t.key === 'fin') el.title = 'Distance to the finish (dash on a looping course)';
     grid.appendChild(el);
     tiles.set(t.key, { el, value: el.querySelector('.instr-value'), unit: el.querySelector('.instr-unit') });
   }
@@ -76,7 +76,7 @@ export function setupInstrumentPanel({ remote = false, lockstep = () => false } 
     if (root.dataset.mode !== 'chart') return;
     for (const s of strips) {
       const p = stripPolylines(buf, s.st, { windowS, w: SW, h: SH });
-      const zv = s.st.key === 'twd' ? 180 : 0;
+      const zv = s.st.min === 0 && s.st.max === 360 ? 180 : 0;
       const zy = p.hi > p.lo ? SH - ((zv - p.lo) / (p.hi - p.lo)) * SH : SH / 2;
       s.zero.setAttribute('y1', zy); s.zero.setAttribute('y2', zy);
       s.g.textContent = '';

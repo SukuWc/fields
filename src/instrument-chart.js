@@ -9,14 +9,15 @@ import { polylinePoints, seriesRange } from './boat-stats.js';
 export const CHART_SAMPLE_HZ = 5;
 export const CHART_WINDOWS = [30, 60, 120];
 export const CHART_DEFAULT_WINDOW = 60;
-export const CHART_KEYS = ['bs', 'vmg', 'twa', 'twd', 'heading'];
+export const CHART_KEYS = ['bs', 'vmg', 'tws', 'aws', 'twa', 'twd', 'heading'];
 // One strip per entry; lines drawn in order. Colours avoid green/red
 // (reserved for starboard / port).
 export const CHART_STRIPS = [
   { key: 'speed', label: 'BSP / VMG', unit: 'm/s', min: null, max: null, lines: [{ key: 'bs', color: '#ffffff' }, { key: 'vmg', color: '#ffc400' }] },
-  { key: 'twa', label: 'TWA', unit: '°', min: -180, max: 180, wrap: true, lines: [{ key: 'twa', color: '#7fd3ff' }] },
+  { key: 'wind', label: 'TWS / AWS', unit: 'm/s', min: 0, max: null, lines: [{ key: 'tws', color: '#7fd3ff' }, { key: 'aws', color: '#ffc400' }] },
+  { key: 'twa', label: 'TWA', unit: '°', min: -180, max: 180, wrap: true, lines: [{ key: 'twa', color: '#ffffff' }] },
   { key: 'twd', label: 'TWD', unit: '°', min: 0, max: 360, wrap: true, lines: [{ key: 'twd', color: '#c9b6ff' }] },
-  { key: 'heading', label: 'HDG', unit: '°', min: -180, max: 180, wrap: true, lines: [{ key: 'heading', color: '#ffffff' }] },
+  { key: 'heading', label: 'HDG', unit: '°', min: 0, max: 360, wrap: true, lines: [{ key: 'heading', color: '#ffffff' }] },
 ];
 
 const num = (v) => (Number.isFinite(v) ? v : NaN);
