@@ -247,7 +247,9 @@ export function setWindCeiling(mps) {
 }
 let _windCeiling = windCeilingMps('2f');
 
-let scenarioCardCollapsed = false;
+// Phones: the card starts collapsed into the top bar (plan M4); Show drops it down.
+let scenarioCardCollapsed = typeof matchMedia === "function"
+  && matchMedia("(max-width: 768px), (pointer: coarse) and (hover: none)").matches;
 let _appliedConfig = null;
 let _dirty = false;
 let _mapW = ROOM_CONFIG_DEFAULTS.map_width_m;
