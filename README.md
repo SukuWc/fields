@@ -145,6 +145,7 @@ Last updated: 2026-11-03
 - [x] UI overhaul 3: settings drawer tabs (Player form saved in this browser, Room tab shell): [#145](https://github.com/SukuWc/fields/pull/145)
 - [x] UI overhaul 4: Room tab TOML editor (live validation with line-pointed errors, Apply / Revert, read-only for non-admins, server rejections inline): [#148](https://github.com/SukuWc/fields/pull/148)
 - [x] UI overhaul 5: instrument panel (bottom centre) with the Readout / Chart / Instrument selector, Readout mode (own boat by id, dashes where the frame has no value): [#149](https://github.com/SukuWc/fields/pull/149)
+- [x] Readout frame state: per-boat `aws_ms` / `tws_ms` (m/s, TWS always present), `heading_deg` / `twd_deg` (compass 0–360, TWD = wind from), `next_mark_dist_m` / `to_finish_m` from the leaderboard, in worker, local and remote frames: [#151](https://github.com/SukuWc/fields/pull/151)
 - [ ] UI overhaul 6: instrument panel Chart mode (strip charts for BSP + VMG, TWA, TWD and heading over 30 / 60 / 120 s of sim time, 5 Hz, gaps where the frame has no value; mode and window remembered in this browser): [#152](https://github.com/SukuWc/fields/pull/152)
 - [ ] Accessibility
 - [ ] Telemetry export
