@@ -161,6 +161,17 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
   const map = sim.map, bm = sim.bm;
   const racing = sim.players;
   const s = { t: nowMs, boats: racing.map((b) => b.renderState(view)) };
+  // Course distance (leaderboard.js legState, the same numbers the ranking
+  // uses): next_mark_dist_m = legM (to the next rounding target / start line
+  // mid / finish mid, upwind legs as beat distance), to_finish_m = toFinishM
+  // (null on a looping course). Left out when there is no leaderboard state.
+  const lb = sim.leaderboard;
+  if (lb && lb.states) racing.forEach((b, i) => {
+    const st = lb.states.get(b);
+    if (!st) return;
+    s.boats[i].next_mark_dist_m = Number.isFinite(st.legM) ? st.legM : null;
+    s.boats[i].to_finish_m = Number.isFinite(st.toFinishM) ? st.toFinishM : null;
+  });
   // Boat trails (boat-trails.js): sim time, scenario epoch, own boat colours.
   s.ts = sim.rulesTime;
   s.ep = sim.epoch || 0;

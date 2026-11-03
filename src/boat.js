@@ -6,6 +6,32 @@ import {
   updateTackingState,
 } from './rules.js';
 import { WIND_UNIT_MPS, boatTrueWind } from './wind.js';
+
+const wrap360 = (d) => ((d % 360) + 360) % 360;
+
+// Instrument readout fields carried on every renderState (frame state.boats[i],
+// same in local, worker and remote; numbers only, so the wire codec carries
+// them unchanged):
+//   aws_ms       apparent wind speed, m/s
+//   tws_ms       true wind speed at the boat, m/s (last finite value; the
+//                calm-water value before the first step)
+//   heading_deg  compass bearing the bow points to, 0–360 (0 = north = +Y,
+//                90 = east = +X, clockwise)
+//   twd_deg      compass bearing the true wind comes FROM, 0–360
+// Raw angles (kept): ha / pa are math radians with the bow on local −Y, so
+// the bow points at math angle ha − 90°; wd is the math angle (0 = +X,
+// counter-clockwise) the wind comes from. Compass = 90° − math angle.
+export function headingBearing(ha) { return wrap360(180 - ha * 180 / Math.PI); }
+export function windFromBearing(wdMathDeg) { return wrap360(90 - wdMathDeg); }
+function readoutFields(b) {
+  const o = {};
+  if (Number.isFinite(b._awsMs)) o.aws_ms = b._awsMs;
+  const tws = Number.isFinite(b._twsMs) ? b._twsMs : (Number.isFinite(b.wind_speed) ? b.wind_speed * WIND_UNIT_MPS : 0);
+  o.tws_ms = tws;
+  if (Number.isFinite(b.hull_angle)) o.heading_deg = headingBearing(b.hull_angle);
+  if (Number.isFinite(b.wind_direction)) o.twd_deg = windFromBearing(b.wind_direction);
+  return o;
+}
 import { boatGuides, autopilotSnapTarget } from './boat-draw.js';
 
 // Lattice momentum per frame = sail reaction × SAIL_LATTICE_COUPLING.
@@ -558,6 +584,14 @@ export class Boat{
     tel.tws = this.wind_speed * WIND_UNIT_MPS; // m/s; wind_speed is the internal unit
     tel.awa = awa;
     tel.aws = aws;
+    // Readout in true m/s (renderState aws_ms / tws_ms). aws is in the internal
+    // wind unit (boat velocity is added to wind_speed in that unit), so both
+    // convert with WIND_UNIT_MPS. Keep the last finite value so the frame
+    // always carries one.
+    const awsMs = aws * WIND_UNIT_MPS;
+    const twsMs = this.wind_speed * WIND_UNIT_MPS;
+    if (Number.isFinite(awsMs)) this._awsMs = awsMs;
+    if (Number.isFinite(twsMs)) this._twsMs = twsMs;
 
 
     // Calculate boat speed and velocity made good
@@ -757,6 +791,7 @@ export class Boat{
       twa: this.twa, bv1: this.autopilot_heading_best_vmg_1, bv2: this.autopilot_heading_best_vmg_2,
       ra: this.rudder_angle, mba: this.mainsail_boom_angle_actual, jba: this.jib_boom_angle_actual,
       mf: flapScale, jf: this.jibFlap, ph: flapPhase, f,
+      ...readoutFields(this),
     };
     return s;
   }
