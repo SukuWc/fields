@@ -12,6 +12,8 @@ import { setupOwnBoat } from './own-boat.js';
 import { setupBoatStats } from './boat-stats-panel.js';
 import { View } from './view.js';
 import { installUrlSettings } from './url-settings.js';
+import { installPlayerPrefs } from './player-prefs.js';
+import { setupSettingsTabs } from './settings-tabs.js';
 import { settingDefault, urlSettingIds, SUBSCRIPTION_IDS } from './settings-registry.js';
 import { applySettingDefaults } from './settings-panel.js';
 import { setInfo, flushInfo } from './info.js';
@@ -286,6 +288,9 @@ function startClient() {
   // After the WebGL canvas exists (#sim_canvas): two-finger pinch zooms the client camera.
   setupPinchZoom(view);
   installUrlSettings(undefined, { ids: urlSettingIds({ remote }) });
+  // After the URL: saved player prefs fill what the query string leaves unset.
+  installPlayerPrefs();
+  setupSettingsTabs();
   setWindCeiling(windCeilingMps(_simResKey));
   if (mapSizeClamped) console.info(`map_size ${_askedMapSize} is too small for scenario ${_scenarioParam}; using ${mapSizeKey}`);
   setupMobileMenu();
@@ -395,7 +400,6 @@ function startClient() {
     // with the 'plot' command above.
     const fieldBox = document.getElementById(SUBSCRIPTION_IDS.field);
     document.getElementById('field_plane_row').hidden = false;
-    document.getElementById('field_plane_br').hidden = false;
     let fieldOn = null;
     let devMode = false;
     const syncField = () => {
