@@ -9,12 +9,15 @@
 //   - a spectator in a server room gets none (every tile a dash).
 // A value the frame does not carry for that boat is null (drawn as a dash),
 // never guessed:
-//   TWS   the boat's own telemetry only (state.hud.own[id].tel, or the
-//         scenario telemetry when it is the only boat)
-//   AWS   always null for now: telemetry carries it in internal units, not
-//         m/s (boat.js), so it needs sim work first
-//   NEXT  distance to the next mark (gate: its midpoint) from the boat's own
-//         course progress (hud.own[id].co, or hud.co for boat 0)
+//   HDG / TWD  compass bearings 0–360 (0 = N, clockwise; TWD = wind from)
+//         from the boat's heading_deg / twd_deg (sim PR #151)
+//   TWS / AWS  the boat's tws_ms / aws_ms (m/s); TWS falls back to the
+//         boat's own telemetry (hud.own[id].tel) on older frames
+//   NEXT  the boat's next_mark_dist_m (the leaderboard's leg distance, so
+//         the two match); straight line to the next mark only when the
+//         frame has no such field (older servers)
+//   FIN   the boat's to_finish_m (dash on a looping course or without a
+//         leaderboard)
 import { boatSample, wrap180 } from './boat-stats.js';
 
 export const READOUT_TILES = [
@@ -27,6 +30,7 @@ export const READOUT_TILES = [
   { key: 'awa', label: 'AWA', unit: '°' },
   { key: 'aws', label: 'AWS', unit: 'm/s' },
   { key: 'next', label: 'NEXT', unit: 'm' },
+  { key: 'fin', label: 'FIN', unit: 'm' },
 ];
 
 const fin = (v) => (Number.isFinite(v) ? v : null);
@@ -64,14 +68,15 @@ export function readoutValues(state, opts = {}) {
   const co = own ? own.co : (isFirst && opts.ownId == null ? h.co : null);
   const out = {
     boatId: b.id,
-    heading: s ? fin(s.heading) : null,
+    heading: Number.isFinite(b.heading_deg) ? wrap360(b.heading_deg) : null,
     bs: s ? fin(s.bs) : null,
     vmg: s ? fin(s.vmg) : null,
     twa: s ? fin(s.twa) : null,
-    twd: Number.isFinite(b.wd) ? wrap360(b.wd) : null,
-    tws: tel && Number.isFinite(tel.tws) ? tel.tws / 10 : null,
+    twd: Number.isFinite(b.twd_deg) ? wrap360(b.twd_deg) : null,
+    tws: Number.isFinite(b.tws_ms) ? b.tws_ms : (tel && Number.isFinite(tel.tws) ? tel.tws / 10 : null),
     awa: s ? fin(s.awa) : null,
-    aws: null,
+    aws: Number.isFinite(b.aws_ms) ? b.aws_ms : null,
+    fin: Number.isFinite(b.to_finish_m) ? b.to_finish_m : null,
     next: null,
     nextLabel: null,
   };
@@ -85,6 +90,8 @@ export function readoutValues(state, opts = {}) {
       if (c && Number.isFinite(bx) && Number.isFinite(by)) out.next = Math.hypot(c[0] - bx, c[1] - by);
     }
   }
+  // leaderboard leg distance wins (also before the start: to the line)
+  if ('next_mark_dist_m' in b) out.next = fin(b.next_mark_dist_m);
   return out;
 }
 
@@ -92,7 +99,7 @@ export function readoutValues(state, opts = {}) {
 export function formatReadout(key, v) {
   if (v === null || v === undefined || !Number.isFinite(v)) return '–';
   if (key === 'bs' || key === 'vmg' || key === 'tws' || key === 'aws') return v.toFixed(1);
-  if (key === 'next') return String(Math.round(v));
-  if (key === 'twa' || key === 'awa' || key === 'heading') return String(Math.round(wrap180(v)));
-  return String(Math.round(v) % 360);
+  if (key === 'next' || key === 'fin') return String(Math.round(v));
+  if (key === 'twa' || key === 'awa') return String(Math.round(wrap180(v)));
+  return String(Math.round(wrap360(v)) % 360);
 }
