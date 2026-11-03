@@ -562,6 +562,15 @@
         #instrument_panel .instr-value { font: 700 20px/1.15 'Albert Sans', system-ui, sans-serif; font-variant-numeric: tabular-nums; }
         #instrument_panel .instr-unit { font-size: 10px; opacity: 0.65; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
         #instrument_panel .instr-tile.missing .instr-value { opacity: 0.45; }
+        #instrument_panel .instr-charts, #instrument_panel .instr-window-wrap { display: none; }
+        #instrument_panel[data-mode="chart"] .instr-tiles { display: none; }
+        #instrument_panel[data-mode="chart"] .instr-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; }
+        #instrument_panel[data-mode="chart"] .instr-window-wrap { display: inline-flex; gap: 4px; align-items: center; font-size: 11px; }
+        #instrument_panel .instr-window { font: inherit; background: #0b1747; color: #fff; border: 1px solid rgba(255,255,255,0.25); border-radius: 4px; }
+        #instrument_panel .instr-strip { background: rgba(255,255,255,0.06); border-radius: 4px; padding: 2px 4px; min-width: 0; }
+        #instrument_panel .instr-strip-label { display: flex; gap: 6px; align-items: baseline; font-size: 11px; font-variant-numeric: tabular-nums; }
+        #instrument_panel .instr-strip-range { margin-left: auto; opacity: 0.55; font-size: 10px; white-space: nowrap; }
+        #instrument_panel .instr-strip-svg { display: block; width: 100%; height: 34px; }
       }
       @media (max-width: 768px), (pointer: coarse) and (hover: none) {
         #settings_toggle {
@@ -786,7 +795,7 @@
       #chat_body { width: min(340px, calc(100vw - 132px)); }
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-Dzmr5lu6.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-C3tV-EoY.js"></script>
   </head>
   <body>
 
@@ -819,12 +828,14 @@
         <div class="instr-head">
           <div class="instr-modes" role="group" aria-label="Instrument mode">
             <button type="button" class="instr-mode" data-mode="readout" aria-pressed="true">Readout</button>
-            <button type="button" class="instr-mode" data-mode="chart" disabled title="Chart mode: next update">Chart</button>
+            <button type="button" class="instr-mode" data-mode="chart" title="Chart mode: strip charts of the last 30 / 60 / 120 s">Chart</button>
             <button type="button" class="instr-mode" data-mode="instrument" disabled title="Instrument mode: coming later">Instrument</button>
           </div>
           <span class="instr-note"></span>
+          <label class="instr-window-wrap">Window <select class="instr-window" aria-label="Chart window"><option value="30">30 s</option><option value="60" selected>60 s</option><option value="120">120 s</option></select></label>
         </div>
         <div class="instr-tiles"></div>
+        <div class="instr-charts"></div>
       </section>
     </div>
     <div id="hud_minimap" class="hud-zone hud-placeholder" data-zone="D"></div>
