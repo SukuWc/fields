@@ -28,7 +28,11 @@ import { trueWindAngleDeg } from './rules.js';
 import { Boat } from './boat.js';
 import { Mark, markMassForBoat } from './mark.js';
 import { Course } from './course.js';
-import { StartLine, StartSequence, COMPRESSED_START_TIMINGS } from './start.js';
+import {
+  COMPRESSED_START_TIMINGS,
+  StartLine,
+  StartSequence,
+} from './start.js';
 import { FinishLine, RaceResults } from './finish.js';
 import { Leaderboard } from './leaderboard.js';
 

@@ -6,14 +6,33 @@
 // sim events for the client.
 import { Boat } from './boat.js';
 import { Mark, markMassForBoat } from './mark.js';
-import { Course, Gate, TRIANGLE_COURSE_LAYOUT, WINDWARD_LEEWARD_LAYOUT, MARK_ROOM_LAYOUT } from './course.js';
-import { StartLine, StartSequence, START_COURSE_LAYOUT } from './start.js';
+import {
+  Course,
+  Gate,
+  MARK_ROOM_LAYOUT,
+  TRIANGLE_COURSE_LAYOUT,
+  WINDWARD_LEEWARD_LAYOUT,
+} from './course.js';
+import {
+  START_COURSE_LAYOUT,
+  StartLine,
+  StartSequence,
+} from './start.js';
 import { nameMarks } from './mark-touch.js';
-import { FinishLine, RaceResults, FINISH_COURSE_LAYOUT, FINISH_UNSERVED_PENALTY_S } from './finish.js';
+import {
+  FINISH_COURSE_LAYOUT,
+  FINISH_UNSERVED_PENALTY_S,
+  FinishLine,
+  RaceResults,
+} from './finish.js';
 import { setupTestRace } from './race-bot.js';
 import { setupBoundaryTest } from './boundary-scenario.js';
 import { chargePendingPenalty, PENALTY_MANEUVER_WINDOW_S } from './rules.js';
-import { incidentCode, incidentReason, incidentLabel } from './rule-text.js';
+import {
+  incidentCode,
+  incidentLabel,
+  incidentReason,
+} from './rule-text.js';
 import { range_map } from './utils.js';
 import { GUST_DEMO, GUST_CHECKERBOARD_DEMO } from './gusts.js';
 

@@ -3,10 +3,29 @@ import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { ROW_NONE } from './row-outline.js';
-import { ghostOutlines, GHOST_AHEAD_S, GHOST_OPACITY, GHOST_MAX_AHEAD_S } from './ghost-boat.js';
+import {
+  GHOST_AHEAD_S,
+  GHOST_MAX_AHEAD_S,
+  GHOST_OPACITY,
+  ghostOutlines,
+} from './ghost-boat.js';
 import { boatColor } from './boat-colors.js';
-import { BoatTrails, TRAIL_COLORS, TRAIL_INTERVAL_S, TRAIL_DURATION_S, TRAIL_SIZE_M, colorRgb } from './boat-trails.js';
-import { FlowTracers, tracerCountFor, TRACER_LIFETIME_S, TRACER_TAIL_S, TRACER_SEGMENTS, TRACER_COUNT_LIMIT } from './flow-tracers.js';
+import {
+  BoatTrails,
+  colorRgb,
+  TRAIL_COLORS,
+  TRAIL_DURATION_S,
+  TRAIL_INTERVAL_S,
+  TRAIL_SIZE_M,
+} from './boat-trails.js';
+import {
+  FlowTracers,
+  TRACER_COUNT_LIMIT,
+  TRACER_LIFETIME_S,
+  TRACER_SEGMENTS,
+  TRACER_TAIL_S,
+  tracerCountFor,
+} from './flow-tracers.js';
 // TRACER_SEGMENTS is the full-quality max; live segment count is tracers.segments.
 
 let camera, scene, renderer, fluidPlane;

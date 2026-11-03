@@ -28,18 +28,39 @@
 // (roundJson), which is well under a pixel at any zoom; values that end up
 // as text (state.hud, penalty badges, finish labels) stay exact.
 import { SimCore } from '../../src/host.js';
-import { answer, eventForClient, EXACT_JSON } from '../../src/host-protocol.js';
+import {
+  answer,
+  eventForClient,
+  EXACT_JSON,
+} from '../../src/host-protocol.js';
 import { BOAT_ACTIONS } from '../../src/sim.js';
 import crypto from 'node:crypto';
-import { MAX_WIND_MPS, ROOM_COMMANDS, SIM_RES_MODES, validateRoomSettingCommand, settingDefault } from '../../src/settings-registry.js';
-import { validateRoomConfig, parseAndValidateRoomConfig, commandsFromConfig, configFromRoomState, stringifyRoomConfig, defaultRoomConfig } from '../../src/room-config.js';
+import {
+  MAX_WIND_MPS,
+  ROOM_COMMANDS,
+  settingDefault,
+  SIM_RES_MODES,
+  validateRoomSettingCommand,
+} from '../../src/settings-registry.js';
+import {
+  commandsFromConfig,
+  configFromRoomState,
+  defaultRoomConfig,
+  parseAndValidateRoomConfig,
+  stringifyRoomConfig,
+  validateRoomConfig,
+} from '../../src/room-config.js';
 import { hashSeed } from '../../src/gusts.js';
 import { encodeFieldGrids, decodeFieldGrids } from '../../src/fieldPainter.js';
 import { encodeFieldText } from '../../src/field-codec.js';
 import { encodeWire, fieldForWire } from '../../src/wire-codec.js';
 import { FrameTimeHistory } from './frame-times.js';
 export { FRAME_TIME_WINDOW_S, FRAME_TIME_HZ, FRAME_TIME_CAP } from './frame-times.js';
-import { scenarioExtent, WALL_INSET_M, mapDimsError } from '../../src/map-size.js';
+import {
+  mapDimsError,
+  scenarioExtent,
+  WALL_INSET_M,
+} from '../../src/map-size.js';
 import { CUSTOM_SCENARIO } from '../../src/custom-scenario.js';
 import { TRAIL_COLORS } from '../../src/boat-trails.js';
 

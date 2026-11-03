@@ -33,7 +33,13 @@
 // Simulation resolution modes, their default and wind ceilings: sim-modes.js
 // (no imports either). The simRes setting's values and default come from
 // there: the panel, every map size (map-size.js), the server's new rooms.
-import { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps, DEFAULT_MAX_LEVEL, DEFAULT_BOAT_REFINE_RADIUS } from './sim-modes.js';
+import {
+  DEFAULT_BOAT_REFINE_RADIUS,
+  DEFAULT_MAX_LEVEL,
+  DEFAULT_SIM_RES,
+  SIM_RES_MODES,
+  windCeilingMps,
+} from './sim-modes.js';
 export { SIM_RES_MODES, DEFAULT_SIM_RES };
 export const DEFAULT_MAP_SIZE = '100x200';
 export const MAX_WIND_MPS = 30;

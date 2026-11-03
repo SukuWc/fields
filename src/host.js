@@ -29,7 +29,11 @@ import { Boltzmann } from './boltzmann.js';
 import { FieldPainter } from './fieldPainter.js';
 import { Map } from './map.js';
 import { FluidWind, ConstantWind } from './wind.js';
-import { Sim, SIM_RES_MODES, DEFAULT_SIM_RES } from './sim.js';
+import {
+  DEFAULT_SIM_RES,
+  Sim,
+  SIM_RES_MODES,
+} from './sim.js';
 import { settingDefault } from './settings-registry.js';
 import { commandsFromConfig, validateRoomConfig } from './room-config.js';
 import { defaultGustSpawner } from './gusts.js';

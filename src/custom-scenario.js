@@ -5,10 +5,24 @@
 // (wind_angle_deg = 90 is wind from +Y). Validation is pure (no Sim) so the
 // page, SimCore and the server run the same checks (room-config.js).
 import { Mark, DEFAULT_MARK_MASS } from './mark.js';
-import { Course, Gate, PORT, STARBOARD } from './course.js';
-import { StartLine, StartSequence, RRS_START_TIMINGS, COMPRESSED_START_TIMINGS } from './start.js';
+import {
+  Course,
+  Gate,
+  PORT,
+  STARBOARD,
+} from './course.js';
+import {
+  COMPRESSED_START_TIMINGS,
+  RRS_START_TIMINGS,
+  StartLine,
+  StartSequence,
+} from './start.js';
 import { FinishLine, RaceResults } from './finish.js';
-import { Boundary, BOUNDARY_INSET_M, BOUNDARY_ZONE_M } from './boundary.js';
+import {
+  Boundary,
+  BOUNDARY_INSET_M,
+  BOUNDARY_ZONE_M,
+} from './boundary.js';
 import { nameMarks } from './mark-touch.js';
 import { WALL_INSET_M } from './map-size.js';
 

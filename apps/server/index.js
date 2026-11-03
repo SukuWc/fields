@@ -27,7 +27,13 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { WebSocketServer } from 'ws';
-import { Room, FIELD_HZ, FIELD_TOL, GRACE_MS, adminSecretsEqual } from './room.js';
+import {
+  adminSecretsEqual,
+  FIELD_HZ,
+  FIELD_TOL,
+  GRACE_MS,
+  Room,
+} from './room.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',

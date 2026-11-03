@@ -43,6 +43,7 @@ Last updated: 2026-11-03
 - [x] Client builds the readout/HUD panels and encounter overlays from compact JSON state (follow-up to #66, about 18% fewer bytes per frame in the four-boat scenario): [#70](https://github.com/SukuWc/fields/pull/70)
 - [x] True- and apparent-wind chevrons sit upwind of the boat with tips pointing downwind (fixes a regression that pointed them upwind): [#59](https://github.com/SukuWc/fields/pull/59)
 - [x] Run `npm test` in CI (test + server smoke workflow in `.github/workflows/test.yml`): [#63](https://github.com/SukuWc/fields/pull/63)
+- [ ] Parallel `npm test` via a `node --test` glob (no more `&&` chain in package.json), sim-res split into four files, wall-clock timing tests run serially (about 9 min to 2 min locally): [#143](https://github.com/SukuWc/fields/pull/143)
 - [x] Default fluid grid `simRes=2f` (2 m root, 1 step per tick, about 15.6 ms field time per tick with one boat vs about 47 ms on 4f), wind clamped to each mode's stable ceiling (15 m/s on 2f), and the `2f34` mode removed: [#77](https://github.com/SukuWc/fields/pull/77)
 - [x] Settings registry: one list of every setting (scope, type, default, validation, room command) read by the settings panel, URL sync and the server: [#79](https://github.com/SukuWc/fields/pull/79)
 - [x] Rule data: sim sends rule codes and boat indices, every client writes the rule text and builds the overlay geometry (sim/client split; about 4.7% fewer bytes per frame in scenario 18): [#82](https://github.com/SukuWc/fields/pull/82)
@@ -51,6 +52,7 @@ Last updated: 2026-11-03
 - [x] Gust kernels drop off-map samples instead of ring-searching for nearby water (fixes the periodic europe-1 slowdown to >1 s per tick): [#128](https://github.com/SukuWc/fields/pull/128)
 - [x] Remote default preset matches live europe-1, including the custom race course (local solo stays on scenario 0): [#124](https://github.com/SukuWc/fields/pull/124)
 - [x] In-game room settings locked behind admin login for remote games (server rejects room commands without `ADMIN_SECRET` auth; Login / Logout shared with the landing page): [#125](https://github.com/SukuWc/fields/pull/125)
+- [ ] One named import per line (sorted, trailing comma) in `src/` and `apps/` to cut import-line merge conflicts: [#144](https://github.com/SukuWc/fields/pull/144)
 
 ### 2. Wind and boat feel
 - [x] Fluid sim on, stable from wind 5 through 25 with the sail wake on the fine grid: [#9](https://github.com/SukuWc/fields/pull/9)

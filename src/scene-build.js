@@ -16,7 +16,13 @@ import { courseGuidesFromState } from './course.js';
 import { finishGuidesFromState } from './finish.js';
 import { boundaryGuides } from './boundary.js';
 import { rowOutlineColors, rowPovId } from './row-outline.js';
-import { roomGuidesFromState, contactGuidesFromState, penaltyGuidesFromState, pairGuidesFromState, pairBoatsFromState } from './rules.js';
+import {
+  contactGuidesFromState,
+  pairBoatsFromState,
+  pairGuidesFromState,
+  penaltyGuidesFromState,
+  roomGuidesFromState,
+} from './rules.js';
 import { hudFromState } from './hud.js';
 import { markTouchGuidesFromState } from './mark-touch.js';
 import { ladderGuidesFromState } from './ladder-lines.js';
