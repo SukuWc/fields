@@ -20,7 +20,7 @@ function check(name, cond, detail) {
 }
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
 
-// Sections 1–8 measure the fixed rings (Default pinned to main; one main-parity
+// Sections 6 and 9 live in sim-res-fleet.test.mjs. Sections 1–8 measure the fixed rings (Default pinned to main; one main-parity
 // check). The app, the harness and the engine default to auto; sections 0 and 9 cover that.
 {
 	const fs = await import('node:fs');
@@ -230,43 +230,6 @@ check('x2 and x4 with refinement are no slower per frame than Default',
 		off.map(v => v.toFixed(3)).join(' / '));
 }
 
-// --- 6. Two boats: one flow where their grids overlap, and a wind shadow ---
-// Same-depth grids of different boats are synced on coincident fluid nodes
-// after every root step (Boltzmann._syncBoatOverlaps). Without that the
-// downwind boat's grids never saw the upwind wake, and the scenario-1 number
-// (1.16 / 0.40 / 0.07) was mostly the two grids disagreeing.
-const S1 = [[12, -6, 5 * Math.PI / 4], [15, -11.5, 5 * Math.PI / 4]];
-const INWAKE = [[12, -6, 5 * Math.PI / 4], [12, -13, 5 * Math.PI / 4]];
-const s1 = {}, wk = {};
-for (const k of KS) {
-	const on = H.scenario1(k);
-	const off = H.scenario1(k, { energy: false });
-	s1[k] = on.tws0 - on.tws1;
-	check(`x${k} scenario 1 grids carry one flow; leeward boat sails in less wind`,
-		on.overlapGap < 1e-12 && s1[k] > 0.1 && near(off.tws0, 15, 1e-6) && near(off.tws1, 15, 1e-6) && on.bad === 0 && on.maxU < 0.3,
-		`windward ${on.tws0.toFixed(2)} leeward ${on.tws1.toFixed(2)} gap=${on.overlapGap.toExponential(1)}`);
-	const w = H.wakeShadow(k, INWAKE);
-	wk[k] = w.shadow;
-	check(`x${k} boat directly downwind loses wind to the upwind sail`, w.shadow > (k === 4 ? 0.05 : 0.2) && w.overlapGap < 1e-12 && w.bad === 0,
-		`TWS ${w.off.toFixed(2)} → ${w.on.toFixed(2)} (shadow ${w.shadow.toFixed(2)})`);
-}
-check('scenario 1 and in-wake shadows on x2 / x4 come close to Default',
-	// #90: the boat reads true wind as a 1 m ring mean; the x4 in-wake shadow fell 0.12 → 0.06 (floor 0.2 × Default; per-boat floors 0.05 x4, 0.2 else).
-	// Fixed 30 FPS: the x4 in-wake shadow fell 0.20 → 0.12 (the field advects 3× less per boat length); x4 floor 0.35 × Default.
-	[2, 4].every(k => Math.abs(s1[k] - s1[1]) < 0.15 && wk[k] > (k === 4 ? 0.2 : 0.6) * wk[1]),
-	`s1 ${KS.map(k => s1[k].toFixed(2)).join(' / ')} · in-wake ${KS.map(k => wk[k].toFixed(2)).join(' / ')}`);
-for (const [name, spec, tacks] of [
-	['scenario 2', [[-10, -6, 3 * Math.PI / 4], [15, -11.5, 5 * Math.PI / 4]], {}],
-	['scenario 3', [[-3, -3, 3 * Math.PI / 4], [18, -11.5, 5 * Math.PI / 4]], { 0: 350 }],
-]) {
-	for (const k of KS) {
-		const r = H.fleet(k, spec, { frames: 500, tacks });
-		check(`x${k} ${name} stays finite with one flow`, r.bad === 0 && r.maxU < 0.3 && r.overlapGap < 1e-12
-			&& r.boats.every(b => Number.isFinite(b.x) && b.wind_speed > 10),
-			`max|u|=${r.maxU.toFixed(3)} TWS ${r.tws.map(t => t.toFixed(2)).join(' / ')}`);
-	}
-}
-
 // --- 7. Barrier at wind 5, 15, 25 for 1500 frames on the coarse grids ---
 // Default is covered by wind-stability.test.mjs.
 for (const k of [2, 4]) {
@@ -318,58 +281,6 @@ for (const k of [2, 4]) {
 	H.setMapSize(75);
 	check('150 m map: 2f lattice is 75² cells and scenario 0 runs finite',
 		big.cells === 75 * 75 && big.bad === 0 && Number.isFinite(big.twa), `cells=${big.cells} twa=${big.twa.toFixed(2)}`);
-}
-
-// --- 9. Holds in seconds, and ?amrMode=auto (finest disk + grading shell + curl) ---
-{
-	const holds = [[1, 1, 6], [0.5, 0.5, 3], [0.25, 0.25, 2], [0.5, 1, 6]]
-		.map(([res, spf, want]) => ({ want, got: amrParams({ cellSize: 1 / res, stepsPerFrame: spf }).hold, secs: amrParams({ cellSize: 1 / res, stepsPerFrame: spf }).hold / (30 * spf) }));
-	check('curl hold is ~0.2 s on every setting (Default / x2 / x4 / 2f)',
-		holds.every(h => h.got === h.want && h.secs >= 0.19 && h.secs <= 0.27), holds.map(h => `${h.got} (${h.secs.toFixed(3)} s)`).join(' / '));
-	const a1 = amrParams({ cellSize: 1, amrMode: 'auto' });
-	const a2 = amrParams({ cellSize: 2, stepsPerFrame: 0.5, amrMode: 'auto' });
-	check('auto: finest disk R2 fixed, coarser floors are the 3-cell grading shell',
-		a1.auto && a1.levels.map(l => l.worldRadius).join() === '4.25,2.75,2' && a2.levels.map(l => l.worldRadius).join() === '7.25,4.25,2.75,2'
-		&& a1.levels.every((l, i) => l.cap === amrParams({ cellSize: 1 }).levels[i].cap),
-		`Default ${a1.levels.map(l => l.worldRadius).join('/')} · x2 ${a2.levels.map(l => l.worldRadius).join('/')}`);
-	// Every refined child cell sits AUTO_SHELL − 1 own cells inside its parent's
-	// refined region (one cell of lag allowed), unless that is off the window.
-	const D_AUTO = D.AUTO_SHELL;
-	const shellOk = (bm) => {
-		let worst = Infinity;
-		for (let D = bm.domains.find(d => d.disk); D && D.domains[0]; D = D.domains[0]) {
-			const C = D.domains[0], ccw = C.cx1 - C.cx0;
-			for (let ly = 0; ly < C.cy1 - C.cy0; ly++) for (let lx = 0; lx < ccw; lx++) {
-				if (C.mask[lx + ly * ccw] !== 1) continue;
-				for (let d = 1; d <= D_AUTO - 1; d++) for (const [ox, oy] of [[d, 0], [-d, 0], [0, d], [0, -d]]) {
-					const px = Math.floor(D.coarseX(C.cx0 + lx + ox)), py = Math.floor(D.coarseY(C.cy0 + ly + oy));
-					if (px < D.cx0 + 1 || py < D.cy0 + 1 || px >= D.cx1 - 1 || py >= D.cy1 - 1) continue;
-					if (!D._maskAt(px, py)) worst = Math.min(worst, d - 1);
-				}
-			}
-		}
-		return worst;
-	};
-	H.setAmrMode('auto');
-	for (const k of [1, 2, '2f']) {
-		const r = H.fleet(k, [[10, -9, 5 * Math.PI / 4]], { frames: 400 });
-		const w = shellOk(r.bm);
-		const reach = H.stackReach(r.bm, r.boats[0].x, r.boats[0].y);
-		check(`auto ${k}: grading shell holds (≥ 2 own cells) and the wake is refined downstream`,
-			w === Infinity && r.bad === 0 && reach.length >= 3 && reach[0] > 12 && r.stack[r.stack.length - 1] > 0,
-			`margin ${w === Infinity ? '≥2' : w} reach ${reach.map(v => v.toFixed(1)).join('/')} cells ${r.stack.join('/')}`);
-	}
-	const s0 = H.scenario0(1);
-	const wk = H.wakeShadow(1, INWAKE);
-	check(// Fixed 30 FPS: −49.428 / 2.129 → −49.305 / 2.8465.
-	// #90 (1 m ring): −49.3048 / 2.8465 → −49.3557 / 2.8526.
-	// #103 point true wind (Default has no force undo): → −49.3048 / 2.8465.
-	'auto Default scenario 0 pinned: twa −49.30, bs 2.847',
-		near(s0.twa, -49.3048, 0.01) && near(s0.bs, 2.8465, 0.002), `twa=${s0.twa.toFixed(4)} bs=${s0.bs.toFixed(4)}`);
-	H.setAmrMode('fixed');
-	check('auto Default scenario 0 close-hauled and the in-wake shadow is at least the fixed one',
-		s0.twa < -45 && s0.twa > -54 && s0.bs > 2.4 && s0.bs < 3.1 && wk.shadow > 0.4 && wk.overlapGap < 1e-12,
-		`twa=${s0.twa.toFixed(2)} bs=${s0.bs.toFixed(3)} in-wake ${wk.shadow.toFixed(2)}`);
 }
 
 if (failed) {
