@@ -180,7 +180,17 @@
 // the 12 m pair gate with one boat in the zone (pairs further apart are not
 // evaluated); "rounding" a gate mark ends at the gate line.
 
-import { RULE_TEXT, ruleCode, ruleText, ROLE_CODE, roleText, incidentCode, incidentReason, incidentLabel, penaltyNameText } from './rule-text.js';
+import {
+  incidentCode,
+  incidentLabel,
+  incidentReason,
+  penaltyNameText,
+  ROLE_CODE,
+  roleText,
+  RULE_TEXT,
+  ruleCode,
+  ruleText,
+} from './rule-text.js';
 import { boatTrueWind } from './wind.js';
 
 export const BOAT_LENGTH_M = 4;

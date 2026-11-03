@@ -16,12 +16,27 @@
 // Browser and Node: smol-toml. Used by the admin textarea, the server's
 // atomic `config` room command, and tests.
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
-import { SIM_RES_MODES, DEFAULT_SIM_RES, MAX_WIND_MPS, DEFAULT_MAP_SIZE } from './settings-registry.js';
-import { MAP_SIZES, parseMapSize, mapDimsError, scenarioExtent, WALL_INSET_M } from './map-size.js';
+import {
+  DEFAULT_MAP_SIZE,
+  DEFAULT_SIM_RES,
+  MAX_WIND_MPS,
+  SIM_RES_MODES,
+} from './settings-registry.js';
+import {
+  MAP_SIZES,
+  mapDimsError,
+  parseMapSize,
+  scenarioExtent,
+  WALL_INSET_M,
+} from './map-size.js';
 import {
   GUST_FORCE_GAIN, GUST_ALONG_SIGMA_M, GUST_CROSS_SIGMA_M, GUST_LIFE_S,
 } from './gusts.js';
-import { CUSTOM_SCENARIO, validateCustomLayout, customLayoutToToml } from './custom-scenario.js';
+import {
+  CUSTOM_SCENARIO,
+  customLayoutToToml,
+  validateCustomLayout,
+} from './custom-scenario.js';
 
 export const ROOM_CONFIG_KEYS = [
   'scenario',

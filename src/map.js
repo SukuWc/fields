@@ -1,7 +1,11 @@
 import planck from 'planck-js';
 import { World } from 'planck-js'
 import { meanAngleDeg } from './utils.js';
-import { FluidWind, ConstantWind, ringWindSample } from './wind.js';
+import {
+	ConstantWind,
+	FluidWind,
+	ringWindSample,
+} from './wind.js';
 
 let pl = planck, Vec2 = pl.Vec2;
 

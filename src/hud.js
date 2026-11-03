@@ -28,9 +28,19 @@
 // the same in every host mode.
 import { courseTextState, courseTextOf } from './course.js';
 import { leaderboardState, leaderboardHtmlOf } from './leaderboard.js';
-import { startHudState, startHudHtmlOf, startStatusTextOf } from './start.js';
+import {
+  startHudHtmlOf,
+  startHudState,
+  startStatusTextOf,
+} from './start.js';
 import { penaltyManeuverText, stateId } from './rules.js';
-import { incidentReason, basisCode, basisText, tackCode, tackText } from './rule-text.js';
+import {
+  basisCode,
+  basisText,
+  incidentReason,
+  tackCode,
+  tackText,
+} from './rule-text.js';
 
 // Telemetry as the readout shows it (info.js boatTelemetryHtml): values it
 // floors to whole units or tenths are sent as Math.floor(v) / Math.floor(v * 10);

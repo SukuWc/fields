@@ -58,7 +58,12 @@
 import { plainView } from './host-protocol.js';
 import { FieldPainter } from './fieldPainter.js';
 import { decodeFieldText } from './field-codec.js';
-import { decodeWire, WireVersionError, WIRE_MAGIC, WIRE_VERSION } from './wire-codec.js';
+import {
+  decodeWire,
+  WIRE_MAGIC,
+  WIRE_VERSION,
+  WireVersionError,
+} from './wire-codec.js';
 
 /** localStorage key shared with the landing page (apps/landing/index.html). */
 export const ADMIN_SECRET_KEY = 'sailzone.adminSecret';

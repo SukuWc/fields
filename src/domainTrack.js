@@ -30,7 +30,11 @@
 // ≤ FIELD_CELL_CAP cells (≤ 160×4×2 = 1280 node-steps). Scenario 0's mean
 // Boltzmann step stays under 12 ms at these caps.
 
-import { buildClosedDiskMask, closeDiagonalContacts, fineIndex } from './boltzmann.js';
+import {
+	buildClosedDiskMask,
+	closeDiagonalContacts,
+	fineIndex,
+} from './boltzmann.js';
 
 export const DOMAIN_HALF = 20;
 export const DOMAIN2_HALF = 20;

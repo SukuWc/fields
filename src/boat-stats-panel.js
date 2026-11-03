@@ -6,9 +6,24 @@
 // Closed: no sampling, no drawing, buffers cleared. Remote room: only this
 // client's own boat; local / worker: every boat. Hover shows all boats'
 // values at the pointer time (shared svg-chart hover helpers).
-import { StatsBuffer, STATS_SERIES, boatsToShow, seriesRange, polylinePoints, formatStatValue, latestValues } from './boat-stats.js';
+import {
+  boatsToShow,
+  formatStatValue,
+  latestValues,
+  polylinePoints,
+  seriesRange,
+  STATS_SERIES,
+  StatsBuffer,
+} from './boat-stats.js';
 import { boatColorCss, boatColorIndex } from './boat-colors.js';
-import { SVG_NS, valueToY, xToTime, nearestTimeIndex, agoLabel, bindSvgChartHover } from './svg-chart.js';
+import {
+  agoLabel,
+  bindSvgChartHover,
+  nearestTimeIndex,
+  SVG_NS,
+  valueToY,
+  xToTime,
+} from './svg-chart.js';
 
 const W = 260, H = 54;
 

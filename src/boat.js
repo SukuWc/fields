@@ -1,6 +1,10 @@
 import planck from 'planck-js';
 import { aeroCoefficients } from './utils.js';
-import { resetPenaltyManeuvers, updatePenaltyManeuvers, updateTackingState } from './rules.js';
+import {
+  resetPenaltyManeuvers,
+  updatePenaltyManeuvers,
+  updateTackingState,
+} from './rules.js';
 import { WIND_UNIT_MPS, boatTrueWind } from './wind.js';
 import { boatGuides, autopilotSnapTarget } from './boat-draw.js';
 

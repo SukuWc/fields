@@ -1,8 +1,31 @@
 import * as THREE from 'three';
 import { FixedStepLoop } from './loop.js';
 
-import { initRenderer, startAnimation, renderNow, getCamera, setFluidPlaneSize, resetFluidPlane, setFieldVisible, setFlowGrid, setTracerParams, getTracerParams, updateBoatTrails, setTrailParams, setBoatTrailsOn, setGhostParams } from './renderer.js';
-import { setupControls, setWindCeiling, heldCommands, onHeldChange, deferUiToFrames, flushFrameUi, onRoomLattice } from './controls.js';
+import {
+  getCamera,
+  getTracerParams,
+  initRenderer,
+  renderNow,
+  resetFluidPlane,
+  setBoatTrailsOn,
+  setFieldVisible,
+  setFlowGrid,
+  setFluidPlaneSize,
+  setGhostParams,
+  setTracerParams,
+  setTrailParams,
+  startAnimation,
+  updateBoatTrails,
+} from './renderer.js';
+import {
+  deferUiToFrames,
+  flushFrameUi,
+  heldCommands,
+  onHeldChange,
+  onRoomLattice,
+  setupControls,
+  setWindCeiling,
+} from './controls.js';
 import { LocalHost } from './host.js';
 import { buildScene } from './scene-build.js';
 import { WorkerHost } from './worker-host.js';
@@ -12,17 +35,32 @@ import { setupOwnBoat } from './own-boat.js';
 import { setupBoatStats } from './boat-stats-panel.js';
 import { View } from './view.js';
 import { installUrlSettings } from './url-settings.js';
-import { settingDefault, urlSettingIds, SUBSCRIPTION_IDS } from './settings-registry.js';
+import {
+  settingDefault,
+  SUBSCRIPTION_IDS,
+  urlSettingIds,
+} from './settings-registry.js';
 import { applySettingDefaults } from './settings-panel.js';
 import { setInfo, flushInfo } from './info.js';
-import { setupPerfOverlay, isPerfOverlayOn, recordFieldStep, perfOverlayFrame } from './perf-overlay.js';
+import {
+  isPerfOverlayOn,
+  perfOverlayFrame,
+  recordFieldStep,
+  setupPerfOverlay,
+} from './perf-overlay.js';
 import { setupMobileMenu } from './mobile-menu.js';
 import { setupTouchControls } from './touch-controls.js';
 import { setupPinchZoom } from './pinch-zoom.js';
 import { setupChat } from './chat-panel.js';
 import { windCeilingMps } from './sim-modes.js';
 
-import { mapDims, DEFAULT_MAP_SIZE, mapSizeFromQuery, fitMapSize, cameraLimits } from './map-size.js';
+import {
+  cameraLimits,
+  DEFAULT_MAP_SIZE,
+  fitMapSize,
+  mapDims,
+  mapSizeFromQuery,
+} from './map-size.js';
 
 
 

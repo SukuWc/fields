@@ -49,7 +49,12 @@
 import { lineState, startGuideState } from './start.js';
 import { courseStatics, courseGuideState } from './course.js';
 import { finishLineState, finishGuideState } from './finish.js';
-import { roomGuideState, contactFlashState, penaltyGuideState, pairStateFor } from './rules.js';
+import {
+  contactFlashState,
+  pairStateFor,
+  penaltyGuideState,
+  roomGuideState,
+} from './rules.js';
 import { markTouchState } from './mark-touch.js';
 import { hudState } from './hud.js';
 import { markExact } from './host-protocol.js';

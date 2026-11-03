@@ -10,7 +10,11 @@ import { SAIL_LATTICE_COUPLING, SAIL_WAKE_GAIN } from './boat.js';
 import { boatTrueWind } from './wind.js';
 import { trackBoats, resetTracking } from './domainTrack.js';
 import { Leaderboard } from './leaderboard.js';
-import { resetMarkTouches, recordMarkTouches, activeTouchMarks } from './mark-touch.js';
+import {
+  activeTouchMarks,
+  recordMarkTouches,
+  resetMarkTouches,
+} from './mark-touch.js';
 import {
   beginRule15Step, createRulesState, evaluateAllPairs, penaltyAutopilotRemainingDeg,
   penaltyJustCleared, penaltyManeuverText, penaltyManeuverView, pendingPenaltyCount,
@@ -32,7 +36,11 @@ export const SCENARIO_FRAMES_PER_TICK = 3;
 
 // Simulation resolution modes: sim-modes.js (the settings registry's simRes
 // values and default).
-import { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps } from './sim-modes.js';
+import {
+  DEFAULT_SIM_RES,
+  SIM_RES_MODES,
+  windCeilingMps,
+} from './sim-modes.js';
 export { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps };
 
 // Boat input commands, applied with sim.command() (one-shot) or passed to
