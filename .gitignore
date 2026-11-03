@@ -4,3 +4,4 @@ research/*
 
 dist-server
 dist-app
+node_modules
