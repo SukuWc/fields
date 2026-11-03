@@ -361,7 +361,8 @@ export function parseRoomConfigToml(text) {
   try {
     raw = parseToml(String(text ?? ''));
   } catch (e) {
-    return { error: 'TOML: ' + (e && e.message ? e.message : String(e)) };
+    const msg = e && e.message ? String(e.message).split('\n')[0] : String(e);
+    return { error: 'TOML: ' + msg, line: e && Number.isInteger(e.line) ? e.line : null };
   }
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
     return { error: 'TOML must be a table of keys' };
@@ -613,6 +614,44 @@ export function roomConfigCommit(text, checks = {}, prev = null) {
   const v = parseAndValidateRoomConfig(text, checks);
   if (v.error) return v;
   return { config: v.config, commands: commandsFromConfig(v.config, prev) };
+}
+
+/**
+ * Line (1-based) in `text` an error points at, or null. Parse errors carry
+ * their own line; a validation error names a key (`wind_speed_mps must ...`,
+ * `unknown key(s): foo`, `custom.marks.a ...`), found as `key =` or a
+ * `[table]` header in the text.
+ */
+export function roomConfigErrorLine(text, err) {
+  if (!err) return null;
+  if (Number.isInteger(err.line)) return err.line;
+  const msg = String(err.error || err);
+  const lines = String(text ?? '').split('\n');
+  const esc = (k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const findKey = (k) => {
+    const re = new RegExp('^\\s*' + esc(k) + '\\s*=');
+    const i = lines.findIndex((l) => re.test(l));
+    return i < 0 ? null : i + 1;
+  };
+  const findTable = (t) => {
+    const re = new RegExp('^\\s*\\[\\s*' + esc(t) + '\\s*\\]');
+    const i = lines.findIndex((l) => re.test(l));
+    return i < 0 ? null : i + 1;
+  };
+  const unk = /unknown key\(s\)(?: in \[([\w.]+)\])?: ([\w-]+)/.exec(msg);
+  if (unk) return findKey(unk[2]) || (unk[1] && findTable(unk[1]));
+  const dotted = /\b(custom(?:\.\w+)+)/.exec(msg);
+  if (dotted) {
+    const parts = dotted[1].split('.');
+    for (let n = parts.length; n >= 2; n--) {
+      const line = findKey(parts[n - 1]) && findTable(parts.slice(0, n - 1).join('.')) ? findKey(parts[n - 1]) : findTable(parts.slice(0, n).join('.'));
+      if (line) return line;
+    }
+  }
+  if (/\[custom\]/.test(msg)) { const t = findTable('custom'); if (t) return t; }
+  const keys = [...ROOM_CONFIG_KEYS].sort((a, b) => b.length - a.length);
+  for (const k of keys) if (new RegExp('\\b' + esc(k) + '\\b').test(msg)) { const l = findKey(k); if (l) return l; }
+  return null;
 }
 
 export { DEFAULT_MAP_SIZE, MAP_SIZES };
