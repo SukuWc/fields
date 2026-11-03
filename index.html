@@ -491,6 +491,23 @@
          space kept free on the right for the button / drawer. */
       .hud-zone { display: contents; }
       .hud-placeholder { display: none; }
+      /* Zone D: minimap (minimap.js), desktop only like the instruments. */
+      #minimap { display: none; }
+      @media (min-width: 769px) and (hover: hover), (min-width: 769px) and (pointer: fine) {
+        #minimap {
+          display: block; position: fixed; left: 10px; bottom: 10px; z-index: 110;
+          width: 320px; height: 256px; border-radius: 8px; overflow: hidden;
+          background: rgba(11, 23, 71, 0.85); border: 1px solid rgba(255, 196, 0, 0.35);
+        }
+        #minimap canvas { display: block; width: 320px; height: 256px; cursor: crosshair; touch-action: none; }
+        #minimap .mm-follow {
+          position: absolute; left: 6px; top: 6px; font: 11px 'Albert Sans', system-ui, sans-serif;
+          color: #fff; background: rgba(11,23,71,0.85); border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 1px 6px; cursor: pointer;
+        }
+        #minimap .mm-follow[aria-pressed="true"] { background: #ffc400; color: #0b1747; border-color: #ffc400; }
+        /* chat sits above the minimap (plan zone G) */
+        body #chat_panel { left: 10px; bottom: 276px; }
+      }
       /* Zone E: rule-call toasts (rule-toasts.js). Brand yellow = warning;
          green / red only on the port / starboard tack chips. */
       .rule-toasts {
@@ -850,7 +867,7 @@
     <div id="finish_results" hidden></div>
     <details id="boat_stats"><summary title="Heading, TWA, AWA and boat speed over the last 60 s (your own boat in a server room, every boat locally). Sampled only while open.">Boat stats</summary><div id="boat_stats_body"></div></details>
     </div>
-    <!-- Zones: C instrument panel, E rule-call toasts (rule-toasts.js); D minimap reserved for a later PR. -->
+    <!-- Zones: C instrument panel, D minimap (minimap.js), E rule-call toasts (rule-toasts.js). -->
     <div id="hud_instruments" class="hud-zone" data-zone="C">
       <section id="instrument_panel" data-mode="readout" aria-label="Instruments">
         <div class="instr-head">
@@ -866,7 +883,12 @@
         <div class="instr-charts"></div>
       </section>
     </div>
-    <div id="hud_minimap" class="hud-zone hud-placeholder" data-zone="D"></div>
+    <div id="hud_minimap" class="hud-zone" data-zone="D">
+      <section id="minimap" aria-label="Minimap">
+        <canvas width="320" height="256" aria-label="Map overview: click to move the camera"></canvas>
+        <button type="button" class="mm-follow" aria-pressed="false" title="Camera follows your boat">Follow</button>
+      </section>
+    </div>
     <div id="hud_toasts" class="hud-zone" data-zone="E" aria-live="polite"></div>
     <pre id="perf_overlay_hud"></pre>
     <div id="fps" class="dev-only"></div>

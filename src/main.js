@@ -39,6 +39,7 @@ import { installPlayerPrefs } from './player-prefs.js';
 import { setupSettingsTabs } from './settings-tabs.js';
 import { setupInstrumentPanel } from './instrument-panel.js';
 import { setupRuleToasts } from './rule-toasts.js';
+import { setupMinimap } from './minimap.js';
 import {
   settingDefault,
   SUBSCRIPTION_IDS,
@@ -397,8 +398,9 @@ function startClient() {
   const boatStats = setupBoatStats({ remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
   // Instrument panel (zone C): own boat by id, like the stats panel.
   const instruments = setupInstrumentPanel({ remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
+  const minimap = setupMinimap({ view, getMapSize: () => [map_w, map_h], remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
   const ruleToasts = setupRuleToasts({ remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
-  setupOwnBoat(host, (ids) => { ownBoatId = ids[0] || null; boatStats.setOwnId(ownBoatId); instruments.setOwnId(ownBoatId); ruleToasts.setOwnId(ownBoatId); });
+  setupOwnBoat(host, (ids) => { ownBoatId = ids[0] || null; boatStats.setOwnId(ownBoatId); instruments.setOwnId(ownBoatId); ruleToasts.setOwnId(ownBoatId); minimap.setOwnId(ownBoatId); });
   host.on((ev) => { if (ev.type === 'cleared') followTarget = undefined; });
   host.onFrame((frame) => {
     lastFrame = frame;
@@ -421,6 +423,7 @@ function startClient() {
     if (frame.state) boatStats.onFrame(frame.state);
     if (frame.state) instruments.onFrame(frame.state);
     if (frame.state) ruleToasts.onFrame(frame.state);
+    if (frame.state) minimap.onFrame(frame.state, frame.statics);
   });
 
   if (remoteDriven) {
