@@ -546,7 +546,11 @@ function enclosedHole(domain) {
 		`bs = ${bs.toFixed(3)} (at 500: ${bsAt500.toFixed(3)})`);
 	check('scenario 0 wind still blowing', boat.wind_speed > 12 && st.bad === 0 && st.maxU < 0.3 && st.maxU > 0.1,
 		`TWS = ${boat.wind_speed.toFixed(2)}, max|u| = ${st.maxU.toExponential(2)}, bad = ${st.bad}`);
-	check('scenario 0 step stays cheap', stepMs < 12, `mean step ${stepMs.toFixed(2)} ms`);
+	// Wall-clock check: only meaningful without CPU contention, so it runs in the
+	// serial timing suite (test/amr-step.timing.mjs sets AMR_STEP_TIMING=1).
+	// Under the parallel unit run (#143) the mean step hit 14–19 ms on CI.
+	if (process.env.AMR_STEP_TIMING === '1') check('scenario 0 step stays cheap', stepMs < 12, `mean step ${stepMs.toFixed(2)} ms`);
+	else console.log(`INFO  scenario 0 mean step ${stepMs.toFixed(2)} ms (timed in npm run test:timing)`);
 	const capRate = bm.forceApplies ? bm.capHits / bm.forceApplies : 0;
 	check('scenario 0 speed cap stays a safety net', capRate < 0.01,
 		`cap ${bm.capHits}/${bm.forceApplies}`);
