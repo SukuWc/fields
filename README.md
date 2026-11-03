@@ -137,6 +137,7 @@ Last updated: 2026-11-02
 - [x] Hamburger settings menu on phones and touch screens: [#29](https://github.com/SukuWc/fields/pull/29)
 - [x] Boat 1 touch controls in the bottom half of the screen: [#30](https://github.com/SukuWc/fields/pull/30)
 - [x] Touch controls panel 30% shorter (35% of the screen): [#37](https://github.com/SukuWc/fields/pull/37)
+- [ ] UI overhaul 1: page never scrolls (panels scroll inside), debug panels behind dev view (backtick / `?dev=1`): [#141](https://github.com/SukuWc/fields/pull/141)
 - [ ] Accessibility
 - [ ] Telemetry export
 - [x] Sail flapping animation for luffing sails (visual only): [#54](https://github.com/SukuWc/fields/pull/54)
