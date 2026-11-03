@@ -150,7 +150,7 @@ Last updated: 2026-11-03
 - [x] UI overhaul 7: instruments read the sim fields (#151): HDG / TWD as 0–360 bearings, TWS / AWS in m/s, NEXT from the leaderboard leg distance, new FIN tile; Chart mode adds a TWS / AWS strip and draws HDG / TWD as bearings: [#153](https://github.com/SukuWc/fields/pull/153)
 - [x] UI overhaul 8: rule-call toasts (zone E, right above the instruments): rule reference + plain explanation, boats involved, own-boat calls emphasised, 5 s auto-dismiss, at most 3 stacked, penalty cleared notices: [#154](https://github.com/SukuWc/fields/pull/154)
 - [x] UI overhaul 9: minimap (zone D, bottom left): course, start / finish lines, marks with the next one highlighted, laylines on the next mark, boats by id in their colours, camera rectangle; click or drag pans the camera (turns follow off), Follow button turns it back on; chat moved above it: [#156](https://github.com/SukuWc/fields/pull/156)
-- [ ] Mobile 2: 44 px tap targets on phones and touch devices (scenario Hide, Boat stats, Chat, Player / Room tabs, name field, checkboxes), Join / Leave never truncated, stale Spectating note hidden after joining: [#PRN](https://github.com/SukuWc/fields/pull/PRN)
+- [ ] Mobile 2: 44 px tap targets on phones and touch devices (scenario Hide, Boat stats, Chat, Player / Room tabs, name field, checkboxes), Join / Leave never truncated, stale Spectating note hidden after joining: [#160](https://github.com/SukuWc/fields/pull/160)
 - [ ] Accessibility
 - [ ] Telemetry export
 - [x] Sail flapping animation for luffing sails (visual only): [#54](https://github.com/SukuWc/fields/pull/54)
