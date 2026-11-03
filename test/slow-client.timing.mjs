@@ -1,3 +1,4 @@
+// Wall-clock timing test: run serially after the parallel suite (npm run test:timing).
 // A remote client whose socket is read off the main thread (like a browser)
 // but whose per-frame decode + render is slower than the 30 Hz frame rate
 // must not fall behind: RemoteHost parks only the newest raw frame and
