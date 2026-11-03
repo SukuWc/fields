@@ -37,6 +37,7 @@ import { View } from './view.js';
 import { installUrlSettings } from './url-settings.js';
 import { installPlayerPrefs } from './player-prefs.js';
 import { setupSettingsTabs } from './settings-tabs.js';
+import { setupInstrumentPanel } from './instrument-panel.js';
 import {
   settingDefault,
   SUBSCRIPTION_IDS,
@@ -393,7 +394,9 @@ function startClient() {
   let ownBoatId = null;
   // Boat stats panel (#boat_stats): own boat only in a server room.
   const boatStats = setupBoatStats({ remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
-  setupOwnBoat(host, (ids) => { ownBoatId = ids[0] || null; boatStats.setOwnId(ownBoatId); });
+  // Instrument panel (zone C): own boat by id, like the stats panel.
+  const instruments = setupInstrumentPanel({ remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
+  setupOwnBoat(host, (ids) => { ownBoatId = ids[0] || null; boatStats.setOwnId(ownBoatId); instruments.setOwnId(ownBoatId); });
   host.on((ev) => { if (ev.type === 'cleared') followTarget = undefined; });
   host.onFrame((frame) => {
     lastFrame = frame;
@@ -414,6 +417,7 @@ function startClient() {
     if (frame.flow) setFlowGrid(frame.flow);
     if (frame.state) updateBoatTrails(frame.state, frame.statics);
     if (frame.state) boatStats.onFrame(frame.state);
+    if (frame.state) instruments.onFrame(frame.state);
   });
 
   if (remoteDriven) {
