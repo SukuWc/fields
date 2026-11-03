@@ -153,6 +153,7 @@ Last updated: 2026-11-03
 - [x] UI overhaul 9: minimap (zone D, bottom left): course, start / finish lines, marks with the next one highlighted, laylines on the next mark, boats by id in their colours, camera rectangle; click or drag pans the camera (turns follow off), Follow button turns it back on; chat moved above it: [#156](https://github.com/SukuWc/fields/pull/156)
 - [x] Mobile 1: touch buttons tidied: no keyboard hints on touch-only devices, Depower fits the grid (portrait 2 × 4, landscape 4 × 2) so nothing is cut off: [#159](https://github.com/SukuWc/fields/pull/159)
 - [ ] Mobile 2: 44 px tap targets on phones and touch devices (scenario Hide, Boat stats, Chat, Player / Room tabs, name field, checkboxes), Join / Leave never truncated, stale Spectating note hidden after joining: [#160](https://github.com/SukuWc/fields/pull/160)
+- [ ] Mobile 3: readout strip — BSP / VMG / TWA (with P/S tack chip) / TWS across the top on phones and touch devices, where the instrument panel is hidden (PR pending)
 - [ ] Accessibility
 - [ ] Telemetry export
 - [x] Sail flapping animation for luffing sails (visual only): [#54](https://github.com/SukuWc/fields/pull/54)
