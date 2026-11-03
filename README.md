@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-11-02
+Last updated: 2026-11-03
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -137,7 +137,8 @@ Last updated: 2026-11-02
 - [x] Hamburger settings menu on phones and touch screens: [#29](https://github.com/SukuWc/fields/pull/29)
 - [x] Boat 1 touch controls in the bottom half of the screen: [#30](https://github.com/SukuWc/fields/pull/30)
 - [x] Touch controls panel 30% shorter (35% of the screen): [#37](https://github.com/SukuWc/fields/pull/37)
-- [ ] UI overhaul 1: page never scrolls (panels scroll inside), debug panels behind dev view (backtick / `?dev=1`): [#141](https://github.com/SukuWc/fields/pull/141)
+- [x] UI overhaul 1: page never scrolls (panels scroll inside), debug panels behind dev view (backtick / `?dev=1`): [#141](https://github.com/SukuWc/fields/pull/141)
+- [ ] UI overhaul 2: fixed HUD zones (top bar, leaderboard top right, reserved instrument / minimap / toast zones) and the settings panel as a right-edge drawer that never covers the leaderboard: [#142](https://github.com/SukuWc/fields/pull/142)
 - [ ] Accessibility
 - [ ] Telemetry export
 - [x] Sail flapping animation for luffing sails (visual only): [#54](https://github.com/SukuWc/fields/pull/54)
