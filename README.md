@@ -29,7 +29,7 @@ Last updated: 2026-11-03
 - [x] Live room resize in remote mode: a TOML commit with new map dims rebuilds the server room at the new size; clients stay connected and rebuild their field texture, plane and camera: [#121](https://github.com/SukuWc/fields/pull/121)
 - [x] Perf overlay: cells per level and field step time: [#26](https://github.com/SukuWc/fields/pull/26)
 - [ ] CI: time the AMR "scenario 0 step stays cheap" check in the serial timing suite, not under the parallel unit run: [#147](https://github.com/SukuWc/fields/pull/147)
-- [ ] CI speed-up: scenario checks run in a parallel pool (`npm run check:all`, `CHECK_CONCURRENCY`), push runs only on main, docs-only changes skip Test: PR pending
+- [ ] CI speed-up: scenario checks run in a parallel pool (`npm run check:all`, `CHECK_CONCURRENCY`), push runs only on main, docs-only changes skip Test: [#158](https://github.com/SukuWc/fields/pull/158)
 - [x] Perf panel: per-level share of cell updates vs time, plus field / track / other ms per tick: [#72](https://github.com/SukuWc/fields/pull/72)
 - [x] Fixed-step sim loop so simulation speed no longer depends on the display refresh rate (replaces the `planck-renderer` Runner; sim/client split, phase 1): [#46](https://github.com/SukuWc/fields/pull/46)
 - [x] Sim modules without DOM: FieldPainter, simOptions, boat telemetry (sim/client split, phase 2): [#47](https://github.com/SukuWc/fields/pull/47)

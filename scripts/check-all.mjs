@@ -29,7 +29,10 @@ function runOne(f) {
     const child = spawn(process.execPath, ["--import", "./test/register.mjs", path.join("scripts", f)], { cwd: root });
     child.stdout.on("data", (d) => chunks.push(d));
     child.stderr.on("data", (d) => chunks.push(d));
+    let finished = false;
     const done = (ok, extra = "") => {
+      if (finished) return;
+      finished = true;
       console.log(`${ok ? "PASS" : "FAIL"} ${f} (${((Date.now() - t0) / 1000).toFixed(1)} s)`);
       if (!ok) {
         failed.push(f);
