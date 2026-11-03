@@ -144,7 +144,8 @@ Last updated: 2026-11-03
 - [x] UI overhaul 2: fixed HUD zones (top bar, leaderboard top right, reserved instrument / minimap / toast zones) and the settings panel as a right-edge drawer that never covers the leaderboard: [#142](https://github.com/SukuWc/fields/pull/142)
 - [x] UI overhaul 3: settings drawer tabs (Player form saved in this browser, Room tab shell): [#145](https://github.com/SukuWc/fields/pull/145)
 - [x] UI overhaul 4: Room tab TOML editor (live validation with line-pointed errors, Apply / Revert, read-only for non-admins, server rejections inline): [#148](https://github.com/SukuWc/fields/pull/148)
-- [ ] UI overhaul 5: instrument panel (bottom centre) with the Readout / Chart / Instrument selector, Readout mode (own boat by id, dashes where the frame has no value): [#149](https://github.com/SukuWc/fields/pull/149)
+- [x] UI overhaul 5: instrument panel (bottom centre) with the Readout / Chart / Instrument selector, Readout mode (own boat by id, dashes where the frame has no value): [#149](https://github.com/SukuWc/fields/pull/149)
+- [ ] UI overhaul 6: instrument panel Chart mode (strip charts for BSP + VMG, TWA, TWD and heading over 30 / 60 / 120 s of sim time, 5 Hz, gaps where the frame has no value; mode and window remembered in this browser): [#PR6](https://github.com/SukuWc/fields/pulls)
 - [ ] Accessibility
 - [ ] Telemetry export
 - [x] Sail flapping animation for luffing sails (visual only): [#54](https://github.com/SukuWc/fields/pull/54)
