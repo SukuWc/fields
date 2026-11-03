@@ -37,9 +37,18 @@
 // reason text: course marks "mark n", gate marks "gate n", start-line ends
 // "RC" and "pin"; anything else is "mark".
 
-import { activeRulesState, chargePendingPenalty, hullVerticesWorld, isMarkRoomEntitled } from './rules.js';
+import {
+  activeRulesState,
+  chargePendingPenalty,
+  hullVerticesWorld,
+  isMarkRoomEntitled,
+} from './rules.js';
 import { isGate } from './course.js';
-import { incidentCode, incidentReason, incidentLabel } from './rule-text.js';
+import {
+  incidentCode,
+  incidentLabel,
+  incidentReason,
+} from './rule-text.js';
 
 export const MARK_TOUCH_M = 0.02;
 export const MARK_TOUCH_REARM_M = 0.25;

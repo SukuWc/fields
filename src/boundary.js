@@ -18,7 +18,11 @@
 
 import { chargePendingPenalty, hullVerticesWorld } from './rules.js';
 import { WALL_INSET_M } from './map-size.js';
-import { incidentCode, incidentReason, incidentLabel } from './rule-text.js';
+import {
+  incidentCode,
+  incidentLabel,
+  incidentReason,
+} from './rule-text.js';
 
 export const BOUNDARY_ZONE_M = 20; // 5 boat lengths
 export const BOUNDARY_INSET_M = 8; // boundary line inside the wall

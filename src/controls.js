@@ -17,7 +17,11 @@ import {
   mapKeyFromDims, ROOM_CONFIG_DEFAULTS, ROOM_CONFIG_BASE, rootFromSimRes, defaultRoomConfig,
 } from './room-config.js';
 import { windCeilingMps } from './sim-modes.js';
-import { MAP_SIZES, DEFAULT_MAP_SIZE, mapDims } from './map-size.js';
+import {
+  DEFAULT_MAP_SIZE,
+  MAP_SIZES,
+  mapDims,
+} from './map-size.js';
 
 let _host, _view, _getCamera;
 let _remote = false;
