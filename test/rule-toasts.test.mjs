@@ -1,0 +1,26 @@
+// Rule-call toasts (src/rule-toasts.js): calls from frame rule data.
+import { RuleCallTracker, ruleCallText, boatName } from '../src/rule-toasts.js';
+let n = 0;
+const check = (name, ok, extra = '') => { if (!ok) throw new Error('failed: ' + name + ' ' + extra); n++; };
+const boats = [{ id: 's0' }, { id: 's1' }];
+const tr = new RuleCallTracker();
+const f = (ts, extra = {}) => tr.update({ boats, ts, ep: 1, ...extra });
+check('first frame primes, no call', f(0).length === 0);
+const pair = [{ k: 'o', a: 's0', b: 's1', r: 'o', ln: [['10', 'f', '10'], ['13', 'o', '13']] }];
+check('encounter alone: no call', f(1, { pair }).length === 0);
+const c = f(1.5, { pen: { boats: [{ i: 's1', c: 1, ic: null }], cleared: [] } });
+check('rise in pending count: one call', c.length === 1, JSON.stringify(c));
+check('Rule 10 from the last encounter, other boat', c[0].ref === 'Rule 10' && c[0].text === 'port keeps clear of starboard' && c[0].boat === 's1' && c[0].other === 's0' && c[0].code === '10');
+check('same count again: no call', f(1.7, { pen: { boats: [{ i: 's1', c: 1, ic: null }], cleared: [] } }).length === 0);
+const m = f(2, { pen: { boats: [{ i: 's1', c: 1 }, { i: 's0', c: 1, ic: ['31', 'g2'] }], cleared: [] } });
+check('incident code wins: Rule 31 touched gate 2', m.length === 1 && m[0].ref === 'Rule 31' && m[0].text === 'touched gate 2' && m[0].other === null);
+const cl = f(3, { pen: { boats: [{ i: 's0', c: 1, ic: ['31', 'g2'] }], cleared: [{ i: 's1', c: 0 }] } });
+check('cleared flash: one cleared call', cl.length === 1 && cl[0].kind === 'cleared' && cl[0].boat === 's1');
+check('cleared not repeated', f(3.2, { pen: { boats: [{ i: 's0', c: 1, ic: ['31', 'g2'] }], cleared: [{ i: 's1', c: 0 }] } }).length === 0);
+const old = f(20, { pen: { boats: [{ i: 's0', c: 1 }, { i: 's1', c: 1 }], cleared: [] } });
+check('stale encounter (> 5 s): plain Penalty', old.length === 1 && old[0].ref === 'Penalty' && old[0].other === null);
+check('new epoch resets without a call', tr.update({ boats, ts: 21, ep: 2, pen: { boats: [{ i: 's0', c: 3 }] } }).length === 0);
+check('Rule 13 both tacking', ruleCallText('13b').ref === 'Rule 13' && /both/.test(ruleCallText('13b').text));
+check('boundary', ruleCallText(null, ['Bd']).ref === 'Boundary');
+check('boat names', boatName('s1', boats) === 'Boat 1' && boatName('p7', boats) === 'Boat p7');
+console.log(`all ${n} rule-toasts checks passed`);
