@@ -13,7 +13,7 @@
 import * as THREE from 'three';
 import { settingDefault } from './settings-registry.js';
 import {
-  configFromRoomState, stringifyRoomConfig, parseAndValidateRoomConfig,
+  configFromRoomState, stringifyRoomConfig, parseAndValidateRoomConfig, roomConfigErrorLine,
   mapKeyFromDims, ROOM_CONFIG_DEFAULTS, ROOM_CONFIG_BASE, rootFromSimRes, defaultRoomConfig,
 } from './room-config.js';
 import { windCeilingMps } from './sim-modes.js';
@@ -323,10 +323,41 @@ export function updateAdminUi() {
   if (logout) logout.hidden = !(gated && admin.authed);
   const ta = roomConfigEl();
   if (ta) ta.readOnly = !can;
-  for (const id of ["room_config_commit", "room_config_reset"]) {
-    const b = document.getElementById(id);
-    if (b) b.disabled = !can;
+  const reset = document.getElementById("room_config_reset");
+  if (reset) reset.disabled = !can;
+  refreshRoomEditor();
+}
+
+// Room tab TOML editor (UI overhaul PR 4): validate as you type, point at the
+// line, Apply only when valid and changed, Revert to the live config.
+// Non-admins see the live room config read-only (refilled on room events).
+function appliedText() { return _appliedConfig ? stringifyRoomConfig(_appliedConfig) : ""; }
+export function refreshRoomEditor() {
+  const ta = roomConfigEl();
+  if (!ta) return;
+  const admin = _remote && _host ? _host.admin : null;
+  const can = adminCanWrite(admin);
+  const text = ta.value;
+  const changed = text !== appliedText();
+  const v = parseAndValidateRoomConfig(text, { scenarios: _infoScenarios });
+  const line = v.error ? roomConfigErrorLine(text, v) : null;
+  const check = document.getElementById("room_config_check");
+  if (check) {
+    check.classList.toggle("bad", !!v.error);
+    check.dataset.line = line || "";
+    check.textContent = v.error ? (line ? `Line ${line}: ` : "") + v.error
+      : !can ? "Live room config (read-only)" : changed ? "Valid · not applied yet" : "Valid · matches the room";
   }
+  const mode = document.getElementById("room_config_mode");
+  if (mode) {
+    mode.textContent = !can ? "Read-only" : _remote ? "Admin · whole room" : "Editing · this page";
+    mode.classList.toggle("ro", !can);
+  }
+  ta.classList.toggle("bad", !!v.error);
+  const commit = document.getElementById("room_config_commit");
+  if (commit) commit.disabled = !can || !!v.error || !changed;
+  const revert = document.getElementById("room_config_revert");
+  if (revert) revert.disabled = !can || !changed;
 }
 
 function roomConfigEl() { return document.getElementById("room_config"); }
@@ -336,6 +367,7 @@ function fillRoomConfigTextarea(cfg) {
   if (!el) return;
   el.value = stringifyRoomConfig(cfg);
   _dirty = false;
+  refreshRoomEditor();
 }
 
 function currentConfigFromHost(room) {
@@ -494,7 +526,24 @@ export function setupControls(host, view, getCamera) {
   document.addEventListener("mousemove", mouse_monitor);
 
   const ta = roomConfigEl();
-  if (ta) ta.addEventListener("input", markDirty);
+  if (ta) ta.addEventListener("input", () => { markDirty(); showRoomError(null); refreshRoomEditor(); });
+  const check = document.getElementById("room_config_check");
+  // Click the error: select the line it points at.
+  if (check && ta) check.addEventListener("click", () => {
+    const n = parseInt(check.dataset.line, 10);
+    if (!n) return;
+    const lines = ta.value.split("\n");
+    const start = lines.slice(0, n - 1).reduce((a, l) => a + l.length + 1, 0);
+    ta.focus();
+    ta.setSelectionRange(start, start + (lines[n - 1] || "").length);
+    const lh = parseFloat(getComputedStyle(ta).lineHeight) || 16;
+    ta.scrollTop = Math.max(0, (n - 3) * lh);
+  });
+  const revertBtn = document.getElementById("room_config_revert");
+  if (revertBtn) revertBtn.addEventListener("click", () => {
+    if (_appliedConfig) fillRoomConfigTextarea(_appliedConfig);
+    showRoomError(null);
+  });
 
   const loginBtn = document.getElementById("room_admin_login");
   const secretEl = document.getElementById("room_admin_secret");
@@ -523,10 +572,12 @@ export function setupControls(host, view, getCamera) {
     const text = ta ? ta.value : "";
     // Scenario fit uses the TOML map size (local Commit may reload onto it).
     const parsed = parseAndValidateRoomConfig(text, { scenarios: _infoScenarios });
-    if (parsed.error) { showRoomError(parsed.error); return; }
+    if (parsed.error) { refreshRoomEditor(); return; }
+    commitBtn.disabled = true;
     commitRoomConfig(parsed.config).then((r) => {
-      if (r && r.error) showRoomError(r.error);
-    });
+      if (r && r.error) showRoomError("Server rejected: " + r.error);
+      refreshRoomEditor();
+    }, (e) => { showRoomError("Server rejected: " + (e && e.message ? e.message : String(e))); refreshRoomEditor(); });
   });
 
   const resetBtn = document.getElementById("room_config_reset");
@@ -539,6 +590,7 @@ export function setupControls(host, view, getCamera) {
     const el = roomConfigEl();
     if (el) { el.value = stringifyRoomConfig(cfg); _dirty = true; }
     showRoomError(null);
+    refreshRoomEditor();
   });
 
   if (_remote) {
