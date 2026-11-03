@@ -124,6 +124,9 @@
       #settings .room-config-reject { margin: 4px 6px; padding: 4px 6px; border-left: 3px solid #ff9f1a; background: rgba(255,159,26,0.12); color: #ffd9a8; white-space: pre-wrap; }
       #settings .room-config-reject[hidden] { display: none !important; }
       #settings .room-apply:not(:disabled) { background: #ffc400; color: #0b1747; font-weight: 700; border: 1px solid #ffc400; }
+      /* Instrument panel, zone C (PR 5): bottom centre on desktop. Neutral and
+         brand colours only (red / green are port / starboard). */
+      #instrument_panel { display: none; }
       #scenario_card.collapsed #scenario_card_body {
         display: none;
       }      
@@ -532,6 +535,34 @@
         }
         body.settings-open #settings { display: block; }
       }
+      @media (min-width: 769px) and (hover: hover), (min-width: 769px) and (pointer: fine) {
+        #instrument_panel {
+          display: block; position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%);
+          z-index: 110; width: min(660px, calc(100vw - 2 * var(--drawer-w) - 60px));
+          color: #fff; background: rgba(11, 23, 71, 0.85); border: 1px solid rgba(255, 196, 0, 0.35);
+          border-radius: 8px; padding: 6px 8px 8px; font-family: 'Albert Sans', system-ui, sans-serif;
+        }
+        body:not(.settings-open) #instrument_panel { width: min(660px, calc(100vw - 480px)); }
+        #instrument_panel .instr-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+        #instrument_panel .instr-modes { display: inline-flex; border: 1px solid rgba(255,255,255,0.25); border-radius: 5px; overflow: hidden; }
+        #instrument_panel .instr-mode {
+          font: 600 11px/1 'Albert Sans', system-ui, sans-serif; letter-spacing: 0.06em; text-transform: uppercase;
+          padding: 5px 10px; color: rgba(255,255,255,0.75); background: transparent; border: 0; cursor: pointer;
+        }
+        #instrument_panel .instr-mode + .instr-mode { border-left: 1px solid rgba(255,255,255,0.25); }
+        #instrument_panel .instr-mode[aria-pressed="true"] { background: #ffc400; color: #0b1747; }
+        #instrument_panel .instr-mode:disabled { opacity: 0.4; cursor: not-allowed; }
+        #instrument_panel .instr-note { font-size: 11px; opacity: 0.7; }
+        #instrument_panel .instr-tiles { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; }
+        #instrument_panel .instr-tile {
+          display: flex; flex-direction: column; align-items: center; padding: 3px 2px;
+          background: rgba(255,255,255,0.06); border-radius: 4px; min-width: 0;
+        }
+        #instrument_panel .instr-label { font-size: 10px; letter-spacing: 0.08em; color: #ffc400; }
+        #instrument_panel .instr-value { font: 700 20px/1.15 'Albert Sans', system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+        #instrument_panel .instr-unit { font-size: 10px; opacity: 0.65; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+        #instrument_panel .instr-tile.missing .instr-value { opacity: 0.45; }
+      }
       @media (max-width: 768px), (pointer: coarse) and (hover: none) {
         #settings_toggle {
           display: flex;
@@ -755,7 +786,7 @@
       #chat_body { width: min(340px, calc(100vw - 132px)); }
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-CobWCRDO.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-CzyMA8gR.js"></script>
   </head>
   <body>
 
@@ -783,7 +814,19 @@
     <details id="boat_stats"><summary title="Heading, TWA, AWA and boat speed over the last 60 s (your own boat in a server room, every boat locally). Sampled only while open.">Boat stats</summary><div id="boat_stats_body"></div></details>
     </div>
     <!-- Reserved for later PRs: C instrument panel, D minimap, E rule-call toasts. Empty for now. -->
-    <div id="hud_instruments" class="hud-zone hud-placeholder" data-zone="C"></div>
+    <div id="hud_instruments" class="hud-zone" data-zone="C">
+      <section id="instrument_panel" data-mode="readout" aria-label="Instruments">
+        <div class="instr-head">
+          <div class="instr-modes" role="group" aria-label="Instrument mode">
+            <button type="button" class="instr-mode" data-mode="readout" aria-pressed="true">Readout</button>
+            <button type="button" class="instr-mode" data-mode="chart" disabled title="Chart mode: next update">Chart</button>
+            <button type="button" class="instr-mode" data-mode="instrument" disabled title="Instrument mode: coming later">Instrument</button>
+          </div>
+          <span class="instr-note"></span>
+        </div>
+        <div class="instr-tiles"></div>
+      </section>
+    </div>
     <div id="hud_minimap" class="hud-zone hud-placeholder" data-zone="D"></div>
     <div id="hud_toasts" class="hud-zone hud-placeholder" data-zone="E" aria-live="polite"></div>
     <pre id="perf_overlay_hud"></pre>
