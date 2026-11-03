@@ -837,6 +837,23 @@
       #chat_status { color: #f99; font-size: 12px; }
       /* Beside #fps; above the touch helm when it shows. */
       body.touch-on #chat_panel { bottom: calc(var(--touch-panel-h) + 6px); }
+      /* Phones and touch-only devices: every tap target at least 44 x 44 px
+         (Apple HIG / WCAG 2.5.5). Same query as the mobile menu above. */
+      @media (max-width: 768px), (pointer: coarse) and (hover: none) {
+        #scenario_card_toggle { min-width: 44px; min-height: 44px; margin: -10px -6px -10px 0; font-size: 13px; padding: 0 10px; }
+        #boat_stats summary { display: flex; align-items: center; min-height: 44px; min-width: 44px; padding: 0 4px; font-size: 13px; }
+        #chat_toggle { min-width: 64px; min-height: 44px; font-size: 15px; }
+        #settings_tabs .settings-tab { min-height: 48px; font-size: 15px; }
+        /* Player form: name field, Join / Leave on one line, status below. */
+        #settings #own_boat_panel { flex-wrap: wrap; gap: 8px; padding: 6px 0; cursor: default; }
+        #settings #own_boat_panel[hidden], #settings .setting-row[hidden] { display: none; }
+        #settings #boat_name { flex: 1 1 140px; min-width: 0; min-height: 44px; box-sizing: border-box; font-size: 16px; padding: 4px 8px; }
+        #settings #own_boat_join, #settings #own_boat_leave { flex: none; white-space: nowrap; }
+        #settings #own_boat_status { flex: 1 1 100%; font-size: 14px; opacity: 0.85; }
+        #settings #own_boat_status:empty { display: none; }
+        /* Checkbox rows are already 48 px tall labels; the box itself grows a little. */
+        #settings input[type="checkbox"] { width: 28px; height: 28px; }
+      }
       #chat_panel { max-width: calc(100vw - 120px); }
       #chat_body { width: min(340px, calc(100vw - 132px)); }
     </style>
