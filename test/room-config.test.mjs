@@ -7,6 +7,7 @@ import {
   parseAndValidateRoomConfig, validateRoomConfig, configFromRoomState,
   commandsFromConfig, simResForRoot, rootFromSimRes, roomConfigCommit,
   defaultRoomConfig, parseMeanSd, meanSdToToml, gustSpawnerFromConfig,
+  roomConfigErrorLine,
 } from '../src/room-config.js';
 import { DEFAULT_SIM_RES } from '../src/sim-modes.js';
 import { parseServerMessage } from '../src/wire-codec.js';
@@ -269,6 +270,22 @@ gust_ramp_s = 1.5
   const mk = (opts) => { const r = new Room('size-' + Math.random(), { lockstep: true, graceMs: 0 }); const c = { send() {} }; r.join(c); r.message(c, { type: 'init', opts: { simRes: '2f', scenario: 0, ...opts } }); const d = [r.core.map.width, r.core.map.height]; r.leave(c); return d; };
   check('room create keeps arbitrary 60x120', mk({ mapW: 60, mapH: 120 }).join() === '60,120', mk({ mapW: 60, mapH: 120 }).join());
   check('room create rejects 2000x2000 → default', mk({ mapW: 2000, mapH: 2000 }).join() === '100,200');
+}
+
+// Room tab editor: errors point at a line.
+{
+  const base = stringifyRoomConfig(ROOM_CONFIG_DEFAULTS);
+  const lineOf = (txt, key) => txt.split('\n').findIndex((l) => l.startsWith(key + ' =')) + 1;
+  const range = base.replace(/^wind_speed_mps = .*$/m, 'wind_speed_mps = 99');
+  const r1 = parseAndValidateRoomConfig(range);
+  check('error line: out-of-range value points at its key', !!r1.error && roomConfigErrorLine(range, r1) === lineOf(range, 'wind_speed_mps'), roomConfigErrorLine(range, r1));
+  const syn = base.replace(/^wind_speed_mps = .*$/m, 'wind_speed_mps = = 5');
+  const r2 = parseAndValidateRoomConfig(syn);
+  check('error line: TOML syntax error carries the parser line', !!r2.error && roomConfigErrorLine(syn, r2) === lineOf(syn, 'wind_speed_mps'), roomConfigErrorLine(syn, r2));
+  const unk = 'bogus_key = 1\n' + base;
+  const r3 = parseAndValidateRoomConfig(unk);
+  check('error line: unknown key points at it', !!r3.error && roomConfigErrorLine(unk, r3) === 1, roomConfigErrorLine(unk, r3));
+  check('error line: none for a valid config', roomConfigErrorLine(base, null) === null);
 }
 
 if (failed) { console.log(failed + ' FAILED'); process.exit(1); }
