@@ -2,8 +2,16 @@ name: Test
 
 on:
   push:
-    paths-ignore: ['README.md']
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'brand-kit/**'
   pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'brand-kit/**'
 
 permissions:
   contents: read
@@ -47,14 +55,9 @@ jobs:
       - run: npm ci
       - run: npm run build
       - name: Scenario checks
-        run: |
-          fail=0
-          for f in scripts/*-check.mjs; do
-            echo "::group::$f"
-            node --import ./test/register.mjs "$f" || { echo "::error::$f failed"; fail=1; }
-            echo "::endgroup::"
-          done
-          exit $fail
+        env:
+          CHECK_CONCURRENCY: 4
+        run: npm run check:all
 
   server-smoke:
     runs-on: ubuntu-latest
