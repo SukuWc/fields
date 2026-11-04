@@ -17,6 +17,9 @@ import { setVirtualKey } from './controls.js';
 
 export const TOUCH_DEFAULT_QUERY = '(max-width: 768px), (pointer: coarse) and (hover: none)';
 
+export const TOUCH_LAYOUTS = ['classic', 'overlay'];
+export function normalizeTouchLayout(v) { return TOUCH_LAYOUTS.includes(v) ? v : 'classic'; }
+
 const STOP_EVENTS = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'mousemove', 'mouseup', 'wheel', 'click', 'dblclick', 'contextmenu'];
 
 export function setupTouchControls() {
@@ -83,6 +86,19 @@ export function setupTouchControls() {
     // and a resize event covers browsers without one.
     window.dispatchEvent(new Event('resize'));
   }
+
+  // Layout (plan M6): 'classic' panel under the map or 'overlay' over a
+  // full-height map. Saved / restored with the other player prefs
+  // (settings-registry 'touch_layout'; also ?touch_layout=overlay).
+  const layoutSel = document.getElementById('touch_layout');
+  function applyLayout() {
+    const overlay = normalizeTouchLayout(layoutSel && layoutSel.value) === 'overlay';
+    if (document.body.classList.contains('tc-overlay') === overlay) return;
+    document.body.classList.toggle('tc-overlay', overlay);
+    window.dispatchEvent(new Event('resize'));
+  }
+  if (layoutSel) { layoutSel.addEventListener('change', applyLayout); layoutSel.addEventListener('input', applyLayout); }
+  applyLayout();
 
   box.addEventListener('change', () => apply(box.checked));
   window.addEventListener('blur', () => buttons.forEach(release));

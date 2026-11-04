@@ -465,6 +465,68 @@
         /* 4 x 2 middle: Depower fits as the eighth cell, spanning two. */
         .tc-wide { grid-column: 4 / span 2; }
       }
+      /* Overlay touch layout (plan M6, setting Controls > Layout): the map
+         keeps the full height; see-through steer zones at the sides, Head up /
+         Bear away pills and a row of round buttons (Tack in brand yellow) at
+         the bottom. The panel itself lets touches through to the map;
+         --touch-panel-h becomes the height of the button area so the bottom
+         HUD items still clear it. */
+      body.tc-overlay { --touch-panel-h: calc(150px + env(safe-area-inset-bottom)); }
+      body.tc-overlay #touch_controls {
+        top: 0; height: auto; display: block; padding: 0; background: transparent; border: 0; pointer-events: none;
+      }
+      body.tc-overlay .tc-btn {
+        position: absolute; pointer-events: auto; box-sizing: border-box;
+        font-family: 'Albert Sans', system-ui, sans-serif; color: #fff;
+        background: rgba(18, 28, 48, 0.55); border: 1px solid rgba(255, 255, 255, 0.35);
+        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
+      }
+      body.tc-overlay .tc-btn.pressed { background: rgba(61, 108, 154, 0.8); border-color: #9ad0ff; }
+      body.tc-overlay .tc-btn small { display: none; }
+      body.tc-overlay .tc-steer {
+        bottom: calc(var(--touch-panel-h) + 60px); height: min(34vh, 300px); width: min(24vw, 110px);
+        left: calc(10px + env(safe-area-inset-left)); border-radius: 18px; font-size: 32px;
+        background: rgba(18, 28, 48, 0.22); border-color: rgba(255, 255, 255, 0.28);
+      }
+      body.tc-overlay .tc-steer small { display: block; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.9; }
+      body.tc-overlay .tc-steer.tc-right { left: auto; right: calc(10px + env(safe-area-inset-right)); }
+      body.tc-overlay .tc-btn[data-key="38"], body.tc-overlay .tc-btn[data-key="40"] {
+        bottom: calc(86px + env(safe-area-inset-bottom)); width: 116px; height: 44px; min-height: 44px; border-radius: 22px; font-size: 14px;
+      }
+      body.tc-overlay .tc-btn[data-key="38"] { left: calc(50% - 122px); }
+      body.tc-overlay .tc-btn[data-key="40"] { left: calc(50% + 6px); }
+      body.tc-overlay .tc-btn[data-short] {
+        bottom: calc(14px + env(safe-area-inset-bottom)); width: 58px; height: 58px; border-radius: 50%; font-size: 0;
+        background: rgba(18, 28, 48, 0.7);
+      }
+      body.tc-overlay .tc-btn[data-short]::after { content: attr(data-short); font-size: 13px; font-weight: 700; white-space: nowrap; }
+      body.tc-overlay .tc-btn[data-key="81"] { left: calc(50% - 157px); }
+      body.tc-overlay .tc-btn[data-key="13"] { left: calc(50% - 93px); background: #ffc400; border-color: #ffc400; }
+      body.tc-overlay .tc-btn[data-key="13"]::after { color: #0b1747; }
+      body.tc-overlay .tc-btn[data-key="32"] { left: calc(50% - 29px); }
+      body.tc-overlay .tc-btn[data-key="88"] { left: calc(50% + 35px); }
+      body.tc-overlay .tc-btn[data-key="69"] { left: calc(50% + 99px); }
+      body.tc-overlay #touch_controls.spectating .tc-spectating { top: auto; height: var(--touch-panel-h); }
+      body.touch-on.tc-overlay #sim_canvas { height: 100%; }
+      /* Chat open: the sheet needs the room, the steer zones step aside until it closes. */
+      body.tc-overlay:has(#chat_body:not([hidden])) .tc-steer { visibility: hidden; }
+      /* Phones, either layout: the open chat sheet covers the leaderboard, so it
+         steps aside too; in landscape the log is shorter so the sheet stays
+         under the top bar. */
+      @media (max-width: 768px), (pointer: coarse) and (hover: none) {
+        body.touch-on:has(#chat_body:not([hidden])) #finish_results { visibility: hidden; }
+      }
+      @media (orientation: landscape) and (max-height: 500px) {
+        body.touch-on #chat_log { max-height: 18vh; }
+      }
+      @media (orientation: landscape) and (max-height: 500px) {
+        body.tc-overlay { --touch-panel-h: calc(130px + env(safe-area-inset-bottom)); }
+        body.tc-overlay .tc-steer { top: calc(var(--m-top, 0px) + 10px); bottom: calc(12px + env(safe-area-inset-bottom)); height: auto; width: min(13vw, 120px); }
+        body.tc-overlay .tc-btn[data-key="38"], body.tc-overlay .tc-btn[data-key="40"] { bottom: calc(80px + env(safe-area-inset-bottom)); }
+        /* Bottom HUD items sit between the edge steer zones. */
+        body.touch-on.tc-overlay #finish_results { right: calc(min(13vw, 120px) + 20px + env(safe-area-inset-right)); }
+        body.touch-on.tc-overlay #chat_panel { left: calc(min(13vw, 120px) + 20px + env(safe-area-inset-left)); }
+      }
       /* Everything anchored to the bottom moves up into the canvas area. */
       body.touch-on #sim_canvas {
         height: calc(100% - var(--touch-panel-h));
@@ -1031,11 +1093,11 @@
       <button type="button" class="tc-btn" data-key="38" aria-label="Head up (hold)">Head up<small>↑</small></button>
       <button type="button" class="tc-btn" data-key="40" aria-label="Bear away (hold)">Bear away<small>↓</small></button>
       <button type="button" class="tc-btn tc-steer tc-right" data-key="39" aria-label="Steer right (hold)">▶<small>steer</small></button>
-      <button type="button" class="tc-btn tc-tap" data-key="32" aria-label="Autopilot">Autopilot<small>space</small></button>
-      <button type="button" class="tc-btn tc-tap" data-key="13" aria-label="Tack">Tack<small>enter</small></button>
-      <button type="button" class="tc-btn tc-tap" data-key="81" aria-label="Penalty turn counter-clockwise">⟲ 360<small>Q</small></button>
-      <button type="button" class="tc-btn tc-tap" data-key="69" aria-label="Penalty turn clockwise">360 ⟳<small>E</small></button>
-      <button type="button" class="tc-btn tc-tap tc-wide" data-key="88" aria-label="Depower toggle">Depower<small>X</small></button>
+      <button type="button" class="tc-btn tc-tap" data-key="32" aria-label="Autopilot" data-short="Auto">Autopilot<small>space</small></button>
+      <button type="button" class="tc-btn tc-tap" data-key="13" aria-label="Tack" data-short="Tack">Tack<small>enter</small></button>
+      <button type="button" class="tc-btn tc-tap" data-key="81" data-short="⟲ 360" aria-label="Penalty turn counter-clockwise">⟲ 360<small>Q</small></button>
+      <button type="button" class="tc-btn tc-tap" data-key="69" data-short="360 ⟳" aria-label="Penalty turn clockwise">360 ⟳<small>E</small></button>
+      <button type="button" class="tc-btn tc-tap tc-wide" data-key="88" data-short="Depwr" aria-label="Depower toggle">Depower<small>X</small></button>
     </div>
     <div id="chat_panel" hidden>
       <button id="chat_toggle" type="button" aria-controls="chat_body" aria-expanded="false">Chat<span id="chat_unread" hidden>0</span></button>
@@ -1087,6 +1149,7 @@
       <fieldset class="pref-group"><legend>Controls</legend>
         <label class="setting-row" title="Left / Right (A / D) turn the autopilot heading target with no angle limit (tack and gybe through it) instead of the rudder, so the autopilot stays on. On by default; saved in this browser."><input id="sticky_autopilot" autocomplete="off" type="checkbox">Sticky autopilot</label>
         <label class="setting-row"><input id="touch" autocomplete="off" type="checkbox" title="Boat 1 touch buttons at the bottom of the screen. On by default on phones and touch screens. Also ?touch=1 / ?touch=0">Touch controls</label>
+        <label class="setting-row setting-field" title="Classic: buttons in a panel under the map. Overlay: see-through steer zones and round buttons over a full-height map. Saved in this browser; also ?touch_layout=overlay.">Layout <select id="touch_layout" autocomplete="off"><option value="classic">Classic</option><option value="overlay">Overlay</option></select></label>
       </fieldset>
       <fieldset class="pref-group dev-only"><legend>Developer</legend>
         <label class="setting-row dev-only"><input id="show_field" autocomplete="off" type="checkbox" title="Wind flow tracers: short streaks carried by the local wind, denser where it blows harder, each with a tail along its own path. Drawn on top of the colour field plot; independent of it.">Flow tracers</label>
