@@ -1052,9 +1052,51 @@
       }
       #chat_panel { max-width: calc(100vw - 120px); }
       #chat_body { width: min(340px, calc(100vw - 132px)); }
+      #minimap .mm-close { display: none; }
+      /* Phones (plan M8): the minimap is a small round map at the top right
+         (top left in landscape). Tap it to open the full map over the race
+         view (drag to pan, Follow, ×); the circle itself never pans. */
+      @media (max-width: 768px), (pointer: coarse) and (hover: none) {
+        body { --mm-d: 88px; }
+        /* Open chat: keep the panel below the map circle (log scrolls). */
+        #chat_log { max-height: min(30vh, calc(100vh - var(--m-top) - var(--mm-d) - 150px)); }
+        body.touch-on:not(.tc-overlay) #chat_log { max-height: min(30vh, calc(65vh - var(--m-top) - var(--mm-d) - 150px)); }
+        #minimap {
+          display: block; position: fixed; z-index: 136; overflow: hidden; box-sizing: border-box;
+          top: calc(var(--m-top) + 8px); right: calc(8px + env(safe-area-inset-right));
+          width: var(--mm-d); height: var(--mm-d); border-radius: 50%;
+          background: rgba(11, 23, 71, 0.9); border: 2px solid rgba(255, 196, 0, 0.75); box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+        }
+        #minimap canvas { display: block; width: 100%; height: 100%; object-fit: cover; touch-action: none; }
+        #minimap .mm-follow { display: none; }
+        #minimap.mm-open {
+          z-index: 170; left: 50%; right: auto; transform: translateX(-50%);
+          width: min(94vw, 440px); height: auto; aspect-ratio: 320 / 256; border-radius: 12px; background: #0b1747;
+        }
+        #minimap.mm-open canvas { object-fit: contain; }
+        #minimap.mm-open .mm-follow, #minimap.mm-open .mm-close {
+          display: block; position: absolute; top: 6px; min-width: 44px; height: 44px; padding: 0 12px;
+          font: 600 14px 'Albert Sans', system-ui, sans-serif; color: #fff; background: rgba(11,23,71,0.9);
+          border: 1px solid rgba(255,255,255,0.35); border-radius: 22px;
+        }
+        #minimap.mm-open .mm-follow { left: 6px; }
+        #minimap.mm-open .mm-follow[aria-pressed="true"] { background: #ffc400; color: #0b1747; border-color: #ffc400; }
+        #minimap.mm-open .mm-close { right: 6px; font-size: 22px; padding: 0; width: 44px; }
+        /* The start timer moves left and toasts keep clear of the circle. */
+        #start_hud { left: calc(8px + env(safe-area-inset-left)); transform: none; box-sizing: border-box; max-width: calc(100vw - var(--mm-d) - 32px); white-space: normal; }
+        .rule-toasts { right: calc(var(--mm-d) + 16px + env(safe-area-inset-right)); }
+      }
+      @media (max-width: 768px) and (orientation: landscape) and (max-height: 500px),
+        (pointer: coarse) and (hover: none) and (orientation: landscape) and (max-height: 500px) {
+        body { --mm-d: 76px; }
+        #minimap { right: auto; left: calc(8px + env(safe-area-inset-left)); top: calc(var(--m-top) + 6px); }
+        #minimap.mm-open { top: calc(var(--m-top) + 6px); width: auto; height: calc(100% - var(--m-top) - var(--touch-panel-h) - 12px); }
+        #start_hud { left: 50%; transform: translateX(-50%); max-width: none; }
+        body.tc-overlay .tc-steer:not(.tc-right) { top: calc(var(--m-top) + var(--mm-d) + 16px); }
+      }
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-Cq5JQbdP.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-BSJBygAU.js"></script>
   </head>
   <body>
 
@@ -1101,6 +1143,7 @@
       <section id="minimap" aria-label="Minimap">
         <canvas width="320" height="256" aria-label="Map overview: click to move the camera"></canvas>
         <button type="button" class="mm-follow" aria-pressed="false" title="Camera follows your boat">Follow</button>
+        <button type="button" class="mm-close" aria-label="Close map" title="Close map">×</button>
       </section>
     </div>
     <div id="hud_toasts" class="hud-zone" data-zone="E" aria-live="polite"></div>
