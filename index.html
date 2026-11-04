@@ -1094,9 +1094,82 @@
         #start_hud { left: 50%; transform: translateX(-50%); max-width: none; }
         body.tc-overlay .tc-steer:not(.tc-right) { top: calc(var(--m-top) + var(--mm-d) + 16px); }
       }
+      /* Leaderboard and chat sheet (plan M9): phones only. The top bar gets a
+         🏁 button (with the unread chat count) between Boat stats and ☰; the
+         floating leaderboard and Chat button move into the sheet. */
+      #sheet_toggle, #mobile_sheet { display: none; }
+      @media (max-width: 768px), (pointer: coarse) and (hover: none) {
+        #sheet_toggle {
+          display: flex; align-items: center; justify-content: center; position: fixed; z-index: 150;
+          top: env(safe-area-inset-top); right: calc(48px + env(safe-area-inset-right)); width: 44px; height: 44px;
+          padding: 0; font-size: 20px; color: #fff; background: transparent; border: 0; border-radius: 8px;
+        }
+        #sheet_toggle[aria-expanded="true"] { background: rgba(255, 196, 0, 0.25); }
+        .st-badge {
+          min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 8px;
+          font: 700 11px/16px 'Albert Sans', system-ui, sans-serif; color: #0b1747; background: #ffc400; text-align: center;
+        }
+        #sheet_toggle .st-badge { position: absolute; top: 3px; right: 1px; }
+        .st-badge[hidden] { display: none; }
+        #boat_stats { right: calc(96px + env(safe-area-inset-right)); }
+        #scenario_card, body.touch-on #scenario_card {
+          width: calc(100vw - 44px - 44px - 116px - env(safe-area-inset-left) - env(safe-area-inset-right));
+        }
+        body.sheet-on #chat_panel { display: none; }
+        #mobile_sheet:not([hidden]) {
+          display: flex; flex-direction: column; position: fixed; z-index: 220; left: 0; right: 0; bottom: 0;
+          height: min(58vh, 520px); box-sizing: border-box;
+          padding: 0 calc(10px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
+          color: #fff; background: #0b1747; border-top: 1px solid rgba(255, 196, 0, 0.6); border-radius: 16px 16px 0 0;
+          box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.45); font-family: 'Albert Sans', system-ui, sans-serif;
+          touch-action: pan-y; overscroll-behavior: contain;
+        }
+        #mobile_sheet .sheet-handle { flex: none; align-self: center; width: 88px; height: 44px; margin-bottom: -10px; padding: 0; background: transparent; border: 0; }
+        #mobile_sheet .sheet-handle span { display: block; width: 44px; height: 5px; margin: 0 auto; border-radius: 3px; background: rgba(255, 255, 255, 0.45); }
+        #mobile_sheet .sheet-tabs { flex: none; display: flex; gap: 6px; padding: 4px; border-radius: 12px; background: rgba(255, 255, 255, 0.08); }
+        #mobile_sheet .sheet-tabs button {
+          flex: 1; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 6px;
+          font: 700 15px 'Albert Sans', system-ui, sans-serif; color: #fff; background: transparent; border: 0; border-radius: 9px;
+        }
+        #mobile_sheet .sheet-tabs button[hidden] { display: none; }
+        #mobile_sheet .sheet-tabs button[aria-selected="true"] { background: #ffc400; color: #0b1747; }
+        #mobile_sheet .sheet-pane { flex: 1; min-height: 0; overflow-y: auto; margin-top: 8px; }
+        #mobile_sheet[data-tab="board"] #sheet_chat, #mobile_sheet[data-tab="chat"] #sheet_board { display: none; }
+        #mobile_sheet #finish_results {
+          position: static; max-height: none; overflow: visible; padding: 4px 2px; font-size: 15px; line-height: 1.6;
+          white-space: normal; background: transparent; border: 0; pointer-events: auto;
+        }
+        #mobile_sheet #finish_results:not([hidden]) ~ .sheet-empty { display: none; }
+        #mobile_sheet .sheet-empty { margin: 12px 4px; opacity: 0.75; font-size: 14px; }
+        #sheet_chat { display: flex; flex-direction: column; }
+        #mobile_sheet #chat_body { order: 1; flex: 1; display: flex; flex-direction: column; min-height: 0; width: auto; margin: 0; background: transparent; border: 0; padding: 0; }
+        #mobile_sheet #chat_body[hidden] { display: none; }
+        #mobile_sheet #chat_log { flex: 1; max-height: none; font-size: 15px; }
+        #mobile_sheet .sheet-quick { order: 2; flex: none; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        #mobile_sheet .sheet-quick-btn {
+          min-height: 44px; padding: 0 14px; font: 600 14px 'Albert Sans', system-ui, sans-serif; color: #fff;
+          background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 22px;
+        }
+        /* Chat input and Send: 44 px tap targets, 16 px text (no iOS zoom on focus). */
+        #chat_form { display: flex; gap: 6px; }
+        #chat_input { flex: 1; min-width: 0; min-height: 44px; box-sizing: border-box; font-size: 16px; padding: 0 10px; }
+        #chat_send { min-width: 64px; min-height: 44px; font-size: 16px; }
+      }
+      @media (max-width: 768px) and (orientation: landscape) and (max-height: 500px),
+        (pointer: coarse) and (hover: none) and (orientation: landscape) and (max-height: 500px) {
+        #mobile_strip { right: calc(env(safe-area-inset-right) + 208px); }
+        #scenario_card, body.touch-on #scenario_card { width: 226px; }
+        #scenario_card:not(.collapsed) { width: min(420px, 60vw); }
+        #mobile_sheet:not([hidden]) {
+          left: auto; top: var(--m-top); height: auto; width: min(400px, 52vw);
+          border-radius: 16px 0 0 0; border-top: 0; border-left: 1px solid rgba(255, 196, 0, 0.6);
+        }
+        #mobile_sheet .sheet-handle { display: none; }
+        #mobile_sheet .sheet-tabs { margin-top: 8px; }
+      }
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-BSJBygAU.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-B_SKD8mW.js"></script>
   </head>
   <body>
 
@@ -1121,6 +1194,17 @@
     </div>
     <div id="hud_right" class="hud-zone" data-zone="B">
     <div id="finish_results" hidden></div>
+    <!-- Phones (plan M9, mobile-sheet.js): leaderboard + chat sheet, opened from the top bar. -->
+    <button id="sheet_toggle" type="button" aria-controls="mobile_sheet" aria-expanded="false" aria-label="Leaderboard and chat" title="Leaderboard and chat">🏁<span class="st-badge" hidden>0</span></button>
+    <section id="mobile_sheet" hidden aria-label="Leaderboard and chat" data-tab="board">
+      <button type="button" class="sheet-handle" aria-label="Close"><span></span></button>
+      <div class="sheet-tabs" role="tablist">
+        <button type="button" id="sheet_tab_board" role="tab" aria-selected="true">Leaderboard</button>
+        <button type="button" id="sheet_tab_chat" role="tab" aria-selected="false" hidden>Chat<span class="st-badge" hidden>0</span></button>
+      </div>
+      <div id="sheet_board" class="sheet-pane"><p class="sheet-empty">No leaderboard yet: it shows once the race starts.</p></div>
+      <div id="sheet_chat" class="sheet-pane"><div id="sheet_quick" class="sheet-quick"></div></div>
+    </section>
     <details id="boat_stats"><summary title="Heading, TWA, AWA and boat speed over the last 60 s (your own boat in a server room, every boat locally). Sampled only while open.">Boat stats</summary><div id="boat_stats_body"></div></details>
     </div>
     <!-- Zones: C instrument panel, D minimap (minimap.js), E rule-call toasts (rule-toasts.js). -->
@@ -1215,6 +1299,7 @@
       <fieldset class="pref-group"><legend>Controls</legend>
         <label class="setting-row" title="Left / Right (A / D) turn the autopilot heading target with no angle limit (tack and gybe through it) instead of the rudder, so the autopilot stays on. On by default; saved in this browser."><input id="sticky_autopilot" autocomplete="off" type="checkbox">Sticky autopilot</label>
         <label class="setting-row"><input id="touch" autocomplete="off" type="checkbox" title="Boat 1 touch buttons at the bottom of the screen. On by default on phones and touch screens. Also ?touch=1 / ?touch=0">Touch controls</label>
+        <label class="setting-row"><input id="vibrate" autocomplete="off" type="checkbox" title="A short buzz when your boat tacks and a double buzz on a new penalty. Phones that support vibration only (not iPhone). On by default; saved in this browser. Also ?vibrate=0">Vibrate</label>
         <label class="setting-row setting-field" title="Classic: buttons in a panel under the map. Overlay: see-through steer zones and round buttons over a full-height map. Saved in this browser; also ?touch_layout=overlay.">Layout <select id="touch_layout" autocomplete="off"><option value="classic">Classic</option><option value="overlay">Overlay</option></select></label>
       </fieldset>
       <fieldset class="pref-group dev-only"><legend>Developer</legend>
