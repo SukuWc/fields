@@ -30,7 +30,7 @@ check('one boat: scenario telemetry is its own', near(readoutValues({ boats: [bo
 check('no course in the frame: no next mark', readoutValues({ boats: [boats[0]] }).next === null);
 check('spectator: no values', readoutValues(state, { remote: true }) === null);
 check('dash for missing, fixed decimals', formatReadout('tws', null) === '–' && formatReadout('bs', 2.345) === '2.3' && formatReadout('twd', 359.6) === '0' && formatReadout('twa', -49.4) === '-49' && formatReadout('heading', 359.6) === '0' && formatReadout('heading', 270) === '270');
-check('ten tiles incl. TWS / AWS / NEXT / FIN', READOUT_TILES.length === 10 && ['tws', 'aws', 'next', 'fin'].every((k) => READOUT_TILES.some((t) => t.key === k)));
+check('twelve tiles incl. TWS / AWS / NEXT / FIN / HEEL / HIKE', READOUT_TILES.length === 12 && ['tws', 'aws', 'next', 'fin', 'heel', 'hike'].every((k) => READOUT_TILES.some((t) => t.key === k)));
 
 const fb = { id: 'f', ha: 0, vx: 1, vy: 0, wd: 90, heading_deg: 370, twd_deg: 45, tws_ms: 6.5, aws_ms: 7.25, next_mark_dist_m: 123.4, to_finish_m: null };
 const fr = readoutValues({ boats: [fb], hud: { tel: { tws: 10 }, co: { i: 0 } }, course: { c: [{ x: 0, y: 1000 }] } });

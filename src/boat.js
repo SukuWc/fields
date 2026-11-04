@@ -6,6 +6,7 @@ import {
   updateTackingState,
 } from './rules.js';
 import { WIND_UNIT_MPS, boatTrueWind } from './wind.js';
+import { DINGHY_DEFAULTS, createHeelState, heelForceFactor, sailForceToNewtons, stepHeel } from './heel.js';
 
 const wrap360 = (d) => ((d % 360) + 360) % 360;
 
@@ -18,6 +19,11 @@ const wrap360 = (d) => ((d % 360) + 360) % 360;
 //   heading_deg  compass bearing the bow points to, 0–360 (0 = north = +Y,
 //                90 = east = +X, clockwise)
 //   twd_deg      compass bearing the true wind comes FROM, 0–360
+//   heel_deg     heel angle, degrees, signed: + = rolled to body-local +X
+//                (heel.js); 0 before the first step
+//   hike_pct     crew hike 0–100 (0 = on the centreline, 100 = full hike,
+//                always on the windward side)
+//   capsized     1 only while past the heel limit (absent otherwise)
 // Raw angles (kept): ha / pa are math radians with the bow on local −Y, so
 // the bow points at math angle ha − 90°; wd is the math angle (0 = +X,
 // counter-clockwise) the wind comes from. Compass = 90° − math angle.
@@ -30,6 +36,11 @@ function readoutFields(b) {
   o.tws_ms = tws;
   if (Number.isFinite(b.hull_angle)) o.heading_deg = headingBearing(b.hull_angle);
   if (Number.isFinite(b.wind_direction)) o.twd_deg = windFromBearing(b.wind_direction);
+  if (b.heel) {
+    o.heel_deg = b.heel.phi * 180 / Math.PI;
+    o.hike_pct = Math.abs(b.heel.hike) * 100;
+    if (b.heel.capsized) o.capsized = 1;
+  }
   return o;
 }
 import { boatGuides, autopilotSnapTarget } from './boat-draw.js';
@@ -240,6 +251,10 @@ export class Boat{
     this.autopilot_compensator_last_error = 0;
     this.autopilot_compensator_current_error = 0;
     this.autopilot_compensator_sum_error = 0;
+
+    // Dinghy heel (heel.js): Laser-like parameters and roll state.
+    this.dinghy = DINGHY_DEFAULTS;
+    this.heel = createHeelState();
 
     this.twa = 0;
     // Rule 13. updateTackingState maintains these from Map.get_wind each step.
@@ -651,12 +666,18 @@ export class Boat{
     tel.cl = c_lift;
     
     const sail_efficiency = 0.15/3 // was 0.35
+    // Heel reduces the sail force by cos²(heel) (heel.js): the sail sees the
+    // wind component normal to the heeled mast. Lift and drag both, so the
+    // propulsion, the side force and the lattice wake (mainsail_force) all
+    // carry it. Heel is last tick's value.
+    const heelK = this.heel ? heelForceFactor(this.heel.phi) : 1;
+    const sailK = aws * aws * sail_efficiency * heelK;
 
-    sail_f_drag.x = Math.cos(angle+this.awa/180*Math.PI + Math.PI/2 )*aws*aws*c_drag*sail_efficiency
-    sail_f_drag.y = Math.sin(angle+this.awa/180*Math.PI + Math.PI/2 )*aws*aws*c_drag*sail_efficiency
+    sail_f_drag.x = Math.cos(angle+this.awa/180*Math.PI + Math.PI/2 )*sailK*c_drag
+    sail_f_drag.y = Math.sin(angle+this.awa/180*Math.PI + Math.PI/2 )*sailK*c_drag
     
-    sail_f_lift.x = -Math.sign(this.awa)*Math.cos(angle+(this.awa)/180*Math.PI )*aws*aws*c_lift*sail_efficiency
-    sail_f_lift.y = -Math.sign(this.awa)*Math.sin(angle+(this.awa)/180*Math.PI )*aws*aws*c_lift*sail_efficiency
+    sail_f_lift.x = -Math.sign(this.awa)*Math.cos(angle+(this.awa)/180*Math.PI )*sailK*c_lift
+    sail_f_lift.y = -Math.sign(this.awa)*Math.sin(angle+(this.awa)/180*Math.PI )*sailK*c_lift
 
     let mainsail_f = {};
 
@@ -679,6 +700,17 @@ export class Boat{
 
     
     tel.power = this.power;
+
+    // Heel: sail side force (perpendicular to the centreline, body +X) in N
+    // drives the roll DOF; the crew hikes automatically (heel.js).
+    if (this.heel && Number.isFinite(mainsail_f.x) && Number.isFinite(mainsail_f.y)) {
+      const toN = sailForceToNewtons(sail_efficiency, WIND_UNIT_MPS, this.dinghy.sailArea);
+      const fSide = (mainsail_f.x * Math.cos(angle) + mainsail_f.y * Math.sin(angle)) * toN;
+      this.sail_side_force_n = fSide;
+      stepHeel(this.heel, fSide, 1 / 30, this.dinghy);
+      tel.heel = this.heel.phi * 180 / Math.PI;
+      tel.hike = Math.abs(this.heel.hike) * 100;
+    }
 
 
 
