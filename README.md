@@ -154,6 +154,7 @@ Last updated: 2026-11-03
 - [x] Mobile 1: touch buttons tidied: no keyboard hints on touch-only devices, Depower fits the grid (portrait 2 × 4, landscape 4 × 2) so nothing is cut off: [#159](https://github.com/SukuWc/fields/pull/159)
 - [x] Mobile 2: 44 px tap targets on phones and touch devices (scenario Hide, Boat stats, Chat, Player / Room tabs, name field, checkboxes), Join / Leave never truncated, stale Spectating note hidden after joining: [#160](https://github.com/SukuWc/fields/pull/160)
 - [ ] Mobile 3: readout strip — BSP / VMG / TWA (with P/S tack chip) / TWS across the top on phones and touch devices, where the instrument panel is hidden: [#162](https://github.com/SukuWc/fields/pull/162)
+- [ ] Mobile 4: top bar on phones — scenario chip (card collapsed into the bar, Show drops it down), Boat stats and ☰ on one 44 px row, readout strip under it (inside it in landscape), start timer below; fixes the scenario card / Boat stats / start timer overlaps on narrow phones: [#163](https://github.com/SukuWc/fields/pull/163)
 - [ ] Accessibility
 - [ ] Telemetry export
 - [x] Sail flapping animation for luffing sails (visual only): [#54](https://github.com/SukuWc/fields/pull/54)
