@@ -589,7 +589,7 @@
       .hud-placeholder { display: none; }
       /* Zone D: minimap (minimap.js), desktop only like the instruments. */
       #minimap { display: none; }
-      @media (min-width: 769px) and (hover: hover), (min-width: 769px) and (pointer: fine) {
+      @media (min-width: 769px) and (hover: hover), (min-width: 769px) and (pointer: fine), (pointer: coarse) and (hover: none) and (min-width: 769px) and (min-height: 600px) {
         #minimap {
           display: block; position: fixed; left: 10px; bottom: 10px; z-index: 110;
           width: 320px; height: 256px; border-radius: 8px; overflow: hidden;
@@ -677,7 +677,7 @@
         }
         body.settings-open #settings { display: block; }
       }
-      @media (min-width: 769px) and (hover: hover), (min-width: 769px) and (pointer: fine) {
+      @media (min-width: 769px) and (hover: hover), (min-width: 769px) and (pointer: fine), (pointer: coarse) and (hover: none) and (min-width: 769px) and (min-height: 600px) {
         #instrument_panel {
           display: block; position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%);
           z-index: 110; width: min(660px, calc(100vw - 2 * var(--drawer-w) - 60px));
@@ -1056,7 +1056,7 @@
       /* Phones (plan M8): the minimap is a small round map at the top right
          (top left in landscape). Tap it to open the full map over the race
          view (drag to pan, Follow, ×); the circle itself never pans. */
-      @media (max-width: 768px), (pointer: coarse) and (hover: none) {
+      @media (max-width: 768px), (pointer: coarse) and (hover: none) and (max-height: 599px) {
         body { --mm-d: 88px; }
         /* Open chat: keep the panel below the map circle (log scrolls). */
         #chat_log { max-height: min(30vh, calc(100vh - var(--m-top) - var(--mm-d) - 150px)); }
@@ -1166,6 +1166,41 @@
         }
         #mobile_sheet .sheet-handle { display: none; }
         #mobile_sheet .sheet-tabs { margin-top: 8px; }
+      }
+      /* Tablet (plan M10): coarse pointer, at least 769 x 600. Desktop zones
+         (instrument panel, minimap, floating leaderboard) with the overlay
+         controls (forced on tablets, touch-controls.js); no readout strip. */
+      @media (pointer: coarse) and (hover: none) and (min-width: 769px) and (min-height: 600px) {
+        body { --m-top: var(--m-bar); --tz-h: min(30vh, 300px); --ip-h: 184px; }
+        #mobile_strip { display: none; }
+        #minimap { top: calc(var(--m-top) + 10px); left: calc(10px + env(safe-area-inset-left)); bottom: auto; width: 300px; height: 240px; }
+        #minimap canvas { width: 300px; height: 240px; }
+        #minimap .mm-follow { min-height: 44px; min-width: 64px; font-size: 14px; }
+        #instrument_panel, body:not(.settings-open) #instrument_panel {
+          bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 125; box-sizing: border-box;
+          width: min(660px, calc(100vw - 2 * (min(14vw, 120px) + 24px)));
+        }
+        #instrument_panel .instr-tiles { grid-template-columns: repeat(5, 1fr); }
+        #instrument_panel .instr-mode { min-height: 44px; padding: 0 14px; font-size: 14px; }
+        body.touch-on #finish_results, body.touch-on.tc-overlay #finish_results {
+          top: calc(var(--m-top) + 10px); bottom: auto; right: calc(10px + env(safe-area-inset-right)); left: auto;
+          max-height: 40vh; font-size: 15px; line-height: 1.5; padding: 8px 12px; visibility: visible;
+        }
+        .rule-toasts, body:has(#start_hud:not([hidden])) .rule-toasts {
+          top: auto; left: auto; transform: none; width: min(360px, 46vw);
+          right: calc(min(14vw, 120px) + 24px + env(safe-area-inset-right));
+          bottom: calc(max(var(--tz-h), var(--ip-h) + 88px) + 14px + env(safe-area-inset-bottom));
+        }
+        #start_hud { left: 50%; transform: translateX(-50%); top: calc(var(--m-top) + 262px); max-width: none; }
+        body.tc-overlay .tc-steer, body.tc-overlay .tc-steer:not(.tc-right) {
+          top: auto; bottom: calc(14px + env(safe-area-inset-bottom)); height: var(--tz-h); width: min(14vw, 120px);
+        }
+        body.tc-overlay .tc-btn[data-key="38"], body.tc-overlay .tc-btn[data-key="40"] { left: calc(10px + env(safe-area-inset-left)); width: 120px; }
+        body.tc-overlay .tc-btn[data-key="40"] { bottom: calc(var(--tz-h) + 26px + env(safe-area-inset-bottom)); }
+        body.tc-overlay .tc-btn[data-key="38"] { bottom: calc(var(--tz-h) + 80px + env(safe-area-inset-bottom)); }
+        body.tc-overlay .tc-btn[data-short] { bottom: calc(var(--ip-h) + 30px + env(safe-area-inset-bottom)); }
+        #touch_layout { pointer-events: none; opacity: 0.5; }
+        #sheet_toggle[hidden] { display: none; }
       }
     </style>
   
