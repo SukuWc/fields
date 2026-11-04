@@ -1,3 +1,4 @@
+import { setupDragLook } from './drag-look.js';
 import * as THREE from 'three';
 import { FixedStepLoop } from './loop.js';
 
@@ -333,6 +334,8 @@ function startClient() {
   setupTouchControls();
   // After the WebGL canvas exists (#sim_canvas): two-finger pinch zooms the client camera.
   setupPinchZoom(view);
+  // One-finger drag on the race view looks around, then eases back (plan M11).
+  setupDragLook(view);
   installUrlSettings(undefined, { ids: urlSettingIds({ remote }) });
   // After the URL: saved player prefs fill what the query string leaves unset.
   installPlayerPrefs();

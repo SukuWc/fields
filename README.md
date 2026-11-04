@@ -162,6 +162,7 @@ Last updated: 2026-11-03
 - [x] Mobile 9: leaderboard and chat sheet on phones: a 🏁 top-bar button (with the unread count) opens a bottom sheet (side sheet in landscape) with Leaderboard and Chat tabs and quick messages; chat input and Send are 44 px tap targets: [#168](https://github.com/SukuWc/fields/pull/168) (on main with [#170](https://github.com/SukuWc/fields/pull/170))
 - [x] Haptics: a short buzz when your boat tacks and a double buzz on a new penalty (navigator.vibrate; Player settings → Controls → Vibrate, on by default; silently nothing where vibration is unsupported, e.g. iPhone): [#169](https://github.com/SukuWc/fields/pull/169) (on main with [#170](https://github.com/SukuWc/fields/pull/170))
 - [ ] Mobile 10: tablet layout: on touch tablets (at least 769 × 600) the desktop instrument panel, minimap and floating leaderboard with the overlay controls (always Overlay; no readout strip), steer zones at the bottom corners, Head up / Bear away above the left zone, the action row above the instruments; chat in the sheet: [#171](https://github.com/SukuWc/fields/pull/171)
+- [ ] Mobile 11: drag-to-look: a one-finger drag on the race view pans the camera and pauses follow; on release it eases back to your boat in 300 ms. Pinch still zooms, drags on steer zones and buttons never pan, spectators keep a plain pan (PR pending)
 - [ ] Accessibility
 - [ ] Telemetry export
 - [x] Sail flapping animation for luffing sails (visual only): [#54](https://github.com/SukuWc/fields/pull/54)
