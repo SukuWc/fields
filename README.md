@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-11-03
+Last updated: 2026-11-04
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -69,6 +69,7 @@ Last updated: 2026-11-03
 - [x] True-wind accuracy baseline: scenario 20 full-circle sweep plus `scripts/truewind-accuracy.mjs` measurement (2f baseline about 2.5° RMS direction error, 0.19 m/s RMS speed error; true-wind computation unchanged): [#88](https://github.com/SukuWc/fields/pull/88)
 - [x] Boat true wind from a 1 m, 20-point ring vector mean instead of a single centre sample (used for boat smoothing, HUD and rules; scenario 20 RMS direction error about 2.47° to 2.33°): [#90](https://github.com/SukuWc/fields/pull/90)
 - [x] True-wind own-sail-force correction on 2f: centre sample + (k0+ka·acc)·F_boat with piecewise gain→(k0,ka), |F| capped at 20 (scenario 20 dir RMS ~0.79/1.25/1.85° at gains 10/16/25; other modes unchanged): [#103](https://github.com/SukuWc/fields/pull/103)
+- [ ] Dinghy heel: roll DOF with hull GZ stability, automatic crew hiking toward 5°, sail force × cos²(heel), `heel_deg` / `hike_pct` in frame state and the readout, scenario 24 wind ramp: [#173](https://github.com/SukuWc/fields/pull/173)
 - [x] Moving-column gusts: elliptical momentum columns injected into the lattice (long axis across the wind, carried downwind at free-stream speed, 10 s life), scenario 22: [#111](https://github.com/SukuWc/fields/pull/111)
 - [x] Large gusts (σ about 10–15 m, as on `europe-1`) sampled at every root cell, removing the checkerboard artifact on the wind field with no gain rescale, scenario 23: [#117](https://github.com/SukuWc/fields/pull/117)
 - [x] Room-config gust rate spawner: Poisson gust arrivals (`gust_rate_per_min`) with mean[,sd] knobs for gain, size, life and direction in room TOML, off by default: [#112](https://github.com/SukuWc/fields/pull/112)
