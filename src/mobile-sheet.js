@@ -10,6 +10,7 @@
 // chat: only the Leaderboard tab shows.
 
 import { TABLET_QUERY } from './touch-controls.js';
+import { setupSheetSwipe } from './sheet-swipe.js';
 
 export const SHEET_QUERY = '(max-width: 768px), (pointer: coarse) and (hover: none)';
 export const QUICK_MESSAGES = ['👍 Nice', '⚠ Starboard!', 'Room please', 'GG'];
@@ -85,6 +86,11 @@ export function setupMobileSheet(doc = document) {
   btn.addEventListener('click', () => setOpen(!open));
   const handle = sheet.querySelector('.sheet-handle');
   if (handle) handle.addEventListener('click', () => setOpen(false));
+  // Swipe down (bottom sheet) or right (landscape side sheet) closes it.
+  setupSheetSwipe(sheet, {
+    isSide: () => sheet.getBoundingClientRect().left > 1,
+    close: () => setOpen(false),
+  });
   if (tabBoard) tabBoard.addEventListener('click', () => setTab('board'));
   if (tabChat) tabChat.addEventListener('click', () => setTab('chat'));
   if (quick) {
