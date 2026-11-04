@@ -159,6 +159,7 @@ Last updated: 2026-11-03
 - [x] Mobile 6: overlay touch layout behind a setting (Controls › Layout: Classic / Overlay, default Classic; ?touch_layout=overlay): full-height map, see-through steer zones, Head up / Bear away pills and round ⟲ 360 / Tack / Auto / Depwr / 360 ⟳ buttons; open chat sheet no longer covers the leaderboard: [#165](https://github.com/SukuWc/fields/pull/165)
 - [x] Mobile 7: landscape overlay layout: one top row, full-height edge steer zones, Head up / Bear away stacked by the left zone, vertical Tack / Auto / Depwr stack with the 360s beside it by the right zone, leaderboard and chat in the free bottom middle: [#166](https://github.com/SukuWc/fields/pull/166)
 - [ ] Mobile 8: round map on phones: the minimap as an 88 px circle at the top right (76 px, top left in landscape); tap opens the full map over the race view (drag to pan, Follow, ×); start timer and toasts keep clear of it (PR pending)
+- [ ] Mobile 9: leaderboard and chat sheet on phones: a 🏁 top-bar button (with the unread count) opens a bottom sheet (side sheet in landscape) with Leaderboard and Chat tabs and quick messages; chat input and Send are 44 px tap targets (PR pending)
 - [ ] Accessibility
 - [ ] Telemetry export
 - [x] Sail flapping animation for luffing sails (visual only): [#54](https://github.com/SukuWc/fields/pull/54)
