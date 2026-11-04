@@ -157,6 +157,7 @@ Last updated: 2026-11-03
 - [x] Mobile 4: top bar on phones — scenario chip (card collapsed into the bar, Show drops it down), Boat stats and ☰ on one 44 px row, readout strip under it (inside it in landscape), start timer below; fixes the scenario card / Boat stats / start timer overlaps on narrow phones: [#163](https://github.com/SukuWc/fields/pull/163)
 - [x] Mobile 5: toast placement on phones — full width under the top bar and strip, 14 px text, at most 2 visible (1 in landscape), moved below the start timer (or beside it in landscape) so toasts never cover it, the scenario chip or Boat stats: [#164](https://github.com/SukuWc/fields/pull/164)
 - [ ] Mobile 6: overlay touch layout behind a setting (Controls › Layout: Classic / Overlay, default Classic; ?touch_layout=overlay): full-height map, see-through steer zones, Head up / Bear away pills and round ⟲ 360 / Tack / Auto / Depwr / 360 ⟳ buttons; open chat sheet no longer covers the leaderboard: [#165](https://github.com/SukuWc/fields/pull/165)
+- [ ] Mobile 7: landscape overlay layout: one top row, full-height edge steer zones, Head up / Bear away stacked by the left zone, vertical Tack / Auto / Depwr stack with the 360s beside it by the right zone, leaderboard and chat in the free bottom middle: [#166](https://github.com/SukuWc/fields/pull/166)
 - [ ] Accessibility
 - [ ] Telemetry export
 - [x] Sail flapping animation for luffing sails (visual only): [#54](https://github.com/SukuWc/fields/pull/54)

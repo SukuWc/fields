@@ -529,6 +529,26 @@
         body.touch-on.tc-overlay #finish_results { right: calc(min(13vw, 120px) + 20px + env(safe-area-inset-right)); }
         body.touch-on.tc-overlay #chat_panel { left: calc(min(13vw, 120px) + 20px + env(safe-area-inset-left)); }
       }
+      /* Landscape layout (plan M7, overlay): one top row (M4), full-height
+         steer zones at the edges, Head up / Bear away stacked next to the
+         left zone, and a vertical action stack (Tack, Auto, Depwr) next to
+         the right zone with the two 360s beside it, so the middle of the map
+         stays clear. */
+      @media (orientation: landscape) and (max-height: 500px) {
+        body.tc-overlay { --tc-zone-w: min(13vw, 120px); --tc-in: calc(var(--tc-zone-w) + 20px); }
+        body.tc-overlay .tc-btn[data-key="38"], body.tc-overlay .tc-btn[data-key="40"] { left: calc(var(--tc-in) + env(safe-area-inset-left)); width: 112px; }
+        body.tc-overlay .tc-btn[data-key="38"] { bottom: calc(66px + env(safe-area-inset-bottom)); }
+        body.tc-overlay .tc-btn[data-key="40"] { bottom: calc(14px + env(safe-area-inset-bottom)); }
+        body.tc-overlay .tc-btn[data-short] { left: auto; }
+        body.tc-overlay .tc-btn[data-key="13"] { right: calc(var(--tc-in) + env(safe-area-inset-right)); bottom: calc(146px + env(safe-area-inset-bottom)); }
+        body.tc-overlay .tc-btn[data-key="32"] { right: calc(var(--tc-in) + env(safe-area-inset-right)); bottom: calc(80px + env(safe-area-inset-bottom)); }
+        body.tc-overlay .tc-btn[data-key="88"] { right: calc(var(--tc-in) + env(safe-area-inset-right)); bottom: calc(14px + env(safe-area-inset-bottom)); }
+        body.tc-overlay .tc-btn[data-key="81"] { right: calc(var(--tc-in) + 66px + env(safe-area-inset-right)); bottom: calc(80px + env(safe-area-inset-bottom)); }
+        body.tc-overlay .tc-btn[data-key="69"] { right: calc(var(--tc-in) + 66px + env(safe-area-inset-right)); bottom: calc(14px + env(safe-area-inset-bottom)); }
+        body.touch-on.tc-overlay #finish_results { right: calc(var(--tc-in) + 140px + env(safe-area-inset-right)); bottom: calc(14px + env(safe-area-inset-bottom)); }
+        body.touch-on.tc-overlay #chat_panel { left: calc(var(--tc-in) + 122px + env(safe-area-inset-left)); bottom: calc(14px + env(safe-area-inset-bottom)); }
+        body.touch-on.tc-overlay #chat_body { width: min(300px, calc(100vw - 2 * var(--tc-in) - 270px)); box-sizing: border-box; }
+      }
       /* Everything anchored to the bottom moves up into the canvas area. */
       body.touch-on #sim_canvas {
         height: calc(100% - var(--touch-panel-h));
