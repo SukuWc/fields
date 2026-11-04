@@ -60,6 +60,7 @@ export const SETTINGS = [
   // Default off; touch-controls.js turns it on for phones and touch screens.
   { id: 'touch', scope: 'player', panel: 'player', type: 'bool', default: false },
   // Touch layout (mobile plan M6): classic panel under the map, or overlay buttons over a full-height map.
+  { id: 'vibrate', scope: 'player', panel: 'player', type: 'bool', default: true },
   { id: 'touch_layout', scope: 'player', panel: 'player', type: 'enum', default: 'classic', values: ['classic', 'overlay'] },
   { id: 'show_field', scope: 'player', panel: 'player', type: 'bool', default: true, subscription: 'flow' },
   { id: 'tracers', scope: 'player', panel: 'player', type: 'number', default: null, nullable: true, min: 10, max: 20000 },

@@ -39,6 +39,8 @@ import { installPlayerPrefs } from './player-prefs.js';
 import { setupSettingsTabs } from './settings-tabs.js';
 import { setupInstrumentPanel } from './instrument-panel.js';
 import { setupRuleToasts } from './rule-toasts.js';
+import { createHaptics } from './haptics.js';
+import { readoutValues } from './instrument-readout.js';
 import { setupMinimap } from './minimap.js';
 import { setupMobileStrip } from './mobile-strip.js';
 import {
@@ -58,6 +60,7 @@ import { setupMobileMenu } from './mobile-menu.js';
 import { setupTouchControls } from './touch-controls.js';
 import { setupPinchZoom } from './pinch-zoom.js';
 import { setupChat } from './chat-panel.js';
+import { setupMobileSheet } from './mobile-sheet.js';
 import { setupDevView } from './dev-view.js';
 import { windCeilingMps } from './sim-modes.js';
 
@@ -272,6 +275,7 @@ function startClient() {
   }
   setupControls(host, view, getCamera);
   setupChat(host);
+  setupMobileSheet();
   setupDevView();
   // Flow tracer inputs (count, life, tail): live, and before installUrlSettings
   // so ?tracers / ?tracerLife / ?tracerTail arrive through these listeners.
@@ -401,7 +405,9 @@ function startClient() {
   const instruments = setupInstrumentPanel({ remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
   const minimap = setupMinimap({ view, getMapSize: () => [map_w, map_h], remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
   const mobileStrip = setupMobileStrip({ remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
-  const ruleToasts = setupRuleToasts({ remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
+  const vibrateBox = document.getElementById('vibrate');
+  const haptics = createHaptics({ enabled: () => !vibrateBox || vibrateBox.checked });
+  const ruleToasts = setupRuleToasts({ remote: host.kind === 'remote', lockstep: () => host.mode === 'client', onOwnPenalty: () => haptics.onOwnPenalty() });
   setupOwnBoat(host, (ids) => { ownBoatId = ids[0] || null; boatStats.setOwnId(ownBoatId); instruments.setOwnId(ownBoatId); ruleToasts.setOwnId(ownBoatId); minimap.setOwnId(ownBoatId); mobileStrip.setOwnId(ownBoatId); });
   host.on((ev) => { if (ev.type === 'cleared') followTarget = undefined; });
   host.onFrame((frame) => {
@@ -427,6 +433,7 @@ function startClient() {
     if (frame.state) ruleToasts.onFrame(frame.state);
     if (frame.state) minimap.onFrame(frame.state, frame.statics);
     if (frame.state) mobileStrip.onFrame(frame.state);
+    if (frame.state) haptics.onReadout(readoutValues(frame.state, { ownId: ownBoatId, remote: host.kind === 'remote', lockstep: host.mode === 'client' }));
   });
 
   if (remoteDriven) {
