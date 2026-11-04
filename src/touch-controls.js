@@ -16,6 +16,10 @@
 import { setVirtualKey } from './controls.js';
 
 export const TOUCH_DEFAULT_QUERY = '(max-width: 768px), (pointer: coarse) and (hover: none)';
+// Plan M10: a touch tablet (at least 769 x 600) gets the desktop zones and
+// always the overlay controls; anything smaller is a phone.
+export const TABLET_QUERY = '(pointer: coarse) and (hover: none) and (min-width: 769px) and (min-height: 600px)';
+export const PHONE_QUERY = '(max-width: 768px), (pointer: coarse) and (hover: none) and (max-height: 599px)';
 
 export const TOUCH_LAYOUTS = ['classic', 'overlay'];
 export function normalizeTouchLayout(v) { return TOUCH_LAYOUTS.includes(v) ? v : 'classic'; }
@@ -91,13 +95,15 @@ export function setupTouchControls() {
   // full-height map. Saved / restored with the other player prefs
   // (settings-registry 'touch_layout'; also ?touch_layout=overlay).
   const layoutSel = document.getElementById('touch_layout');
+  const tabletQ = window.matchMedia ? window.matchMedia(TABLET_QUERY) : null;
   function applyLayout() {
-    const overlay = normalizeTouchLayout(layoutSel && layoutSel.value) === 'overlay';
+    const overlay = normalizeTouchLayout(layoutSel && layoutSel.value) === 'overlay' || !!(tabletQ && tabletQ.matches);
     if (document.body.classList.contains('tc-overlay') === overlay) return;
     document.body.classList.toggle('tc-overlay', overlay);
     window.dispatchEvent(new Event('resize'));
   }
   if (layoutSel) { layoutSel.addEventListener('change', applyLayout); layoutSel.addEventListener('input', applyLayout); }
+  if (tabletQ && tabletQ.addEventListener) tabletQ.addEventListener('change', applyLayout);
   applyLayout();
 
   box.addEventListener('change', () => apply(box.checked));

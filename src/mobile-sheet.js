@@ -9,6 +9,8 @@
 // input and send it through the chat form. Local and worker modes have no
 // chat: only the Leaderboard tab shows.
 
+import { TABLET_QUERY } from './touch-controls.js';
+
 export const SHEET_QUERY = '(max-width: 768px), (pointer: coarse) and (hover: none)';
 export const QUICK_MESSAGES = ['👍 Nice', '⚠ Starboard!', 'Room please', 'GG'];
 const STOP_EVENTS = ['pointerdown', 'pointermove', 'pointerup', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'mousemove', 'mouseup', 'wheel', 'click', 'keyup'];
@@ -30,6 +32,9 @@ export function setupMobileSheet(doc = document) {
   const tabBadge = tabChat && tabChat.querySelector('.st-badge');
   const quick = doc.getElementById('sheet_quick');
   const q = window.matchMedia ? window.matchMedia(SHEET_QUERY) : null;
+  // Tablet (plan M10): the leaderboard stays on the map; the sheet is chat only.
+  const tq = window.matchMedia ? window.matchMedia(TABLET_QUERY) : null;
+  const isTablet = () => !!(tq && tq.matches);
   const home = new Map(); // element -> [parent, nextSibling]
   let open = false, tab = 'board';
 
@@ -51,7 +56,7 @@ export function setupMobileSheet(doc = document) {
   function place() {
     const phone = !!(q && q.matches);
     doc.body.classList.toggle('sheet-on', phone);
-    if (phone) { moveIn(results, board); moveIn(chatBody, chatPane); }
+    if (phone) { if (isTablet()) moveOut(results); else moveIn(results, board); moveIn(chatBody, chatPane); }
     else { if (open) setOpen(false); moveOut(results); moveOut(chatBody); }
   }
   function syncBadge() {
@@ -65,6 +70,9 @@ export function setupMobileSheet(doc = document) {
     const chat = hasChat();
     if (tabChat) tabChat.hidden = !chat;
     if (!chat) tab = 'board';
+    if (isTablet() && chat) tab = 'chat';
+    if (tabBoard) tabBoard.hidden = isTablet();
+    btn.hidden = isTablet() && !chat;
     sheet.dataset.tab = tab;
     if (tabBoard) tabBoard.setAttribute('aria-selected', String(tab === 'board'));
     if (tabChat) tabChat.setAttribute('aria-selected', String(tab === 'chat'));
@@ -102,6 +110,7 @@ export function setupMobileSheet(doc = document) {
     new MutationObserver(render).observe(chatPanel, { attributes: true, attributeFilter: ['hidden'] });
   }
   if (q && q.addEventListener) q.addEventListener('change', place);
+  if (tq && tq.addEventListener) tq.addEventListener('change', () => { place(); render(); });
   place();
   render();
   return { setOpen, setTab, get open() { return open; }, get tab() { return tab; } };
