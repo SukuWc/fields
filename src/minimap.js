@@ -11,6 +11,7 @@
 import { boatColorCss, boatColorIndex } from './boat-colors.js';
 import { instrumentBoat } from './instrument-readout.js';
 
+export const MINIMAP_COMPACT_QUERY = '(max-width: 768px), (pointer: coarse) and (hover: none)';
 export const MINIMAP_W = 320;
 export const MINIMAP_H = 256;
 const UPDATE_MS = 200;
@@ -84,8 +85,21 @@ export function setupMinimap({ view, getMapSize, remote = false, lockstep = () =
     view.camera_position_y = Math.max(view.camera_position_y_min, Math.min(view.camera_position_y_max, y));
     draw();
   };
+  // Phones (plan M8): the round map only opens the full map; panning
+  // happens in the opened map. Same media query as the mobile layout.
+  const compactQ = window.matchMedia ? window.matchMedia(MINIMAP_COMPACT_QUERY) : null;
+  const closeBtn = root.querySelector('.mm-close');
+  const setOpen = (on) => { root.classList.toggle('mm-open', on); draw(); };
+  if (closeBtn) closeBtn.addEventListener('click', (e) => { e.stopPropagation(); setOpen(false); });
+  // Open on click (after the finger lifts) so the same tap cannot land on
+  // the opened map's close button.
+  cv.addEventListener('click', () => { if (compactQ && compactQ.matches && !root.classList.contains('mm-open')) setOpen(true); });
   let dragging = false;
-  cv.addEventListener('pointerdown', (e) => { dragging = true; cv.setPointerCapture?.(e.pointerId); panTo(e); });
+  cv.addEventListener('pointerdown', (e) => {
+    if (compactQ && compactQ.matches && !root.classList.contains('mm-open')) return; // opens on click, below
+
+    dragging = true; cv.setPointerCapture?.(e.pointerId); panTo(e);
+  });
   cv.addEventListener('pointermove', (e) => { if (dragging) panTo(e); });
   const end = () => { dragging = false; };
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
