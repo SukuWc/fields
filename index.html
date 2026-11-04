@@ -849,6 +849,33 @@
       #chat_status { color: #f99; font-size: 12px; }
       /* Beside #fps; above the touch helm when it shows. */
       body.touch-on #chat_panel { bottom: calc(var(--touch-panel-h) + 6px); }
+      /* Mobile readout strip (plan M3): BSP / VMG / TWA / TWS under the top of
+         the screen where the instrument panel is hidden; everything anchored
+         to the top moves down by --m-top. Green / red only on the tack chip. */
+      #mobile_strip { display: none; }
+      @media (max-width: 768px), (pointer: coarse) and (hover: none) {
+        body { --m-top: calc(46px + env(safe-area-inset-top)); }
+        #mobile_strip {
+          display: grid; grid-template-columns: repeat(4, 1fr);
+          position: fixed; left: 0; right: 0; top: 0; height: var(--m-top); z-index: 140;
+          padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); box-sizing: border-box;
+          background: rgba(11, 23, 71, 0.82); border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+          font-family: 'Albert Sans', system-ui, sans-serif; color: #fff; pointer-events: none;
+        }
+        #mobile_strip .ms-cell { display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
+        #mobile_strip .ms-label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #ffc400; }
+        #mobile_strip .ms-value { margin-top: 3px; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        #mobile_strip .ms-value small { margin-left: 2px; font-size: 11px; font-weight: 500; opacity: 0.65; }
+        #mobile_strip .ms-tack { margin-left: 4px; padding: 1px 4px; border-radius: 3px; font-size: 11px; font-weight: 800; vertical-align: 3px; }
+        #mobile_strip .ms-tack.port { background: #d32f2f; color: #fff; }
+        #mobile_strip .ms-tack.stbd { background: #2e7d32; color: #fff; }
+        #scenario_card { top: calc(10px + var(--m-top)); }
+        #settings_toggle { top: calc(10px + var(--m-top)); }
+        #boat_stats { top: calc(60px + var(--m-top)); }
+        #start_hud { top: calc(48px + var(--m-top)); }
+        .rule-toasts { top: calc(64px + var(--m-top)); }
+        #settings { padding-top: calc(68px + var(--m-top)); }
+      }
       /* Phones and touch-only devices: every tap target at least 44 x 44 px
          (Apple HIG / WCAG 2.5.5). Same query as the mobile menu above. */
       @media (max-width: 768px), (pointer: coarse) and (hover: none) {
@@ -870,7 +897,7 @@
       #chat_body { width: min(340px, calc(100vw - 132px)); }
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-BokZpdny.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-li07Z1zs.js"></script>
   </head>
   <body>
 
@@ -920,6 +947,8 @@
       </section>
     </div>
     <div id="hud_toasts" class="hud-zone" data-zone="E" aria-live="polite"></div>
+    <!-- Mobile readout strip (plan M3, mobile-strip.js): phones / touch only. -->
+    <div id="mobile_strip" aria-label="Instruments"></div>
     <pre id="perf_overlay_hud"></pre>
     <div id="fps" class="dev-only"></div>
     <div id="touch_controls" hidden aria-label="Boat 1 touch controls">
