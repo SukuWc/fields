@@ -114,7 +114,7 @@ export class RuleCallTracker {
 }
 
 // DOM: #hud_toasts. opts like the instrument panel (own boat by id).
-export function setupRuleToasts({ remote = false, lockstep = () => false } = {}, doc = document) {
+export function setupRuleToasts({ remote = false, lockstep = () => false, onOwnPenalty = null } = {}, doc = document) {
   const root = doc.getElementById('hud_toasts');
   if (!root) return { onFrame() {}, setOwnId() {} };
   root.classList.remove('hud-placeholder');
@@ -127,6 +127,7 @@ export function setupRuleToasts({ remote = false, lockstep = () => false } = {},
     const me = instrumentBoat(state.boats, { ownId, remote, lockstep: lockstep() });
     const mine = !!me && (call.boat === me.id);
     const vsMe = !!me && call.other === me.id;
+    if (mine && call.kind === 'penalty' && onOwnPenalty) onOwnPenalty(call);
     const el = doc.createElement('div');
     el.className = 'rule-toast ' + call.kind + (mine ? ' own' : '') + (vsMe ? ' vs-own' : '');
     el.setAttribute('role', 'status');
