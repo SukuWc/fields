@@ -508,6 +508,8 @@
       body.tc-overlay .tc-btn[data-key="69"] { left: calc(50% + 99px); }
       body.tc-overlay #touch_controls.spectating .tc-spectating { top: auto; height: var(--touch-panel-h); }
       body.touch-on.tc-overlay #sim_canvas { height: 100%; }
+      /* Leaderboard between the action row and the steer zones: capped, scrolls. */
+      body.touch-on.tc-overlay #finish_results { max-height: 52px; overflow-y: auto; }
       /* Chat open: the sheet needs the room, the steer zones step aside until it closes. */
       body.tc-overlay:has(#chat_body:not([hidden])) .tc-steer { visibility: hidden; }
       /* Phones, either layout: the open chat sheet covers the leaderboard, so it
