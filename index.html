@@ -876,6 +876,79 @@
         .rule-toasts { top: calc(64px + var(--m-top)); }
         #settings { padding-top: calc(68px + var(--m-top)); }
       }
+      /* Mobile top bar (plan M4): one 44 px row with the scenario chip (the card
+         collapsed into the bar; Show drops it down), Boat stats and the menu.
+         The readout strip sits right under it (portrait) or inside it
+         (landscape), and the start timer below that, so none of them overlap. */
+      #mobile_bar { display: none; }
+      @media (max-width: 768px), (pointer: coarse) and (hover: none) {
+        body { --m-bar: calc(44px + env(safe-area-inset-top)); --m-top: calc(var(--m-bar) + 46px); }
+        #mobile_bar {
+          display: block; position: fixed; left: 0; right: 0; top: 0; height: var(--m-bar); z-index: 139;
+          background: #0b1747; border-bottom: 1px solid rgba(255, 196, 0, 0.5); pointer-events: none;
+        }
+        #mobile_strip { top: var(--m-bar); height: 46px; padding-top: 0; }
+        #scenario_card, body.touch-on #scenario_card {
+          top: env(safe-area-inset-top); left: env(safe-area-inset-left); z-index: 150;
+          width: calc(100vw - 44px - 116px - env(safe-area-inset-left) - env(safe-area-inset-right));
+          box-sizing: border-box; min-height: 44px; padding: 0 0 0 10px;
+          background: transparent; border: 0; border-radius: 0;
+          max-height: calc(100% - var(--touch-panel-h, 0px) - var(--m-bar) - 8px);
+        }
+        #scenario_card_head { align-items: center; min-height: 44px; gap: 6px; }
+        #scenario_card_title { min-width: 0; font-size: 13px; line-height: 1.25; }
+        #scenario_card.collapsed #scenario_card_title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #scenario_card_toggle { margin: 0; border: 0; color: #ffc400; text-decoration: underline; }
+        #scenario_card:not(.collapsed) {
+          background: rgba(11, 23, 71, 0.97); border-bottom: 1px solid rgba(255, 196, 0, 0.5);
+          padding-bottom: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+        #settings_toggle { top: env(safe-area-inset-top); right: env(safe-area-inset-right); width: 44px; height: 44px; }
+        #boat_stats {
+          top: env(safe-area-inset-top); right: calc(48px + env(safe-area-inset-right)); z-index: 150;
+          max-width: calc(100vw - 64px); padding: 0; background: transparent; border: 0;
+        }
+        #boat_stats summary { color: #fff; }
+        #boat_stats[open] { background: rgba(11, 23, 71, 0.97); padding: 0 8px 8px; }
+        #start_hud { top: calc(var(--m-top) + 8px); }
+        .rule-toasts { top: calc(var(--m-top) + 8px); }
+        #settings { padding-top: calc(var(--m-bar) + 12px); }
+      }
+      /* Landscape phone: bar and strip share one row; chip left, readouts in the middle. */
+      @media (max-width: 768px) and (orientation: landscape) and (max-height: 500px),
+        (pointer: coarse) and (hover: none) and (orientation: landscape) and (max-height: 500px) {
+        body { --m-top: var(--m-bar); }
+        #mobile_strip {
+          top: env(safe-area-inset-top); height: 44px; z-index: 141; background: transparent; border: 0;
+          left: calc(env(safe-area-inset-left) + 230px); right: calc(env(safe-area-inset-right) + 160px); padding: 0;
+        }
+        #mobile_strip .ms-value { font-size: 17px; margin-top: 2px; }
+        #mobile_strip .ms-label { font-size: 10px; }
+        #scenario_card, body.touch-on #scenario_card { width: 226px; }
+        #scenario_card:not(.collapsed) { width: min(420px, 60vw); }
+      }
+      /* Mobile toast placement (plan M5): full width under the top bar and
+         strip, 14 px text, at most 2 visible (newest first); below the start
+         timer while it shows. Landscape: top centre, or top right next to the
+         start timer. */
+      @media (max-width: 768px), (pointer: coarse) and (hover: none) {
+        .rule-toasts {
+          top: calc(var(--m-top) + 8px); left: calc(8px + env(safe-area-inset-left)); right: calc(8px + env(safe-area-inset-right));
+          width: auto; transform: none; z-index: 135;
+        }
+        body:has(#start_hud:not([hidden])) .rule-toasts { top: calc(var(--m-top) + 112px); }
+        .rule-toast { font-size: 14px; padding: 6px 10px; }
+        .rule-toast .rt-boats { font-size: 12px; }
+        .rule-toast:nth-child(n+3) { display: none; }
+      }
+      @media (max-width: 768px) and (orientation: landscape) and (max-height: 500px),
+        (pointer: coarse) and (hover: none) and (orientation: landscape) and (max-height: 500px) {
+        .rule-toasts { top: calc(var(--m-top) + 6px); left: 50%; right: auto; transform: translateX(-50%); width: min(420px, 56vw); }
+        body:has(#start_hud:not([hidden])) .rule-toasts {
+          top: calc(var(--m-top) + 6px); left: auto; right: calc(8px + env(safe-area-inset-right)); transform: none; width: min(300px, 34vw);
+        }
+        .rule-toast:nth-child(n+2) { display: none; }
+      }
       /* Phones and touch-only devices: every tap target at least 44 x 44 px
          (Apple HIG / WCAG 2.5.5). Same query as the mobile menu above. */
       @media (max-width: 768px), (pointer: coarse) and (hover: none) {
@@ -897,7 +970,7 @@
       #chat_body { width: min(340px, calc(100vw - 132px)); }
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-li07Z1zs.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-D7aRi6AC.js"></script>
   </head>
   <body>
 
@@ -949,6 +1022,8 @@
     <div id="hud_toasts" class="hud-zone" data-zone="E" aria-live="polite"></div>
     <!-- Mobile readout strip (plan M3, mobile-strip.js): phones / touch only. -->
     <div id="mobile_strip" aria-label="Instruments"></div>
+    <!-- Mobile top bar backdrop (plan M4): scenario chip, Boat stats and the menu sit on it. -->
+    <div id="mobile_bar" aria-hidden="true"></div>
     <pre id="perf_overlay_hud"></pre>
     <div id="fps" class="dev-only"></div>
     <div id="touch_controls" hidden aria-label="Boat 1 touch controls">
