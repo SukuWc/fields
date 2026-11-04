@@ -927,6 +927,28 @@
         #scenario_card, body.touch-on #scenario_card { width: 226px; }
         #scenario_card:not(.collapsed) { width: min(420px, 60vw); }
       }
+      /* Mobile toast placement (plan M5): full width under the top bar and
+         strip, 14 px text, at most 2 visible (newest first); below the start
+         timer while it shows. Landscape: top centre, or top right next to the
+         start timer. */
+      @media (max-width: 768px), (pointer: coarse) and (hover: none) {
+        .rule-toasts {
+          top: calc(var(--m-top) + 8px); left: calc(8px + env(safe-area-inset-left)); right: calc(8px + env(safe-area-inset-right));
+          width: auto; transform: none; z-index: 135;
+        }
+        body:has(#start_hud:not([hidden])) .rule-toasts { top: calc(var(--m-top) + 112px); }
+        .rule-toast { font-size: 14px; padding: 6px 10px; }
+        .rule-toast .rt-boats { font-size: 12px; }
+        .rule-toast:nth-child(n+3) { display: none; }
+      }
+      @media (max-width: 768px) and (orientation: landscape) and (max-height: 500px),
+        (pointer: coarse) and (hover: none) and (orientation: landscape) and (max-height: 500px) {
+        .rule-toasts { top: calc(var(--m-top) + 6px); left: 50%; right: auto; transform: translateX(-50%); width: min(420px, 56vw); }
+        body:has(#start_hud:not([hidden])) .rule-toasts {
+          top: calc(var(--m-top) + 6px); left: auto; right: calc(8px + env(safe-area-inset-right)); transform: none; width: min(300px, 34vw);
+        }
+        .rule-toast:nth-child(n+2) { display: none; }
+      }
       /* Phones and touch-only devices: every tap target at least 44 x 44 px
          (Apple HIG / WCAG 2.5.5). Same query as the mobile menu above. */
       @media (max-width: 768px), (pointer: coarse) and (hover: none) {
