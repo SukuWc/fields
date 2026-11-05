@@ -347,6 +347,10 @@ function makeSailingBoat(x, y, hullAngle, speed = 2.2) {
   const own = new World(Vec2(0, 0));
   const map = { world: own, get_wind: getWind };
   const boat = new Boat(map, x, y, hullAngle);
+  // Penalty-circle kinematics are calibrated without the sail CE leeward
+  // offset (weather helm). Keep that yaw term off here; sailing CE offset
+  // is covered by ce-offset / wind-sweep / scenario 25.
+  boat.ceLeewardOffset = false;
   const fwd = headingForward(hullAngle);
   boat.physics_model.setLinearVelocity(Vec2(fwd.x * speed, fwd.y * speed));
   boat._world = own;

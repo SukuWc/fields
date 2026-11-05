@@ -846,7 +846,7 @@ export function renderNow() {
 // frames for the headless 30 fps check.
 export const RENDER_FPS = 30;
 export const renderStats = { frames: 0 };
-if (typeof window !== 'undefined') window.__renderStats = renderStats;
+if (typeof window !== 'undefined') { window.__renderStats = renderStats; window.__renderNow = renderNow; }
 let _nextRenderT = 0;
 
 function animation(t) {

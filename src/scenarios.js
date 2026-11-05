@@ -53,6 +53,12 @@ export const LADDER_DEMO = { mark: { x: 0, y: 40 }, boat: { x: 8, y: -8, heading
 // Scenario 24 (dinghy heel wind ramp): m/s, seconds per step, start.
 export const HEEL_RAMP = { from: 4, to: 12, step: 1, holdS: 4, tackAt: [2, 4, 6, 8], boat: { x: 25, y: -90, heading: 5 * Math.PI / 4 } };
 
+// Scenario 25 (sail CE leeward offset / weather helm): slow ramp to a strong
+// steady wind so the autopilot holds close-hauled with a visible rudder angle
+// from the h·sinφ CE offset. No tacks; large enough hold that the overlay
+// and RUD tile can be read. ?scenario_selector=25
+export const CE_OFFSET_DEMO = { from: 4.5, to: 9, step: 0.5, holdS: 3, boat: { x: 30, y: -80, heading: 5 * Math.PI / 4 } };
+
 function makeScenario(title, description) {
   return { title, description, frames: [] };
 }
@@ -690,6 +696,36 @@ export function buildScenarios(sim) {
       sim.command({ type: 'wind', speed: HEEL_RAMP.from + k * HEEL_RAMP.step });
       // Tack to stay inside the 100 m wide map (and swap the crew's side).
       if (HEEL_RAMP.tackAt.includes(k) && sim.players[0]) sim.players[0].input_autopilot_tack_toggle();
+    };
+  }
+
+  // Sail CE leeward offset (weather helm). One dinghy close-hauled on
+  // starboard autopilot; wind ramps slowly from CE_OFFSET_DEMO.from to
+  // CE_OFFSET_DEMO.to so she keeps way on. The sail force is applied at
+  // h·sinφ to leeward (boat.js); the autopilot holds course with a steady
+  // rudder angle (RUD tile) and the show_forces overlay draws the CE
+  // marker and sail arrow. ?scenario_selector=25
+  scenarios[25] = makeScenario(
+    "Sail CE leeward offset: weather helm at " + CE_OFFSET_DEMO.to + " m/s",
+    "One Laser-like dinghy close-hauled on starboard autopilot. Wind ramps from "
+    + CE_OFFSET_DEMO.from + " to " + CE_OFFSET_DEMO.to + " m/s by "
+    + CE_OFFSET_DEMO.step + " every " + CE_OFFSET_DEMO.holdS
+    + " s. The sail force is applied at ceLateralHeight·sin(heel) to leeward and the centreboard at −clrDepth·sin(heel) to windward, so the autopilot needs a slight steady rudder angle (weather helm). Turn on Forces to see the CE (magenta) and CLR (cyan) crosses. Readout: HEEL, HIKE, SAIL %, RUD."
+  );
+  scenarios[25].frames[0] = () => {
+    sim.command({ type: 'wind', angle: 90, speed: CE_OFFSET_DEMO.from });
+    sim.players.push(new Boat(sim.map, CE_OFFSET_DEMO.boat.x, CE_OFFSET_DEMO.boat.y, CE_OFFSET_DEMO.boat.heading));
+  };
+  scenarios[25].frames[1] = () => {
+    sim.players[0].input_autopilot_enabled_toggle();
+    sim.emit({ type: 'bindControls' });
+    sim.emit({ type: 'view', follow: true });
+    sim.emit({ type: 'view', zoom: 46 });
+  };
+  const ceSteps = Math.round((CE_OFFSET_DEMO.to - CE_OFFSET_DEMO.from) / CE_OFFSET_DEMO.step);
+  for (let k = 1; k <= ceSteps; k++) {
+    scenarios[25].frames[90 * CE_OFFSET_DEMO.holdS * k] = () => {
+      sim.command({ type: 'wind', speed: CE_OFFSET_DEMO.from + k * CE_OFFSET_DEMO.step });
     };
   }
 

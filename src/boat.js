@@ -6,7 +6,7 @@ import {
   updateTackingState,
 } from './rules.js';
 import { WIND_UNIT_MPS, boatTrueWind } from './wind.js';
-import { DINGHY_DEFAULTS, createHeelState, heelForceFactor, sailForceToNewtons, stepHeel } from './heel.js';
+import { DINGHY_DEFAULTS, createHeelState, heelForceFactor, sailCeOffsetX, clrOffsetX, sailForceToNewtons, stepHeel } from './heel.js';
 
 const wrap360 = (d) => ((d % 360) + 360) % 360;
 
@@ -25,6 +25,8 @@ const wrap360 = (d) => ((d % 360) + 360) % 360;
 //                always on the windward side)
 //   sail_eff_pct sail force remaining as %, heelForceFactor(phi)×100
 //                (cos²(heel); 100 upright, 25 at 60°)
+//   rudder_deg   signed rudder angle, degrees (boat.rudder_angle; positive
+//                yaws clockwise when the boat has way on)
 //   capsized     1 only while past the heel limit (absent otherwise)
 // Raw angles (kept): ha / pa are math radians with the bow on local −Y, so
 // the bow points at math angle ha − 90°; wd is the math angle (0 = +X,
@@ -44,6 +46,7 @@ function readoutFields(b) {
     o.sail_eff_pct = heelForceFactor(b.heel.phi) * 100;
     if (b.heel.capsized) o.capsized = 1;
   }
+  if (Number.isFinite(b.rudder_angle)) o.rudder_deg = b.rudder_angle;
   return o;
 }
 import { boatGuides, autopilotSnapTarget } from './boat-draw.js';
@@ -258,6 +261,9 @@ export class Boat{
     // Dinghy heel (heel.js): Laser-like parameters and roll state.
     this.dinghy = DINGHY_DEFAULTS;
     this.heel = createHeelState();
+    // Top-down CE leeward + CLR windward offsets (heel.js sailCeOffsetX /
+    // clrOffsetX). On by default; set false to compare centreline application.
+    this.ceLeewardOffset = true;
 
     this.twa = 0;
     // Rule 13. updateTackingState maintains these from Map.get_wind each step.
@@ -413,7 +419,14 @@ export class Boat{
 
     //var f = boat.getWorldVector(Vec2(-q*100, 0)); 
     var centerboard_f = this.physics_model.getWorldVector(Vec2(centerboard_force, 0));
-    var centerboard_p = this.physics_model.getWorldPoint(Vec2(0.0, this.centerboard_position));
+    // CLR: on the centreline, or offset to windward by −z_CLR·sin(φ) when
+    // ceLeewardOffset is on (same flag as the sail CE leeward offset).
+    const clrX = (this.ceLeewardOffset && this.heel)
+      ? clrOffsetX(this.heel.phi, this.dinghy) : 0;
+    var centerboard_p = this.physics_model.getWorldPoint(Vec2(clrX, this.centerboard_position));
+    this._clrLocalX = clrX;
+    this._clrPoint = centerboard_p;
+    this._clrForce = centerboard_f;
 
     // centerboard
     applyFinite(centerboard_f, centerboard_p);   
@@ -688,11 +701,18 @@ export class Boat{
     mainsail_f.y = sail_f_drag.y  + sail_f_lift.y
 
 
-    var mainsail_p = this.physics_model.getWorldPoint(Vec2(0.0, this.center_of_lift));
-    
-    
+    // Application point: on the centreline at center_of_lift, or offset to
+    // leeward by h·sin(φ) when ceLeewardOffset is on (heel.js). The offset
+    // goes through planck applyForce so the yaw moment is real rigid-body
+    // torque; the autopilot then holds course with a steady rudder angle.
+    const ceX = (this.ceLeewardOffset && this.heel)
+      ? sailCeOffsetX(this.heel.phi, this.dinghy) : 0;
+    var mainsail_p = this.physics_model.getWorldPoint(Vec2(ceX, this.center_of_lift));
+    this._sailCeLocalX = ceX;
+    this._sailCePoint = mainsail_p;
+
     applyFinite(sail_f_lift, mainsail_p);
-    applyFinite(sail_f_drag, mainsail_p); 
+    applyFinite(sail_f_drag, mainsail_p);
 
     this.forces.push({name: "mainsail", type: "arrow", vector: sail_f_lift, point: mainsail_p})
     this.forces.push({name: "mainsail", type: "arrow", vector: sail_f_drag, point: mainsail_p})
@@ -828,6 +848,23 @@ export class Boat{
       mf: flapScale, jf: this.jibFlap, ph: flapPhase, f,
       ...readoutFields(this),
     };
+    // CE / CLR application points for the debug overlay (boat-draw.js).
+    if (this._sailCePoint
+        && Number.isFinite(this._sailCePoint.x) && Number.isFinite(this._sailCePoint.y)) {
+      s.ce = [this._sailCePoint.x, this._sailCePoint.y];
+      if (Number.isFinite(this._sailCeLocalX)) s.cex = this._sailCeLocalX;
+      if (this.mainsail_force && Number.isFinite(this.mainsail_force.x) && Number.isFinite(this.mainsail_force.y)) {
+        s.sf = [this.mainsail_force.x, this.mainsail_force.y];
+      }
+    }
+    if (this._clrPoint
+        && Number.isFinite(this._clrPoint.x) && Number.isFinite(this._clrPoint.y)) {
+      s.clr = [this._clrPoint.x, this._clrPoint.y];
+      if (Number.isFinite(this._clrLocalX)) s.clrx = this._clrLocalX;
+      if (this._clrForce && Number.isFinite(this._clrForce.x) && Number.isFinite(this._clrForce.y)) {
+        s.clrf = [this._clrForce.x, this._clrForce.y];
+      }
+    }
     return s;
   }
 

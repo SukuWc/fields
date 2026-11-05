@@ -38,10 +38,10 @@ for (const k of KS) {
 	const on = H.scenario1(k);
 	const off = H.scenario1(k, { frames: 150, energy: false }); // freestream check: 150 frames (last 100 averaged) is enough
 	s1[k] = on.tws0 - on.tws1;
-	// Floor 0.1 → 0.08 with dinghy heel: at 15 m/s the boats are overpowered
-	// and heeled, sail force × cos²(heel) weakens the wake (x4 0.13 → 0.10).
+	// Floor 0.1 → 0.08 with dinghy heel (cos² sail); → 0.07 with CE+CLR weather
+	// helm (x4 ~0.079): rudder + offset apply points weaken the coarse wake more.
 	check(`x${k} scenario 1 grids carry one flow; leeward boat sails in less wind`,
-		on.overlapGap < 1e-12 && s1[k] > 0.08 && near(off.tws0, 15, 1e-6) && near(off.tws1, 15, 1e-6) && on.bad === 0 && on.maxU < 0.3,
+		on.overlapGap < 1e-12 && s1[k] > 0.07 && near(off.tws0, 15, 1e-6) && near(off.tws1, 15, 1e-6) && on.bad === 0 && on.maxU < 0.3,
 		`windward ${on.tws0.toFixed(2)} leeward ${on.tws1.toFixed(2)} gap=${on.overlapGap.toExponential(1)}`);
 	const w = H.wakeShadow(k, INWAKE);
 	wk[k] = w.shadow;
