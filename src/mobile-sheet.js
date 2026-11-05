@@ -13,7 +13,8 @@ import { TABLET_QUERY, TOUCH_UI_QUERY } from './layout.js';
 import { setupSheetSwipe } from './sheet-swipe.js';
 
 export const SHEET_QUERY = TOUCH_UI_QUERY;
-export const QUICK_MESSAGES = ['👍 Nice', '⚠ Starboard!', 'Room please', 'GG'];
+// Quick messages now live in the chat shell (chat-panel.js); re-exported.
+export { QUICK_MESSAGES } from './chat-panel.js';
 const STOP_EVENTS = ['pointerdown', 'pointermove', 'pointerup', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'mousemove', 'mouseup', 'wheel', 'click', 'keyup'];
 
 export function setupMobileSheet(doc = document) {
@@ -31,7 +32,6 @@ export function setupMobileSheet(doc = document) {
   const chatUnread = doc.getElementById('chat_unread');
   const badge = btn.querySelector('.st-badge');
   const tabBadge = tabChat && tabChat.querySelector('.st-badge');
-  const quick = doc.getElementById('sheet_quick');
   const q = window.matchMedia ? window.matchMedia(SHEET_QUERY) : null;
   // Tablet (plan M10): the leaderboard stays on the map; the sheet is chat only.
   const tq = window.matchMedia ? window.matchMedia(TABLET_QUERY) : null;
@@ -93,20 +93,6 @@ export function setupMobileSheet(doc = document) {
   });
   if (tabBoard) tabBoard.addEventListener('click', () => setTab('board'));
   if (tabChat) tabChat.addEventListener('click', () => setTab('chat'));
-  if (quick) {
-    for (const text of QUICK_MESSAGES) {
-      const b = doc.createElement('button');
-      b.type = 'button'; b.className = 'sheet-quick-btn'; b.textContent = text;
-      b.addEventListener('click', () => {
-        const input = doc.getElementById('chat_input');
-        const form = doc.getElementById('chat_form');
-        if (!input || !form) return;
-        input.value = text;
-        if (form.requestSubmit) form.requestSubmit(); else form.dispatchEvent(new Event('submit', { cancelable: true }));
-      });
-      quick.appendChild(b);
-    }
-  }
   // Nothing in the sheet reaches the canvas or document-level listeners.
   for (const type of STOP_EVENTS) sheet.addEventListener(type, (e) => e.stopPropagation(), { passive: true });
   if (chatUnread && typeof MutationObserver === 'function') {

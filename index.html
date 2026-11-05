@@ -46,6 +46,11 @@
       .sz-tab:disabled { opacity: 0.4; cursor: not-allowed; }
       .bp-touch .sz-tab { min-height: var(--sz-tap); font-size: var(--sz-fs-lg); }
       .sz-chip { font: 700 var(--sz-fs-2xs)/1 var(--sz-font-ui); padding: 2px 4px; border-radius: var(--sz-r-xs); color: #fff; }
+      .sz-badge {
+        display: inline-block; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: var(--sz-r-lg);
+        font: 700 var(--sz-fs-xs)/16px var(--sz-font-ui); color: var(--sz-navy); background: var(--sz-yellow); text-align: center; vertical-align: middle;
+      }
+      .sz-badge[hidden] { display: none; }
       .sz-btn {
         font-family: var(--sz-font-ui); font-weight: 700; color: #fff;
         background: var(--sz-btn-bg); border: 1px solid var(--sz-btn-border); border-radius: var(--sz-r-xl);
@@ -932,10 +937,14 @@
       }
 
       /* Chat (remote mode only, src/chat-panel.js). */
-      #chat_panel { position: fixed; left: 110px; bottom: 6px; z-index: var(--sz-z-controls); max-width: min(360px, calc(100vw - 16px)); font: 13px/1.35 sans-serif; color: #eee; }
-      #chat_toggle { background: rgba(20, 24, 32, 0.85); color: #eee; border: 1px solid #556; border-radius: var(--sz-r-md); padding: 4px 10px; font: inherit; cursor: pointer; }
-      #chat_unread { display: inline-block; min-width: 1.2em; margin-left: 4px; padding: 0 4px; border-radius: var(--sz-r-lg); background: #e33; color: #fff; font-size: var(--sz-fs-xs); text-align: center; }
-      #chat_body { margin-top: 4px; background: rgba(20, 24, 32, 0.85); border: 1px solid #556; border-radius: var(--sz-r-md); padding: 6px; width: min(340px, calc(100vw - 28px)); }
+      #chat_panel { position: fixed; left: 110px; bottom: 6px; z-index: var(--sz-z-controls); max-width: min(360px, calc(100vw - 16px)); font: var(--sz-fs-md)/1.35 var(--sz-font-ui); color: #fff; }
+      #chat_toggle { padding: 4px 10px; font-size: inherit; cursor: pointer; --sz-btn-bg: var(--sz-navy-90); --sz-btn-border: var(--sz-yellow-35); }
+      #chat_unread { margin-left: 4px; }
+      #chat_body { margin-top: 4px; padding: 6px; width: min(340px, calc(100vw - 28px)); box-sizing: border-box; }
+      /* Quick messages: one shell on every size (chat-panel.js). */
+      .chat-quick { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+      .chat-quick-btn { padding: 2px 9px; font-size: var(--sz-fs-sm); font-weight: 600; cursor: pointer; --sz-btn-bg: rgba(255, 255, 255, 0.12); --sz-btn-border: rgba(255, 255, 255, 0.25); }
+      #chat_send { padding: 0 10px; cursor: pointer; }
       #chat_log { max-height: 30vh; overflow-y: auto; overflow-wrap: anywhere; white-space: pre-wrap; margin-bottom: 4px; }
       #chat_unread[hidden], #chat_body[hidden], #chat_panel[hidden] { display: none; }
       .chat-line { padding: 1px 0; }
@@ -1115,10 +1124,6 @@
         padding: 0; font-size: var(--sz-fs-2xl); color: #fff; background: transparent; border: 0; border-radius: var(--sz-r-lg);
       }
       .bp-touch #sheet_toggle[aria-expanded="true"] { background: rgba(255, 196, 0, 0.25); }
-      .bp-touch .st-badge {
-        min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: var(--sz-r-lg);
-        font: 700 11px/16px var(--sz-font-ui); color: var(--sz-navy); background: var(--sz-yellow); text-align: center;
-      }
       .bp-touch #sheet_toggle .st-badge { position: absolute; top: 3px; right: 1px; }
       /* Rank chip: "3/8" replaces the flag while there is a leaderboard. */
       .bp-touch #sheet_toggle.has-rank { width: 56px; right: calc(46px + env(safe-area-inset-right)); }
@@ -1131,7 +1136,6 @@
       .bp-touch #sheet_toggle .st-rank[hidden] { display: none; }
       .bp-touch #sheet_toggle.has-rank .st-badge { top: 0; right: -2px; }
       .bp-touch body.rank-on #boat_stats { right: calc(104px + env(safe-area-inset-right)); }
-      .bp-touch .st-badge[hidden] { display: none; }
       .bp-touch #boat_stats { right: calc(96px + env(safe-area-inset-right)); }
       .bp-touch #scenario_card, .bp-touch body.touch-on #scenario_card {
         width: calc(100vw - 44px - 44px - 116px - env(safe-area-inset-left) - env(safe-area-inset-right));
@@ -1163,11 +1167,8 @@
       .bp-touch #mobile_sheet #chat_body { order: 1; flex: 1; display: flex; flex-direction: column; min-height: 0; width: auto; margin: 0; background: transparent; border: 0; padding: 0; }
       .bp-touch #mobile_sheet #chat_body[hidden] { display: none; }
       .bp-touch #mobile_sheet #chat_log { flex: 1; max-height: none; font-size: var(--sz-fs-lg); }
-      .bp-touch #mobile_sheet .sheet-quick { order: 2; flex: none; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-      .bp-touch #mobile_sheet .sheet-quick-btn {
-        min-height: var(--sz-tap); padding: 0 14px; font: 600 14px var(--sz-font-ui); color: #fff;
-        background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 22px;
-      }
+      .bp-touch .chat-quick { flex: none; gap: 6px; margin: 8px 0; }
+      .bp-touch .chat-quick-btn { padding: 0 14px; font-size: var(--sz-fs-base); }
       /* Chat input and Send: 44 px tap targets, 16 px text (no iOS zoom on focus). */
       .bp-touch #chat_form { display: flex; gap: 6px; }
       .bp-touch #chat_input { flex: 1; min-width: 0; min-height: var(--sz-tap); box-sizing: border-box; font-size: var(--sz-fs-xl); padding: 0 10px; }
@@ -1250,15 +1251,15 @@
     <div id="hud_right" class="hud-zone" data-zone="B">
     <div id="finish_results" hidden></div>
     <!-- Phones (plan M9, mobile-sheet.js): leaderboard + chat sheet, opened from the top bar. -->
-    <button id="sheet_toggle" type="button" aria-controls="mobile_sheet" aria-expanded="false" aria-label="Leaderboard and chat" title="Leaderboard and chat"><span class="st-flag" aria-hidden="true">🏁</span><span class="st-rank" hidden></span><span class="st-badge" hidden>0</span></button>
+    <button id="sheet_toggle" type="button" aria-controls="mobile_sheet" aria-expanded="false" aria-label="Leaderboard and chat" title="Leaderboard and chat"><span class="st-flag" aria-hidden="true">🏁</span><span class="st-rank" hidden></span><span class="st-badge sz-badge" hidden>0</span></button>
     <section id="mobile_sheet" class="sz-panel" hidden aria-label="Leaderboard and chat" data-tab="board">
       <button type="button" class="sheet-handle" aria-label="Close"><span></span></button>
       <div class="sheet-tabs sz-tabs" role="tablist">
         <button type="button" id="sheet_tab_board" class="sz-tab" role="tab" aria-selected="true">Leaderboard</button>
-        <button type="button" id="sheet_tab_chat" class="sz-tab" role="tab" aria-selected="false" hidden>Chat<span class="st-badge" hidden>0</span></button>
+        <button type="button" id="sheet_tab_chat" class="sz-tab" role="tab" aria-selected="false" hidden>Chat<span class="st-badge sz-badge" hidden>0</span></button>
       </div>
       <div id="sheet_board" class="sheet-pane"><p class="sheet-empty">No leaderboard yet: it shows once the race starts.</p></div>
-      <div id="sheet_chat" class="sheet-pane"><div id="sheet_quick" class="sheet-quick"></div></div>
+      <div id="sheet_chat" class="sheet-pane"></div>
     </section>
     <details id="boat_stats"><summary title="Heading, TWA, AWA and boat speed over the last 60 s (your own boat in a server room, every boat locally). Sampled only while open.">Boat stats</summary><div id="boat_stats_body"></div></details>
     </div>
@@ -1305,12 +1306,13 @@
       <button type="button" class="sz-btn tc-btn tc-tap tc-wide" data-key="88" data-short="Depwr" aria-label="Depower toggle">Depower<small>X</small></button>
     </div>
     <div id="chat_panel" hidden>
-      <button id="chat_toggle" type="button" aria-controls="chat_body" aria-expanded="false">Chat<span id="chat_unread" hidden>0</span></button>
-      <div id="chat_body" hidden>
+      <button id="chat_toggle" class="sz-btn" type="button" aria-controls="chat_body" aria-expanded="false">Chat<span id="chat_unread" class="sz-badge" hidden>0</span></button>
+      <div id="chat_body" class="sz-panel" hidden>
         <div id="chat_log" role="log" aria-live="polite"></div>
+        <div id="chat_quick" class="chat-quick" aria-label="Quick messages"></div>
         <form id="chat_form" autocomplete="off">
           <input id="chat_input" type="text" maxlength="200" placeholder="Message the room" enterkeyhint="send" aria-label="Chat message">
-          <button id="chat_send" type="submit">Send</button>
+          <button id="chat_send" class="sz-btn" type="submit">Send</button>
         </form>
         <div id="chat_status" aria-live="polite"></div>
       </div>
