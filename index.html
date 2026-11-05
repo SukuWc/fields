@@ -7,6 +7,27 @@
     <title>New webpage</title>
   
     <style>
+      /* Design tokens (standardization PRs 1-4). Colours from brand-kit/colors.md:
+         green / red are only for starboard / port (tack chips, right of way). */
+      @font-face { font-family: 'Albert Sans'; font-style: normal; font-weight: 400 800; font-display: swap; src: url('./src/fonts/AlbertSans-latin.woff2') format('woff2'); }
+      @font-face { font-family: 'Saira'; font-style: normal; font-weight: 500 700; font-display: swap; src: url('./src/fonts/Saira-latin.woff2') format('woff2'); }
+      :root {
+        --sz-navy: #0b1747; --sz-navy-85: rgba(11, 23, 71, 0.85); --sz-navy-90: rgba(11, 23, 71, 0.9); --sz-navy-97: rgba(11, 23, 71, 0.97);
+        --sz-yellow: #ffc400; --sz-yellow-60: rgba(255, 196, 0, 0.6); --sz-yellow-50: rgba(255, 196, 0, 0.5); --sz-yellow-35: rgba(255, 196, 0, 0.35);
+        --sz-port: #e1182b; --sz-stbd: #18a15e;
+        --sz-font-ui: 'Albert Sans', system-ui, sans-serif;
+        --sz-font-display: 'Saira', 'Albert Sans', system-ui, sans-serif;
+        --sz-font-mono: ui-monospace, 'Courier New', monospace;
+        --sz-fs-2xs: 10px; --sz-fs-xs: 11px; --sz-fs-sm: 12px; --sz-fs-md: 13px; --sz-fs-base: 14px; --sz-fs-lg: 15px; --sz-fs-xl: 16px; --sz-fs-2xl: 20px;
+        --sz-r-xs: 3px; --sz-r-sm: 4px; --sz-r-md: 6px; --sz-r-lg: 8px; --sz-r-xl: 12px; --sz-r-round: 50%;
+        --sz-sp-1: 4px; --sz-sp-2: 8px; --sz-sp-3: 12px; --sz-sp-4: 16px;
+        --sz-tap: 44px;
+        /* Stacking layers, low to high. */
+        --sz-z-base: 1; --sz-z-canvas-ui: 80; --sz-z-hud: 100; --sz-z-controls: 120; --sz-z-bar: 135;
+        --sz-z-chrome: 150; --sz-z-sheet: 200; --sz-z-drawer: 250; --sz-z-modal: 300; --sz-z-dev: 10000;
+      }
+      /* Layout classes are set on <html> by src/layout.js; hold the first paint until they are. */
+      html:not(.bp-ready) body { visibility: hidden; }
       html, body {
         margin: 0;
         padding: 0;
@@ -31,9 +52,9 @@
         right: 270px;
         width: auto;
         color: white;
-        z-index: 100;
+        z-index: var(--sz-z-hud);
         display:block;
-        font-family: 'Courier New', Courier, monospace;
+        font-family: var(--sz-font-mono);
         pointer-events: none;
       }
       #scenario_card {
@@ -43,14 +64,14 @@
         width: min(340px, calc(100vw - 280px));
         max-height: 42vh;
         overflow: auto;
-        z-index: 120;
+        z-index: var(--sz-z-controls);
         color: #f4f7fb;
-        font-family: 'Courier New', Courier, monospace;
-        font-size: 13px;
+        font-family: var(--sz-font-ui);
+        font-size: var(--sz-fs-md);
         line-height: 1.45;
         background: rgba(12, 18, 28, 0.9);
         border: 1px solid rgba(180, 200, 220, 0.45);
-        border-radius: 6px;
+        border-radius: var(--sz-r-md);
         padding: 8px 10px 10px;
       }
       #scenario_card_head {
@@ -70,11 +91,11 @@
       #scenario_card_toggle {
         flex: none;
         font-family: inherit;
-        font-size: 11px;
+        font-size: var(--sz-fs-xs);
         color: #cde;
         background: transparent;
         border: 1px solid rgba(180, 200, 220, 0.5);
-        border-radius: 3px;
+        border-radius: var(--sz-r-xs);
         padding: 1px 6px;
         cursor: pointer;
       }
@@ -83,25 +104,25 @@
       }
       /* Settings drawer tabs (PR 3): Player | Room, one pane at a time. */
       #settings_tabs {
-        position: sticky; top: 0; z-index: 2; display: flex; gap: 0;
-        background: rgba(11, 23, 71, 0.95); border-bottom: 1px solid rgba(255, 196, 0, 0.6);
+        position: sticky; top: 0; z-index: calc(var(--sz-z-base) + 1); display: flex; gap: 0;
+        background: rgba(11, 23, 71, 0.95); border-bottom: 1px solid var(--sz-yellow-60);
       }
       #settings_tabs .settings-tab {
-        flex: 1; padding: 8px 0; font: 600 13px/1 'Albert Sans', system-ui, sans-serif;
+        flex: 1; padding: 8px 0; font: 600 13px/1 var(--sz-font-ui);
         letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.7);
         background: transparent; border: 0; border-bottom: 3px solid transparent; cursor: pointer;
       }
-      #settings_tabs .settings-tab[aria-selected="true"] { color: #fff; border-bottom-color: #ffc400; }
-      #settings_tabs .settings-tab:focus-visible { outline: 2px solid #ffc400; outline-offset: -2px; }
+      #settings_tabs .settings-tab[aria-selected="true"] { color: #fff; border-bottom-color: var(--sz-yellow); }
+      #settings_tabs .settings-tab:focus-visible { outline: 2px solid var(--sz-yellow); outline-offset: -2px; }
       #settings[data-tab="player"] #admin_panel,
       #settings[data-tab="room"] #player_panel { display: none !important; }
       #settings .settings-pane > .settings-heading { display: none; }
       #settings .pref-group {
-        margin: 8px 6px; padding: 4px 8px 6px; border: 1px solid rgba(255,255,255,0.18); border-radius: 6px;
+        margin: 8px 6px; padding: 4px 8px 6px; border: 1px solid rgba(255,255,255,0.18); border-radius: var(--sz-r-md);
       }
       #settings .pref-group > legend {
-        padding: 0 4px; font: 600 11px/1 'Albert Sans', system-ui, sans-serif;
-        letter-spacing: 0.08em; text-transform: uppercase; color: #ffc400;
+        padding: 0 4px; font: 600 11px/1 var(--sz-font-ui);
+        letter-spacing: 0.08em; text-transform: uppercase; color: var(--sz-yellow);
       }
       #settings .pref-group > .setting-row { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
       #settings .pref-group > .setting-field { display: block; margin: 0 0 4px 22px; opacity: 0.9; }
@@ -110,20 +131,20 @@
       #settings .pref-group > .setting-row[hidden] { display: none; }
       #settings #own_boat_panel { margin: 8px 6px; }
       #settings .pref-footer { display: flex; align-items: center; gap: 8px; margin: 6px; }
-      #settings .prefs-saved { font-size: 11px; opacity: 0.6; transition: color 0.3s; }
-      #settings .prefs-saved.flash { color: #ffc400; opacity: 1; }
+      #settings .prefs-saved { font-size: var(--sz-fs-xs); opacity: 0.6; transition: color 0.3s; }
+      #settings .prefs-saved.flash { color: var(--sz-yellow); opacity: 1; }
       /* Room tab TOML editor (PR 4). Errors are amber, not red (red/green = port/starboard). */
       #settings .room-config-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin: 8px 6px 4px; }
-      #settings .room-config-mode { font: 600 10px/1.6 'Albert Sans', system-ui, sans-serif; letter-spacing: 0.06em; text-transform: uppercase;
-        padding: 0 6px; border-radius: 3px; background: #ffc400; color: #0b1747; }
+      #settings .room-config-mode { font: 600 10px/1.6 var(--sz-font-ui); letter-spacing: 0.06em; text-transform: uppercase;
+        padding: 0 6px; border-radius: var(--sz-r-xs); background: var(--sz-yellow); color: var(--sz-navy); }
       #settings .room-config-mode.ro { background: rgba(255,255,255,0.15); color: #fff; }
       #settings #room_config[readonly] { opacity: 0.8; cursor: default; }
       #settings #room_config.bad { border-color: #ff9f1a !important; box-shadow: 0 0 0 1px #ff9f1a; }
-      #settings .room-config-check { margin: 4px 6px; font-size: 12px; color: rgba(255,255,255,0.7); white-space: pre-wrap; }
+      #settings .room-config-check { margin: 4px 6px; font-size: var(--sz-fs-sm); color: rgba(255,255,255,0.7); white-space: pre-wrap; }
       #settings .room-config-check.bad { color: #ffb347; cursor: pointer; text-decoration: underline dotted; }
       #settings .room-config-reject { margin: 4px 6px; padding: 4px 6px; border-left: 3px solid #ff9f1a; background: rgba(255,159,26,0.12); color: #ffd9a8; white-space: pre-wrap; }
       #settings .room-config-reject[hidden] { display: none !important; }
-      #settings .room-apply:not(:disabled) { background: #ffc400; color: #0b1747; font-weight: 700; border: 1px solid #ffc400; }
+      #settings .room-apply:not(:disabled) { background: var(--sz-yellow); color: var(--sz-navy); font-weight: 700; border: 1px solid var(--sz-yellow); }
       /* Instrument panel, zone C (PR 5): bottom centre on desktop. Neutral and
          brand colours only (red / green are port / starboard). */
       #instrument_panel { display: none; }
@@ -136,9 +157,9 @@
         right: 10px;
         width: 250px;
         color: white;
-        z-index: 100;
+        z-index: var(--sz-z-hud);
         display:block;
-        font-family: 'Courier New', Courier, monospace;
+        font-family: var(--sz-font-ui);
         background-color: rgba(50,50,50,0.5);
         max-height: calc(100% - 20px);
         overflow-y: auto;
@@ -152,7 +173,7 @@
       #spectating_note { color: #ffd98a; }
       #touch_controls.spectating .tc-btn { opacity: 0.35; }
       #touch_controls .tc-spectating { display: none; }
-      #touch_controls.spectating .tc-spectating { display: flex; position: absolute; inset: 0; align-items: center; justify-content: center; text-align: center; padding: 8px; background: rgba(0, 0, 0, 0.55); color: #ffd98a; font: 16px 'Courier New', Courier, monospace; z-index: 1; pointer-events: none; }
+      #touch_controls.spectating .tc-spectating { display: flex; position: absolute; inset: 0; align-items: center; justify-content: center; text-align: center; padding: 8px; background: rgba(0, 0, 0, 0.55); color: #ffd98a; font: 16px var(--sz-font-ui); z-index: var(--sz-z-base); pointer-events: none; }
       #budget_controls, #budget_controls_br { display: none; }
       body:has(#perf:checked) #budget_controls { display: inline-block; }
       body:has(#perf:checked) #budget_controls_br { display: inline; }
@@ -160,14 +181,14 @@
         position: absolute;
         right: 10px;
         top: 60px;
-        z-index: 101;
+        z-index: calc(var(--sz-z-hud) + 1);
         max-height: 75vh;
         overflow-y: auto;
         padding: 3px 8px;
         color: #dde;
         background: rgba(10, 20, 30, 0.75);
-        border-radius: 6px;
-        font: 11px/1.3 monospace;
+        border-radius: var(--sz-r-md);
+        font: 11px/1.3 var(--sz-font-ui);
       }
       #boat_stats summary { cursor: pointer; font-weight: bold; }
       #boat_stats .bs-legend { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 2px 8px; }
@@ -175,9 +196,9 @@
       #boat_stats .bs-chart { display: block; background: rgba(0,0,0,0.25); color: #fff; }
       #boat_stats .bs-tip {
         position: fixed; left: 0; top: 0; transform: translate(-50%, calc(-100% - 6px));
-        pointer-events: none; opacity: 0; z-index: 10000;
+        pointer-events: none; opacity: 0; z-index: var(--sz-z-dev);
         background: rgba(12, 18, 28, 0.92); color: #e8eef6; border: 1px solid rgba(255,255,255,0.18);
-        border-radius: 4px; padding: 3px 7px; font-size: 11px; white-space: nowrap;
+        border-radius: var(--sz-r-sm); padding: 3px 7px; font-size: var(--sz-fs-xs); white-space: nowrap;
         font-variant-numeric: tabular-nums;
       }
       #boat_stats .bs-tip.on { opacity: 1; }
@@ -188,17 +209,17 @@
         position: absolute;
         left: 10px;
         bottom: 34px;
-        z-index: 100;
+        z-index: var(--sz-z-hud);
         margin: 0;
         padding: 4px 8px;
         color: #cfe;
-        font-family: 'Courier New', Courier, monospace;
-        font-size: 12px;
+        font-family: var(--sz-font-mono);
+        font-size: var(--sz-fs-sm);
         line-height: 1.3;
         white-space: pre;
         background: rgba(10, 20, 30, 0.6);
         border: 1px solid rgba(150, 200, 220, 0.35);
-        border-radius: 4px;
+        border-radius: var(--sz-r-sm);
         pointer-events: none;
       }
       #conn_banner {
@@ -206,10 +227,10 @@
         top: 50px;
         left: 50%;
         transform: translateX(-50%);
-        z-index: 200;
+        z-index: var(--sz-z-sheet);
         color: #ffe2a0;
-        font-family: 'Courier New', Courier, monospace;
-        font-size: 15px;
+        font-family: var(--sz-font-ui);
+        font-size: var(--sz-fs-lg);
         background: rgba(60, 20, 10, 0.88);
         border: 1px solid #d96;
         padding: 8px 14px;
@@ -224,9 +245,9 @@
         top: 12px;
         left: 50%;
         transform: translateX(-50%);
-        z-index: 100;
+        z-index: var(--sz-z-hud);
         color: #9ef;
-        font-family: 'Courier New', Courier, monospace;
+        font-family: var(--sz-font-mono);
         background: rgba(10, 30, 40, 0.8);
         border: 1px solid #49c;
         padding: 6px 12px;
@@ -239,12 +260,12 @@
         top: 48px;
         left: 50%;
         transform: translateX(-50%);
-        z-index: 100;
+        z-index: var(--sz-z-hud);
         color: #eef6ff;
-        font-family: 'Courier New', Courier, monospace;
+        font-family: var(--sz-font-display);
         background: rgba(10, 20, 30, 0.78);
         border: 1px solid rgba(150, 200, 220, 0.45);
-        border-radius: 6px;
+        border-radius: var(--sz-r-md);
         padding: 6px 14px;
         pointer-events: none;
         text-align: center;
@@ -256,13 +277,13 @@
         position: absolute;
         right: 12px;
         bottom: 12px;
-        z-index: 100;
+        z-index: var(--sz-z-hud);
         color: #eef6ff;
-        font-family: 'Courier New', Courier, monospace;
-        font-size: 13px;
+        font-family: var(--sz-font-ui);
+        font-size: var(--sz-fs-md);
         background: rgba(10, 20, 30, 0.78);
         border: 1px solid rgba(150, 200, 220, 0.45);
-        border-radius: 6px;
+        border-radius: var(--sz-r-md);
         padding: 6px 10px;
         pointer-events: none;
         white-space: nowrap;
@@ -275,11 +296,11 @@
       #finish_results { max-height: 40vh; overflow-y: auto; }
       #start_hud.flash { background: rgba(255, 210, 122, 0.55); border-color: #ffd27a; }
       #start_hud .start-clock { font-size: 34px; font-weight: 700; line-height: 1.1; }
-      #start_hud .start-signal { font-size: 14px; margin-top: 2px; }
-      #start_hud .start-boat { font-size: 13px; margin-top: 2px; color: #c9d1da; }
+      #start_hud .start-signal { font-size: var(--sz-fs-base); margin-top: 2px; }
+      #start_hud .start-boat { font-size: var(--sz-fs-md); margin-top: 2px; color: #c9d1da; }
       #start_hud .start-boat.ocs { color: #ff8a80; font-weight: 700; }
       #start_hud .start-boat.ok { color: #8dffb0; }
-      #start_hud .flag { display: inline-block; width: 18px; height: 12px; vertical-align: -1px; margin-right: 3px; border: 1px solid #fff; font-size: 10px; line-height: 12px; font-weight: 700; }
+      #start_hud .flag { display: inline-block; width: 18px; height: 12px; vertical-align: -1px; margin-right: 3px; border: 1px solid #fff; font-size: var(--sz-fs-2xs); line-height: 12px; font-weight: 700; }
       #start_hud .flag-class { background: #ff8c00; color: #000; }
       #start_hud .flag-p { background: linear-gradient(#fff, #fff) center / 8px 5px no-repeat, #1f4fbf; }
       #start_hud .flag-x { background: linear-gradient(45deg, transparent 42%, #1f4fbf 42% 58%, transparent 58%), linear-gradient(-45deg, transparent 42%, #1f4fbf 42% 58%, transparent 58%), #fff; }
@@ -291,7 +312,7 @@
         position: absolute;
         inset: 0;
         pointer-events: none;
-        z-index: 80;
+        z-index: var(--sz-z-canvas-ui);
         overflow: hidden;
       }
       .rule-label {
@@ -300,10 +321,10 @@
         color: #fff;
         background: rgba(0, 0, 0, 0.72);
         border: 1px solid rgba(255, 255, 255, 0.35);
-        border-radius: 3px;
+        border-radius: var(--sz-r-xs);
         padding: 2px 7px;
-        font-family: 'Courier New', Courier, monospace;
-        font-size: 14px;
+        font-family: var(--sz-font-ui);
+        font-size: var(--sz-fs-base);
         font-weight: 700;
         letter-spacing: 0.03em;
         white-space: nowrap;
@@ -320,7 +341,7 @@
         width: 100%;
         min-width: 168px;
         background: rgba(255, 255, 255, 0.22);
-        border-radius: 4px;
+        border-radius: var(--sz-r-sm);
         overflow: hidden;
       }
       .rule15-fill {
@@ -348,8 +369,8 @@
         bottom: 10px;
         left: 10px;
         color: white;
-        font-family: 'Courier New', monospace;
-        z-index: 100;
+        font-family: var(--sz-font-mono);
+        z-index: var(--sz-z-hud);
       }
       /* Boat 1 touch controls: the bottom 35% of the screen; the canvas keeps
          the rest. --touch-panel-h is a percentage of the viewport height. */
@@ -362,7 +383,7 @@
         right: 0;
         bottom: 0;
         height: var(--touch-panel-h);
-        z-index: 150;
+        z-index: var(--sz-z-chrome);
         box-sizing: border-box;
         display: grid;
         grid-template-columns: 1.25fr 1fr 1fr 1.25fr;
@@ -390,21 +411,21 @@
         min-width: 48px;
         min-height: 48px;
         padding: 0;
-        font-family: 'Courier New', Courier, monospace;
+        font-family: var(--sz-font-ui);
         /* "Autopilot" has to fit a ~80px-wide button on a phone. */
         font-size: clamp(13px, 3.5vw, 17px);
         font-weight: 700;
         color: #e8f0f8;
         background: #223246;
         border: 1px solid rgba(160, 200, 230, 0.45);
-        border-radius: 12px;
+        border-radius: var(--sz-r-xl);
         touch-action: none;
         user-select: none;
         -webkit-user-select: none;
         -webkit-touch-callout: none;
       }
       .tc-btn small {
-        font-size: 11px;
+        font-size: var(--sz-fs-xs);
         font-weight: 400;
         opacity: 0.65;
       }
@@ -420,7 +441,7 @@
         font-size: 40px;
       }
       .tc-steer small {
-        font-size: 13px;
+        font-size: var(--sz-fs-md);
       }
       .tc-steer:first-child {
         grid-column: 1;
@@ -436,35 +457,35 @@
       .tc-wide { grid-column: 2 / span 2; }
       /* Keyboard hints (space, enter, Q, E, X, arrows) mean nothing on a
          touch-only device; keep the "steer" label on the big buttons. */
-      @media (hover: none) and (pointer: coarse) {
-        .tc-btn:not(.tc-steer) small { display: none; }
-      }
+      /* bp-coarse */
+      .bp-coarse .tc-btn:not(.tc-steer) small { display: none; }
+
       /* Landscape phone: 35% of a ~400px-tall screen fits two rows of 44px+
          buttons, so the seven middle buttons go 4 + 3 (Depower spans two). */
-      @media (orientation: landscape) and (max-height: 500px) {
-        #touch_controls {
-          grid-template-columns: 1.25fr 1fr 1fr 1fr 1fr 1.25fr;
-          grid-template-rows: repeat(2, 1fr);
-          gap: 5px;
-          padding-top: 5px;
-          padding-bottom: calc(5px + env(safe-area-inset-bottom));
-        }
-        .tc-btn {
-          font-size: 14px;
-        }
-        .tc-steer {
-          font-size: 28px;
-        }
-        .tc-steer, .tc-steer:first-child {
-          grid-row: 1 / span 2;
-        }
-        .tc-right {
-          grid-column: 6;
-          grid-row: 1 / span 2;
-        }
-        /* 4 x 2 middle: Depower fits as the eighth cell, spanning two. */
-        .tc-wide { grid-column: 4 / span 2; }
+      /* bp-short-landscape */
+      .bp-short-landscape #touch_controls {
+        grid-template-columns: 1.25fr 1fr 1fr 1fr 1fr 1.25fr;
+        grid-template-rows: repeat(2, 1fr);
+        gap: 5px;
+        padding-top: 5px;
+        padding-bottom: calc(5px + env(safe-area-inset-bottom));
       }
+      .bp-short-landscape .tc-btn {
+        font-size: var(--sz-fs-base);
+      }
+      .bp-short-landscape .tc-steer {
+        font-size: 28px;
+      }
+      .bp-short-landscape .tc-steer, .bp-short-landscape .tc-steer:first-child {
+        grid-row: 1 / span 2;
+      }
+      .bp-short-landscape .tc-right {
+        grid-column: 6;
+        grid-row: 1 / span 2;
+      }
+      /* 4 x 2 middle: Depower fits as the eighth cell, spanning two. */
+      .bp-short-landscape .tc-wide { grid-column: 4 / span 2; }
+
       /* Overlay touch layout (plan M6, setting Controls > Layout): the map
          keeps the full height; see-through steer zones at the sides, Head up /
          Bear away pills and a row of round buttons (Tack in brand yellow) at
@@ -477,7 +498,7 @@
       }
       body.tc-overlay .tc-btn {
         position: absolute; pointer-events: auto; box-sizing: border-box;
-        font-family: 'Albert Sans', system-ui, sans-serif; color: #fff;
+        font-family: var(--sz-font-ui); color: #fff;
         background: rgba(18, 28, 48, 0.55); border: 1px solid rgba(255, 255, 255, 0.35);
         box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
       }
@@ -488,21 +509,21 @@
         left: calc(10px + env(safe-area-inset-left)); border-radius: 18px; font-size: 32px;
         background: rgba(18, 28, 48, 0.22); border-color: rgba(255, 255, 255, 0.28);
       }
-      body.tc-overlay .tc-steer small { display: block; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.9; }
+      body.tc-overlay .tc-steer small { display: block; font-size: var(--sz-fs-xs); letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.9; }
       body.tc-overlay .tc-steer.tc-right { left: auto; right: calc(10px + env(safe-area-inset-right)); }
       body.tc-overlay .tc-btn[data-key="38"], body.tc-overlay .tc-btn[data-key="40"] {
-        bottom: calc(86px + env(safe-area-inset-bottom)); width: 116px; height: 44px; min-height: 44px; border-radius: 22px; font-size: 14px;
+        bottom: calc(86px + env(safe-area-inset-bottom)); width: 116px; height: var(--sz-tap); min-height: var(--sz-tap); border-radius: 22px; font-size: var(--sz-fs-base);
       }
       body.tc-overlay .tc-btn[data-key="38"] { left: calc(50% - 122px); }
       body.tc-overlay .tc-btn[data-key="40"] { left: calc(50% + 6px); }
       body.tc-overlay .tc-btn[data-short] {
-        bottom: calc(14px + env(safe-area-inset-bottom)); width: 58px; height: 58px; border-radius: 50%; font-size: 0;
+        bottom: calc(14px + env(safe-area-inset-bottom)); width: 58px; height: 58px; border-radius: var(--sz-r-round); font-size: 0;
         background: rgba(18, 28, 48, 0.7);
       }
-      body.tc-overlay .tc-btn[data-short]::after { content: attr(data-short); font-size: 13px; font-weight: 700; white-space: nowrap; }
+      body.tc-overlay .tc-btn[data-short]::after { content: attr(data-short); font-size: var(--sz-fs-md); font-weight: 700; white-space: nowrap; }
       body.tc-overlay .tc-btn[data-key="81"] { left: calc(50% - 157px); }
-      body.tc-overlay .tc-btn[data-key="13"] { left: calc(50% - 93px); background: #ffc400; border-color: #ffc400; }
-      body.tc-overlay .tc-btn[data-key="13"]::after { color: #0b1747; }
+      body.tc-overlay .tc-btn[data-key="13"] { left: calc(50% - 93px); background: var(--sz-yellow); border-color: var(--sz-yellow); }
+      body.tc-overlay .tc-btn[data-key="13"]::after { color: var(--sz-navy); }
       body.tc-overlay .tc-btn[data-key="32"] { left: calc(50% - 29px); }
       body.tc-overlay .tc-btn[data-key="88"] { left: calc(50% + 35px); }
       body.tc-overlay .tc-btn[data-key="69"] { left: calc(50% + 99px); }
@@ -515,47 +536,47 @@
       /* Phones, either layout: the open chat sheet covers the leaderboard, so it
          steps aside too; in landscape the log is shorter so the sheet stays
          under the top bar. */
-      @media (max-width: 768px), (pointer: coarse) and (hover: none) {
-        body.touch-on:has(#chat_body:not([hidden])) #finish_results { visibility: hidden; }
-      }
-      @media (orientation: landscape) and (max-height: 500px) {
-        body.touch-on #chat_log { max-height: 18vh; }
-      }
-      @media (orientation: landscape) and (max-height: 500px) {
-        body.tc-overlay { --touch-panel-h: calc(130px + env(safe-area-inset-bottom)); }
-        body.tc-overlay .tc-steer { top: calc(var(--m-top, 0px) + 10px); bottom: calc(12px + env(safe-area-inset-bottom)); height: auto; width: min(13vw, 120px); }
-        body.tc-overlay .tc-btn[data-key="38"], body.tc-overlay .tc-btn[data-key="40"] { bottom: calc(80px + env(safe-area-inset-bottom)); }
-        /* Bottom HUD items sit between the edge steer zones. */
-        body.touch-on.tc-overlay #finish_results { right: calc(min(13vw, 120px) + 20px + env(safe-area-inset-right)); }
-        body.touch-on.tc-overlay #chat_panel { left: calc(min(13vw, 120px) + 20px + env(safe-area-inset-left)); }
-      }
+      /* bp-touch */
+      .bp-touch body.touch-on:has(#chat_body:not([hidden])) #finish_results { visibility: hidden; }
+
+      /* bp-short-landscape */
+      .bp-short-landscape body.touch-on #chat_log { max-height: 18vh; }
+
+      /* bp-short-landscape */
+      .bp-short-landscape body.tc-overlay { --touch-panel-h: calc(130px + env(safe-area-inset-bottom)); }
+      .bp-short-landscape body.tc-overlay .tc-steer { top: calc(var(--m-top, 0px) + 10px); bottom: calc(12px + env(safe-area-inset-bottom)); height: auto; width: min(13vw, 120px); }
+      .bp-short-landscape body.tc-overlay .tc-btn[data-key="38"], .bp-short-landscape body.tc-overlay .tc-btn[data-key="40"] { bottom: calc(80px + env(safe-area-inset-bottom)); }
+      /* Bottom HUD items sit between the edge steer zones. */
+      .bp-short-landscape body.touch-on.tc-overlay #finish_results { right: calc(min(13vw, 120px) + 20px + env(safe-area-inset-right)); }
+      .bp-short-landscape body.touch-on.tc-overlay #chat_panel { left: calc(min(13vw, 120px) + 20px + env(safe-area-inset-left)); }
+
       /* Landscape layout (plan M7, overlay): one top row (M4), full-height
          steer zones at the edges, Head up / Bear away stacked next to the
          left zone, and a vertical action stack (Tack, Auto, Depwr) next to
          the right zone with the two 360s beside it, so the middle of the map
          stays clear. */
-      @media (orientation: landscape) and (max-height: 500px) {
-        body.tc-overlay { --tc-zone-w: min(13vw, 120px); --tc-in: calc(var(--tc-zone-w) + 20px); }
-        body.tc-overlay .tc-btn[data-key="38"], body.tc-overlay .tc-btn[data-key="40"] { left: calc(var(--tc-in) + env(safe-area-inset-left)); width: 112px; }
-        body.tc-overlay .tc-btn[data-key="38"] { bottom: calc(66px + env(safe-area-inset-bottom)); }
-        body.tc-overlay .tc-btn[data-key="40"] { bottom: calc(14px + env(safe-area-inset-bottom)); }
-        body.tc-overlay .tc-btn[data-short] { left: auto; }
-        body.tc-overlay .tc-btn[data-key="13"] { right: calc(var(--tc-in) + env(safe-area-inset-right)); bottom: calc(146px + env(safe-area-inset-bottom)); }
-        body.tc-overlay .tc-btn[data-key="32"] { right: calc(var(--tc-in) + env(safe-area-inset-right)); bottom: calc(80px + env(safe-area-inset-bottom)); }
-        body.tc-overlay .tc-btn[data-key="88"] { right: calc(var(--tc-in) + env(safe-area-inset-right)); bottom: calc(14px + env(safe-area-inset-bottom)); }
-        body.tc-overlay .tc-btn[data-key="81"] { right: calc(var(--tc-in) + 66px + env(safe-area-inset-right)); bottom: calc(80px + env(safe-area-inset-bottom)); }
-        body.tc-overlay .tc-btn[data-key="69"] { right: calc(var(--tc-in) + 66px + env(safe-area-inset-right)); bottom: calc(14px + env(safe-area-inset-bottom)); }
-        body.touch-on.tc-overlay #finish_results { right: calc(var(--tc-in) + 140px + env(safe-area-inset-right)); bottom: calc(14px + env(safe-area-inset-bottom)); }
-        body.touch-on.tc-overlay #chat_panel { left: calc(var(--tc-in) + 122px + env(safe-area-inset-left)); bottom: calc(14px + env(safe-area-inset-bottom)); }
-        body.touch-on.tc-overlay #chat_body { width: min(300px, calc(100vw - 2 * var(--tc-in) - 270px)); box-sizing: border-box; }
-      }
+      /* bp-short-landscape */
+      .bp-short-landscape body.tc-overlay { --tc-zone-w: min(13vw, 120px); --tc-in: calc(var(--tc-zone-w) + 20px); }
+      .bp-short-landscape body.tc-overlay .tc-btn[data-key="38"], .bp-short-landscape body.tc-overlay .tc-btn[data-key="40"] { left: calc(var(--tc-in) + env(safe-area-inset-left)); width: 112px; }
+      .bp-short-landscape body.tc-overlay .tc-btn[data-key="38"] { bottom: calc(66px + env(safe-area-inset-bottom)); }
+      .bp-short-landscape body.tc-overlay .tc-btn[data-key="40"] { bottom: calc(14px + env(safe-area-inset-bottom)); }
+      .bp-short-landscape body.tc-overlay .tc-btn[data-short] { left: auto; }
+      .bp-short-landscape body.tc-overlay .tc-btn[data-key="13"] { right: calc(var(--tc-in) + env(safe-area-inset-right)); bottom: calc(146px + env(safe-area-inset-bottom)); }
+      .bp-short-landscape body.tc-overlay .tc-btn[data-key="32"] { right: calc(var(--tc-in) + env(safe-area-inset-right)); bottom: calc(80px + env(safe-area-inset-bottom)); }
+      .bp-short-landscape body.tc-overlay .tc-btn[data-key="88"] { right: calc(var(--tc-in) + env(safe-area-inset-right)); bottom: calc(14px + env(safe-area-inset-bottom)); }
+      .bp-short-landscape body.tc-overlay .tc-btn[data-key="81"] { right: calc(var(--tc-in) + 66px + env(safe-area-inset-right)); bottom: calc(80px + env(safe-area-inset-bottom)); }
+      .bp-short-landscape body.tc-overlay .tc-btn[data-key="69"] { right: calc(var(--tc-in) + 66px + env(safe-area-inset-right)); bottom: calc(14px + env(safe-area-inset-bottom)); }
+      .bp-short-landscape body.touch-on.tc-overlay #finish_results { right: calc(var(--tc-in) + 140px + env(safe-area-inset-right)); bottom: calc(14px + env(safe-area-inset-bottom)); }
+      .bp-short-landscape body.touch-on.tc-overlay #chat_panel { left: calc(var(--tc-in) + 122px + env(safe-area-inset-left)); bottom: calc(14px + env(safe-area-inset-bottom)); }
+      .bp-short-landscape body.touch-on.tc-overlay #chat_body { width: min(300px, calc(100vw - 2 * var(--tc-in) - 270px)); box-sizing: border-box; }
+
       /* Everything anchored to the bottom moves up into the canvas area. */
       body.touch-on #sim_canvas {
         height: calc(100% - var(--touch-panel-h));
       }
       body.touch-on #finish_results {
         bottom: calc(var(--touch-panel-h) + 10px);
-        z-index: 160;
+        z-index: calc(var(--sz-z-chrome) + 10);
       }
       body.touch-on #fps {
         bottom: calc(var(--touch-panel-h) + 10px);
@@ -589,636 +610,629 @@
       .hud-placeholder { display: none; }
       /* Zone D: minimap (minimap.js), desktop only like the instruments. */
       #minimap { display: none; }
-      @media (min-width: 769px) and (hover: hover), (min-width: 769px) and (pointer: fine), (pointer: coarse) and (hover: none) and (min-width: 769px) and (min-height: 600px) {
-        #minimap {
-          display: block; position: fixed; left: 10px; bottom: 10px; z-index: 110;
-          width: 320px; height: 256px; border-radius: 8px; overflow: hidden;
-          background: rgba(11, 23, 71, 0.85); border: 1px solid rgba(255, 196, 0, 0.35);
-        }
-        #minimap canvas { display: block; width: 320px; height: 256px; cursor: crosshair; touch-action: none; }
-        #minimap .mm-follow {
-          position: absolute; left: 6px; top: 6px; font: 11px 'Albert Sans', system-ui, sans-serif;
-          color: #fff; background: rgba(11,23,71,0.85); border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 1px 6px; cursor: pointer;
-        }
-        #minimap .mm-follow[aria-pressed="true"] { background: #ffc400; color: #0b1747; border-color: #ffc400; }
-        /* chat sits above the minimap (plan zone G) */
-        body #chat_panel { left: 10px; bottom: 276px; }
+      /* bp-wide */
+      .bp-wide #minimap {
+        display: block; position: fixed; left: 10px; bottom: 10px; z-index: calc(var(--sz-z-hud) + 10);
+        width: 320px; height: 256px; border-radius: var(--sz-r-lg); overflow: hidden;
+        background: var(--sz-navy-85); border: 1px solid var(--sz-yellow-35);
       }
+      .bp-wide #minimap canvas { display: block; width: 320px; height: 256px; cursor: crosshair; touch-action: none; }
+      .bp-wide #minimap .mm-follow {
+        position: absolute; left: 6px; top: 6px; font: 11px var(--sz-font-ui);
+        color: #fff; background: var(--sz-navy-85); border: 1px solid rgba(255,255,255,0.3); border-radius: var(--sz-r-sm); padding: 1px 6px; cursor: pointer;
+      }
+      .bp-wide #minimap .mm-follow[aria-pressed="true"] { background: var(--sz-yellow); color: var(--sz-navy); border-color: var(--sz-yellow); }
+      /* chat sits above the minimap (plan zone G) */
+      .bp-wide body #chat_panel { left: 10px; bottom: 276px; }
+
       /* Zone E: rule-call toasts (rule-toasts.js). Brand yellow = warning;
          green / red only on the port / starboard tack chips. */
       .rule-toasts {
-        position: fixed; z-index: 115; pointer-events: none;
+        position: fixed; z-index: calc(var(--sz-z-hud) + 15); pointer-events: none;
         top: 64px; left: 50%; transform: translateX(-50%); width: min(92vw, 340px);
         display: flex; flex-direction: column; gap: 6px;
-        font-family: 'Albert Sans', system-ui, sans-serif;
+        font-family: var(--sz-font-ui);
       }
       .rule-toast {
-        color: #fff; background: rgba(11, 23, 71, 0.9); border: 1px solid rgba(255, 196, 0, 0.55);
-        border-left: 4px solid #ffc400; border-radius: 6px; padding: 5px 9px; font-size: 12px;
+        color: #fff; background: var(--sz-navy-90); border: 1px solid rgba(255, 196, 0, 0.55);
+        border-left: 4px solid var(--sz-yellow); border-radius: var(--sz-r-md); padding: 5px 9px; font-size: var(--sz-fs-sm);
         box-shadow: 0 2px 8px rgba(0,0,0,0.35); animation: rt-in 0.18s ease-out;
       }
       .rule-toast .rt-head { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
-      .rule-toast .rt-ref { color: #ffc400; letter-spacing: 0.02em; }
-      .rule-toast .rt-boats { opacity: 0.8; font-size: 11px; margin-top: 1px; }
-      .rule-toast.own { background: #0b1747; border: 2px solid #ffc400; border-left-width: 8px; font-size: 14px; padding: 7px 10px; box-shadow: 0 0 0 2px rgba(11,23,71,0.6), 0 3px 12px rgba(0,0,0,0.5); }
-      .rule-toast.own .rt-boats { opacity: 1; font-weight: 700; color: #ffc400; font-size: 12px; }
+      .rule-toast .rt-ref { color: var(--sz-yellow); letter-spacing: 0.02em; }
+      .rule-toast .rt-boats { opacity: 0.8; font-size: var(--sz-fs-xs); margin-top: 1px; }
+      .rule-toast.own { background: var(--sz-navy); border: 2px solid var(--sz-yellow); border-left-width: 8px; font-size: var(--sz-fs-base); padding: 7px 10px; box-shadow: 0 0 0 2px rgba(11,23,71,0.6), 0 3px 12px rgba(0,0,0,0.5); }
+      .rule-toast.own .rt-boats { opacity: 1; font-weight: 700; color: var(--sz-yellow); font-size: var(--sz-fs-sm); }
       .rule-toast.vs-own:not(.own) { border-left-width: 6px; }
       .rule-toast.cleared { border-color: rgba(255,255,255,0.35); border-left-color: #fff; }
       .rule-toast.cleared .rt-ref { color: #fff; }
-      .rule-toast .tack-chip { font: 700 10px/1 system-ui, sans-serif; padding: 2px 4px; border-radius: 3px; color: #fff; }
-      .rule-toast .tack-chip.port { background: #d32f2f; }
-      .rule-toast .tack-chip.stbd { background: #2e7d32; }
+      .rule-toast .tack-chip { font: 700 10px/1 system-ui, sans-serif; padding: 2px 4px; border-radius: var(--sz-r-xs); color: #fff; }
+      .rule-toast .tack-chip.port { background: var(--sz-port); }
+      .rule-toast .tack-chip.stbd { background: var(--sz-stbd); }
       @keyframes rt-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-      @media (min-width: 769px) and (hover: hover), (min-width: 769px) and (pointer: fine) {
-        /* right side, above the instrument panel's height, left of the drawer */
-        .rule-toasts { top: auto; left: auto; transform: none; right: var(--hud-right); bottom: 170px; width: 320px; flex-direction: column-reverse; }
+      /* bp-desktop */
+      /* right side, above the instrument panel's height, left of the drawer */
+      .bp-desktop .rule-toasts { top: auto; left: auto; transform: none; right: var(--hud-right); bottom: 170px; width: 320px; flex-direction: column-reverse; }
+
+      /* bp-desktop */
+      .bp-desktop body { --hud-right: 64px; --drawer-w: 280px; }
+      .bp-desktop body.settings-open { --hud-right: calc(var(--drawer-w) + 74px); }
+      .bp-desktop #hud_top, .bp-desktop #hud_right {
+        display: flex; flex-direction: column; gap: 6px;
+        position: fixed; top: 10px; z-index: calc(var(--sz-z-hud) + 10);
+        pointer-events: none;
       }
-      @media (min-width: 769px) and (hover: hover), (min-width: 769px) and (pointer: fine) {
-        body { --hud-right: 64px; --drawer-w: 280px; }
-        body.settings-open { --hud-right: calc(var(--drawer-w) + 74px); }
-        #hud_top, #hud_right {
-          display: flex; flex-direction: column; gap: 6px;
-          position: fixed; top: 10px; z-index: 110;
-          pointer-events: none;
-        }
-        #hud_top > *, #hud_right > * { pointer-events: auto; }
-        #hud_top {
-          left: 360px; right: calc(var(--hud-right) + 270px);
-          align-items: center;
-        }
-        #hud_right {
-          right: var(--hud-right); width: 260px;
-          align-items: flex-end;
-          max-height: calc(100% - 20px); overflow-y: auto;
-        }
-        #hud_top > #devmode_banner, #hud_top > #conn_banner, #hud_top > #start_hud,
-        #hud_right > #finish_results, #hud_right > #boat_stats {
-          position: static; transform: none; top: auto; left: auto; right: auto; bottom: auto;
-          max-width: 100%;
-        }
-        #hud_right > #finish_results { align-self: stretch; }
-        /* Settings: a right-edge overlay drawer behind the gear button. */
-        #settings_toggle {
-          display: flex; align-items: center; justify-content: center;
-          position: fixed; top: 10px; right: 10px; z-index: 300;
-          width: 44px; height: 44px; padding: 0;
-          font-size: 22px; line-height: 1; color: #fff;
-          background: rgba(11, 23, 71, 0.85);
-          border: 1px solid rgba(255, 196, 0, 0.6); border-radius: 8px; cursor: pointer;
-        }
-        body.settings-open #settings_toggle { right: calc(var(--drawer-w) + 20px); }
-        #settings_backdrop { display: none !important; }
-        #settings {
-          top: 10px; right: 10px; bottom: auto; width: var(--drawer-w);
-          max-height: calc(100% - 20px); z-index: 290;
-          display: none;
-          background: rgba(11, 23, 71, 0.9); border: 1px solid rgba(255, 196, 0, 0.35); border-radius: 8px;
-          font-family: 'Albert Sans', system-ui, sans-serif; font-size: 13px;
-        }
-        body.settings-open #settings { display: block; }
+      .bp-desktop #hud_top > *, .bp-desktop #hud_right > * { pointer-events: auto; }
+      .bp-desktop #hud_top {
+        left: 360px; right: calc(var(--hud-right) + 270px);
+        align-items: center;
       }
-      @media (min-width: 769px) and (hover: hover), (min-width: 769px) and (pointer: fine), (pointer: coarse) and (hover: none) and (min-width: 769px) and (min-height: 600px) {
-        #instrument_panel {
-          display: block; position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%);
-          z-index: 110; width: min(660px, calc(100vw - 2 * var(--drawer-w) - 60px));
-          color: #fff; background: rgba(11, 23, 71, 0.85); border: 1px solid rgba(255, 196, 0, 0.35);
-          border-radius: 8px; padding: 6px 8px 8px; font-family: 'Albert Sans', system-ui, sans-serif;
-        }
-        body:not(.settings-open) #instrument_panel { width: min(660px, calc(100vw - 480px)); }
-        #instrument_panel .instr-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
-        #instrument_panel .instr-modes { display: inline-flex; border: 1px solid rgba(255,255,255,0.25); border-radius: 5px; overflow: hidden; }
-        #instrument_panel .instr-mode {
-          font: 600 11px/1 'Albert Sans', system-ui, sans-serif; letter-spacing: 0.06em; text-transform: uppercase;
-          padding: 5px 10px; color: rgba(255,255,255,0.75); background: transparent; border: 0; cursor: pointer;
-        }
-        #instrument_panel .instr-mode + .instr-mode { border-left: 1px solid rgba(255,255,255,0.25); }
-        #instrument_panel .instr-mode[aria-pressed="true"] { background: #ffc400; color: #0b1747; }
-        #instrument_panel .instr-mode:disabled { opacity: 0.4; cursor: not-allowed; }
-        #instrument_panel .instr-note { font-size: 11px; opacity: 0.7; }
-        #instrument_panel .instr-tiles { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
-        #instrument_panel .instr-tile {
-          display: flex; flex-direction: column; align-items: center; padding: 3px 2px;
-          background: rgba(255,255,255,0.06); border-radius: 4px; min-width: 0;
-        }
-        #instrument_panel .instr-label { font-size: 10px; letter-spacing: 0.08em; color: #ffc400; }
-        #instrument_panel .instr-value { font: 700 20px/1.15 'Albert Sans', system-ui, sans-serif; font-variant-numeric: tabular-nums; }
-        #instrument_panel .instr-unit { font-size: 10px; opacity: 0.65; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-        #instrument_panel .instr-tile.missing .instr-value { opacity: 0.45; }
-        #instrument_panel .instr-charts, #instrument_panel .instr-window-wrap { display: none; }
-        #instrument_panel[data-mode="chart"] .instr-tiles { display: none; }
-        #instrument_panel[data-mode="chart"] .instr-charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 8px; }
-        #instrument_panel[data-mode="chart"] .instr-window-wrap { display: inline-flex; gap: 4px; align-items: center; font-size: 11px; }
-        #instrument_panel .instr-window { font: inherit; background: #0b1747; color: #fff; border: 1px solid rgba(255,255,255,0.25); border-radius: 4px; }
-        #instrument_panel .instr-strip { background: rgba(255,255,255,0.06); border-radius: 4px; padding: 2px 4px; min-width: 0; }
-        #instrument_panel .instr-strip-label { display: flex; gap: 6px; align-items: baseline; font-size: 11px; font-variant-numeric: tabular-nums; }
-        #instrument_panel .instr-strip-range { margin-left: auto; opacity: 0.55; font-size: 10px; white-space: nowrap; }
-        #instrument_panel .instr-strip-svg { display: block; width: 100%; height: 30px; }
+      .bp-desktop #hud_right {
+        right: var(--hud-right); width: 260px;
+        align-items: flex-end;
+        max-height: calc(100% - 20px); overflow-y: auto;
       }
-      @media (max-width: 768px), (pointer: coarse) and (hover: none) {
-        #settings_toggle {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          position: fixed;
-          top: calc(10px + env(safe-area-inset-top));
-          right: calc(10px + env(safe-area-inset-right));
-          z-index: 300;
-          width: 48px;
-          height: 48px;
-          padding: 0;
-          font-size: 26px;
-          line-height: 1;
-          color: #fff;
-          background: rgba(12, 18, 28, 0.85);
-          border: 1px solid rgba(180, 200, 220, 0.5);
-          border-radius: 8px;
-          cursor: pointer;
-          touch-action: manipulation;
-          -webkit-tap-highlight-color: transparent;
-        }
-        #settings_backdrop {
-          position: fixed;
-          inset: 0;
-          z-index: 250;
-          background: rgba(0, 0, 0, 0.45);
-          touch-action: none;
-        }
-        body.settings-open #settings_backdrop {
-          display: block;
-        }
-        /* The desktop #info sits between the scenario card and the settings
-           panel (left 368px, right 270px), which is off screen on a phone. */
-        #info {
-          top: auto;
-          left: calc(10px + env(safe-area-inset-left));
-          right: calc(68px + env(safe-area-inset-right));
-          bottom: calc(34px + env(safe-area-inset-bottom));
-          font-size: 12px;
-        }
-        /* #info now owns the bottom-left corner, so the perf overlay moves
-           to the bottom-right and #info narrows while the overlay is on. */
-        #perf_overlay_hud {
-          left: auto;
-          right: calc(10px + env(safe-area-inset-right));
-          bottom: calc(34px + env(safe-area-inset-bottom));
-          font-size: 11px;
-        }
-        body:has(#perf:checked) #info {
-          right: calc(180px + env(safe-area-inset-right));
-        }
-        /* Touch controls on: the readout moves into the canvas area, in two
-           short columns so it stays clear of the scenario card. */
-        body.touch-on #info {
-          bottom: calc(var(--touch-panel-h) + 34px);
-          font-size: 10px;
-          line-height: 1.2;
-          column-count: 2;
-          column-gap: 10px;
-        }
-        /* Leaderboard on a phone with touch controls: the desktop
-           bottom-right spot is under the touch panel, so it sits just above
-           the panel on the right, compact, and the readout moves up. */
-        body.touch-on #finish_results {
-          right: calc(8px + env(safe-area-inset-right));
-          bottom: calc(var(--touch-panel-h) + 6px);
-          z-index: 160;
-          font-size: 10px;
-          line-height: 1.25;
-          padding: 3px 6px;
-          max-height: 22vh;
-        }
-        body.touch-on:has(#finish_results:not([hidden])) #info {
-          bottom: calc(var(--touch-panel-h) + 34px + 66px);
-        }
-        body.touch-on:has(#finish_results:not([hidden])) #perf_overlay_hud {
-          bottom: calc(var(--touch-panel-h) + 34px + 66px);
-        }
-        body.touch-on #perf_overlay_hud {
-          font-size: 10px;
-          line-height: 1.15;
-        }
-        /* The canvas area is short on a phone: the card scrolls inside what
-           is left above the readout (its Hide button collapses it). */
-        body.touch-on #scenario_card {
-          max-height: max(64px, calc(100% - var(--touch-panel-h) - 210px));
-        }
-        /* The drawer stays full height; the half-height cap is for desktop. */
-        body.touch-on #settings {
-          max-height: none;
-        }
-        #scenario_card {
-          width: calc(100vw - 92px - env(safe-area-inset-right) - env(safe-area-inset-left));
-        }
-        #settings {
-          position: fixed;
-          top: 0;
-          right: 0;
-          bottom: 0;
-          z-index: 260;
-          box-sizing: border-box;
-          width: min(380px, 100vw);
-          padding: calc(68px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
-            calc(24px + env(safe-area-inset-bottom)) 16px;
-          overflow-y: auto;
-          overscroll-behavior: contain;
-          -webkit-overflow-scrolling: touch;
-          touch-action: pan-y;
-          font-size: 17px;
-          line-height: 1.3;
-          background: rgba(18, 24, 34, 0.97);
-          box-shadow: -4px 0 18px rgba(0, 0, 0, 0.5);
-          transform: translateX(100%);
-          visibility: hidden;
-          transition: transform 0.2s ease, visibility 0s linear 0.2s;
-        }
-        body.settings-open #settings {
-          transform: none;
-          visibility: visible;
-          transition: transform 0.2s ease;
-        }
-        #settings br {
-          display: none;
-        }
-        #settings .setting-row {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          min-height: 48px;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-          cursor: pointer;
-          -webkit-tap-highlight-color: transparent;
-        }
-        #settings .setting-field {
-          justify-content: space-between;
-          cursor: default;
-        }
-        #settings .setting-buttons {
-          flex-wrap: wrap;
-          gap: 8px;
-          padding: 6px 0;
-          cursor: default;
-        }
-        #settings .setting-inline {
-          display: inline-flex;
-          border-bottom: 0;
-        }
-        #settings input[type="checkbox"] {
-          flex: none;
-          width: 26px;
-          height: 26px;
-          margin: 0;
-        }
-        #settings input[type="button"] {
-          min-width: 48px;
-          min-height: 44px;
-          padding: 0 14px;
-          font-size: 18px;
-          touch-action: manipulation;
-        }
-        #settings input[type="number"],
-        #settings select {
-          box-sizing: border-box;
-          min-height: 44px;
-          font-size: 16px;
-          padding: 4px 8px;
-        }
-        #settings input[type="number"] {
-          width: 110px !important;
-        }
-        #settings .setting-field #scenario_selector {
-          width: 72px !important;
-          margin-left: auto;
-        }
-        #settings #scenario_restart {
-          width: auto !important;
-        }
-        #settings .setting-block {
-          display: flex;
-          flex-wrap: wrap;
-          align-items: center;
-          gap: 8px 12px;
-          padding: 10px 0;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-        }
-        #settings select {
-          width: 100%;
-        }
-        #settings input[type="range"] {
-          width: 100%;
-          height: 36px;
-          margin: 0;
-        }
-        #settings #wind_info,
-        #settings #dist_info {
-          padding: 6px 0;
-        }
-        #settings #reset_settings {
-          width: 100%;
-          margin-top: 16px;
-        }
+      .bp-desktop #hud_top > #devmode_banner, .bp-desktop #hud_top > #conn_banner, .bp-desktop #hud_top > #start_hud, .bp-desktop #hud_right > #finish_results, .bp-desktop #hud_right > #boat_stats {
+        position: static; transform: none; top: auto; left: auto; right: auto; bottom: auto;
+        max-width: 100%;
       }
+      .bp-desktop #hud_right > #finish_results { align-self: stretch; }
+      /* Settings: a right-edge overlay drawer behind the gear button. */
+      .bp-desktop #settings_toggle {
+        display: flex; align-items: center; justify-content: center;
+        position: fixed; top: 10px; right: 10px; z-index: var(--sz-z-modal);
+        width: var(--sz-tap); height: var(--sz-tap); padding: 0;
+        font-size: 22px; line-height: 1; color: #fff;
+        background: var(--sz-navy-85);
+        border: 1px solid var(--sz-yellow-60); border-radius: var(--sz-r-lg); cursor: pointer;
+      }
+      .bp-desktop body.settings-open #settings_toggle { right: calc(var(--drawer-w) + 20px); }
+      .bp-desktop #settings_backdrop { display: none !important; }
+      .bp-desktop #settings {
+        top: 10px; right: 10px; bottom: auto; width: var(--drawer-w);
+        max-height: calc(100% - 20px); z-index: calc(var(--sz-z-drawer) + 40);
+        display: none;
+        background: var(--sz-navy-90); border: 1px solid var(--sz-yellow-35); border-radius: var(--sz-r-lg);
+        font-family: var(--sz-font-ui); font-size: var(--sz-fs-md);
+      }
+      .bp-desktop body.settings-open #settings { display: block; }
+
+      /* bp-wide */
+      .bp-wide #instrument_panel {
+        display: block; position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%);
+        z-index: calc(var(--sz-z-hud) + 10); width: min(660px, calc(100vw - 2 * var(--drawer-w) - 60px));
+        color: #fff; background: var(--sz-navy-85); border: 1px solid var(--sz-yellow-35);
+        border-radius: var(--sz-r-lg); padding: 6px 8px 8px; font-family: var(--sz-font-ui);
+      }
+      .bp-wide body:not(.settings-open) #instrument_panel { width: min(660px, calc(100vw - 480px)); }
+      .bp-wide #instrument_panel .instr-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+      .bp-wide #instrument_panel .instr-modes { display: inline-flex; border: 1px solid rgba(255,255,255,0.25); border-radius: 5px; overflow: hidden; }
+      .bp-wide #instrument_panel .instr-mode {
+        font: 600 11px/1 var(--sz-font-ui); letter-spacing: 0.06em; text-transform: uppercase;
+        padding: 5px 10px; color: rgba(255,255,255,0.75); background: transparent; border: 0; cursor: pointer;
+      }
+      .bp-wide #instrument_panel .instr-mode + .instr-mode { border-left: 1px solid rgba(255,255,255,0.25); }
+      .bp-wide #instrument_panel .instr-mode[aria-pressed="true"] { background: var(--sz-yellow); color: var(--sz-navy); }
+      .bp-wide #instrument_panel .instr-mode:disabled { opacity: 0.4; cursor: not-allowed; }
+      .bp-wide #instrument_panel .instr-note { font-size: var(--sz-fs-xs); opacity: 0.7; }
+      .bp-wide #instrument_panel .instr-tiles { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
+      .bp-wide #instrument_panel .instr-tile {
+        display: flex; flex-direction: column; align-items: center; padding: 3px 2px;
+        background: rgba(255,255,255,0.06); border-radius: var(--sz-r-sm); min-width: 0;
+      }
+      .bp-wide #instrument_panel .instr-label { font-size: var(--sz-fs-2xs); letter-spacing: 0.08em; color: var(--sz-yellow); }
+      .bp-wide #instrument_panel .instr-value { font: 700 20px/1.15 var(--sz-font-ui); font-variant-numeric: tabular-nums; }
+      .bp-wide #instrument_panel .instr-unit { font-size: var(--sz-fs-2xs); opacity: 0.65; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+      .bp-wide #instrument_panel .instr-tile.missing .instr-value { opacity: 0.45; }
+      .bp-wide #instrument_panel .instr-charts, .bp-wide #instrument_panel .instr-window-wrap { display: none; }
+      .bp-wide #instrument_panel[data-mode="chart"] .instr-tiles { display: none; }
+      .bp-wide #instrument_panel[data-mode="chart"] .instr-charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 8px; }
+      .bp-wide #instrument_panel[data-mode="chart"] .instr-window-wrap { display: inline-flex; gap: 4px; align-items: center; font-size: var(--sz-fs-xs); }
+      .bp-wide #instrument_panel .instr-window { font: inherit; background: var(--sz-navy); color: #fff; border: 1px solid rgba(255,255,255,0.25); border-radius: var(--sz-r-sm); }
+      .bp-wide #instrument_panel .instr-strip { background: rgba(255,255,255,0.06); border-radius: var(--sz-r-sm); padding: 2px 4px; min-width: 0; }
+      .bp-wide #instrument_panel .instr-strip-label { display: flex; gap: 6px; align-items: baseline; font-size: var(--sz-fs-xs); font-variant-numeric: tabular-nums; }
+      .bp-wide #instrument_panel .instr-strip-range { margin-left: auto; opacity: 0.55; font-size: var(--sz-fs-2xs); white-space: nowrap; }
+      .bp-wide #instrument_panel .instr-strip-svg { display: block; width: 100%; height: 30px; }
+
+      /* bp-touch */
+      .bp-touch #settings_toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        top: calc(10px + env(safe-area-inset-top));
+        right: calc(10px + env(safe-area-inset-right));
+        z-index: var(--sz-z-modal);
+        width: 48px;
+        height: 48px;
+        padding: 0;
+        font-size: 26px;
+        line-height: 1;
+        color: #fff;
+        background: rgba(12, 18, 28, 0.85);
+        border: 1px solid rgba(180, 200, 220, 0.5);
+        border-radius: var(--sz-r-lg);
+        cursor: pointer;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .bp-touch #settings_backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: var(--sz-z-drawer);
+        background: rgba(0, 0, 0, 0.45);
+        touch-action: none;
+      }
+      .bp-touch body.settings-open #settings_backdrop {
+        display: block;
+      }
+      /* The desktop #info sits between the scenario card and the settings
+         panel (left 368px, right 270px), which is off screen on a phone. */
+      .bp-touch #info {
+        top: auto;
+        left: calc(10px + env(safe-area-inset-left));
+        right: calc(68px + env(safe-area-inset-right));
+        bottom: calc(34px + env(safe-area-inset-bottom));
+        font-size: var(--sz-fs-sm);
+      }
+      /* #info now owns the bottom-left corner, so the perf overlay moves
+         to the bottom-right and #info narrows while the overlay is on. */
+      .bp-touch #perf_overlay_hud {
+        left: auto;
+        right: calc(10px + env(safe-area-inset-right));
+        bottom: calc(34px + env(safe-area-inset-bottom));
+        font-size: var(--sz-fs-xs);
+      }
+      .bp-touch body:has(#perf:checked) #info {
+        right: calc(180px + env(safe-area-inset-right));
+      }
+      /* Touch controls on: the readout moves into the canvas area, in two
+         short columns so it stays clear of the scenario card. */
+      .bp-touch body.touch-on #info {
+        bottom: calc(var(--touch-panel-h) + 34px);
+        font-size: var(--sz-fs-2xs);
+        line-height: 1.2;
+        column-count: 2;
+        column-gap: 10px;
+      }
+      /* Leaderboard on a phone with touch controls: the desktop
+         bottom-right spot is under the touch panel, so it sits just above
+         the panel on the right, compact, and the readout moves up. */
+      .bp-touch body.touch-on #finish_results {
+        right: calc(8px + env(safe-area-inset-right));
+        bottom: calc(var(--touch-panel-h) + 6px);
+        z-index: calc(var(--sz-z-chrome) + 10);
+        font-size: var(--sz-fs-2xs);
+        line-height: 1.25;
+        padding: 3px 6px;
+        max-height: 22vh;
+      }
+      .bp-touch body.touch-on:has(#finish_results:not([hidden])) #info {
+        bottom: calc(var(--touch-panel-h) + 34px + 66px);
+      }
+      .bp-touch body.touch-on:has(#finish_results:not([hidden])) #perf_overlay_hud {
+        bottom: calc(var(--touch-panel-h) + 34px + 66px);
+      }
+      .bp-touch body.touch-on #perf_overlay_hud {
+        font-size: var(--sz-fs-2xs);
+        line-height: 1.15;
+      }
+      /* The canvas area is short on a phone: the card scrolls inside what
+         is left above the readout (its Hide button collapses it). */
+      .bp-touch body.touch-on #scenario_card {
+        max-height: max(64px, calc(100% - var(--touch-panel-h) - 210px));
+      }
+      /* The drawer stays full height; the half-height cap is for desktop. */
+      .bp-touch body.touch-on #settings {
+        max-height: none;
+      }
+      .bp-touch #scenario_card {
+        width: calc(100vw - 92px - env(safe-area-inset-right) - env(safe-area-inset-left));
+      }
+      .bp-touch #settings {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        z-index: calc(var(--sz-z-drawer) + 10);
+        box-sizing: border-box;
+        width: min(380px, 100vw);
+        padding: calc(68px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
+          calc(24px + env(safe-area-inset-bottom)) 16px;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
+        font-size: 17px;
+        line-height: 1.3;
+        background: rgba(18, 24, 34, 0.97);
+        box-shadow: -4px 0 18px rgba(0, 0, 0, 0.5);
+        transform: translateX(100%);
+        visibility: hidden;
+        transition: transform 0.2s ease, visibility 0s linear 0.2s;
+      }
+      .bp-touch body.settings-open #settings {
+        transform: none;
+        visibility: visible;
+        transition: transform 0.2s ease;
+      }
+      .bp-touch #settings br {
+        display: none;
+      }
+      .bp-touch #settings .setting-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 48px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .bp-touch #settings .setting-field {
+        justify-content: space-between;
+        cursor: default;
+      }
+      .bp-touch #settings .setting-buttons {
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 6px 0;
+        cursor: default;
+      }
+      .bp-touch #settings .setting-inline {
+        display: inline-flex;
+        border-bottom: 0;
+      }
+      .bp-touch #settings input[type="checkbox"] {
+        flex: none;
+        width: 26px;
+        height: 26px;
+        margin: 0;
+      }
+      .bp-touch #settings input[type="button"] {
+        min-width: 48px;
+        min-height: var(--sz-tap);
+        padding: 0 14px;
+        font-size: 18px;
+        touch-action: manipulation;
+      }
+      .bp-touch #settings input[type="number"], .bp-touch #settings select {
+        box-sizing: border-box;
+        min-height: var(--sz-tap);
+        font-size: var(--sz-fs-xl);
+        padding: 4px 8px;
+      }
+      .bp-touch #settings input[type="number"] {
+        width: 110px !important;
+      }
+      .bp-touch #settings .setting-field #scenario_selector {
+        width: 72px !important;
+        margin-left: auto;
+      }
+      .bp-touch #settings #scenario_restart {
+        width: auto !important;
+      }
+      .bp-touch #settings .setting-block {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .bp-touch #settings select {
+        width: 100%;
+      }
+      .bp-touch #settings input[type="range"] {
+        width: 100%;
+        height: 36px;
+        margin: 0;
+      }
+      .bp-touch #settings #wind_info, .bp-touch #settings #dist_info {
+        padding: 6px 0;
+      }
+      .bp-touch #settings #reset_settings {
+        width: 100%;
+        margin-top: 16px;
+      }
+
       /* Chat (remote mode only, src/chat-panel.js). */
-      #chat_panel { position: fixed; left: 110px; bottom: 6px; z-index: 120; max-width: min(360px, calc(100vw - 16px)); font: 13px/1.35 sans-serif; color: #eee; }
-      #chat_toggle { background: rgba(20, 24, 32, 0.85); color: #eee; border: 1px solid #556; border-radius: 6px; padding: 4px 10px; font: inherit; cursor: pointer; }
-      #chat_unread { display: inline-block; min-width: 1.2em; margin-left: 4px; padding: 0 4px; border-radius: 8px; background: #e33; color: #fff; font-size: 11px; text-align: center; }
-      #chat_body { margin-top: 4px; background: rgba(20, 24, 32, 0.85); border: 1px solid #556; border-radius: 6px; padding: 6px; width: min(340px, calc(100vw - 28px)); }
+      #chat_panel { position: fixed; left: 110px; bottom: 6px; z-index: var(--sz-z-controls); max-width: min(360px, calc(100vw - 16px)); font: 13px/1.35 sans-serif; color: #eee; }
+      #chat_toggle { background: rgba(20, 24, 32, 0.85); color: #eee; border: 1px solid #556; border-radius: var(--sz-r-md); padding: 4px 10px; font: inherit; cursor: pointer; }
+      #chat_unread { display: inline-block; min-width: 1.2em; margin-left: 4px; padding: 0 4px; border-radius: var(--sz-r-lg); background: #e33; color: #fff; font-size: var(--sz-fs-xs); text-align: center; }
+      #chat_body { margin-top: 4px; background: rgba(20, 24, 32, 0.85); border: 1px solid #556; border-radius: var(--sz-r-md); padding: 6px; width: min(340px, calc(100vw - 28px)); }
       #chat_log { max-height: 30vh; overflow-y: auto; overflow-wrap: anywhere; white-space: pre-wrap; margin-bottom: 4px; }
       #chat_unread[hidden], #chat_body[hidden], #chat_panel[hidden] { display: none; }
       .chat-line { padding: 1px 0; }
       .chat-sys { color: #9ab; font-style: italic; }
       .chat-who { font-weight: bold; }
-      .chat-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+      .chat-dot { display: inline-block; width: 8px; height: 8px; border-radius: var(--sz-r-round); margin-right: 4px; vertical-align: middle; }
       #chat_form { display: flex; gap: 4px; }
-      #chat_input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 3px 5px; }
-      #chat_status { color: #f99; font-size: 12px; }
+      #chat_input { flex: 1; min-width: 0; font: inherit; font-size: var(--sz-fs-xl); padding: 3px 5px; }
+      #chat_status { color: #f99; font-size: var(--sz-fs-sm); }
       /* Beside #fps; above the touch helm when it shows. */
       body.touch-on #chat_panel { bottom: calc(var(--touch-panel-h) + 6px); }
       /* Mobile readout strip (plan M3): BSP / VMG / TWA / TWS under the top of
          the screen where the instrument panel is hidden; everything anchored
          to the top moves down by --m-top. Green / red only on the tack chip. */
       #mobile_strip { display: none; }
-      @media (max-width: 768px), (pointer: coarse) and (hover: none) {
-        body { --m-top: calc(46px + env(safe-area-inset-top)); }
-        #mobile_strip {
-          display: grid; grid-template-columns: repeat(4, 1fr);
-          position: fixed; left: 0; right: 0; top: 0; height: var(--m-top); z-index: 140;
-          padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); box-sizing: border-box;
-          background: rgba(11, 23, 71, 0.82); border-bottom: 1px solid rgba(255, 255, 255, 0.18);
-          font-family: 'Albert Sans', system-ui, sans-serif; color: #fff; pointer-events: none;
-        }
-        #mobile_strip .ms-cell { display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
-        #mobile_strip .ms-label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #ffc400; }
-        #mobile_strip .ms-value { margin-top: 3px; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
-        #mobile_strip .ms-value small { margin-left: 2px; font-size: 11px; font-weight: 500; opacity: 0.65; }
-        #mobile_strip .ms-tack { margin-left: 4px; padding: 1px 4px; border-radius: 3px; font-size: 11px; font-weight: 800; vertical-align: 3px; }
-        #mobile_strip .ms-tack.port { background: #d32f2f; color: #fff; }
-        #mobile_strip .ms-tack.stbd { background: #2e7d32; color: #fff; }
-        #scenario_card { top: calc(10px + var(--m-top)); }
-        #settings_toggle { top: calc(10px + var(--m-top)); }
-        #boat_stats { top: calc(60px + var(--m-top)); }
-        #start_hud { top: calc(48px + var(--m-top)); }
-        .rule-toasts { top: calc(64px + var(--m-top)); }
-        #settings { padding-top: calc(68px + var(--m-top)); }
+      /* bp-touch */
+      .bp-touch body { --m-top: calc(46px + env(safe-area-inset-top)); }
+      .bp-touch #mobile_strip {
+        display: grid; grid-template-columns: repeat(4, 1fr);
+        position: fixed; left: 0; right: 0; top: 0; height: var(--m-top); z-index: calc(var(--sz-z-bar) + 5);
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); box-sizing: border-box;
+        background: rgba(11, 23, 71, 0.82); border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+        font-family: var(--sz-font-ui); color: #fff; pointer-events: none;
       }
+      .bp-touch #mobile_strip .ms-cell { display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
+      .bp-touch #mobile_strip .ms-label { font-size: var(--sz-fs-xs); font-weight: 700; letter-spacing: 0.08em; color: var(--sz-yellow); }
+      .bp-touch #mobile_strip .ms-value { margin-top: 3px; font-size: var(--sz-fs-2xl); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .bp-touch #mobile_strip .ms-value small { margin-left: 2px; font-size: var(--sz-fs-xs); font-weight: 500; opacity: 0.65; }
+      .bp-touch #mobile_strip .ms-tack { margin-left: 4px; padding: 1px 4px; border-radius: var(--sz-r-xs); font-size: var(--sz-fs-xs); font-weight: 800; vertical-align: 3px; }
+      .bp-touch #mobile_strip .ms-tack.port { background: var(--sz-port); color: #fff; }
+      .bp-touch #mobile_strip .ms-tack.stbd { background: var(--sz-stbd); color: #fff; }
+      .bp-touch #scenario_card { top: calc(10px + var(--m-top)); }
+      .bp-touch #settings_toggle { top: calc(10px + var(--m-top)); }
+      .bp-touch #boat_stats { top: calc(60px + var(--m-top)); }
+      .bp-touch #start_hud { top: calc(48px + var(--m-top)); }
+      .bp-touch .rule-toasts { top: calc(64px + var(--m-top)); }
+      .bp-touch #settings { padding-top: calc(68px + var(--m-top)); }
+
       /* Mobile top bar (plan M4): one 44 px row with the scenario chip (the card
          collapsed into the bar; Show drops it down), Boat stats and the menu.
          The readout strip sits right under it (portrait) or inside it
          (landscape), and the start timer below that, so none of them overlap. */
       #mobile_bar { display: none; }
-      @media (max-width: 768px), (pointer: coarse) and (hover: none) {
-        body { --m-bar: calc(44px + env(safe-area-inset-top)); --m-top: calc(var(--m-bar) + 46px); }
-        #mobile_bar {
-          display: block; position: fixed; left: 0; right: 0; top: 0; height: var(--m-bar); z-index: 139;
-          background: #0b1747; border-bottom: 1px solid rgba(255, 196, 0, 0.5); pointer-events: none;
-        }
-        #mobile_strip { top: var(--m-bar); height: 46px; padding-top: 0; }
-        #scenario_card, body.touch-on #scenario_card {
-          top: env(safe-area-inset-top); left: env(safe-area-inset-left); z-index: 150;
-          width: calc(100vw - 44px - 116px - env(safe-area-inset-left) - env(safe-area-inset-right));
-          box-sizing: border-box; min-height: 44px; padding: 0 0 0 10px;
-          background: transparent; border: 0; border-radius: 0;
-          max-height: calc(100% - var(--touch-panel-h, 0px) - var(--m-bar) - 8px);
-        }
-        #scenario_card_head { align-items: center; min-height: 44px; gap: 6px; }
-        #scenario_card_title { min-width: 0; font-size: 13px; line-height: 1.25; }
-        #scenario_card.collapsed #scenario_card_title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        #scenario_card_toggle { margin: 0; border: 0; color: #ffc400; text-decoration: underline; }
-        #scenario_card:not(.collapsed) {
-          background: rgba(11, 23, 71, 0.97); border-bottom: 1px solid rgba(255, 196, 0, 0.5);
-          padding-bottom: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-        }
-        #settings_toggle { top: env(safe-area-inset-top); right: env(safe-area-inset-right); width: 44px; height: 44px; }
-        #boat_stats {
-          top: env(safe-area-inset-top); right: calc(48px + env(safe-area-inset-right)); z-index: 150;
-          max-width: calc(100vw - 64px); padding: 0; background: transparent; border: 0;
-        }
-        #boat_stats summary { color: #fff; }
-        #boat_stats[open] { background: rgba(11, 23, 71, 0.97); padding: 0 8px 8px; }
-        #start_hud { top: calc(var(--m-top) + 8px); }
-        .rule-toasts { top: calc(var(--m-top) + 8px); }
-        #settings { padding-top: calc(var(--m-bar) + 12px); }
+      /* bp-touch */
+      .bp-touch body { --m-bar: calc(44px + env(safe-area-inset-top)); --m-top: calc(var(--m-bar) + 46px); }
+      .bp-touch #mobile_bar {
+        display: block; position: fixed; left: 0; right: 0; top: 0; height: var(--m-bar); z-index: calc(var(--sz-z-bar) + 4);
+        background: var(--sz-navy); border-bottom: 1px solid var(--sz-yellow-50); pointer-events: none;
       }
+      .bp-touch #mobile_strip { top: var(--m-bar); height: 46px; padding-top: 0; }
+      .bp-touch #scenario_card, .bp-touch body.touch-on #scenario_card {
+        top: env(safe-area-inset-top); left: env(safe-area-inset-left); z-index: var(--sz-z-chrome);
+        width: calc(100vw - 44px - 116px - env(safe-area-inset-left) - env(safe-area-inset-right));
+        box-sizing: border-box; min-height: var(--sz-tap); padding: 0 0 0 10px;
+        background: transparent; border: 0; border-radius: 0;
+        max-height: calc(100% - var(--touch-panel-h, 0px) - var(--m-bar) - 8px);
+      }
+      .bp-touch #scenario_card_head { align-items: center; min-height: var(--sz-tap); gap: 6px; }
+      .bp-touch #scenario_card_title { min-width: 0; font-size: var(--sz-fs-md); line-height: 1.25; }
+      .bp-touch #scenario_card.collapsed #scenario_card_title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .bp-touch #scenario_card_toggle { margin: 0; border: 0; color: var(--sz-yellow); text-decoration: underline; }
+      .bp-touch #scenario_card:not(.collapsed) {
+        background: var(--sz-navy-97); border-bottom: 1px solid var(--sz-yellow-50);
+        padding-bottom: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      }
+      .bp-touch #settings_toggle { top: env(safe-area-inset-top); right: env(safe-area-inset-right); width: var(--sz-tap); height: var(--sz-tap); }
+      .bp-touch #boat_stats {
+        top: env(safe-area-inset-top); right: calc(48px + env(safe-area-inset-right)); z-index: var(--sz-z-chrome);
+        max-width: calc(100vw - 64px); padding: 0; background: transparent; border: 0;
+      }
+      .bp-touch #boat_stats summary { color: #fff; }
+      .bp-touch #boat_stats[open] { background: var(--sz-navy-97); padding: 0 8px 8px; }
+      .bp-touch #start_hud { top: calc(var(--m-top) + 8px); }
+      .bp-touch .rule-toasts { top: calc(var(--m-top) + 8px); }
+      .bp-touch #settings { padding-top: calc(var(--m-bar) + 12px); }
+
       /* Landscape phone: bar and strip share one row; chip left, readouts in the middle. */
-      @media (max-width: 768px) and (orientation: landscape) and (max-height: 500px),
-        (pointer: coarse) and (hover: none) and (orientation: landscape) and (max-height: 500px) {
-        body { --m-top: var(--m-bar); }
-        #mobile_strip {
-          top: env(safe-area-inset-top); height: 44px; z-index: 141; background: transparent; border: 0;
-          left: calc(env(safe-area-inset-left) + 230px); right: calc(env(safe-area-inset-right) + 160px); padding: 0;
-        }
-        #mobile_strip .ms-value { font-size: 17px; margin-top: 2px; }
-        #mobile_strip .ms-label { font-size: 10px; }
-        #scenario_card, body.touch-on #scenario_card { width: 226px; }
-        #scenario_card:not(.collapsed) { width: min(420px, 60vw); }
+      /* bp-phone-landscape */
+      .bp-phone-landscape body { --m-top: var(--m-bar); }
+      .bp-phone-landscape #mobile_strip {
+        top: env(safe-area-inset-top); height: var(--sz-tap); z-index: calc(var(--sz-z-bar) + 6); background: transparent; border: 0;
+        left: calc(env(safe-area-inset-left) + 230px); right: calc(env(safe-area-inset-right) + 160px); padding: 0;
       }
+      .bp-phone-landscape #mobile_strip .ms-value { font-size: 17px; margin-top: 2px; }
+      .bp-phone-landscape #mobile_strip .ms-label { font-size: var(--sz-fs-2xs); }
+      .bp-phone-landscape #scenario_card, .bp-phone-landscape body.touch-on #scenario_card { width: 226px; }
+      .bp-phone-landscape #scenario_card:not(.collapsed) { width: min(420px, 60vw); }
+
       /* Mobile toast placement (plan M5): full width under the top bar and
          strip, 14 px text, at most 2 visible (newest first); below the start
          timer while it shows. Landscape: top centre, or top right next to the
          start timer. */
-      @media (max-width: 768px), (pointer: coarse) and (hover: none) {
-        .rule-toasts {
-          top: calc(var(--m-top) + 8px); left: calc(8px + env(safe-area-inset-left)); right: calc(8px + env(safe-area-inset-right));
-          width: auto; transform: none; z-index: 135;
-        }
-        body:has(#start_hud:not([hidden])) .rule-toasts { top: calc(var(--m-top) + 112px); }
-        .rule-toast { font-size: 14px; padding: 6px 10px; }
-        .rule-toast .rt-boats { font-size: 12px; }
-        .rule-toast:nth-child(n+3) { display: none; }
+      /* bp-touch */
+      .bp-touch .rule-toasts {
+        top: calc(var(--m-top) + 8px); left: calc(8px + env(safe-area-inset-left)); right: calc(8px + env(safe-area-inset-right));
+        width: auto; transform: none; z-index: var(--sz-z-bar);
       }
-      @media (max-width: 768px) and (orientation: landscape) and (max-height: 500px),
-        (pointer: coarse) and (hover: none) and (orientation: landscape) and (max-height: 500px) {
-        .rule-toasts { top: calc(var(--m-top) + 6px); left: 50%; right: auto; transform: translateX(-50%); width: min(420px, 56vw); }
-        body:has(#start_hud:not([hidden])) .rule-toasts {
-          top: calc(var(--m-top) + 6px); left: auto; right: calc(8px + env(safe-area-inset-right)); transform: none; width: min(300px, 34vw);
-        }
-        .rule-toast:nth-child(n+2) { display: none; }
+      .bp-touch body:has(#start_hud:not([hidden])) .rule-toasts { top: calc(var(--m-top) + 112px); }
+      .bp-touch .rule-toast { font-size: var(--sz-fs-base); padding: 6px 10px; }
+      .bp-touch .rule-toast .rt-boats { font-size: var(--sz-fs-sm); }
+      .bp-touch .rule-toast:nth-child(n+3) { display: none; }
+
+      /* bp-phone-landscape */
+      .bp-phone-landscape .rule-toasts { top: calc(var(--m-top) + 6px); left: 50%; right: auto; transform: translateX(-50%); width: min(420px, 56vw); }
+      .bp-phone-landscape body:has(#start_hud:not([hidden])) .rule-toasts {
+        top: calc(var(--m-top) + 6px); left: auto; right: calc(8px + env(safe-area-inset-right)); transform: none; width: min(300px, 34vw);
       }
+      .bp-phone-landscape .rule-toast:nth-child(n+2) { display: none; }
+
       /* Phones and touch-only devices: every tap target at least 44 x 44 px
          (Apple HIG / WCAG 2.5.5). Same query as the mobile menu above. */
-      @media (max-width: 768px), (pointer: coarse) and (hover: none) {
-        #scenario_card_toggle { min-width: 44px; min-height: 44px; margin: -10px -6px -10px 0; font-size: 13px; padding: 0 10px; }
-        #boat_stats summary { display: flex; align-items: center; min-height: 44px; min-width: 44px; padding: 0 4px; font-size: 13px; }
-        #chat_toggle { min-width: 64px; min-height: 44px; font-size: 15px; }
-        #settings_tabs .settings-tab { min-height: 48px; font-size: 15px; }
-        /* Player form: name field, Join / Leave on one line, status below. */
-        #settings #own_boat_panel { flex-wrap: wrap; gap: 8px; padding: 6px 0; cursor: default; }
-        #settings #own_boat_panel[hidden], #settings .setting-row[hidden] { display: none; }
-        #settings #boat_name { flex: 1 1 140px; min-width: 0; min-height: 44px; box-sizing: border-box; font-size: 16px; padding: 4px 8px; }
-        #settings #own_boat_join, #settings #own_boat_leave { flex: none; white-space: nowrap; }
-        #settings #own_boat_status { flex: 1 1 100%; font-size: 14px; opacity: 0.85; }
-        #settings #own_boat_status:empty { display: none; }
-        /* Checkbox rows are already 48 px tall labels; the box itself grows a little. */
-        #settings input[type="checkbox"] { width: 28px; height: 28px; }
-      }
+      /* bp-touch */
+      .bp-touch #scenario_card_toggle { min-width: var(--sz-tap); min-height: var(--sz-tap); margin: -10px -6px -10px 0; font-size: var(--sz-fs-md); padding: 0 10px; }
+      .bp-touch #boat_stats summary { display: flex; align-items: center; min-height: var(--sz-tap); min-width: var(--sz-tap); padding: 0 4px; font-size: var(--sz-fs-md); }
+      .bp-touch #chat_toggle { min-width: 64px; min-height: var(--sz-tap); font-size: var(--sz-fs-lg); }
+      .bp-touch #settings_tabs .settings-tab { min-height: 48px; font-size: var(--sz-fs-lg); }
+      /* Player form: name field, Join / Leave on one line, status below. */
+      .bp-touch #settings #own_boat_panel { flex-wrap: wrap; gap: 8px; padding: 6px 0; cursor: default; }
+      .bp-touch #settings #own_boat_panel[hidden], .bp-touch #settings .setting-row[hidden] { display: none; }
+      .bp-touch #settings #boat_name { flex: 1 1 140px; min-width: 0; min-height: var(--sz-tap); box-sizing: border-box; font-size: var(--sz-fs-xl); padding: 4px 8px; }
+      .bp-touch #settings #own_boat_join, .bp-touch #settings #own_boat_leave { flex: none; white-space: nowrap; }
+      .bp-touch #settings #own_boat_status { flex: 1 1 100%; font-size: var(--sz-fs-base); opacity: 0.85; }
+      .bp-touch #settings #own_boat_status:empty { display: none; }
+      /* Checkbox rows are already 48 px tall labels; the box itself grows a little. */
+      .bp-touch #settings input[type="checkbox"] { width: 28px; height: 28px; }
+
       #chat_panel { max-width: calc(100vw - 120px); }
       #chat_body { width: min(340px, calc(100vw - 132px)); }
       #minimap .mm-close { display: none; }
       /* Phones (plan M8): the minimap is a small round map at the top right
          (top left in landscape). Tap it to open the full map over the race
          view (drag to pan, Follow, ×); the circle itself never pans. */
-      @media (max-width: 768px), (pointer: coarse) and (hover: none) and (max-height: 599px) {
-        body { --mm-d: 88px; }
-        /* Open chat: keep the panel below the map circle (log scrolls). */
-        #chat_log { max-height: min(30vh, calc(100vh - var(--m-top) - var(--mm-d) - 150px)); }
-        body.touch-on:not(.tc-overlay) #chat_log { max-height: min(30vh, calc(65vh - var(--m-top) - var(--mm-d) - 150px)); }
-        #minimap {
-          display: block; position: fixed; z-index: 136; overflow: hidden; box-sizing: border-box;
-          top: calc(var(--m-top) + 8px); right: calc(8px + env(safe-area-inset-right));
-          width: var(--mm-d); height: var(--mm-d); border-radius: 50%;
-          background: rgba(11, 23, 71, 0.9); border: 2px solid rgba(255, 196, 0, 0.75); box-shadow: 0 2px 8px rgba(0,0,0,0.35);
-        }
-        #minimap canvas { display: block; width: 100%; height: 100%; object-fit: cover; touch-action: none; }
-        #minimap .mm-follow { display: none; }
-        #minimap.mm-open {
-          z-index: 170; left: 50%; right: auto; transform: translateX(-50%);
-          width: min(94vw, 440px); height: auto; aspect-ratio: 320 / 256; border-radius: 12px; background: #0b1747;
-        }
-        #minimap.mm-open canvas { object-fit: contain; }
-        #minimap.mm-open .mm-follow, #minimap.mm-open .mm-close {
-          display: block; position: absolute; top: 6px; min-width: 44px; height: 44px; padding: 0 12px;
-          font: 600 14px 'Albert Sans', system-ui, sans-serif; color: #fff; background: rgba(11,23,71,0.9);
-          border: 1px solid rgba(255,255,255,0.35); border-radius: 22px;
-        }
-        #minimap.mm-open .mm-follow { left: 6px; }
-        #minimap.mm-open .mm-follow[aria-pressed="true"] { background: #ffc400; color: #0b1747; border-color: #ffc400; }
-        #minimap.mm-open .mm-close { right: 6px; font-size: 22px; padding: 0; width: 44px; }
-        /* The start timer moves left and toasts keep clear of the circle. */
-        #start_hud { left: calc(8px + env(safe-area-inset-left)); transform: none; box-sizing: border-box; max-width: calc(100vw - var(--mm-d) - 32px); white-space: normal; }
-        .rule-toasts { right: calc(var(--mm-d) + 16px + env(safe-area-inset-right)); }
+      /* bp-phone */
+      .bp-phone body { --mm-d: 88px; }
+      /* Open chat: keep the panel below the map circle (log scrolls). */
+      .bp-phone #chat_log { max-height: min(30vh, calc(100vh - var(--m-top) - var(--mm-d) - 150px)); }
+      .bp-phone body.touch-on:not(.tc-overlay) #chat_log { max-height: min(30vh, calc(65vh - var(--m-top) - var(--mm-d) - 150px)); }
+      .bp-phone #minimap {
+        display: block; position: fixed; z-index: calc(var(--sz-z-bar) + 1); overflow: hidden; box-sizing: border-box;
+        top: calc(var(--m-top) + 8px); right: calc(8px + env(safe-area-inset-right));
+        width: var(--mm-d); height: var(--mm-d); border-radius: var(--sz-r-round);
+        background: var(--sz-navy-90); border: 2px solid rgba(255, 196, 0, 0.75); box-shadow: 0 2px 8px rgba(0,0,0,0.35);
       }
-      @media (max-width: 768px) and (orientation: landscape) and (max-height: 500px),
-        (pointer: coarse) and (hover: none) and (orientation: landscape) and (max-height: 500px) {
-        body { --mm-d: 76px; }
-        #minimap { right: auto; left: calc(8px + env(safe-area-inset-left)); top: calc(var(--m-top) + 6px); }
-        #minimap.mm-open { top: calc(var(--m-top) + 6px); width: auto; height: calc(100% - var(--m-top) - var(--touch-panel-h) - 12px); }
-        #start_hud { left: 50%; transform: translateX(-50%); max-width: none; }
-        body.tc-overlay .tc-steer:not(.tc-right) { top: calc(var(--m-top) + var(--mm-d) + 16px); }
+      .bp-phone #minimap canvas { display: block; width: 100%; height: 100%; object-fit: cover; touch-action: none; }
+      .bp-phone #minimap .mm-follow { display: none; }
+      .bp-phone #minimap.mm-open {
+        z-index: calc(var(--sz-z-chrome) + 20); left: 50%; right: auto; transform: translateX(-50%);
+        width: min(94vw, 440px); height: auto; aspect-ratio: 320 / 256; border-radius: var(--sz-r-xl); background: var(--sz-navy);
       }
+      .bp-phone #minimap.mm-open canvas { object-fit: contain; }
+      .bp-phone #minimap.mm-open .mm-follow, .bp-phone #minimap.mm-open .mm-close {
+        display: block; position: absolute; top: 6px; min-width: var(--sz-tap); height: var(--sz-tap); padding: 0 12px;
+        font: 600 14px var(--sz-font-ui); color: #fff; background: var(--sz-navy-90);
+        border: 1px solid rgba(255,255,255,0.35); border-radius: 22px;
+      }
+      .bp-phone #minimap.mm-open .mm-follow { left: 6px; }
+      .bp-phone #minimap.mm-open .mm-follow[aria-pressed="true"] { background: var(--sz-yellow); color: var(--sz-navy); border-color: var(--sz-yellow); }
+      .bp-phone #minimap.mm-open .mm-close { right: 6px; font-size: 22px; padding: 0; width: var(--sz-tap); }
+      /* The start timer moves left and toasts keep clear of the circle. */
+      .bp-phone #start_hud { left: calc(8px + env(safe-area-inset-left)); transform: none; box-sizing: border-box; max-width: calc(100vw - var(--mm-d) - 32px); white-space: normal; }
+      .bp-phone .rule-toasts { right: calc(var(--mm-d) + 16px + env(safe-area-inset-right)); }
+
+      /* bp-phone-landscape */
+      .bp-phone-landscape body { --mm-d: 76px; }
+      .bp-phone-landscape #minimap { right: auto; left: calc(8px + env(safe-area-inset-left)); top: calc(var(--m-top) + 6px); }
+      .bp-phone-landscape #minimap.mm-open { top: calc(var(--m-top) + 6px); width: auto; height: calc(100% - var(--m-top) - var(--touch-panel-h) - 12px); }
+      .bp-phone-landscape #start_hud { left: 50%; transform: translateX(-50%); max-width: none; }
+      .bp-phone-landscape body.tc-overlay .tc-steer:not(.tc-right) { top: calc(var(--m-top) + var(--mm-d) + 16px); }
+
       /* Leaderboard and chat sheet (plan M9): phones only. The top bar gets a
          🏁 button (with the unread chat count) between Boat stats and ☰; the
          floating leaderboard and Chat button move into the sheet. */
       #sheet_toggle, #mobile_sheet { display: none; }
-      @media (max-width: 768px), (pointer: coarse) and (hover: none) {
-        #sheet_toggle {
-          display: flex; align-items: center; justify-content: center; position: fixed; z-index: 150;
-          top: env(safe-area-inset-top); right: calc(48px + env(safe-area-inset-right)); width: 44px; height: 44px;
-          padding: 0; font-size: 20px; color: #fff; background: transparent; border: 0; border-radius: 8px;
-        }
-        #sheet_toggle[aria-expanded="true"] { background: rgba(255, 196, 0, 0.25); }
-        .st-badge {
-          min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 8px;
-          font: 700 11px/16px 'Albert Sans', system-ui, sans-serif; color: #0b1747; background: #ffc400; text-align: center;
-        }
-        #sheet_toggle .st-badge { position: absolute; top: 3px; right: 1px; }
-        /* Rank chip: "3/8" replaces the flag while there is a leaderboard. */
-        #sheet_toggle.has-rank { width: 56px; right: calc(46px + env(safe-area-inset-right)); }
-        #sheet_toggle.has-rank .st-flag { display: none; }
-        #sheet_toggle .st-rank {
-          min-width: 44px; height: 30px; padding: 0 7px; box-sizing: border-box; border-radius: 15px;
-          font: 800 15px/30px 'Albert Sans', system-ui, sans-serif; font-variant-numeric: tabular-nums;
-          color: #0b1747; background: #ffc400; text-align: center; white-space: nowrap;
-        }
-        #sheet_toggle .st-rank[hidden] { display: none; }
-        #sheet_toggle.has-rank .st-badge { top: 0; right: -2px; }
-        body.rank-on #boat_stats { right: calc(104px + env(safe-area-inset-right)); }
-        .st-badge[hidden] { display: none; }
-        #boat_stats { right: calc(96px + env(safe-area-inset-right)); }
-        #scenario_card, body.touch-on #scenario_card {
-          width: calc(100vw - 44px - 44px - 116px - env(safe-area-inset-left) - env(safe-area-inset-right));
-        }
-        body.rank-on #scenario_card, body.rank-on.touch-on #scenario_card {
-          width: calc(100vw - 44px - 44px - 124px - env(safe-area-inset-left) - env(safe-area-inset-right));
-        }
-        body.sheet-on #chat_panel { display: none; }
-        #mobile_sheet:not([hidden]) {
-          display: flex; flex-direction: column; position: fixed; z-index: 220; left: 0; right: 0; bottom: 0;
-          height: min(58vh, 520px); box-sizing: border-box;
-          padding: 0 calc(10px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
-          color: #fff; background: #0b1747; border-top: 1px solid rgba(255, 196, 0, 0.6); border-radius: 16px 16px 0 0;
-          box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.45); font-family: 'Albert Sans', system-ui, sans-serif;
-          touch-action: pan-y; overscroll-behavior: contain;
-        }
-        #mobile_sheet .sheet-handle { flex: none; align-self: center; width: 88px; height: 44px; margin-bottom: -10px; padding: 0; background: transparent; border: 0; }
-        #mobile_sheet .sheet-handle span { display: block; width: 44px; height: 5px; margin: 0 auto; border-radius: 3px; background: rgba(255, 255, 255, 0.45); }
-        #mobile_sheet .sheet-tabs { flex: none; display: flex; gap: 6px; padding: 4px; border-radius: 12px; background: rgba(255, 255, 255, 0.08); }
-        #mobile_sheet .sheet-tabs button {
-          flex: 1; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 6px;
-          font: 700 15px 'Albert Sans', system-ui, sans-serif; color: #fff; background: transparent; border: 0; border-radius: 9px;
-        }
-        #mobile_sheet .sheet-tabs button[hidden] { display: none; }
-        #mobile_sheet .sheet-tabs button[aria-selected="true"] { background: #ffc400; color: #0b1747; }
-        #mobile_sheet .sheet-pane { flex: 1; min-height: 0; overflow-y: auto; margin-top: 8px; }
-        #mobile_sheet[data-tab="board"] #sheet_chat, #mobile_sheet[data-tab="chat"] #sheet_board { display: none; }
-        #mobile_sheet #finish_results {
-          position: static; max-height: none; overflow: visible; padding: 4px 2px; font-size: 15px; line-height: 1.6;
-          white-space: normal; background: transparent; border: 0; pointer-events: auto;
-        }
-        #mobile_sheet #finish_results:not([hidden]) ~ .sheet-empty { display: none; }
-        #mobile_sheet .sheet-empty { margin: 12px 4px; opacity: 0.75; font-size: 14px; }
-        #sheet_chat { display: flex; flex-direction: column; }
-        #mobile_sheet #chat_body { order: 1; flex: 1; display: flex; flex-direction: column; min-height: 0; width: auto; margin: 0; background: transparent; border: 0; padding: 0; }
-        #mobile_sheet #chat_body[hidden] { display: none; }
-        #mobile_sheet #chat_log { flex: 1; max-height: none; font-size: 15px; }
-        #mobile_sheet .sheet-quick { order: 2; flex: none; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-        #mobile_sheet .sheet-quick-btn {
-          min-height: 44px; padding: 0 14px; font: 600 14px 'Albert Sans', system-ui, sans-serif; color: #fff;
-          background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 22px;
-        }
-        /* Chat input and Send: 44 px tap targets, 16 px text (no iOS zoom on focus). */
-        #chat_form { display: flex; gap: 6px; }
-        #chat_input { flex: 1; min-width: 0; min-height: 44px; box-sizing: border-box; font-size: 16px; padding: 0 10px; }
-        #chat_send { min-width: 64px; min-height: 44px; font-size: 16px; }
+      /* bp-touch */
+      .bp-touch #sheet_toggle {
+        display: flex; align-items: center; justify-content: center; position: fixed; z-index: var(--sz-z-chrome);
+        top: env(safe-area-inset-top); right: calc(48px + env(safe-area-inset-right)); width: var(--sz-tap); height: var(--sz-tap);
+        padding: 0; font-size: var(--sz-fs-2xl); color: #fff; background: transparent; border: 0; border-radius: var(--sz-r-lg);
       }
-      @media (max-width: 768px) and (orientation: landscape) and (max-height: 500px),
-        (pointer: coarse) and (hover: none) and (orientation: landscape) and (max-height: 500px) {
-        #mobile_strip { right: calc(env(safe-area-inset-right) + 208px); }
-        #scenario_card, body.touch-on #scenario_card { width: 226px; }
-        body.rank-on #scenario_card, body.rank-on.touch-on #scenario_card { width: 226px; }
-        body.rank-on #scenario_card:not(.collapsed) { width: min(420px, 60vw); }
-        body.rank-on #mobile_strip { right: calc(env(safe-area-inset-right) + 216px); }
-        #scenario_card:not(.collapsed) { width: min(420px, 60vw); }
-        #mobile_sheet:not([hidden]) {
-          left: auto; top: var(--m-top); height: auto; width: min(400px, 52vw);
-          border-radius: 16px 0 0 0; border-top: 0; border-left: 1px solid rgba(255, 196, 0, 0.6);
-        }
-        #mobile_sheet .sheet-handle { display: none; }
-        #mobile_sheet .sheet-tabs { margin-top: 8px; }
+      .bp-touch #sheet_toggle[aria-expanded="true"] { background: rgba(255, 196, 0, 0.25); }
+      .bp-touch .st-badge {
+        min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: var(--sz-r-lg);
+        font: 700 11px/16px var(--sz-font-ui); color: var(--sz-navy); background: var(--sz-yellow); text-align: center;
       }
+      .bp-touch #sheet_toggle .st-badge { position: absolute; top: 3px; right: 1px; }
+      /* Rank chip: "3/8" replaces the flag while there is a leaderboard. */
+      .bp-touch #sheet_toggle.has-rank { width: 56px; right: calc(46px + env(safe-area-inset-right)); }
+      .bp-touch #sheet_toggle.has-rank .st-flag { display: none; }
+      .bp-touch #sheet_toggle .st-rank {
+        min-width: var(--sz-tap); height: 30px; padding: 0 7px; box-sizing: border-box; border-radius: 15px;
+        font: 800 15px/30px var(--sz-font-ui); font-variant-numeric: tabular-nums;
+        color: var(--sz-navy); background: var(--sz-yellow); text-align: center; white-space: nowrap;
+      }
+      .bp-touch #sheet_toggle .st-rank[hidden] { display: none; }
+      .bp-touch #sheet_toggle.has-rank .st-badge { top: 0; right: -2px; }
+      .bp-touch body.rank-on #boat_stats { right: calc(104px + env(safe-area-inset-right)); }
+      .bp-touch .st-badge[hidden] { display: none; }
+      .bp-touch #boat_stats { right: calc(96px + env(safe-area-inset-right)); }
+      .bp-touch #scenario_card, .bp-touch body.touch-on #scenario_card {
+        width: calc(100vw - 44px - 44px - 116px - env(safe-area-inset-left) - env(safe-area-inset-right));
+      }
+      .bp-touch body.rank-on #scenario_card, .bp-touch body.rank-on.touch-on #scenario_card {
+        width: calc(100vw - 44px - 44px - 124px - env(safe-area-inset-left) - env(safe-area-inset-right));
+      }
+      .bp-touch body.sheet-on #chat_panel { display: none; }
+      .bp-touch #mobile_sheet:not([hidden]) {
+        display: flex; flex-direction: column; position: fixed; z-index: calc(var(--sz-z-sheet) + 20); left: 0; right: 0; bottom: 0;
+        height: min(58vh, 520px); box-sizing: border-box;
+        padding: 0 calc(10px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
+        color: #fff; background: var(--sz-navy); border-top: 1px solid var(--sz-yellow-60); border-radius: 16px 16px 0 0;
+        box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.45); font-family: var(--sz-font-ui);
+        touch-action: pan-y; overscroll-behavior: contain;
+      }
+      .bp-touch #mobile_sheet .sheet-handle { flex: none; align-self: center; width: 88px; height: var(--sz-tap); margin-bottom: -10px; padding: 0; background: transparent; border: 0; }
+      .bp-touch #mobile_sheet .sheet-handle span { display: block; width: var(--sz-tap); height: 5px; margin: 0 auto; border-radius: var(--sz-r-xs); background: rgba(255, 255, 255, 0.45); }
+      .bp-touch #mobile_sheet .sheet-tabs { flex: none; display: flex; gap: 6px; padding: 4px; border-radius: var(--sz-r-xl); background: rgba(255, 255, 255, 0.08); }
+      .bp-touch #mobile_sheet .sheet-tabs button {
+        flex: 1; min-height: var(--sz-tap); display: flex; align-items: center; justify-content: center; gap: 6px;
+        font: 700 15px var(--sz-font-ui); color: #fff; background: transparent; border: 0; border-radius: 9px;
+      }
+      .bp-touch #mobile_sheet .sheet-tabs button[hidden] { display: none; }
+      .bp-touch #mobile_sheet .sheet-tabs button[aria-selected="true"] { background: var(--sz-yellow); color: var(--sz-navy); }
+      .bp-touch #mobile_sheet .sheet-pane { flex: 1; min-height: 0; overflow-y: auto; margin-top: 8px; }
+      .bp-touch #mobile_sheet[data-tab="board"] #sheet_chat, .bp-touch #mobile_sheet[data-tab="chat"] #sheet_board { display: none; }
+      .bp-touch #mobile_sheet #finish_results {
+        position: static; max-height: none; overflow: visible; padding: 4px 2px; font-size: var(--sz-fs-lg); line-height: 1.6;
+        white-space: normal; background: transparent; border: 0; pointer-events: auto;
+      }
+      .bp-touch #mobile_sheet #finish_results:not([hidden]) ~ .sheet-empty { display: none; }
+      .bp-touch #mobile_sheet .sheet-empty { margin: 12px 4px; opacity: 0.75; font-size: var(--sz-fs-base); }
+      .bp-touch #sheet_chat { display: flex; flex-direction: column; }
+      .bp-touch #mobile_sheet #chat_body { order: 1; flex: 1; display: flex; flex-direction: column; min-height: 0; width: auto; margin: 0; background: transparent; border: 0; padding: 0; }
+      .bp-touch #mobile_sheet #chat_body[hidden] { display: none; }
+      .bp-touch #mobile_sheet #chat_log { flex: 1; max-height: none; font-size: var(--sz-fs-lg); }
+      .bp-touch #mobile_sheet .sheet-quick { order: 2; flex: none; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+      .bp-touch #mobile_sheet .sheet-quick-btn {
+        min-height: var(--sz-tap); padding: 0 14px; font: 600 14px var(--sz-font-ui); color: #fff;
+        background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 22px;
+      }
+      /* Chat input and Send: 44 px tap targets, 16 px text (no iOS zoom on focus). */
+      .bp-touch #chat_form { display: flex; gap: 6px; }
+      .bp-touch #chat_input { flex: 1; min-width: 0; min-height: var(--sz-tap); box-sizing: border-box; font-size: var(--sz-fs-xl); padding: 0 10px; }
+      .bp-touch #chat_send { min-width: 64px; min-height: var(--sz-tap); font-size: var(--sz-fs-xl); }
+
+      /* bp-phone-landscape */
+      .bp-phone-landscape #mobile_strip { right: calc(env(safe-area-inset-right) + 208px); }
+      .bp-phone-landscape #scenario_card, .bp-phone-landscape body.touch-on #scenario_card { width: 226px; }
+      .bp-phone-landscape body.rank-on #scenario_card, .bp-phone-landscape body.rank-on.touch-on #scenario_card { width: 226px; }
+      .bp-phone-landscape body.rank-on #scenario_card:not(.collapsed) { width: min(420px, 60vw); }
+      .bp-phone-landscape body.rank-on #mobile_strip { right: calc(env(safe-area-inset-right) + 216px); }
+      .bp-phone-landscape #scenario_card:not(.collapsed) { width: min(420px, 60vw); }
+      .bp-phone-landscape #mobile_sheet:not([hidden]) {
+        left: auto; top: var(--m-top); height: auto; width: min(400px, 52vw);
+        border-radius: 16px 0 0 0; border-top: 0; border-left: 1px solid var(--sz-yellow-60);
+      }
+      .bp-phone-landscape #mobile_sheet .sheet-handle { display: none; }
+      .bp-phone-landscape #mobile_sheet .sheet-tabs { margin-top: 8px; }
+
       /* Tablet (plan M10): coarse pointer, at least 769 x 600. Desktop zones
          (instrument panel, minimap, floating leaderboard) with the overlay
          controls (forced on tablets, touch-controls.js); no readout strip. */
-      @media (pointer: coarse) and (hover: none) and (min-width: 769px) and (min-height: 600px) {
-        body { --m-top: var(--m-bar); --tz-h: min(30vh, 300px); --ip-h: 184px; }
-        #mobile_strip { display: none; }
-        #minimap { top: calc(var(--m-top) + 10px); left: calc(10px + env(safe-area-inset-left)); bottom: auto; width: 300px; height: 240px; }
-        #minimap canvas { width: 300px; height: 240px; }
-        #minimap .mm-follow { min-height: 44px; min-width: 64px; font-size: 14px; }
-        #instrument_panel, body:not(.settings-open) #instrument_panel {
-          bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 125; box-sizing: border-box;
-          width: min(660px, calc(100vw - 2 * (min(14vw, 120px) + 24px)));
-        }
-        #instrument_panel .instr-tiles { grid-template-columns: repeat(5, 1fr); }
-        #instrument_panel .instr-mode { min-height: 44px; padding: 0 14px; font-size: 14px; }
-        body.touch-on #finish_results, body.touch-on.tc-overlay #finish_results {
-          top: calc(var(--m-top) + 10px); bottom: auto; right: calc(10px + env(safe-area-inset-right)); left: auto;
-          max-height: 40vh; font-size: 15px; line-height: 1.5; padding: 8px 12px; visibility: visible;
-        }
-        .rule-toasts, body:has(#start_hud:not([hidden])) .rule-toasts {
-          top: auto; left: auto; transform: none; width: min(360px, 46vw);
-          right: calc(min(14vw, 120px) + 24px + env(safe-area-inset-right));
-          bottom: calc(max(var(--tz-h), var(--ip-h) + 88px) + 14px + env(safe-area-inset-bottom));
-        }
-        #start_hud { left: 50%; transform: translateX(-50%); top: calc(var(--m-top) + 262px); max-width: none; }
-        body.tc-overlay .tc-steer, body.tc-overlay .tc-steer:not(.tc-right) {
-          top: auto; bottom: calc(14px + env(safe-area-inset-bottom)); height: var(--tz-h); width: min(14vw, 120px);
-        }
-        body.tc-overlay .tc-btn[data-key="38"], body.tc-overlay .tc-btn[data-key="40"] { left: calc(10px + env(safe-area-inset-left)); width: 120px; }
-        body.tc-overlay .tc-btn[data-key="40"] { bottom: calc(var(--tz-h) + 26px + env(safe-area-inset-bottom)); }
-        body.tc-overlay .tc-btn[data-key="38"] { bottom: calc(var(--tz-h) + 80px + env(safe-area-inset-bottom)); }
-        body.tc-overlay .tc-btn[data-short] { bottom: calc(var(--ip-h) + 30px + env(safe-area-inset-bottom)); }
-        #touch_layout { pointer-events: none; opacity: 0.5; }
-        #sheet_toggle[hidden] { display: none; }
+      /* bp-tablet */
+      .bp-tablet body { --m-top: var(--m-bar); --tz-h: min(30vh, 300px); --ip-h: 184px; }
+      .bp-tablet #mobile_strip { display: none; }
+      .bp-tablet #minimap { top: calc(var(--m-top) + 10px); left: calc(10px + env(safe-area-inset-left)); bottom: auto; width: 300px; height: 240px; }
+      .bp-tablet #minimap canvas { width: 300px; height: 240px; }
+      .bp-tablet #minimap .mm-follow { min-height: var(--sz-tap); min-width: 64px; font-size: var(--sz-fs-base); }
+      .bp-tablet #instrument_panel, .bp-tablet body:not(.settings-open) #instrument_panel {
+        bottom: calc(14px + env(safe-area-inset-bottom)); z-index: calc(var(--sz-z-controls) + 5); box-sizing: border-box;
+        width: min(660px, calc(100vw - 2 * (min(14vw, 120px) + 24px)));
       }
+      .bp-tablet #instrument_panel .instr-tiles { grid-template-columns: repeat(5, 1fr); }
+      .bp-tablet #instrument_panel .instr-mode { min-height: var(--sz-tap); padding: 0 14px; font-size: var(--sz-fs-base); }
+      .bp-tablet body.touch-on #finish_results, .bp-tablet body.touch-on.tc-overlay #finish_results {
+        top: calc(var(--m-top) + 10px); bottom: auto; right: calc(10px + env(safe-area-inset-right)); left: auto;
+        max-height: 40vh; font-size: var(--sz-fs-lg); line-height: 1.5; padding: 8px 12px; visibility: visible;
+      }
+      .bp-tablet .rule-toasts, .bp-tablet body:has(#start_hud:not([hidden])) .rule-toasts {
+        top: auto; left: auto; transform: none; width: min(360px, 46vw);
+        right: calc(min(14vw, 120px) + 24px + env(safe-area-inset-right));
+        bottom: calc(max(var(--tz-h), var(--ip-h) + 88px) + 14px + env(safe-area-inset-bottom));
+      }
+      .bp-tablet #start_hud { left: 50%; transform: translateX(-50%); top: calc(var(--m-top) + 262px); max-width: none; }
+      .bp-tablet body.tc-overlay .tc-steer, .bp-tablet body.tc-overlay .tc-steer:not(.tc-right) {
+        top: auto; bottom: calc(14px + env(safe-area-inset-bottom)); height: var(--tz-h); width: min(14vw, 120px);
+      }
+      .bp-tablet body.tc-overlay .tc-btn[data-key="38"], .bp-tablet body.tc-overlay .tc-btn[data-key="40"] { left: calc(10px + env(safe-area-inset-left)); width: 120px; }
+      .bp-tablet body.tc-overlay .tc-btn[data-key="40"] { bottom: calc(var(--tz-h) + 26px + env(safe-area-inset-bottom)); }
+      .bp-tablet body.tc-overlay .tc-btn[data-key="38"] { bottom: calc(var(--tz-h) + 80px + env(safe-area-inset-bottom)); }
+      .bp-tablet body.tc-overlay .tc-btn[data-short] { bottom: calc(var(--ip-h) + 30px + env(safe-area-inset-bottom)); }
+      .bp-tablet #touch_layout { pointer-events: none; opacity: 0.5; }
+      .bp-tablet #sheet_toggle[hidden] { display: none; }
+
     </style>
   
   </head>

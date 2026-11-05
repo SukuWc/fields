@@ -1,3 +1,4 @@
+import './layout.js';
 import { setupDragLook } from './drag-look.js';
 import * as THREE from 'three';
 import { FixedStepLoop } from './loop.js';

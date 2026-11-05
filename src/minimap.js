@@ -11,7 +11,7 @@
 import { boatColorCss, boatColorIndex } from './boat-colors.js';
 import { instrumentBoat } from './instrument-readout.js';
 
-import { PHONE_QUERY } from './touch-controls.js';
+import { PHONE_QUERY } from './layout.js';
 // Phones only: a tablet keeps the desktop map (plan M10).
 export const MINIMAP_COMPACT_QUERY = PHONE_QUERY;
 export const MINIMAP_W = 320;

@@ -1,3 +1,4 @@
+import { DESKTOP_QUERY } from './layout.js';
 // Mobile settings menu. On small or touch-only screens (see the media query
 // in index.html) #settings becomes a slide-in sheet behind the ☰ button.
 // The same DOM controls are shown, so URL sync, Reset settings and every
@@ -17,7 +18,6 @@ export function setupMobileMenu() {
   if (!button || !panel || !backdrop) return;
   backdrop.hidden = false; // shown and hidden by CSS from here on
 
-  const DESKTOP_QUERY = '(min-width: 769px) and (hover: hover), (min-width: 769px) and (pointer: fine)';
   const desktop = typeof window.matchMedia === 'function' ? window.matchMedia(DESKTOP_QUERY) : { matches: false };
   const STORE_KEY = 'fields.settingsOpen';
   const stored = () => { try { return localStorage.getItem(STORE_KEY); } catch { return null; } };
