@@ -59,9 +59,8 @@ export const SETTINGS = [
   { id: 'sticky_autopilot', scope: 'player', panel: 'player', type: 'bool', default: true },
   // Default off; touch-controls.js turns it on for phones and touch screens.
   { id: 'touch', scope: 'player', panel: 'player', type: 'bool', default: false },
-  // Touch layout (mobile plan M6): classic panel under the map, or overlay buttons over a full-height map.
   { id: 'vibrate', scope: 'player', panel: 'player', type: 'bool', default: true },
-  { id: 'touch_layout', scope: 'player', panel: 'player', type: 'enum', default: 'classic', values: ['classic', 'overlay'] },
+  // touch_layout (Classic / Overlay) removed: Overlay is the only touch layout.
   { id: 'show_field', scope: 'player', panel: 'player', type: 'bool', default: true, subscription: 'flow' },
   { id: 'tracers', scope: 'player', panel: 'player', type: 'number', default: null, nullable: true, min: 10, max: 20000 },
   { id: 'tracerLife', scope: 'player', panel: 'player', type: 'number', default: 6, min: 0.5, max: 30 },
