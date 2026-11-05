@@ -8,6 +8,9 @@
 // chat (there is nobody to talk to): the panel stays hidden.
 const STOP_EVENTS = ['pointerdown', 'pointermove', 'pointerup', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'mousemove', 'mouseup', 'wheel', 'click', 'keydown', 'keyup'];
 const MAX_LINES = 50;
+// Quick messages (one tap sends): part of the chat shell on every size
+// (standardization PR 7), so desktop, tablet and the phone sheet share them.
+export const QUICK_MESSAGES = ['👍 Nice', '⚠ Starboard!', 'Room please', 'GG'];
 
 function hex(c) { return Number.isInteger(c) && c >= 0 && c <= 0xffffff ? '#' + c.toString(16).padStart(6, '0') : null; }
 
@@ -23,6 +26,18 @@ export function setupChat(host, doc = document) {
   const input = doc.getElementById('chat_input');
   const status = doc.getElementById('chat_status');
   const badge = doc.getElementById('chat_unread');
+  const quick = doc.getElementById('chat_quick');
+  if (quick && !quick.childElementCount) {
+    for (const text of QUICK_MESSAGES) {
+      const b = doc.createElement('button');
+      b.type = 'button'; b.className = 'sz-btn chat-quick-btn'; b.textContent = text;
+      b.addEventListener('click', () => {
+        input.value = text;
+        if (form.requestSubmit) form.requestSubmit(); else form.dispatchEvent(new Event('submit', { cancelable: true }));
+      });
+      quick.appendChild(b);
+    }
+  }
   let unread = 0;
   let open = false;
   const setOpen = (v) => {

@@ -27,7 +27,8 @@
 // Numbers here travel exactly (no rounding on the server), so the text is
 // the same in every host mode.
 import { courseTextState, courseTextOf } from './course.js';
-import { leaderboardState, leaderboardHtmlOf } from './leaderboard.js';
+import { leaderboardState } from './leaderboard.js';
+import { leaderboardViewHtml } from './leaderboard-view.js';
 import {
   startHudHtmlOf,
   startHudState,
@@ -144,7 +145,12 @@ export function hudFromState(h0, ownId = null, boats = null) {
     if (h.st.st) info += 'Start: ' + startStatusTextOf(h.st.st, h.st.t0) + '<br>';
   }
   if (h.co) info += courseTextOf(h.co) + '<br>';
-  if (h.lb) out.results = leaderboardHtmlOf(h.lb, 0);
+  // Leaderboard component (leaderboard-view.js): own boat by id, else boat 0
+  // (local and worker); an id not in the frame (spectator) highlights none.
+  if (h.lb) {
+    const own = ownId ? index(ownId) : 0;
+    out.results = leaderboardViewHtml(h.lb, { own: own >= 0 ? own : null, pending: (h.b || []).map((b) => (b && b.pending) || 0), boats });
+  }
 
   // Rules readout, as the step saw it before recording this tick's contacts.
   let showPenaltyKeys = false;
