@@ -21,8 +21,9 @@ export const TOUCH_DEFAULT_QUERY = TOUCH_UI_QUERY;
 // Plan M10: a touch tablet (at least 769 x 600) gets the desktop zones and
 // always the overlay controls; anything smaller is a phone.
 
-export const TOUCH_LAYOUTS = ['classic', 'overlay'];
-export function normalizeTouchLayout(v) { return TOUCH_LAYOUTS.includes(v) ? v : 'classic'; }
+// Overlay is the only touch layout (Classic removed 2026-11-05).
+export const TOUCH_LAYOUTS = ['overlay'];
+export function normalizeTouchLayout(v) { return 'overlay'; }
 
 const STOP_EVENTS = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'mousemove', 'mouseup', 'wheel', 'click', 'dblclick', 'contextmenu'];
 
@@ -91,20 +92,13 @@ export function setupTouchControls() {
     window.dispatchEvent(new Event('resize'));
   }
 
-  // Layout (plan M6): 'classic' panel under the map or 'overlay' over a
-  // full-height map. Saved / restored with the other player prefs
-  // (settings-registry 'touch_layout'; also ?touch_layout=overlay).
-  const layoutSel = document.getElementById('touch_layout');
-  const tabletQ = window.matchMedia ? window.matchMedia(TABLET_QUERY) : null;
-  function applyLayout() {
-    const overlay = normalizeTouchLayout(layoutSel && layoutSel.value) === 'overlay' || !!(tabletQ && tabletQ.matches);
-    if (document.body.classList.contains('tc-overlay') === overlay) return;
-    document.body.classList.toggle('tc-overlay', overlay);
+  // Overlay-only: Classic grid is gone; every touch layout is the see-through
+  // Overlay controls over a full-height map (phones, tablets, and the Touch
+  // controls checkbox on larger screens).
+  if (!document.body.classList.contains('tc-overlay')) {
+    document.body.classList.add('tc-overlay');
     window.dispatchEvent(new Event('resize'));
   }
-  if (layoutSel) { layoutSel.addEventListener('change', applyLayout); layoutSel.addEventListener('input', applyLayout); }
-  if (tabletQ && tabletQ.addEventListener) tabletQ.addEventListener('change', applyLayout);
-  applyLayout();
 
   box.addEventListener('change', () => apply(box.checked));
   window.addEventListener('blur', () => buttons.forEach(release));

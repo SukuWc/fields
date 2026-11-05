@@ -500,12 +500,12 @@
       /* 4 x 2 middle: Depower fits as the eighth cell, spanning two. */
       .bp-short-landscape .tc-wide { grid-column: 4 / span 2; }
 
-      /* Overlay touch layout (plan M6, setting Controls > Layout): the map
-         keeps the full height; see-through steer zones at the sides, Head up /
-         Bear away pills and a row of round buttons (Tack in brand yellow) at
-         the bottom. The panel itself lets touches through to the map;
-         --touch-panel-h becomes the height of the button area so the bottom
-         HUD items still clear it. */
+      /* Overlay touch layout (the only touch layout): the map keeps the full
+         height; see-through steer zones at the sides, Head up / Bear away
+         pills and a row of round buttons (Tack in brand yellow) at the bottom.
+         The panel itself lets touches through to the map; --touch-panel-h is
+         the height of the button area so the bottom HUD items still clear it
+         (phones add the instrument panel below — see .bp-phone rules). */
       body.tc-overlay { --touch-panel-h: calc(150px + env(safe-area-inset-bottom)); }
       body.tc-overlay #touch_controls {
         top: 0; height: auto; display: block; padding: 0; background: transparent; border: 0; pointer-events: none;
@@ -1140,48 +1140,93 @@
       .bp-phone-landscape #minimap { right: auto; left: calc(8px + env(safe-area-inset-left)); top: calc(var(--m-top) + 6px); }
       .bp-phone-landscape #minimap.mm-open { top: calc(var(--m-top) + 6px); width: auto; height: calc(100% - var(--m-top) - var(--touch-panel-h) - 12px); }
       .bp-phone-landscape #start_hud { left: 50%; transform: translateX(-50%); max-width: none; }
-      .bp-phone-landscape body.tc-overlay .tc-steer:not(.tc-right) { top: calc(var(--m-top) + var(--mm-d) + 16px); }
 
 
-      /* Phone instrument panel (standardization PR 10, user decision: the
-         shared zone C panel on phones too, along the bottom). Portrait:
-         docked just above the touch controls (Classic: on top of the grid;
-         Overlay: in the band between the bottom button rows and the steer
-         zones, which move up by --ph-h). Landscape: Overlay only, in the free
-         band at the bottom centre between Head up / Bear away and the
-         shortcut buttons; Classic landscape keeps the map (its grid already
-         takes half the height). One compact row: Readout shows the tiles the
-         top strip does not (the strip stays the quick glance), Chart shows
-         the strips side by side, scrolling sideways. */
-      .bp-phone:not(.bp-phone-landscape) body { --ph-h: 112px; }
-      .bp-phone:not(.bp-phone-landscape) #instrument_panel {
+      /* Phone instrument panel (Overlay-only, 2026-11-05): docks at the very
+         bottom in portrait and landscape. The Overlay control band (two rows
+         of round buttons + matching-height steer zones) sits above it. The
+         top strip stays the quick glance; Readout hides BSP/VMG/TWA/TWS;
+         Chart scrolls sideways. Classic touch grid is gone. */
+      .bp-phone body {
+        --ph-h: 106px;
+        /* pad 14 + round 58 + gap 14 + Head up/Bear away 44 */
+        --tc-band: 130px;
+        --tc-steer-h: 116px; /* 58 + 14 + 44: same span as the two button rows */
+      }
+      .bp-phone body.tc-overlay {
+        --touch-panel-h: calc(var(--ph-h) + var(--tc-band) + env(safe-area-inset-bottom));
+      }
+      .bp-phone #instrument_panel {
         display: block; position: fixed; z-index: calc(var(--sz-z-controls) + 5); box-sizing: border-box;
         left: calc(6px + env(safe-area-inset-left)); right: calc(6px + env(safe-area-inset-right));
-        bottom: calc(6px + env(safe-area-inset-bottom)); height: calc(var(--ph-h) - 6px); padding: 4px 6px 6px; overflow: hidden;
+        bottom: 0; height: calc(var(--ph-h) + env(safe-area-inset-bottom));
+        padding: 4px 6px calc(6px + env(safe-area-inset-bottom)); overflow: hidden;
       }
-      .bp-phone:not(.bp-phone-landscape) body.touch-on #instrument_panel { bottom: calc(var(--touch-panel-h) + 6px); }
-      .bp-phone:not(.bp-phone-landscape) body.touch-on.tc-overlay #instrument_panel { bottom: calc(var(--touch-panel-h) + 4px); }
+      /* Lift Overlay buttons and steers above the panel; steers match the two rows. */
+      .bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-btn[data-key="38"],
+      .bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-btn[data-key="40"] {
+        bottom: calc(var(--ph-h) + 86px + env(safe-area-inset-bottom));
+      }
+      .bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-btn[data-short] {
+        bottom: calc(var(--ph-h) + 14px + env(safe-area-inset-bottom));
+      }
+      .bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-steer {
+        top: auto;
+        bottom: calc(var(--ph-h) + 14px + env(safe-area-inset-bottom));
+        height: var(--tc-steer-h);
+      }
+      /* Landscape: panel still at the bottom edge (full width). Side stacks and
+         steers sit above it; steers match the taller action-button stack
+         (Tack..Depwr: 146 + 58 − 14 = 190). */
+      .bp-phone-landscape body {
+        --ph-h: 100px;
+        --tc-band: 204px; /* 14 + 190 */
+        --tc-steer-h: 190px;
+      }
+      .bp-phone-landscape body.tc-overlay {
+        --touch-panel-h: calc(var(--ph-h) + var(--tc-band) + env(safe-area-inset-bottom));
+      }
       .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel {
-        display: block; position: fixed; z-index: calc(var(--sz-z-controls) + 5); box-sizing: border-box; overflow: hidden;
-        left: calc(var(--tc-in) + 124px + env(safe-area-inset-left)); right: calc(var(--tc-in) + 132px + env(safe-area-inset-right));
-        bottom: calc(8px + env(safe-area-inset-bottom)); height: 106px; padding: 4px 6px 6px;
+        display: block; left: calc(6px + env(safe-area-inset-left)); right: calc(6px + env(safe-area-inset-right));
+        bottom: 0; height: calc(var(--ph-h) + env(safe-area-inset-bottom));
+        padding: 4px 6px calc(6px + env(safe-area-inset-bottom));
       }
-      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-head, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-modes, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-modes { padding: 0; gap: 2px; flex: none; }
-      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-mode, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-mode { flex: none; padding: 0 12px; font-size: var(--sz-fs-md); }
-      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-note, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-note { display: none; }
-      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-window-wrap, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-window-wrap { display: none; margin-left: auto; font-size: 0; }
-      .bp-phone:not(.bp-phone-landscape) #instrument_panel[data-mode="chart"] .instr-window-wrap, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel[data-mode="chart"] .instr-window-wrap { display: inline-flex; }
-      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-window, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-window { min-height: var(--sz-tap); font-size: var(--sz-fs-base); padding: 0 4px; }
-      .bp-phone:not(.bp-phone-landscape) #instrument_panel:not([data-mode="chart"]) .instr-tiles, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel:not([data-mode="chart"]) .instr-tiles { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
-      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-tile, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-tile { flex: 0 0 auto; min-width: 58px; padding: 2px 4px; }
-      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-value, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-value { font-size: var(--sz-fs-xl); }
-      .bp-phone:not(.bp-phone-landscape) #instrument_panel[data-mode="chart"] .instr-charts, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel[data-mode="chart"] .instr-charts { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
-      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-strip, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-strip { flex: 0 0 62%; }
-      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-strip-svg, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-strip-svg { height: 26px; }
-      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-tile[data-key="bs"], .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-tile[data-key="bs"], .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-tile[data-key="vmg"], .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-tile[data-key="vmg"], .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-tile[data-key="twa"], .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-tile[data-key="twa"], .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-tile[data-key="tws"], .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-tile[data-key="tws"] { display: none; }
-      .bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-steer { bottom: calc(var(--touch-panel-h) + 60px + var(--ph-h)); height: min(30vh, 260px); }
-      .bp-phone:not(.bp-phone-landscape) body.touch-on #info, .bp-phone:not(.bp-phone-landscape) body.touch-on #perf_overlay_hud { bottom: calc(var(--touch-panel-h) + 34px + var(--ph-h)); }
+      .bp-phone-landscape body.tc-overlay .tc-steer,
+      .bp-phone-landscape body.tc-overlay .tc-steer:not(.tc-right) {
+        top: auto;
+        bottom: calc(var(--ph-h) + 14px + env(safe-area-inset-bottom));
+        height: var(--tc-steer-h);
+        width: min(13vw, 120px);
+      }
+      .bp-phone-landscape body.tc-overlay .tc-btn[data-key="38"] { bottom: calc(var(--ph-h) + 66px + env(safe-area-inset-bottom)); }
+      .bp-phone-landscape body.tc-overlay .tc-btn[data-key="40"] { bottom: calc(var(--ph-h) + 14px + env(safe-area-inset-bottom)); }
+      .bp-phone-landscape body.tc-overlay .tc-btn[data-key="13"] { bottom: calc(var(--ph-h) + 146px + env(safe-area-inset-bottom)); }
+      .bp-phone-landscape body.tc-overlay .tc-btn[data-key="32"] { bottom: calc(var(--ph-h) + 80px + env(safe-area-inset-bottom)); }
+      .bp-phone-landscape body.tc-overlay .tc-btn[data-key="88"] { bottom: calc(var(--ph-h) + 14px + env(safe-area-inset-bottom)); }
+      .bp-phone-landscape body.tc-overlay .tc-btn[data-key="81"] { bottom: calc(var(--ph-h) + 80px + env(safe-area-inset-bottom)); }
+      .bp-phone-landscape body.tc-overlay .tc-btn[data-key="69"] { bottom: calc(var(--ph-h) + 14px + env(safe-area-inset-bottom)); }
+      .bp-phone-landscape body.touch-on.tc-overlay #finish_results { bottom: calc(var(--ph-h) + 14px + env(safe-area-inset-bottom)); }
+      .bp-phone-landscape body.touch-on.tc-overlay #chat_panel { bottom: calc(var(--ph-h) + 14px + env(safe-area-inset-bottom)); }
+      /* Shared phone instrument chrome (portrait + landscape). */
+      .bp-phone #instrument_panel .instr-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+      .bp-phone #instrument_panel .instr-modes { padding: 0; gap: 2px; flex: none; }
+      .bp-phone #instrument_panel .instr-mode { flex: none; padding: 0 12px; font-size: var(--sz-fs-md); }
+      .bp-phone #instrument_panel .instr-note { display: none; }
+      .bp-phone #instrument_panel .instr-window-wrap { display: none; margin-left: auto; font-size: 0; }
+      .bp-phone #instrument_panel[data-mode="chart"] .instr-window-wrap { display: inline-flex; }
+      .bp-phone #instrument_panel .instr-window { min-height: var(--sz-tap); font-size: var(--sz-fs-base); padding: 0 4px; }
+      .bp-phone #instrument_panel:not([data-mode="chart"]) .instr-tiles { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+      .bp-phone #instrument_panel .instr-tile { flex: 0 0 auto; min-width: 58px; padding: 2px 4px; }
+      .bp-phone #instrument_panel .instr-value { font-size: var(--sz-fs-xl); }
+      .bp-phone #instrument_panel[data-mode="chart"] .instr-charts { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+      .bp-phone #instrument_panel .instr-strip { flex: 0 0 62%; }
+      .bp-phone #instrument_panel .instr-strip-svg { height: 26px; }
+      .bp-phone #instrument_panel .instr-tile[data-key="bs"],
+      .bp-phone #instrument_panel .instr-tile[data-key="vmg"],
+      .bp-phone #instrument_panel .instr-tile[data-key="twa"],
+      .bp-phone #instrument_panel .instr-tile[data-key="tws"] { display: none; }
+      .bp-phone body.touch-on #info, .bp-phone body.touch-on #perf_overlay_hud { bottom: calc(var(--touch-panel-h) + 34px); }
+
       /* Leaderboard and chat sheet (plan M9): phones only. The top bar gets a
          🏁 button (with the unread chat count) between Boat stats and ☰; the
          floating leaderboard and Chat button move into the sheet. */
@@ -1291,7 +1336,6 @@
       .bp-tablet body.tc-overlay .tc-btn[data-key="40"] { bottom: calc(var(--tz-h) + 26px + env(safe-area-inset-bottom)); }
       .bp-tablet body.tc-overlay .tc-btn[data-key="38"] { bottom: calc(var(--tz-h) + 80px + env(safe-area-inset-bottom)); }
       .bp-tablet body.tc-overlay .tc-btn[data-short] { bottom: calc(var(--ip-h) + 30px + env(safe-area-inset-bottom)); }
-      .bp-tablet #touch_layout { pointer-events: none; opacity: 0.5; }
       .bp-tablet #sheet_toggle[hidden] { display: none; }
 
     </style>
@@ -1426,9 +1470,8 @@
       </fieldset>
       <fieldset class="pref-group"><legend>Controls</legend>
         <label class="setting-row" title="Left / Right (A / D) turn the autopilot heading target with no angle limit (tack and gybe through it) instead of the rudder, so the autopilot stays on. On by default; saved in this browser."><input id="sticky_autopilot" autocomplete="off" type="checkbox">Sticky autopilot</label>
-        <label class="setting-row"><input id="touch" autocomplete="off" type="checkbox" title="Boat 1 touch buttons at the bottom of the screen. On by default on phones and touch screens. Also ?touch=1 / ?touch=0">Touch controls</label>
+        <label class="setting-row"><input id="touch" autocomplete="off" type="checkbox" title="Boat 1 Overlay touch buttons over the map. On by default on phones and touch screens. Also ?touch=1 / ?touch=0">Touch controls</label>
         <label class="setting-row"><input id="vibrate" autocomplete="off" type="checkbox" title="A short buzz when your boat tacks and a double buzz on a new penalty. Phones that support vibration only (not iPhone). On by default; saved in this browser. Also ?vibrate=0">Vibrate</label>
-        <label class="setting-row setting-field" title="Classic: buttons in a panel under the map. Overlay: see-through steer zones and round buttons over a full-height map. Saved in this browser; also ?touch_layout=overlay.">Layout <select id="touch_layout" autocomplete="off"><option value="classic">Classic</option><option value="overlay">Overlay</option></select></label>
       </fieldset>
       <fieldset class="pref-group dev-only"><legend>Developer</legend>
         <label class="setting-row dev-only"><input id="show_field" autocomplete="off" type="checkbox" title="Wind flow tracers: short streaks carried by the local wind, denser where it blows harder, each with a tail along its own path. Drawn on top of the colour field plot; independent of it.">Flow tracers</label>

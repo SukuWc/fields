@@ -5,17 +5,24 @@ import { READOUT_TILES } from '../src/instrument-readout.js';
 import { STRIP_CELLS } from '../src/mobile-strip.js';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-const P = '.bp-phone:not(.bp-phone-landscape)';
+const P = '.bp-phone';
 const L = '.bp-phone-landscape body.touch-on.tc-overlay';
 
-test('phones show the shared instrument panel above the controls', () => {
+test('phones dock the instrument panel at the very bottom in both orientations', () => {
   assert.ok(html.includes(`${P} #instrument_panel {\n        display: block;`));
-  assert.ok(html.includes(`${P} body.touch-on #instrument_panel { bottom: calc(var(--touch-panel-h) + 6px); }`));
+  assert.ok(html.includes(`${P} #instrument_panel {\n        display: block; position: fixed;`));
+  assert.ok(html.includes('bottom: 0; height: calc(var(--ph-h) + env(safe-area-inset-bottom));'));
   assert.ok(html.includes(`${L} #instrument_panel {\n        display: block;`));
-  // Overlay steer zones move up by the panel height so nothing overlaps.
-  assert.ok(html.includes(`${P} body.tc-overlay .tc-steer { bottom: calc(var(--touch-panel-h) + 60px + var(--ph-h))`));
-  // Chart mode hides the tiles on phones too.
-  assert.ok(html.includes(`${P} #instrument_panel:not([data-mode="chart"]) .instr-tiles`));
+  assert.ok(html.includes(`${L} #instrument_panel {\n        display: block; left: calc(6px + env(safe-area-inset-left)); right: calc(6px + env(safe-area-inset-right));\n        bottom: 0;`));
+});
+
+test('Overlay steers share the two circular-button-row height; Classic is gone', () => {
+  assert.ok(html.includes('--tc-steer-h: 116px'));
+  assert.ok(html.includes('.bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-steer {\n        top: auto;\n        bottom: calc(var(--ph-h) + 14px + env(safe-area-inset-bottom));\n        height: var(--tc-steer-h);'));
+  assert.ok(html.includes('--tc-steer-h: 190px'));
+  // No Classic-above-grid panel docking leftover.
+  assert.ok(!html.includes('body.touch-on #instrument_panel { bottom: calc(var(--touch-panel-h) + 6px); }'));
+  assert.ok(!html.includes('id="touch_layout"'));
 });
 
 test('phone Readout hides exactly the tiles the top strip already shows', () => {
