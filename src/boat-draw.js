@@ -1,5 +1,5 @@
 // Boat drawing from compact state (no planck, no Sim): the guide segments of
-// one boat (forces, autopilot line, true/apparent wind chevrons, rudder,
+// one boat (forces, CE offset marker, autopilot line, true/apparent wind chevrons, rudder,
 // centreboard and sails; the wind field is drawn by flow-tracers.js). The
 // host takes the state with Boat.renderState(view) (which also advances the
 // visual smoothing: boom angles, flap phase) and the static numbers with
@@ -94,6 +94,19 @@ export function boatGuides(s, d) {
   const f = s.f || [];
   for (let k = 0; k + 3 < f.length; k += 4) {
     graphics.push({ color: 0x00ff00, type: "force", x1: f[k], y1: f[k + 1], x2: f[k] + f[k + 2] / 10, y2: f[k + 1] + f[k + 3] / 10 });
+  }
+  // Sail CE: marker at the force application point, and a distinct arrow for
+  // the total sail force (lift+drag). Drawn as type "force" so the existing
+  // show_forces toggle controls them; colour differs from the green component
+  // arrows. Pure UI: numbers come from renderState (s.ce / s.sf / s.cex).
+  if (Array.isArray(s.ce) && s.ce.length >= 2 && Number.isFinite(s.ce[0]) && Number.isFinite(s.ce[1])) {
+    const cx = s.ce[0], cy = s.ce[1], m = 0.35;
+    graphics.push({ color: 0xff66cc, type: "force", x1: cx - m, y1: cy, x2: cx + m, y2: cy });
+    graphics.push({ color: 0xff66cc, type: "force", x1: cx, y1: cy - m, x2: cx, y2: cy + m });
+    if (Array.isArray(s.sf) && s.sf.length >= 2 && Number.isFinite(s.sf[0]) && Number.isFinite(s.sf[1])) {
+      graphics.push({ color: 0xffaa00, type: "force",
+        x1: cx, y1: cy, x2: cx + s.sf[0] / 8, y2: cy + s.sf[1] / 8 });
+    }
   }
   // autopilot guide
   const a = {};

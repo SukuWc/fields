@@ -374,6 +374,7 @@ function startClient() {
 
   // The host steps the world; the loop only keeps time.
   const loop = new FixedStepLoop({ step() {} }, { tickHz: 30, maxCatchUp: 4 });
+  if (typeof window !== 'undefined') { window.__simLoop = loop; window.__view = view; }
 
   // Readout and HUD panels built from the frame state (hud.js hudFromState).
   function applyHud(hud) {

@@ -21,6 +21,7 @@
 //   HEEL  the boat's heel_deg magnitude (sim heel.js; the sign is the side)
 //   HIKE  the boat's hike_pct, 0–100 (crew from centreline to full hike)
 //   SAIL  the boat's sail_eff_pct, 0–100 (cos²(heel) force remaining)
+//   RUD   the boat's rudder_deg, signed degrees (positive = clockwise yaw)
 import { boatSample, wrap180 } from './boat-stats.js';
 
 export const READOUT_TILES = [
@@ -37,6 +38,7 @@ export const READOUT_TILES = [
   { key: 'heel', label: 'HEEL', unit: '°' },
   { key: 'hike', label: 'HIKE', unit: '%' },
   { key: 'sail', label: 'SAIL', unit: '%' },
+  { key: 'rudder', label: 'RUD', unit: '°' },
 ];
 
 const fin = (v) => (Number.isFinite(v) ? v : null);
@@ -86,6 +88,7 @@ export function readoutValues(state, opts = {}) {
     heel: Number.isFinite(b.heel_deg) ? Math.abs(b.heel_deg) : null,
     hike: Number.isFinite(b.hike_pct) ? b.hike_pct : null,
     sail: Number.isFinite(b.sail_eff_pct) ? b.sail_eff_pct : null,
+    rudder: Number.isFinite(b.rudder_deg) ? b.rudder_deg : null,
     next: null,
     nextLabel: null,
   };
@@ -108,7 +111,7 @@ export function readoutValues(state, opts = {}) {
 export function formatReadout(key, v) {
   if (v === null || v === undefined || !Number.isFinite(v)) return '–';
   if (key === 'bs' || key === 'vmg' || key === 'tws' || key === 'aws') return v.toFixed(1);
-  if (key === 'next' || key === 'fin' || key === 'hike' || key === 'heel' || key === 'sail') return String(Math.round(v));
+  if (key === 'next' || key === 'fin' || key === 'hike' || key === 'heel' || key === 'sail' || key === 'rudder') return String(Math.round(v));
   if (key === 'twa' || key === 'awa') return String(Math.round(wrap180(v)));
   return String(Math.round(wrap360(v)) % 360);
 }

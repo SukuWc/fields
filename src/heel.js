@@ -35,6 +35,13 @@
 // heelForceFactor(phi) = cos²(phi) to lift and drag both, so propulsion,
 // side force and the lattice wake momentum (mainsail_force) all see it.
 //
+// Leeward CE offset (top-down 2D): the application point of that sail force
+// is displaced from the centreline by sailCeOffsetX(phi) = h_CE·sin(phi)
+// toward the heeled side. The centre of lateral resistance stays on the
+// centreline in this stage, so the drive component of the sail force at the
+// offset produces a yaw moment through planck (weather/lee helm that the
+// autopilot counters with rudder).
+//
 // Capsize: past HEEL_CAPSIZE_DEG the heel is clamped there (roll rate
 // zeroed) and capsized = true; the flag clears once heel drops back below
 // HEEL_CAPSIZE_CLEAR_DEG. Flag only: no righting manoeuvre.
@@ -85,6 +92,15 @@ export function gz(phi, table = DINGHY_DEFAULTS.gzTable) {
 export function heelForceFactor(phi) {
   const c = Math.cos(phi);
   return c * c;
+}
+
+// Top-down leeward CE offset (m, body-local +X): the sail force application
+// point moves off the centreline by h·sin(φ) as the mast heels. φ > 0 rolls
+// toward +X, so the offset is toward the heeled (leeward) side. Applied in
+// boat.js through planck applyForce at that point; yaw comes from the
+// rigid-body torque, not a heading tweak. CLR is left on the centreline.
+export function sailCeOffsetX(phi, p = DINGHY_DEFAULTS) {
+  return p.ceHeight * Math.sin(phi);
 }
 
 // The boat's sail model is in internal units: F = aws_int² · C · eff, with
