@@ -15,11 +15,11 @@
 
 import { setVirtualKey } from './controls.js';
 
-export const TOUCH_DEFAULT_QUERY = '(max-width: 768px), (pointer: coarse) and (hover: none)';
+import { TOUCH_UI_QUERY, TABLET_QUERY, PHONE_QUERY } from './layout.js';
+export { TABLET_QUERY, PHONE_QUERY };
+export const TOUCH_DEFAULT_QUERY = TOUCH_UI_QUERY;
 // Plan M10: a touch tablet (at least 769 x 600) gets the desktop zones and
 // always the overlay controls; anything smaller is a phone.
-export const TABLET_QUERY = '(pointer: coarse) and (hover: none) and (min-width: 769px) and (min-height: 600px)';
-export const PHONE_QUERY = '(max-width: 768px), (pointer: coarse) and (hover: none) and (max-height: 599px)';
 
 export const TOUCH_LAYOUTS = ['classic', 'overlay'];
 export function normalizeTouchLayout(v) { return TOUCH_LAYOUTS.includes(v) ? v : 'classic'; }

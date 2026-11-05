@@ -9,10 +9,10 @@
 // input and send it through the chat form. Local and worker modes have no
 // chat: only the Leaderboard tab shows.
 
-import { TABLET_QUERY } from './touch-controls.js';
+import { TABLET_QUERY, TOUCH_UI_QUERY } from './layout.js';
 import { setupSheetSwipe } from './sheet-swipe.js';
 
-export const SHEET_QUERY = '(max-width: 768px), (pointer: coarse) and (hover: none)';
+export const SHEET_QUERY = TOUCH_UI_QUERY;
 export const QUICK_MESSAGES = ['👍 Nice', '⚠ Starboard!', 'Room please', 'GG'];
 const STOP_EVENTS = ['pointerdown', 'pointermove', 'pointerup', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'mousemove', 'mouseup', 'wheel', 'click', 'keyup'];
 

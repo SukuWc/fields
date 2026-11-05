@@ -8,9 +8,10 @@
 //          (Rule 13, both tacking), or room owed between them (state.br /
 //          state.mr badges, Rule 18/19/20 room)
 // Pure: reads the snapshot only (sim owns state; client draws). Boats by id.
-export const ROW_RED = 0xff3030;
-export const ROW_GREEN = 0x30e060;
-export const ROW_YELLOW = 0xffd030;
+// Brand port red / starboard green / mark yellow (brand-kit/colors.md).
+export const ROW_RED = 0xe1182b;
+export const ROW_GREEN = 0x18a15e;
+export const ROW_YELLOW = 0xffc400;
 // No active rule pair (setting on): black outline on a white hull.
 export const ROW_NONE = 0x000000;
 

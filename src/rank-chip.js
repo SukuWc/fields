@@ -4,7 +4,7 @@
 // rows #finish_results shows). Hidden when there is no leaderboard, when
 // this client has no boat (a spectator in a server room) and on tablets,
 // where the leaderboard stays on the map. Client-only.
-import { TABLET_QUERY } from './touch-controls.js';
+import { TABLET_QUERY } from './layout.js';
 
 // Own boat's index in state.boats: by id in a server room, boat 0 otherwise
 // (the boat the leaderboard highlights). null: no own boat.

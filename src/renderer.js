@@ -238,8 +238,8 @@ function paintLabelTexture(lines) {
   const compact = badge || turn || cleared || next || rounded || markno;
   const rule15 = lines.some((line) => line.id === '15' && line.role === 'final');
   const fontPx = compact ? 12 : 14;
-  const font = '700 ' + fontPx + 'px "Courier New", Courier, monospace';
-  const dimFont = '500 ' + fontPx + 'px "Courier New", Courier, monospace';
+  const font = '700 ' + fontPx + 'px "Albert Sans", system-ui, sans-serif';
+  const dimFont = '500 ' + fontPx + 'px "Albert Sans", system-ui, sans-serif';
   const lineH = compact ? 16 : 18;
   const padX = compact ? 6 : 7;
   const padY = 4;
