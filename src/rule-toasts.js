@@ -135,7 +135,7 @@ export function setupRuleToasts({ remote = false, lockstep = () => false, onOwnP
     let boats = call.kind === 'cleared' ? who(call.boat) : who(call.boat) + ' penalty' + (call.count > 1 ? ' ×' + call.count : '');
     if (call.other !== null && call.other !== undefined) boats += ' · vs ' + who(call.other);
     // Rule 10: tack chips (red port / green starboard are the tack colours)
-    const chips = call.code === '10' ? '<span class="tack-chip port">P</span><span class="tack-chip stbd">S</span>' : '';
+    const chips = call.code === '10' ? '<span class="sz-chip tack-chip port">P</span><span class="sz-chip tack-chip stbd">S</span>' : '';
     el.innerHTML = `<div class="rt-head"><b class="rt-ref"></b><span class="rt-text"></span>${chips}</div><div class="rt-boats"></div>`;
     el.querySelector('.rt-ref').textContent = call.ref;
     el.querySelector('.rt-text').textContent = call.kind === 'cleared' ? call.text : '— ' + call.text;
