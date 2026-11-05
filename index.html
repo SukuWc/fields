@@ -1142,69 +1142,94 @@
       .bp-phone-landscape #start_hud { left: 50%; transform: translateX(-50%); max-width: none; }
 
 
-      /* Phone instrument panel (Overlay-only, 2026-11-05): docks at the very
-         bottom in portrait and landscape. The Overlay control band (two rows
-         of round buttons + matching-height steer zones) sits above it. The
-         top strip stays the quick glance; Readout hides BSP/VMG/TWA/TWS;
-         Chart scrolls sideways. Classic touch grid is gone. */
+      /* Phone instrument panel (Overlay-only): portrait docks full-width at
+         the very bottom with a compact control band above (narrow side steers
+         matching the two button rows, no overlap). Landscape keeps a narrow
+         centred panel between the side stacks (as in #182) with buttons fitted
+         around it; steers match the action-stack height. */
       .bp-phone body {
         --ph-h: 106px;
-        /* pad 14 + round 58 + gap 14 + Head up/Bear away 44 */
-        --tc-band: 130px;
-        --tc-steer-h: 116px; /* 58 + 14 + 44: same span as the two button rows */
+        --tc-round: 44px;
+        --tc-round-gap: 4px;
+        --tc-row-gap: 12px;
+        --tc-pad: 14px;
+        --tc-steer-w: 52px;
+        --tc-head-w: 96px;
+        /* pad + round + gap + Head up/Bear away (--sz-tap 44) */
+        --tc-band: calc(var(--tc-pad) + var(--tc-round) + var(--tc-row-gap) + var(--sz-tap));
+        --tc-steer-h: calc(var(--tc-round) + var(--tc-row-gap) + var(--sz-tap));
       }
       .bp-phone body.tc-overlay {
         --touch-panel-h: calc(var(--ph-h) + var(--tc-band) + env(safe-area-inset-bottom));
       }
-      .bp-phone #instrument_panel {
+      /* Portrait: full-width panel at the bottom edge. */
+      .bp-phone:not(.bp-phone-landscape) #instrument_panel {
         display: block; position: fixed; z-index: calc(var(--sz-z-controls) + 5); box-sizing: border-box;
         left: calc(6px + env(safe-area-inset-left)); right: calc(6px + env(safe-area-inset-right));
         bottom: 0; height: calc(var(--ph-h) + env(safe-area-inset-bottom));
         padding: 4px 6px calc(6px + env(safe-area-inset-bottom)); overflow: hidden;
       }
-      /* Lift Overlay buttons and steers above the panel; steers match the two rows. */
-      .bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-btn[data-key="38"],
-      .bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-btn[data-key="40"] {
-        bottom: calc(var(--ph-h) + 86px + env(safe-area-inset-bottom));
-      }
-      .bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-btn[data-short] {
-        bottom: calc(var(--ph-h) + 14px + env(safe-area-inset-bottom));
-      }
+      /* Portrait Overlay: narrow side steers + tighter centred button cluster
+         so steers, Head up/Bear away and the round row never overlap. */
       .bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-steer {
         top: auto;
-        bottom: calc(var(--ph-h) + 14px + env(safe-area-inset-bottom));
-        height: var(--tc-steer-h);
+        left: calc(8px + env(safe-area-inset-left));
+        bottom: calc(var(--ph-h) + var(--tc-pad) + env(safe-area-inset-bottom));
+        width: var(--tc-steer-w); height: var(--tc-steer-h); font-size: 26px;
       }
-      /* Landscape: panel still at the bottom edge (full width). Side stacks and
-         steers sit above it; steers match the taller action-button stack
-         (Tack..Depwr: 146 + 58 − 14 = 190). */
+      .bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-steer.tc-right {
+        left: auto; right: calc(8px + env(safe-area-inset-right));
+      }
+      .bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-btn[data-key="38"],
+      .bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-btn[data-key="40"] {
+        bottom: calc(var(--ph-h) + var(--tc-pad) + var(--tc-round) + var(--tc-row-gap) + env(safe-area-inset-bottom));
+        width: var(--tc-head-w); height: var(--sz-tap); min-height: var(--sz-tap);
+      }
+      .bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-btn[data-key="38"] { left: calc(50% - var(--tc-head-w) - 4px); }
+      .bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-btn[data-key="40"] { left: calc(50% + 4px); }
+      .bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-btn[data-short] {
+        bottom: calc(var(--ph-h) + var(--tc-pad) + env(safe-area-inset-bottom));
+        width: var(--tc-round); height: var(--tc-round);
+      }
+      /* Five round buttons centred: spacing = round + gap. */
+      .bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-btn[data-key="81"] { left: calc(50% - 2 * (var(--tc-round) + var(--tc-round-gap)) - var(--tc-round) / 2); }
+      .bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-btn[data-key="13"] { left: calc(50% - (var(--tc-round) + var(--tc-round-gap)) - var(--tc-round) / 2); }
+      .bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-btn[data-key="32"] { left: calc(50% - var(--tc-round) / 2); }
+      .bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-btn[data-key="88"] { left: calc(50% + var(--tc-round) / 2 + var(--tc-round-gap)); }
+      .bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-btn[data-key="69"] { left: calc(50% + 1.5 * var(--tc-round) + 2 * var(--tc-round-gap)); }
+      /* Landscape: narrow centred panel between the side stacks (as #182);
+         buttons stay at the bottom edge around it; steers match stack height. */
       .bp-phone-landscape body {
-        --ph-h: 100px;
-        --tc-band: 204px; /* 14 + 190 */
-        --tc-steer-h: 190px;
+        --ph-h: 106px;
+        --tc-band: 130px;
+        --tc-steer-h: 190px; /* Tack..Depwr stack: 146 + 58 − 14 */
       }
       .bp-phone-landscape body.tc-overlay {
-        --touch-panel-h: calc(var(--ph-h) + var(--tc-band) + env(safe-area-inset-bottom));
+        --touch-panel-h: calc(var(--tc-band) + env(safe-area-inset-bottom));
       }
-      .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel {
-        display: block; left: calc(6px + env(safe-area-inset-left)); right: calc(6px + env(safe-area-inset-right));
-        bottom: 0; height: calc(var(--ph-h) + env(safe-area-inset-bottom));
-        padding: 4px 6px calc(6px + env(safe-area-inset-bottom));
+      .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel,
+      .bp-phone-landscape #instrument_panel {
+        display: block; position: fixed; z-index: calc(var(--sz-z-controls) + 5); box-sizing: border-box; overflow: hidden;
+        left: calc(var(--tc-in) + 124px + env(safe-area-inset-left));
+        right: calc(var(--tc-in) + 132px + env(safe-area-inset-right));
+        bottom: calc(8px + env(safe-area-inset-bottom)); height: var(--ph-h);
+        padding: 4px 6px 6px;
       }
       .bp-phone-landscape body.tc-overlay .tc-steer,
       .bp-phone-landscape body.tc-overlay .tc-steer:not(.tc-right) {
         top: auto;
-        bottom: calc(var(--ph-h) + 14px + env(safe-area-inset-bottom));
+        bottom: calc(14px + env(safe-area-inset-bottom));
         height: var(--tc-steer-h);
         width: min(13vw, 120px);
       }
-      .bp-phone-landscape body.tc-overlay .tc-btn[data-key="38"] { bottom: calc(var(--ph-h) + 66px + env(safe-area-inset-bottom)); }
-      .bp-phone-landscape body.tc-overlay .tc-btn[data-key="40"] { bottom: calc(var(--ph-h) + 14px + env(safe-area-inset-bottom)); }
-      .bp-phone-landscape body.tc-overlay .tc-btn[data-key="13"] { bottom: calc(var(--ph-h) + 146px + env(safe-area-inset-bottom)); }
-      .bp-phone-landscape body.tc-overlay .tc-btn[data-key="32"] { bottom: calc(var(--ph-h) + 80px + env(safe-area-inset-bottom)); }
-      .bp-phone-landscape body.tc-overlay .tc-btn[data-key="88"] { bottom: calc(var(--ph-h) + 14px + env(safe-area-inset-bottom)); }
-      .bp-phone-landscape body.tc-overlay .tc-btn[data-key="81"] { bottom: calc(var(--ph-h) + 80px + env(safe-area-inset-bottom)); }
-      .bp-phone-landscape body.tc-overlay .tc-btn[data-key="69"] { bottom: calc(var(--ph-h) + 14px + env(safe-area-inset-bottom)); }
+      /* Keep the short-landscape stack bottoms (no lift for a full-width panel). */
+      .bp-phone-landscape body.tc-overlay .tc-btn[data-key="38"] { bottom: calc(66px + env(safe-area-inset-bottom)); }
+      .bp-phone-landscape body.tc-overlay .tc-btn[data-key="40"] { bottom: calc(14px + env(safe-area-inset-bottom)); }
+      .bp-phone-landscape body.tc-overlay .tc-btn[data-key="13"] { bottom: calc(146px + env(safe-area-inset-bottom)); }
+      .bp-phone-landscape body.tc-overlay .tc-btn[data-key="32"] { bottom: calc(80px + env(safe-area-inset-bottom)); }
+      .bp-phone-landscape body.tc-overlay .tc-btn[data-key="88"] { bottom: calc(14px + env(safe-area-inset-bottom)); }
+      .bp-phone-landscape body.tc-overlay .tc-btn[data-key="81"] { bottom: calc(80px + env(safe-area-inset-bottom)); }
+      .bp-phone-landscape body.tc-overlay .tc-btn[data-key="69"] { bottom: calc(14px + env(safe-area-inset-bottom)); }
       .bp-phone-landscape body.touch-on.tc-overlay #finish_results { bottom: calc(var(--ph-h) + 14px + env(safe-area-inset-bottom)); }
       .bp-phone-landscape body.touch-on.tc-overlay #chat_panel { bottom: calc(var(--ph-h) + 14px + env(safe-area-inset-bottom)); }
       /* Shared phone instrument chrome (portrait + landscape). */

@@ -8,20 +8,25 @@ const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const P = '.bp-phone';
 const L = '.bp-phone-landscape body.touch-on.tc-overlay';
 
-test('phones dock the instrument panel at the very bottom in both orientations', () => {
-  assert.ok(html.includes(`${P} #instrument_panel {\n        display: block;`));
-  assert.ok(html.includes(`${P} #instrument_panel {\n        display: block; position: fixed;`));
+test('portrait docks the instrument panel full-width at the very bottom', () => {
+  assert.ok(html.includes('.bp-phone:not(.bp-phone-landscape) #instrument_panel {\n        display: block; position: fixed;'));
   assert.ok(html.includes('bottom: 0; height: calc(var(--ph-h) + env(safe-area-inset-bottom));'));
-  assert.ok(html.includes(`${L} #instrument_panel {\n        display: block;`));
-  assert.ok(html.includes(`${L} #instrument_panel {\n        display: block; left: calc(6px + env(safe-area-inset-left)); right: calc(6px + env(safe-area-inset-right));\n        bottom: 0;`));
 });
 
-test('Overlay steers share the two circular-button-row height; Classic is gone', () => {
-  assert.ok(html.includes('--tc-steer-h: 116px'));
-  assert.ok(html.includes('.bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-steer {\n        top: auto;\n        bottom: calc(var(--ph-h) + 14px + env(safe-area-inset-bottom));\n        height: var(--tc-steer-h);'));
+test('landscape keeps a narrow centred panel between the side stacks', () => {
+  assert.ok(html.includes(`${L} #instrument_panel,\n      .bp-phone-landscape #instrument_panel {\n        display: block;`));
+  assert.ok(html.includes('left: calc(var(--tc-in) + 124px + env(safe-area-inset-left));'));
+  assert.ok(html.includes('right: calc(var(--tc-in) + 132px + env(safe-area-inset-right));'));
+  assert.ok(html.includes('bottom: calc(8px + env(safe-area-inset-bottom)); height: var(--ph-h);'));
+  // Not the full-bleed landscape panel from the first #183 pass.
+  assert.ok(!html.includes(`${L} #instrument_panel {\n        display: block; left: calc(6px + env(safe-area-inset-left)); right: calc(6px + env(safe-area-inset-right));\n        bottom: 0;`));
+});
+
+test('portrait Overlay steers are narrow side gutters matching the two button rows', () => {
+  assert.ok(html.includes('--tc-steer-w: 52px'));
+  assert.ok(html.includes('--tc-round: 44px'));
+  assert.ok(html.includes('.bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-steer {\n        top: auto;\n        left: calc(8px + env(safe-area-inset-left));\n        bottom: calc(var(--ph-h) + var(--tc-pad) + env(safe-area-inset-bottom));\n        width: var(--tc-steer-w); height: var(--tc-steer-h);'));
   assert.ok(html.includes('--tc-steer-h: 190px'));
-  // No Classic-above-grid panel docking leftover.
-  assert.ok(!html.includes('body.touch-on #instrument_panel { bottom: calc(var(--touch-panel-h) + 6px); }'));
   assert.ok(!html.includes('id="touch_layout"'));
 });
 
