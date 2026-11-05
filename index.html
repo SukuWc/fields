@@ -28,6 +28,30 @@
       }
       /* Layout classes are set on <html> by src/layout.js; hold the first paint until they are. */
       html:not(.bp-ready) body { visibility: hidden; }
+      /* Shared primitives (standardization PRs 5 + 9). Component rules below
+         may position them, but font, radius, colours and states live here. */
+      :root { --sz-tabs-bg: linear-gradient(rgba(255,255,255,0.08), rgba(255,255,255,0.08)), var(--sz-navy);
+        --sz-btn-bg: #223246; --sz-btn-border: rgba(160, 200, 230, 0.45);
+        --sz-btn-pressed: #3d6c9a; --sz-btn-pressed-border: #9ad0ff; }
+      .sz-panel { color: #fff; background: var(--sz-navy-90); border: 1px solid var(--sz-yellow-35); border-radius: var(--sz-r-lg); font-family: var(--sz-font-ui); }
+      .sz-tabs { display: flex; gap: 6px; padding: 4px; border-radius: var(--sz-r-xl); background: var(--sz-tabs-bg); }
+      .sz-tab {
+        flex: 1; min-height: 28px; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 10px;
+        font: 700 var(--sz-fs-md)/1 var(--sz-font-ui); color: #fff; background: transparent; border: 0;
+        border-radius: var(--sz-r-lg); cursor: pointer;
+      }
+      .sz-tab[hidden] { display: none; }
+      .sz-tab[aria-selected="true"], .sz-tab[aria-pressed="true"] { background: var(--sz-yellow); color: var(--sz-navy); }
+      .sz-tab:focus-visible, .sz-btn:focus-visible { outline: 2px solid var(--sz-yellow); outline-offset: 2px; }
+      .sz-tab:disabled { opacity: 0.4; cursor: not-allowed; }
+      .bp-touch .sz-tab { min-height: var(--sz-tap); font-size: var(--sz-fs-lg); }
+      .sz-chip { font: 700 var(--sz-fs-2xs)/1 var(--sz-font-ui); padding: 2px 4px; border-radius: var(--sz-r-xs); color: #fff; }
+      .sz-btn {
+        font-family: var(--sz-font-ui); font-weight: 700; color: #fff;
+        background: var(--sz-btn-bg); border: 1px solid var(--sz-btn-border); border-radius: var(--sz-r-xl);
+      }
+      .sz-btn.pressed, .sz-btn:active { background: var(--sz-btn-pressed); border-color: var(--sz-btn-pressed-border); }
+      .bp-touch .sz-btn { min-width: var(--sz-tap); min-height: var(--sz-tap); }
       html, body {
         margin: 0;
         padding: 0;
@@ -103,17 +127,7 @@
         margin: 8px 0 0;
       }
       /* Settings drawer tabs (PR 3): Player | Room, one pane at a time. */
-      #settings_tabs {
-        position: sticky; top: 0; z-index: calc(var(--sz-z-base) + 1); display: flex; gap: 0;
-        background: rgba(11, 23, 71, 0.95); border-bottom: 1px solid var(--sz-yellow-60);
-      }
-      #settings_tabs .settings-tab {
-        flex: 1; padding: 8px 0; font: 600 13px/1 var(--sz-font-ui);
-        letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.7);
-        background: transparent; border: 0; border-bottom: 3px solid transparent; cursor: pointer;
-      }
-      #settings_tabs .settings-tab[aria-selected="true"] { color: #fff; border-bottom-color: var(--sz-yellow); }
-      #settings_tabs .settings-tab:focus-visible { outline: 2px solid var(--sz-yellow); outline-offset: -2px; }
+      #settings_tabs { position: sticky; top: 0; z-index: calc(var(--sz-z-base) + 1); margin-bottom: 8px; }
       #settings[data-tab="player"] #admin_panel,
       #settings[data-tab="room"] #player_panel { display: none !important; }
       #settings .settings-pane > .settings-heading { display: none; }
@@ -411,14 +425,9 @@
         min-width: 48px;
         min-height: 48px;
         padding: 0;
-        font-family: var(--sz-font-ui);
-        /* "Autopilot" has to fit a ~80px-wide button on a phone. */
+        /* Font, colours, radius and pressed state: .sz-btn. "Autopilot" has
+           to fit a ~80px-wide button on a phone. */
         font-size: clamp(13px, 3.5vw, 17px);
-        font-weight: 700;
-        color: #e8f0f8;
-        background: #223246;
-        border: 1px solid rgba(160, 200, 230, 0.45);
-        border-radius: var(--sz-r-xl);
         touch-action: none;
         user-select: none;
         -webkit-user-select: none;
@@ -429,12 +438,8 @@
         font-weight: 400;
         opacity: 0.65;
       }
-      .tc-btn.pressed {
-        background: #3d6c9a;
-        border-color: #9ad0ff;
-      }
       .tc-tap {
-        background: #1a2636;
+        --sz-btn-bg: #1a2636;
       }
       .tc-steer {
         grid-row: 1 / span 3;
@@ -498,31 +503,29 @@
       }
       body.tc-overlay .tc-btn {
         position: absolute; pointer-events: auto; box-sizing: border-box;
-        font-family: var(--sz-font-ui); color: #fff;
-        background: rgba(18, 28, 48, 0.55); border: 1px solid rgba(255, 255, 255, 0.35);
+        --sz-btn-bg: rgba(18, 28, 48, 0.55); --sz-btn-border: rgba(255, 255, 255, 0.35);
         box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
       }
-      body.tc-overlay .tc-btn.pressed { background: rgba(61, 108, 154, 0.8); border-color: #9ad0ff; }
       body.tc-overlay .tc-btn small { display: none; }
       body.tc-overlay .tc-steer {
         bottom: calc(var(--touch-panel-h) + 60px); height: min(34vh, 300px); width: min(24vw, 110px);
-        left: calc(10px + env(safe-area-inset-left)); border-radius: 18px; font-size: 32px;
-        background: rgba(18, 28, 48, 0.22); border-color: rgba(255, 255, 255, 0.28);
+        left: calc(10px + env(safe-area-inset-left)); font-size: 32px;
+        --sz-btn-bg: rgba(18, 28, 48, 0.22); --sz-btn-border: rgba(255, 255, 255, 0.28);
       }
       body.tc-overlay .tc-steer small { display: block; font-size: var(--sz-fs-xs); letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.9; }
       body.tc-overlay .tc-steer.tc-right { left: auto; right: calc(10px + env(safe-area-inset-right)); }
       body.tc-overlay .tc-btn[data-key="38"], body.tc-overlay .tc-btn[data-key="40"] {
-        bottom: calc(86px + env(safe-area-inset-bottom)); width: 116px; height: var(--sz-tap); min-height: var(--sz-tap); border-radius: 22px; font-size: var(--sz-fs-base);
+        bottom: calc(86px + env(safe-area-inset-bottom)); width: 116px; height: var(--sz-tap); min-height: var(--sz-tap); font-size: var(--sz-fs-base);
       }
       body.tc-overlay .tc-btn[data-key="38"] { left: calc(50% - 122px); }
       body.tc-overlay .tc-btn[data-key="40"] { left: calc(50% + 6px); }
       body.tc-overlay .tc-btn[data-short] {
-        bottom: calc(14px + env(safe-area-inset-bottom)); width: 58px; height: 58px; border-radius: var(--sz-r-round); font-size: 0;
-        background: rgba(18, 28, 48, 0.7);
+        bottom: calc(14px + env(safe-area-inset-bottom)); width: 58px; height: 58px; font-size: 0;
+        --sz-btn-bg: rgba(18, 28, 48, 0.7);
       }
       body.tc-overlay .tc-btn[data-short]::after { content: attr(data-short); font-size: var(--sz-fs-md); font-weight: 700; white-space: nowrap; }
       body.tc-overlay .tc-btn[data-key="81"] { left: calc(50% - 157px); }
-      body.tc-overlay .tc-btn[data-key="13"] { left: calc(50% - 93px); background: var(--sz-yellow); border-color: var(--sz-yellow); }
+      body.tc-overlay .tc-btn[data-key="13"] { left: calc(50% - 93px); --sz-btn-bg: var(--sz-yellow); --sz-btn-border: var(--sz-yellow); }
       body.tc-overlay .tc-btn[data-key="13"]::after { color: var(--sz-navy); }
       body.tc-overlay .tc-btn[data-key="32"] { left: calc(50% - 29px); }
       body.tc-overlay .tc-btn[data-key="88"] { left: calc(50% + 35px); }
@@ -646,7 +649,6 @@
       .rule-toast.vs-own:not(.own) { border-left-width: 6px; }
       .rule-toast.cleared { border-color: rgba(255,255,255,0.35); border-left-color: #fff; }
       .rule-toast.cleared .rt-ref { color: #fff; }
-      .rule-toast .tack-chip { font: 700 10px/1 system-ui, sans-serif; padding: 2px 4px; border-radius: var(--sz-r-xs); color: #fff; }
       .rule-toast .tack-chip.port { background: var(--sz-port); }
       .rule-toast .tack-chip.stbd { background: var(--sz-stbd); }
       @keyframes rt-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
@@ -706,14 +708,8 @@
       }
       .bp-wide body:not(.settings-open) #instrument_panel { width: min(660px, calc(100vw - 480px)); }
       .bp-wide #instrument_panel .instr-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
-      .bp-wide #instrument_panel .instr-modes { display: inline-flex; border: 1px solid rgba(255,255,255,0.25); border-radius: 5px; overflow: hidden; }
-      .bp-wide #instrument_panel .instr-mode {
-        font: 600 11px/1 var(--sz-font-ui); letter-spacing: 0.06em; text-transform: uppercase;
-        padding: 5px 10px; color: rgba(255,255,255,0.75); background: transparent; border: 0; cursor: pointer;
-      }
-      .bp-wide #instrument_panel .instr-mode + .instr-mode { border-left: 1px solid rgba(255,255,255,0.25); }
-      .bp-wide #instrument_panel .instr-mode[aria-pressed="true"] { background: var(--sz-yellow); color: var(--sz-navy); }
-      .bp-wide #instrument_panel .instr-mode:disabled { opacity: 0.4; cursor: not-allowed; }
+      .bp-wide #instrument_panel .instr-modes { display: inline-flex; gap: 2px; padding: 2px; }
+      .bp-wide #instrument_panel .instr-mode { flex: none; min-height: 19px; font-size: var(--sz-fs-xs); }
       .bp-wide #instrument_panel .instr-note { font-size: var(--sz-fs-xs); opacity: 0.7; }
       .bp-wide #instrument_panel .instr-tiles { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
       .bp-wide #instrument_panel .instr-tile {
@@ -1055,7 +1051,6 @@
       .bp-touch #scenario_card_toggle { min-width: var(--sz-tap); min-height: var(--sz-tap); margin: -10px -6px -10px 0; font-size: var(--sz-fs-md); padding: 0 10px; }
       .bp-touch #boat_stats summary { display: flex; align-items: center; min-height: var(--sz-tap); min-width: var(--sz-tap); padding: 0 4px; font-size: var(--sz-fs-md); }
       .bp-touch #chat_toggle { min-width: 64px; min-height: var(--sz-tap); font-size: var(--sz-fs-lg); }
-      .bp-touch #settings_tabs .settings-tab { min-height: 48px; font-size: var(--sz-fs-lg); }
       /* Player form: name field, Join / Leave on one line, status below. */
       .bp-touch #settings #own_boat_panel { flex-wrap: wrap; gap: 8px; padding: 6px 0; cursor: default; }
       .bp-touch #settings #own_boat_panel[hidden], .bp-touch #settings .setting-row[hidden] { display: none; }
@@ -1155,13 +1150,7 @@
       }
       .bp-touch #mobile_sheet .sheet-handle { flex: none; align-self: center; width: 88px; height: var(--sz-tap); margin-bottom: -10px; padding: 0; background: transparent; border: 0; }
       .bp-touch #mobile_sheet .sheet-handle span { display: block; width: var(--sz-tap); height: 5px; margin: 0 auto; border-radius: var(--sz-r-xs); background: rgba(255, 255, 255, 0.45); }
-      .bp-touch #mobile_sheet .sheet-tabs { flex: none; display: flex; gap: 6px; padding: 4px; border-radius: var(--sz-r-xl); background: rgba(255, 255, 255, 0.08); }
-      .bp-touch #mobile_sheet .sheet-tabs button {
-        flex: 1; min-height: var(--sz-tap); display: flex; align-items: center; justify-content: center; gap: 6px;
-        font: 700 15px var(--sz-font-ui); color: #fff; background: transparent; border: 0; border-radius: 9px;
-      }
-      .bp-touch #mobile_sheet .sheet-tabs button[hidden] { display: none; }
-      .bp-touch #mobile_sheet .sheet-tabs button[aria-selected="true"] { background: var(--sz-yellow); color: var(--sz-navy); }
+      .bp-touch #mobile_sheet .sheet-tabs { flex: none; }
       .bp-touch #mobile_sheet .sheet-pane { flex: 1; min-height: 0; overflow-y: auto; margin-top: 8px; }
       .bp-touch #mobile_sheet[data-tab="board"] #sheet_chat, .bp-touch #mobile_sheet[data-tab="chat"] #sheet_board { display: none; }
       .bp-touch #mobile_sheet #finish_results {
@@ -1202,7 +1191,7 @@
          (instrument panel, minimap, floating leaderboard) with the overlay
          controls (forced on tablets, touch-controls.js); no readout strip. */
       /* bp-tablet */
-      .bp-tablet body { --m-top: var(--m-bar); --tz-h: min(30vh, 300px); --ip-h: 184px; }
+      .bp-tablet body { --m-top: var(--m-bar); --tz-h: min(30vh, 300px); --ip-h: 240px; }
       .bp-tablet #mobile_strip { display: none; }
       .bp-tablet #minimap { top: calc(var(--m-top) + 10px); left: calc(10px + env(safe-area-inset-left)); bottom: auto; width: 300px; height: 240px; }
       .bp-tablet #minimap canvas { width: 300px; height: 240px; }
@@ -1212,6 +1201,7 @@
         width: min(660px, calc(100vw - 2 * (min(14vw, 120px) + 24px)));
       }
       .bp-tablet #instrument_panel .instr-tiles { grid-template-columns: repeat(5, 1fr); }
+      .bp-tablet #instrument_panel .instr-modes { padding: 0; }
       .bp-tablet #instrument_panel .instr-mode { min-height: var(--sz-tap); padding: 0 14px; font-size: var(--sz-fs-base); }
       .bp-tablet body.touch-on #finish_results, .bp-tablet body.touch-on.tc-overlay #finish_results {
         top: calc(var(--m-top) + 10px); bottom: auto; right: calc(10px + env(safe-area-inset-right)); left: auto;
@@ -1235,7 +1225,7 @@
 
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-3MVzhkGW.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-CNVLIbiE.js"></script>
   </head>
   <body>
 
@@ -1262,11 +1252,11 @@
     <div id="finish_results" hidden></div>
     <!-- Phones (plan M9, mobile-sheet.js): leaderboard + chat sheet, opened from the top bar. -->
     <button id="sheet_toggle" type="button" aria-controls="mobile_sheet" aria-expanded="false" aria-label="Leaderboard and chat" title="Leaderboard and chat"><span class="st-flag" aria-hidden="true">🏁</span><span class="st-rank" hidden></span><span class="st-badge" hidden>0</span></button>
-    <section id="mobile_sheet" hidden aria-label="Leaderboard and chat" data-tab="board">
+    <section id="mobile_sheet" class="sz-panel" hidden aria-label="Leaderboard and chat" data-tab="board">
       <button type="button" class="sheet-handle" aria-label="Close"><span></span></button>
-      <div class="sheet-tabs" role="tablist">
-        <button type="button" id="sheet_tab_board" role="tab" aria-selected="true">Leaderboard</button>
-        <button type="button" id="sheet_tab_chat" role="tab" aria-selected="false" hidden>Chat<span class="st-badge" hidden>0</span></button>
+      <div class="sheet-tabs sz-tabs" role="tablist">
+        <button type="button" id="sheet_tab_board" class="sz-tab" role="tab" aria-selected="true">Leaderboard</button>
+        <button type="button" id="sheet_tab_chat" class="sz-tab" role="tab" aria-selected="false" hidden>Chat<span class="st-badge" hidden>0</span></button>
       </div>
       <div id="sheet_board" class="sheet-pane"><p class="sheet-empty">No leaderboard yet: it shows once the race starts.</p></div>
       <div id="sheet_chat" class="sheet-pane"><div id="sheet_quick" class="sheet-quick"></div></div>
@@ -1275,12 +1265,12 @@
     </div>
     <!-- Zones: C instrument panel, D minimap (minimap.js), E rule-call toasts (rule-toasts.js). -->
     <div id="hud_instruments" class="hud-zone" data-zone="C">
-      <section id="instrument_panel" data-mode="readout" aria-label="Instruments">
+      <section id="instrument_panel" class="sz-panel" data-mode="readout" aria-label="Instruments">
         <div class="instr-head">
-          <div class="instr-modes" role="group" aria-label="Instrument mode">
-            <button type="button" class="instr-mode" data-mode="readout" aria-pressed="true">Readout</button>
-            <button type="button" class="instr-mode" data-mode="chart" title="Chart mode: strip charts of the last 30 / 60 / 120 s">Chart</button>
-            <button type="button" class="instr-mode" data-mode="instrument" disabled title="Instrument mode: coming later">Instrument</button>
+          <div class="instr-modes sz-tabs" role="group" aria-label="Instrument mode">
+            <button type="button" class="instr-mode sz-tab" data-mode="readout" aria-pressed="true">Readout</button>
+            <button type="button" class="instr-mode sz-tab" data-mode="chart" title="Chart mode: strip charts of the last 30 / 60 / 120 s">Chart</button>
+            <button type="button" class="instr-mode sz-tab" data-mode="instrument" disabled title="Instrument mode: coming later">Instrument</button>
           </div>
           <span class="instr-note"></span>
           <label class="instr-window-wrap">Window <select class="instr-window" aria-label="Chart window"><option value="30">30 s</option><option value="60" selected>60 s</option><option value="120">120 s</option></select></label>
@@ -1305,15 +1295,15 @@
     <div id="fps" class="dev-only"></div>
     <div id="touch_controls" hidden aria-label="Boat 1 touch controls">
       <div class="tc-spectating">Spectating · open ☰ and join with your boat to sail</div>
-      <button type="button" class="tc-btn tc-steer" data-key="37" aria-label="Steer left (hold)">◀<small>steer</small></button>
-      <button type="button" class="tc-btn" data-key="38" aria-label="Head up (hold)">Head up<small>↑</small></button>
-      <button type="button" class="tc-btn" data-key="40" aria-label="Bear away (hold)">Bear away<small>↓</small></button>
-      <button type="button" class="tc-btn tc-steer tc-right" data-key="39" aria-label="Steer right (hold)">▶<small>steer</small></button>
-      <button type="button" class="tc-btn tc-tap" data-key="32" aria-label="Autopilot" data-short="Auto">Autopilot<small>space</small></button>
-      <button type="button" class="tc-btn tc-tap" data-key="13" aria-label="Tack" data-short="Tack">Tack<small>enter</small></button>
-      <button type="button" class="tc-btn tc-tap" data-key="81" data-short="⟲ 360" aria-label="Penalty turn counter-clockwise">⟲ 360<small>Q</small></button>
-      <button type="button" class="tc-btn tc-tap" data-key="69" data-short="360 ⟳" aria-label="Penalty turn clockwise">360 ⟳<small>E</small></button>
-      <button type="button" class="tc-btn tc-tap tc-wide" data-key="88" data-short="Depwr" aria-label="Depower toggle">Depower<small>X</small></button>
+      <button type="button" class="sz-btn tc-btn tc-steer" data-key="37" aria-label="Steer left (hold)">◀<small>steer</small></button>
+      <button type="button" class="sz-btn tc-btn" data-key="38" aria-label="Head up (hold)">Head up<small>↑</small></button>
+      <button type="button" class="sz-btn tc-btn" data-key="40" aria-label="Bear away (hold)">Bear away<small>↓</small></button>
+      <button type="button" class="sz-btn tc-btn tc-steer tc-right" data-key="39" aria-label="Steer right (hold)">▶<small>steer</small></button>
+      <button type="button" class="sz-btn tc-btn tc-tap" data-key="32" aria-label="Autopilot" data-short="Auto">Autopilot<small>space</small></button>
+      <button type="button" class="sz-btn tc-btn tc-tap" data-key="13" aria-label="Tack" data-short="Tack">Tack<small>enter</small></button>
+      <button type="button" class="sz-btn tc-btn tc-tap" data-key="81" data-short="⟲ 360" aria-label="Penalty turn counter-clockwise">⟲ 360<small>Q</small></button>
+      <button type="button" class="sz-btn tc-btn tc-tap" data-key="69" data-short="360 ⟳" aria-label="Penalty turn clockwise">360 ⟳<small>E</small></button>
+      <button type="button" class="sz-btn tc-btn tc-tap tc-wide" data-key="88" data-short="Depwr" aria-label="Depower toggle">Depower<small>X</small></button>
     </div>
     <div id="chat_panel" hidden>
       <button id="chat_toggle" type="button" aria-controls="chat_body" aria-expanded="false">Chat<span id="chat_unread" hidden>0</span></button>
@@ -1328,10 +1318,10 @@
     </div>
     <button id="settings_toggle" type="button" aria-controls="settings" aria-expanded="false" aria-label="Settings">☰</button>
     <div id="settings_backdrop" hidden></div>
-    <div id="settings" data-tab="player">
-      <div id="settings_tabs" role="tablist" aria-label="Settings">
-        <button type="button" id="settings_tab_player" class="settings-tab" role="tab" data-tab="player" aria-controls="player_panel" aria-selected="true">Player</button>
-        <button type="button" id="settings_tab_room" class="settings-tab" role="tab" data-tab="room" aria-controls="admin_panel" aria-selected="false">Room</button>
+    <div id="settings" class="sz-panel" data-tab="player">
+      <div id="settings_tabs" class="sz-tabs" role="tablist" aria-label="Settings">
+        <button type="button" id="settings_tab_player" class="settings-tab sz-tab" role="tab" data-tab="player" aria-controls="player_panel" aria-selected="true">Player</button>
+        <button type="button" id="settings_tab_room" class="settings-tab sz-tab" role="tab" data-tab="room" aria-controls="admin_panel" aria-selected="false">Room</button>
       </div>
       <div id="player_panel" class="settings-section settings-pane" role="tabpanel" aria-labelledby="settings_tab_player">
       <div class="settings-heading" title="Your own view and controls: only this page. Saved in this browser.">Player</div>
