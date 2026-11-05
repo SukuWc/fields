@@ -42,8 +42,9 @@ for (const F of [100, 250]) {
   const s = settle(5000); check('overpowered: capsized flag set at the limit', s.capsized && Math.abs(s.phi / DEG - D.capsizeDeg) < 1e-9); }
 // Crew moves at a finite rate.
 { const s = H.createHeelState(); H.stepHeel(s, 300, 1 / 30); check('crew rate limited', Math.abs(s.hike) <= D.crewRate / 30 + 1e-12); }
-// Force factor.
+// Force factor / sail effectiveness %.
 check('heel force factor cos²', H.heelForceFactor(0) === 1 && Math.abs(H.heelForceFactor(30 * DEG) - 0.75) < 1e-12);
+check('sail_eff_pct: heel 0 → 100, heel 60° → 25', H.heelForceFactor(0) * 100 === 100 && Math.abs(H.heelForceFactor(60 * DEG) * 100 - 25) < 1e-12);
 
 // Boat: sail force (propulsion and lattice mainsail_force) scales with cos²(heel).
 {
@@ -75,21 +76,26 @@ for (const n of [0, 24]) {
       const f = core.tick({ dt: 1 / 30, held: [], present: true, view });
       if (!f.state) continue;
       for (const b of f.state.boats) {
-        if (!Number.isFinite(b.heel_deg) || !Number.isFinite(b.hike_pct)) present = false;
-        else { if (Math.abs(b.heel_deg) > D.capsizeDeg + 1e-9 || b.hike_pct < 0 || b.hike_pct > 100) ranged = false; maxHike = Math.max(maxHike, b.hike_pct); }
+        if (!Number.isFinite(b.heel_deg) || !Number.isFinite(b.hike_pct) || !Number.isFinite(b.sail_eff_pct)) present = false;
+        else {
+          if (Math.abs(b.heel_deg) > D.capsizeDeg + 1e-9 || b.hike_pct < 0 || b.hike_pct > 100) ranged = false;
+          if (b.sail_eff_pct < 0 || b.sail_eff_pct > 100 + 1e-9) ranged = false;
+          if (Math.abs(b.sail_eff_pct - H.heelForceFactor(b.heel_deg * DEG) * 100) > 1e-6) ranged = false;
+          maxHike = Math.max(maxHike, b.hike_pct);
+        }
       }
       if (t % 25 === 0) {
         const m = { type: 'frame', frame: { state: { boats: f.state.boats } } };
         const d = decodeWire(encodeWire(m)); const j = JSON.parse(roundJson(m));
-        f.state.boats.forEach((b, i) => { for (const k of ['heel_deg', 'hike_pct']) {
+        f.state.boats.forEach((b, i) => { for (const k of ['heel_deg', 'hike_pct', 'sail_eff_pct']) {
           const a = d.frame.state.boats[i][k];
           if (a !== j.frame.state.boats[i][k] || Math.abs(a - b[k]) > 1e-3) rt = false; } });
       }
     }
   });
-  check(`scenario ${n}: heel_deg / hike_pct on every boat every frame`, present);
-  check(`scenario ${n}: heel / hike in range`, ranged);
-  check(`scenario ${n}: heel_deg / hike_pct survive the remote wire round trip`, rt);
+  check(`scenario ${n}: heel_deg / hike_pct / sail_eff_pct on every boat every frame`, present);
+  check(`scenario ${n}: heel / hike / sail_eff in range and sail_eff = cos²(heel)×100`, ranged);
+  check(`scenario ${n}: heel_deg / hike_pct / sail_eff_pct survive the remote wire round trip`, rt);
   if (n === 24) check('scenario 24: crew reaches full hike in the ramp', maxHike === 100, `${maxHike}`);
 }
 

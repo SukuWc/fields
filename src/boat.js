@@ -23,6 +23,8 @@ const wrap360 = (d) => ((d % 360) + 360) % 360;
 //                (heel.js); 0 before the first step
 //   hike_pct     crew hike 0–100 (0 = on the centreline, 100 = full hike,
 //                always on the windward side)
+//   sail_eff_pct sail force remaining as %, heelForceFactor(phi)×100
+//                (cos²(heel); 100 upright, 25 at 60°)
 //   capsized     1 only while past the heel limit (absent otherwise)
 // Raw angles (kept): ha / pa are math radians with the bow on local −Y, so
 // the bow points at math angle ha − 90°; wd is the math angle (0 = +X,
@@ -39,6 +41,7 @@ function readoutFields(b) {
   if (b.heel) {
     o.heel_deg = b.heel.phi * 180 / Math.PI;
     o.hike_pct = Math.abs(b.heel.hike) * 100;
+    o.sail_eff_pct = heelForceFactor(b.heel.phi) * 100;
     if (b.heel.capsized) o.capsized = 1;
   }
   return o;

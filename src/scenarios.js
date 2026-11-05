@@ -672,7 +672,7 @@ export function buildScenarios(sim) {
   // grows and speed gains flatten. ?scenario_selector=24
   scenarios[24] = makeScenario(
     "Dinghy heel: wind ramp " + HEEL_RAMP.from + " to " + HEEL_RAMP.to + " m/s",
-    "One Laser-like dinghy close-hauled on starboard autopilot in uniform wind from +Y. The wind starts at " + HEEL_RAMP.from + " m/s and rises by " + HEEL_RAMP.step + " m/s every " + HEEL_RAMP.holdS + " s up to " + HEEL_RAMP.to + " m/s, tacking every 8 s to stay on the map. The crew hikes automatically to hold about 5° of heel; once fully hiked, extra wind turns into heel and the sail force drops with cos²(heel). Heel and hike show in the instrument readout (HEEL, HIKE)."
+    "One Laser-like dinghy close-hauled on starboard autopilot in uniform wind from +Y. The wind starts at " + HEEL_RAMP.from + " m/s and rises by " + HEEL_RAMP.step + " m/s every " + HEEL_RAMP.holdS + " s up to " + HEEL_RAMP.to + " m/s, tacking every 8 s to stay on the map. The crew hikes automatically to hold about 5° of heel; once fully hiked, extra wind turns into heel and the sail force drops with cos²(heel). Heel, hike and sail effectiveness show in the instrument readout (HEEL, HIKE, SAIL %)."
   );
   scenarios[24].frames[0] = () => {
     sim.command({ type: 'wind', angle: 90, speed: HEEL_RAMP.from });

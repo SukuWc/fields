@@ -30,7 +30,7 @@ check('one boat: scenario telemetry is its own', near(readoutValues({ boats: [bo
 check('no course in the frame: no next mark', readoutValues({ boats: [boats[0]] }).next === null);
 check('spectator: no values', readoutValues(state, { remote: true }) === null);
 check('dash for missing, fixed decimals', formatReadout('tws', null) === '–' && formatReadout('bs', 2.345) === '2.3' && formatReadout('twd', 359.6) === '0' && formatReadout('twa', -49.4) === '-49' && formatReadout('heading', 359.6) === '0' && formatReadout('heading', 270) === '270');
-check('twelve tiles incl. TWS / AWS / NEXT / FIN / HEEL / HIKE', READOUT_TILES.length === 12 && ['tws', 'aws', 'next', 'fin', 'heel', 'hike'].every((k) => READOUT_TILES.some((t) => t.key === k)));
+check('thirteen tiles incl. TWS / AWS / NEXT / FIN / HEEL / HIKE / SAIL', READOUT_TILES.length === 13 && ['tws', 'aws', 'next', 'fin', 'heel', 'hike', 'sail'].every((k) => READOUT_TILES.some((t) => t.key === k)));
 
 const fb = { id: 'f', ha: 0, vx: 1, vy: 0, wd: 90, heading_deg: 370, twd_deg: 45, tws_ms: 6.5, aws_ms: 7.25, next_mark_dist_m: 123.4, to_finish_m: null };
 const fr = readoutValues({ boats: [fb], hud: { tel: { tws: 10 }, co: { i: 0 } }, course: { c: [{ x: 0, y: 1000 }] } });
@@ -38,6 +38,9 @@ check('sim fields: bearings 0–360, m/s winds', fr.heading === 10 && fr.twd ===
 check('NEXT uses next_mark_dist_m (leaderboard), not straight line', fr.next === 123.4);
 check('to_finish_m null: FIN dash', fr.fin === null && readoutValues({ boats: [{ ...fb, to_finish_m: 800 }] }).fin === 800);
 check('older frame without sim fields: dashes / fallbacks', readoutValues({ boats: [boats[0]] }).heading === null);
+const hs = readoutValues({ boats: [{ ...fb, heel_deg: -60, hike_pct: 100, sail_eff_pct: 25 }] });
+check('HEEL / HIKE / SAIL from frame fields', hs.heel === 60 && hs.hike === 100 && hs.sail === 25 && formatReadout('sail', 25.4) === '25');
+check('missing sail_eff_pct: SAIL dash', readoutValues({ boats: [fb] }).sail === null);
 if (failed) { console.log(failed + ' FAILED'); process.exit(1); }
 console.log('all instrument-readout checks passed');
 process.exit(0);
