@@ -50,6 +50,9 @@ export const TRUEWIND_SWEEP_START = { x: -10, y: -40 };
 // +Y → downwind −Y, so the 20 m / 40 m ladders sit at mark.y − 20 / − 40.
 export const LADDER_DEMO = { mark: { x: 0, y: 40 }, boat: { x: 8, y: -8, heading: 5 * Math.PI / 4 } };
 
+// Scenario 24 (dinghy heel wind ramp): m/s, seconds per step, start.
+export const HEEL_RAMP = { from: 4, to: 12, step: 1, holdS: 4, tackAt: [2, 4, 6, 8], boat: { x: 25, y: -90, heading: 5 * Math.PI / 4 } };
+
 function makeScenario(title, description) {
   return { title, description, frames: [] };
 }
@@ -660,6 +663,35 @@ export function buildScenarios(sim) {
     // Pull back so several root cells of the large kernels are in view.
     sim.emit({ type: 'view', zoom: 70 });
   };
+
+  // Dinghy heel wind ramp (heel.js). One boat close-hauled on autopilot in
+  // uniform wind from +Y; the wind steps from HEEL_RAMP.from to HEEL_RAMP.to
+  // m/s by HEEL_RAMP.step every HEEL_RAMP.holdS seconds, tacking at the
+  // HEEL_RAMP.tackAt steps to stay on the 100 m wide map. Expected: heel
+  // holds near the 5° target while the crew hike rises to 100 %, then heel
+  // grows and speed gains flatten. ?scenario_selector=24
+  scenarios[24] = makeScenario(
+    "Dinghy heel: wind ramp " + HEEL_RAMP.from + " to " + HEEL_RAMP.to + " m/s",
+    "One Laser-like dinghy close-hauled on starboard autopilot in uniform wind from +Y. The wind starts at " + HEEL_RAMP.from + " m/s and rises by " + HEEL_RAMP.step + " m/s every " + HEEL_RAMP.holdS + " s up to " + HEEL_RAMP.to + " m/s, tacking every 8 s to stay on the map. The crew hikes automatically to hold about 5° of heel; once fully hiked, extra wind turns into heel and the sail force drops with cos²(heel). Heel, hike and sail effectiveness show in the instrument readout (HEEL, HIKE, SAIL %)."
+  );
+  scenarios[24].frames[0] = () => {
+    sim.command({ type: 'wind', angle: 90, speed: HEEL_RAMP.from });
+    sim.players.push(new Boat(sim.map, HEEL_RAMP.boat.x, HEEL_RAMP.boat.y, HEEL_RAMP.boat.heading));
+  };
+  scenarios[24].frames[1] = () => {
+    sim.players[0].input_autopilot_enabled_toggle();
+    sim.emit({ type: 'bindControls' });
+    sim.emit({ type: 'view', follow: true });
+    sim.emit({ type: 'view', zoom: 46 });
+  };
+  const rampSteps = Math.round((HEEL_RAMP.to - HEEL_RAMP.from) / HEEL_RAMP.step);
+  for (let k = 1; k <= rampSteps; k++) {
+    scenarios[24].frames[90 * HEEL_RAMP.holdS * k] = () => {
+      sim.command({ type: 'wind', speed: HEEL_RAMP.from + k * HEEL_RAMP.step });
+      // Tack to stay inside the 100 m wide map (and swap the crew's side).
+      if (HEEL_RAMP.tackAt.includes(k) && sim.players[0]) sim.players[0].input_autopilot_tack_toggle();
+    };
+  }
 
   return scenarios;
 }
