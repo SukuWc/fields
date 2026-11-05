@@ -30,8 +30,9 @@ const check = (name, cond, detail) => { if (!cond) failed++; console.log(`${cond
 	// #103 point true wind (Default, no force undo) → −49.3048 / 2.8465.
 	// Dinghy heel (crew holds 5°, sail force × cos²) → −49.3231 / 2.8330.
 	// Sail CE leeward offset (weather helm via h·sinφ) → −47.5247 / 2.7094.
-	'1 boat, default budget: unchanged (twa −47.5247 / bs 2.7094)',
-		Math.abs(r.twa + 47.5247) < 1e-4 && Math.abs(r.bs - 2.7094) < 1e-4,
+	// CE + CLR offsets (ceLateralHeight 0.5, clrDepth 0.5) → −48.9011 / 2.8087.
+	'1 boat, default budget: unchanged (twa −48.9011 / bs 2.8087)',
+		Math.abs(r.twa + 48.9011) < 1e-4 && Math.abs(r.bs - 2.8087) < 1e-4,
 		`${r.twa.toFixed(4)} / ${r.bs.toFixed(4)}`);
 }
 

@@ -95,10 +95,8 @@ export function boatGuides(s, d) {
   for (let k = 0; k + 3 < f.length; k += 4) {
     graphics.push({ color: 0x00ff00, type: "force", x1: f[k], y1: f[k + 1], x2: f[k] + f[k + 2] / 10, y2: f[k + 1] + f[k + 3] / 10 });
   }
-  // Sail CE: marker at the force application point, and a distinct arrow for
-  // the total sail force (lift+drag). Drawn as type "force" so the existing
-  // show_forces toggle controls them; colour differs from the green component
-  // arrows. Pure UI: numbers come from renderState (s.ce / s.sf / s.cex).
+  // Sail CE (magenta) and CLR (cyan): markers at the force application
+  // points plus distinct arrows. Type "force" so show_forces gates them.
   if (Array.isArray(s.ce) && s.ce.length >= 2 && Number.isFinite(s.ce[0]) && Number.isFinite(s.ce[1])) {
     const cx = s.ce[0], cy = s.ce[1], m = 0.35;
     graphics.push({ color: 0xff66cc, type: "force", x1: cx - m, y1: cy, x2: cx + m, y2: cy });
@@ -106,6 +104,15 @@ export function boatGuides(s, d) {
     if (Array.isArray(s.sf) && s.sf.length >= 2 && Number.isFinite(s.sf[0]) && Number.isFinite(s.sf[1])) {
       graphics.push({ color: 0xffaa00, type: "force",
         x1: cx, y1: cy, x2: cx + s.sf[0] / 8, y2: cy + s.sf[1] / 8 });
+    }
+  }
+  if (Array.isArray(s.clr) && s.clr.length >= 2 && Number.isFinite(s.clr[0]) && Number.isFinite(s.clr[1])) {
+    const cx = s.clr[0], cy = s.clr[1], m = 0.3;
+    graphics.push({ color: 0x33ccff, type: "force", x1: cx - m, y1: cy, x2: cx + m, y2: cy });
+    graphics.push({ color: 0x33ccff, type: "force", x1: cx, y1: cy - m, x2: cx, y2: cy + m });
+    if (Array.isArray(s.clrf) && s.clrf.length >= 2 && Number.isFinite(s.clrf[0]) && Number.isFinite(s.clrf[1])) {
+      graphics.push({ color: 0x66ffff, type: "force",
+        x1: cx, y1: cy, x2: cx + s.clrf[0] / 8, y2: cy + s.clrf[1] / 8 });
     }
   }
   // autopilot guide

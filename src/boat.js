@@ -6,7 +6,7 @@ import {
   updateTackingState,
 } from './rules.js';
 import { WIND_UNIT_MPS, boatTrueWind } from './wind.js';
-import { DINGHY_DEFAULTS, createHeelState, heelForceFactor, sailCeOffsetX, sailForceToNewtons, stepHeel } from './heel.js';
+import { DINGHY_DEFAULTS, createHeelState, heelForceFactor, sailCeOffsetX, clrOffsetX, sailForceToNewtons, stepHeel } from './heel.js';
 
 const wrap360 = (d) => ((d % 360) + 360) % 360;
 
@@ -261,8 +261,8 @@ export class Boat{
     // Dinghy heel (heel.js): Laser-like parameters and roll state.
     this.dinghy = DINGHY_DEFAULTS;
     this.heel = createHeelState();
-    // Top-down leeward CE offset of the sail force (heel.js sailCeOffsetX).
-    // On by default; set false to compare against a centreline application.
+    // Top-down CE leeward + CLR windward offsets (heel.js sailCeOffsetX /
+    // clrOffsetX). On by default; set false to compare centreline application.
     this.ceLeewardOffset = true;
 
     this.twa = 0;
@@ -419,7 +419,14 @@ export class Boat{
 
     //var f = boat.getWorldVector(Vec2(-q*100, 0)); 
     var centerboard_f = this.physics_model.getWorldVector(Vec2(centerboard_force, 0));
-    var centerboard_p = this.physics_model.getWorldPoint(Vec2(0.0, this.centerboard_position));
+    // CLR: on the centreline, or offset to windward by −z_CLR·sin(φ) when
+    // ceLeewardOffset is on (same flag as the sail CE leeward offset).
+    const clrX = (this.ceLeewardOffset && this.heel)
+      ? clrOffsetX(this.heel.phi, this.dinghy) : 0;
+    var centerboard_p = this.physics_model.getWorldPoint(Vec2(clrX, this.centerboard_position));
+    this._clrLocalX = clrX;
+    this._clrPoint = centerboard_p;
+    this._clrForce = centerboard_f;
 
     // centerboard
     applyFinite(centerboard_f, centerboard_p);   
@@ -841,14 +848,21 @@ export class Boat{
       mf: flapScale, jf: this.jibFlap, ph: flapPhase, f,
       ...readoutFields(this),
     };
-    // CE application point for the debug overlay (boat-draw.js). Only when
-    // the leeward offset is active and we have a finite point this step.
+    // CE / CLR application points for the debug overlay (boat-draw.js).
     if (this._sailCePoint
         && Number.isFinite(this._sailCePoint.x) && Number.isFinite(this._sailCePoint.y)) {
       s.ce = [this._sailCePoint.x, this._sailCePoint.y];
       if (Number.isFinite(this._sailCeLocalX)) s.cex = this._sailCeLocalX;
       if (this.mainsail_force && Number.isFinite(this.mainsail_force.x) && Number.isFinite(this.mainsail_force.y)) {
         s.sf = [this.mainsail_force.x, this.mainsail_force.y];
+      }
+    }
+    if (this._clrPoint
+        && Number.isFinite(this._clrPoint.x) && Number.isFinite(this._clrPoint.y)) {
+      s.clr = [this._clrPoint.x, this._clrPoint.y];
+      if (Number.isFinite(this._clrLocalX)) s.clrx = this._clrLocalX;
+      if (this._clrForce && Number.isFinite(this._clrForce.x) && Number.isFinite(this._clrForce.y)) {
+        s.clrf = [this._clrForce.x, this._clrForce.y];
       }
     }
     return s;

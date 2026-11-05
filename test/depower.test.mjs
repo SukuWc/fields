@@ -53,7 +53,8 @@ check('toggled off: speed recovers (> 90 %)', bs2 > 0.9 * bs0 && boat.depower ==
 const s0 = H.scenario0(1);
 // Dinghy heel (crew holds 5°, sail force × cos²): −49.3048 / 2.8465 → −49.3231 / 2.8330.
 // Sail CE leeward offset (weather helm via h·sinφ): → −47.5247 / 2.7094.
-check('scenario 0 never toggled: unchanged (twa −47.5247 / bs 2.7094; CE offset)', Math.abs(s0.twa + 47.5247) < 1e-4 && Math.abs(s0.bs - 2.7094) < 1e-4, `${s0.twa.toFixed(4)} / ${s0.bs.toFixed(4)}`);
+// CE + CLR offsets (ceLateralHeight 0.5, clrDepth 0.5): → −48.9011 / 2.8087.
+check('scenario 0 never toggled: unchanged (twa −48.9011 / bs 2.8087; CE+CLR)', Math.abs(s0.twa + 48.9011) < 1e-4 && Math.abs(s0.bs - 2.8087) < 1e-4, `${s0.twa.toFixed(4)} / ${s0.bs.toFixed(4)}`);
 // Flap amplitude follows the main's angle of attack: full at 0, none at close-hauled trim.
 {
 	const { map: m2 } = H.makeWorld(1);

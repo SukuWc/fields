@@ -35,12 +35,12 @@
 // heelForceFactor(phi) = cos²(phi) to lift and drag both, so propulsion,
 // side force and the lattice wake momentum (mainsail_force) all see it.
 //
-// Leeward CE offset (top-down 2D): the application point of that sail force
-// is displaced from the centreline by sailCeOffsetX(phi) = h_CE·sin(phi)
-// toward the heeled side. The centre of lateral resistance stays on the
-// centreline in this stage, so the drive component of the sail force at the
-// offset produces a yaw moment through planck (weather/lee helm that the
-// autopilot counters with rudder).
+// Top-down CE / CLR offsets (2D): sail force at sailCeOffsetX(phi) =
+// ceLateralHeight·sin(phi) to leeward; centreboard at clrOffsetX(phi) =
+// −clrDepth·sin(phi) to windward. Heel roll still uses ceHeight (CE above
+// CLR). Both apply points go through planck applyForce (real yaw / weather
+// helm). ceLateralHeight is tuned for slight weather helm with CLR on;
+// it is not forced to equal ceHeight − clrDepth.
 //
 // Capsize: past HEEL_CAPSIZE_DEG the heel is clamped there (roll rate
 // zeroed) and capsized = true; the flag clears once heel drops back below
@@ -62,7 +62,11 @@ export const DINGHY_DEFAULTS = Object.freeze({
   boatMass: 59,          // kg, hull + rig ("displacement" for the hull GZ)
   crewMass: 80,          // kg
   sailArea: 7.06,        // m²
-  ceHeight: 2.5,         // m, CE above CLR
+  ceHeight: 2.5,         // m, CE above CLR (roll lever only)
+  clrDepth: 0.5,         // m, CLR below waterline; lateral CLR = −clrDepth·sinφ
+  // Top-down CE height above waterline. Smaller than (ceHeight − clrDepth) so
+  // weather helm stays slight once CLR also shifts; roll still uses ceHeight.
+  ceLateralHeight: 0.5,  // m; lateral CE = ceLateralHeight·sinφ
   hikeArm: 1.0,          // m, crew CG off the centreline at full hike
   rollInertia: 80,       // kg·m²
   rollDamping: 200,      // N·m·s/rad
@@ -94,13 +98,16 @@ export function heelForceFactor(phi) {
   return c * c;
 }
 
-// Top-down leeward CE offset (m, body-local +X): the sail force application
-// point moves off the centreline by h·sin(φ) as the mast heels. φ > 0 rolls
-// toward +X, so the offset is toward the heeled (leeward) side. Applied in
-// boat.js through planck applyForce at that point; yaw comes from the
-// rigid-body torque, not a heading tweak. CLR is left on the centreline.
+// Top-down leeward CE offset (m, body-local +X): sail force application
+// point at ceLateralHeight·sin(φ). φ > 0 → +X (leeward).
 export function sailCeOffsetX(phi, p = DINGHY_DEFAULTS) {
-  return p.ceHeight * Math.sin(phi);
+  return p.ceLateralHeight * Math.sin(phi);
+}
+
+// Top-down windward CLR offset (m, body-local +X): centreboard force
+// application point moves to −z_CLR·sin(φ). φ > 0 → −X (windward).
+export function clrOffsetX(phi, p = DINGHY_DEFAULTS) {
+  return -p.clrDepth * Math.sin(phi);
 }
 
 // The boat's sail model is in internal units: F = aws_int² · C · eff, with

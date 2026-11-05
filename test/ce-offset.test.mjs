@@ -1,5 +1,5 @@
-// Leeward sail CE offset (heel.js sailCeOffsetX + boat.js applyForce point):
-// geometry, weather helm under autopilot, rudder_deg on the frame.
+// Sail CE leeward + CLR windward offsets (heel.js + boat.js applyForce):
+// geometry, slight weather helm under autopilot, rudder_deg on the frame.
 import * as H from '../src/heel.js';
 import { SimCore } from '../src/host.js';
 import { roundJson } from '../apps/server/room.js';
@@ -17,16 +17,22 @@ const view = { camera_position_x: 0, camera_position_y: 0, camera_zoom: 20, show
 const D = H.DINGHY_DEFAULTS, DEG = H.DEG;
 const mean = (a) => a.reduce((s, x) => s + x, 0) / a.length;
 
-// Geometry: 0 at upright; h·sinφ to leeward (= heel sign) on both tacks.
-check('offset 0 at φ = 0', H.sailCeOffsetX(0) === 0);
+// Geometry: 0 at upright; CE leeward (+), CLR windward (−) on both tacks.
+check('CE offset 0 at φ = 0', H.sailCeOffsetX(0) === 0);
+check('CLR offset 0 at φ = 0', H.clrOffsetX(0) === 0);
 for (const deg of [10, 30, 45, 60]) {
   const phi = deg * DEG;
-  const x = H.sailCeOffsetX(phi);
-  check(`φ=${deg}°: offset = h·sinφ`, Math.abs(x - D.ceHeight * Math.sin(phi)) < 1e-12, x.toFixed(6));
-  check(`φ=-${deg}°: mirrored to the other side`, Math.abs(H.sailCeOffsetX(-phi) + x) < 1e-12);
+  const ce = H.sailCeOffsetX(phi);
+  const clr = H.clrOffsetX(phi);
+  check(`φ=${deg}°: CE = ceLateralHeight·sinφ`, Math.abs(ce - D.ceLateralHeight * Math.sin(phi)) < 1e-12, ce.toFixed(6));
+  check(`φ=${deg}°: CLR = −clrDepth·sinφ`, Math.abs(clr + D.clrDepth * Math.sin(phi)) < 1e-12, clr.toFixed(6));
+  check(`φ=-${deg}°: CE mirrored`, Math.abs(H.sailCeOffsetX(-phi) + ce) < 1e-12);
+  check(`φ=-${deg}°: CLR mirrored`, Math.abs(H.clrOffsetX(-phi) + clr) < 1e-12);
 }
-check('leeward = heel sign (φ>0 → +X)', Math.sign(H.sailCeOffsetX(20 * DEG)) === 1
+check('CE leeward = heel sign (φ>0 → +X)', Math.sign(H.sailCeOffsetX(20 * DEG)) === 1
   && Math.sign(H.sailCeOffsetX(-20 * DEG)) === -1);
+check('CLR windward = opposite heel sign (φ>0 → −X)', Math.sign(H.clrOffsetX(20 * DEG)) === -1
+  && Math.sign(H.clrOffsetX(-20 * DEG)) === 1);
 
 // Boat applies the offset through planck: local X of the mainsail force point.
 {
@@ -39,12 +45,16 @@ check('leeward = heel sign (φ>0 → +X)', Math.sign(H.sailCeOffsetX(20 * DEG)) 
   b.heel.phi = 30 * DEG;
   b.ceLeewardOffset = true;
   mute(() => b.physics_model_step());
-  const expect = H.sailCeOffsetX(30 * DEG, b.dinghy);
-  check('boat: CE local X = h·sinφ when offset on', Math.abs(b._sailCeLocalX - expect) < 1e-9,
-    `${b._sailCeLocalX} vs ${expect}`);
+  const expectCe = H.sailCeOffsetX(30 * DEG, b.dinghy);
+  const expectClr = H.clrOffsetX(30 * DEG, b.dinghy);
+  check('boat: CE local X = ceLateralHeight·sinφ when offset on', Math.abs(b._sailCeLocalX - expectCe) < 1e-9,
+    `${b._sailCeLocalX} vs ${expectCe}`);
+  check('boat: CLR local X = −clrDepth·sinφ when offset on', Math.abs(b._clrLocalX - expectClr) < 1e-9,
+    `${b._clrLocalX} vs ${expectClr}`);
   b.ceLeewardOffset = false;
   mute(() => b.physics_model_step());
   check('boat: CE local X = 0 when offset off', Math.abs(b._sailCeLocalX) < 1e-12, `${b._sailCeLocalX}`);
+  check('boat: CLR local X = 0 when offset off', Math.abs(b._clrLocalX) < 1e-12, `${b._clrLocalX}`);
 }
 
 // Weather helm: slow wind ramp to 9 m/s on a large map; autopilot holds
@@ -80,7 +90,7 @@ function settle(offset, finalWind = 9) {
   });
   return {
     rudder: mean(rudders), heel: mean(heels), bs: mean(speeds),
-    twa: b.twa, cex: b._sailCeLocalX || 0, rudder_deg: b.rudder_angle,
+    twa: b.twa, cex: b._sailCeLocalX || 0, clrx: b._clrLocalX || 0, rudder_deg: b.rudder_angle,
   };
 }
 const off = settle(false);
@@ -90,15 +100,16 @@ check('strong wind, offset off: sailing near 45° with small rudder',
   `twa=${off.twa.toFixed(1)} ra=${off.rudder.toFixed(2)} bs=${off.bs.toFixed(2)}`);
 check('strong wind, offset on: heel past the 5° target (overpowered)',
   Math.abs(on.heel) > 8, `heel=${on.heel.toFixed(1)}°`);
-check('strong wind, offset on: steady rudder non-zero and |ra| ≫ offset-off',
-  Math.abs(on.rudder) > 8 && Math.abs(on.rudder) > Math.abs(off.rudder) + 5,
+// With CE + CLR, weather helm is slight (a few degrees), still clearly above offset-off.
+check('strong wind, offset on: slight weather helm (|ra| 3..10, > offset-off)',
+  Math.abs(on.rudder) >= 3 && Math.abs(on.rudder) <= 10 && Math.abs(on.rudder) > Math.abs(off.rudder) + 1.5,
   `on=${on.rudder.toFixed(2)} off=${off.rudder.toFixed(2)}`);
-// Weather helm on starboard (twa < 0): AP bears away with negative rudder.
 check('weather helm sign: starboard → more negative rudder with offset',
-  on.twa < 0 && on.rudder < off.rudder - 5,
+  on.twa < 0 && on.rudder < off.rudder - 1.5,
   `on twa=${on.twa.toFixed(1)} ra=${on.rudder.toFixed(2)} vs off ${off.rudder.toFixed(2)}`);
 check('offset on: boat still holds a course (speed > 2)', on.bs > 2, `bs=${on.bs.toFixed(2)}`);
-check('offset on: CE displaced to leeward of centreline', Math.abs(on.cex) > 0.3, `cex=${on.cex.toFixed(3)}`);
+check('offset on: CE leeward of centreline', on.cex > 0.1, `cex=${on.cex.toFixed(3)}`);
+check('offset on: CLR windward of centreline', on.clrx < -0.05, `clrx=${on.clrx.toFixed(3)}`);
 
 // rudder_deg on the frame + readout tile.
 {
