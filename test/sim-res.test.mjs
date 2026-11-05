@@ -218,8 +218,9 @@ check(// Fixed 30 FPS (one pass per tick, boat terms ×3): −49.4023 / 2.1314 �
 // #90 (1 m ring): −49.3314 / 2.8466 → −49.3106 / 2.8521.
 // #103 point true wind (Default has no force undo): → −49.3314 / 2.8466.
 // Dinghy heel (crew holds 5°, sail force × cos²): → −49.3053 / 2.8339.
-'Default scenario 0 with ?amrMode=fixed pinned (twa −49.31, bs 2.834)',
-	near(s0[1].twa, -49.3053, 0.01) && near(s0[1].bs, 2.8339, 0.002), `twa=${s0[1].twa.toFixed(4)} bs=${s0[1].bs.toFixed(4)}`);
+// Sail CE leeward offset (weather helm via h·sinφ): → −47.5006 / 2.7098.
+'Default scenario 0 with ?amrMode=fixed pinned (twa −47.50, bs 2.710)',
+	near(s0[1].twa, -47.5006, 0.01) && near(s0[1].bs, 2.7098, 0.002), `twa=${s0[1].twa.toFixed(4)} bs=${s0[1].bs.toFixed(4)}`);
 // With the outer rings the boat keeps Default's fine levels, so refinement
 // costs about what it does at Default. Coarse settings must not be slower.
 check('x2 and x4 with refinement are no slower per frame than Default',

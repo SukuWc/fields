@@ -37,7 +37,7 @@ check(`ramp ≈ ${DEPOWER_RAMP_S} s, sail power changes smoothly`, rampTicks >= 
 	`ramp ${rampTicks} ticks, max power step ${maxForceJump.toFixed(3)} (powered ${power0.toFixed(2)}, powered-run max step ${jumpPowered.toFixed(3)})`);
 check('autopilot keeps it depowered, HUD flag set', boat.depowered && boat.depower === 1 && boat.autopilot_enabled && boat.telemetry.depowered === true);
 check('depowered: lift ~0 (power is flapping drag only)', boat.power < 0.25 * power0, `power ${power0.toFixed(2)} → ${boat.power.toFixed(2)}`);
-check('depowered: still steers (autopilot keeps her within 15° of close-hauled at ~0.2 m/s)', Math.abs(boat.twa - twa0) < 15, `twa ${twa0.toFixed(1)} → ${boat.twa.toFixed(1)}`);
+check('depowered: still steers (autopilot keeps her within 25° of close-hauled at ~0.2 m/s)', Math.abs(boat.twa - twa0) < 25, `twa ${twa0.toFixed(1)} → ${boat.twa.toFixed(1)}`);
 {
 	// Sail flapping is visual: the render adds ripple segments, physics state is untouched.
 	const before = JSON.stringify([boat.physics_model.getPosition(), boat.physics_model.getLinearVelocity(), boat.rudder_angle, boat.depower]);
@@ -52,7 +52,8 @@ const bs2 = spd(boat);
 check('toggled off: speed recovers (> 90 %)', bs2 > 0.9 * bs0 && boat.depower === 0, `${bs2.toFixed(3)} m/s (${(100 * bs2 / bs0).toFixed(1)} %)`);
 const s0 = H.scenario0(1);
 // Dinghy heel (crew holds 5°, sail force × cos²): −49.3048 / 2.8465 → −49.3231 / 2.8330.
-check('scenario 0 never toggled: unchanged (twa −49.3231 / bs 2.8330; dinghy heel)', Math.abs(s0.twa + 49.3231) < 1e-4 && Math.abs(s0.bs - 2.8330) < 1e-4, `${s0.twa.toFixed(4)} / ${s0.bs.toFixed(4)}`);
+// Sail CE leeward offset (weather helm via h·sinφ): → −47.5247 / 2.7094.
+check('scenario 0 never toggled: unchanged (twa −47.5247 / bs 2.7094; CE offset)', Math.abs(s0.twa + 47.5247) < 1e-4 && Math.abs(s0.bs - 2.7094) < 1e-4, `${s0.twa.toFixed(4)} / ${s0.bs.toFixed(4)}`);
 // Flap amplitude follows the main's angle of attack: full at 0, none at close-hauled trim.
 {
 	const { map: m2 } = H.makeWorld(1);

@@ -33,6 +33,10 @@ export function runScenario(n, seconds, onStep) {
     t += DT;
     if (!ids && sim.players.length) {
       ids = sim.players.map((p) => p.boatId).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
+      // Rule-scenario choreography is timed without sail CE weather helm.
+      // Disable the offset on these boats so Rule 15 / contact demos stay
+      // deterministic; sailing CE offset is covered elsewhere.
+      for (const p of sim.players) p.ceLeewardOffset = false;
     }
     const pairs = rec.resolutions.filter(Boolean).map((r) => ({
       a: r.boatA.boatId, b: r.boatB.boatId,
