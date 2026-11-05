@@ -292,21 +292,25 @@
         right: 12px;
         bottom: 12px;
         z-index: var(--sz-z-hud);
-        color: #eef6ff;
-        font-family: var(--sz-font-ui);
         font-size: var(--sz-fs-md);
-        background: rgba(10, 20, 30, 0.78);
-        border: 1px solid rgba(150, 200, 220, 0.45);
-        border-radius: var(--sz-r-md);
         padding: 6px 10px;
         pointer-events: none;
         white-space: nowrap;
       }
       #finish_results[hidden] { display: none; }
-      #finish_results .finish-title { font-weight: 700; margin-bottom: 2px; }
-      #finish_results .finish-row.pen { color: #ffd27a; }
-      #finish_results .finish-row.fin { color: #8dffb0; }
-      #finish_results .finish-row.me { font-weight: 700; }
+      /* Leaderboard component (leaderboard-view.js): same markup in zone B and the sheet. */
+      .lb-head { display: flex; align-items: center; gap: 6px; font-weight: 700; margin-bottom: 2px; }
+      .lb-rank { background: var(--sz-yellow); color: var(--sz-navy); font-size: var(--sz-fs-xs); padding: 2px 5px; }
+      .lb-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: auto 10px minmax(0, 1fr) auto auto auto; column-gap: 6px; align-items: center; }
+      .lb-row { display: contents; }
+      .lb-pos { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .lb-chip { width: 10px; height: 10px; border-radius: var(--sz-r-round); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6); }
+      .lb-name { overflow: hidden; text-overflow: ellipsis; }
+      .lb-gap { text-align: right; font-variant-numeric: tabular-nums; }
+      .lb-pen.sz-chip { background: var(--sz-yellow); color: var(--sz-navy); }
+      .lb-row.me > span:not(.lb-chip):not(.lb-pen) { font-weight: 700; color: var(--sz-yellow); }
+      .lb-row.fin .lb-leg { opacity: 0.85; }
+      .lb-empty { opacity: 0.75; }
       #finish_results { max-height: 40vh; overflow-y: auto; }
       #start_hud.flash { background: rgba(255, 210, 122, 0.55); border-color: #ffd27a; }
       #start_hud .start-clock { font-size: 34px; font-weight: 700; line-height: 1.1; }
@@ -1225,7 +1229,7 @@
 
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-CNVLIbiE.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-DVmJrED2.js"></script>
   </head>
   <body>
 
@@ -1249,7 +1253,7 @@
     <div id="start_hud" hidden></div>
     </div>
     <div id="hud_right" class="hud-zone" data-zone="B">
-    <div id="finish_results" hidden></div>
+    <div id="finish_results" class="sz-panel" hidden></div>
     <!-- Phones (plan M9, mobile-sheet.js): leaderboard + chat sheet, opened from the top bar. -->
     <button id="sheet_toggle" type="button" aria-controls="mobile_sheet" aria-expanded="false" aria-label="Leaderboard and chat" title="Leaderboard and chat"><span class="st-flag" aria-hidden="true">🏁</span><span class="st-rank" hidden></span><span class="st-badge" hidden>0</span></button>
     <section id="mobile_sheet" class="sz-panel" hidden aria-label="Leaderboard and chat" data-tab="board">
