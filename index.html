@@ -716,28 +716,28 @@
         border-radius: var(--sz-r-lg); padding: 6px 8px 8px; font-family: var(--sz-font-ui);
       }
       .bp-wide body:not(.settings-open) #instrument_panel { width: min(660px, calc(100vw - 480px)); }
-      .bp-wide #instrument_panel .instr-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+      #instrument_panel .instr-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
       .bp-wide #instrument_panel .instr-modes { display: inline-flex; gap: 2px; padding: 2px; }
       .bp-wide #instrument_panel .instr-mode { flex: none; min-height: 19px; font-size: var(--sz-fs-xs); }
-      .bp-wide #instrument_panel .instr-note { font-size: var(--sz-fs-xs); opacity: 0.7; }
-      .bp-wide #instrument_panel .instr-tiles { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
-      .bp-wide #instrument_panel .instr-tile {
+      #instrument_panel .instr-note { font-size: var(--sz-fs-xs); opacity: 0.7; }
+      #instrument_panel .instr-tiles { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
+      #instrument_panel .instr-tile {
         display: flex; flex-direction: column; align-items: center; padding: 3px 2px;
         background: rgba(255,255,255,0.06); border-radius: var(--sz-r-sm); min-width: 0;
       }
-      .bp-wide #instrument_panel .instr-label { font-size: var(--sz-fs-2xs); letter-spacing: 0.08em; color: var(--sz-yellow); }
-      .bp-wide #instrument_panel .instr-value { font: 700 20px/1.15 var(--sz-font-ui); font-variant-numeric: tabular-nums; }
-      .bp-wide #instrument_panel .instr-unit { font-size: var(--sz-fs-2xs); opacity: 0.65; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-      .bp-wide #instrument_panel .instr-tile.missing .instr-value { opacity: 0.45; }
-      .bp-wide #instrument_panel .instr-charts, .bp-wide #instrument_panel .instr-window-wrap { display: none; }
-      .bp-wide #instrument_panel[data-mode="chart"] .instr-tiles { display: none; }
-      .bp-wide #instrument_panel[data-mode="chart"] .instr-charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 8px; }
-      .bp-wide #instrument_panel[data-mode="chart"] .instr-window-wrap { display: inline-flex; gap: 4px; align-items: center; font-size: var(--sz-fs-xs); }
-      .bp-wide #instrument_panel .instr-window { font: inherit; background: var(--sz-navy); color: #fff; border: 1px solid rgba(255,255,255,0.25); border-radius: var(--sz-r-sm); }
-      .bp-wide #instrument_panel .instr-strip { background: rgba(255,255,255,0.06); border-radius: var(--sz-r-sm); padding: 2px 4px; min-width: 0; }
-      .bp-wide #instrument_panel .instr-strip-label { display: flex; gap: 6px; align-items: baseline; font-size: var(--sz-fs-xs); font-variant-numeric: tabular-nums; }
-      .bp-wide #instrument_panel .instr-strip-range { margin-left: auto; opacity: 0.55; font-size: var(--sz-fs-2xs); white-space: nowrap; }
-      .bp-wide #instrument_panel .instr-strip-svg { display: block; width: 100%; height: 30px; }
+      #instrument_panel .instr-label { font-size: var(--sz-fs-2xs); letter-spacing: 0.08em; color: var(--sz-yellow); }
+      #instrument_panel .instr-value { font: 700 20px/1.15 var(--sz-font-ui); font-variant-numeric: tabular-nums; }
+      #instrument_panel .instr-unit { font-size: var(--sz-fs-2xs); opacity: 0.65; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+      #instrument_panel .instr-tile.missing .instr-value { opacity: 0.45; }
+      #instrument_panel .instr-charts, #instrument_panel .instr-window-wrap { display: none; }
+      #instrument_panel[data-mode="chart"] .instr-tiles { display: none; }
+      #instrument_panel[data-mode="chart"] .instr-charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 8px; }
+      #instrument_panel[data-mode="chart"] .instr-window-wrap { display: inline-flex; gap: 4px; align-items: center; font-size: var(--sz-fs-xs); }
+      #instrument_panel .instr-window { font: inherit; background: var(--sz-navy); color: #fff; border: 1px solid rgba(255,255,255,0.25); border-radius: var(--sz-r-sm); }
+      #instrument_panel .instr-strip { background: rgba(255,255,255,0.06); border-radius: var(--sz-r-sm); padding: 2px 4px; min-width: 0; }
+      #instrument_panel .instr-strip-label { display: flex; gap: 6px; align-items: baseline; font-size: var(--sz-fs-xs); font-variant-numeric: tabular-nums; }
+      #instrument_panel .instr-strip-range { margin-left: auto; opacity: 0.55; font-size: var(--sz-fs-2xs); white-space: nowrap; }
+      #instrument_panel .instr-strip-svg { display: block; width: 100%; height: 30px; }
 
       /* bp-touch */
       .bp-touch #settings_toggle {
@@ -1117,6 +1117,46 @@
       .bp-phone-landscape #start_hud { left: 50%; transform: translateX(-50%); max-width: none; }
       .bp-phone-landscape body.tc-overlay .tc-steer:not(.tc-right) { top: calc(var(--m-top) + var(--mm-d) + 16px); }
 
+
+      /* Phone instrument panel (standardization PR 10, user decision: the
+         shared zone C panel on phones too, along the bottom). Portrait:
+         docked just above the touch controls (Classic: on top of the grid;
+         Overlay: in the band between the bottom button rows and the steer
+         zones, which move up by --ph-h). Landscape: Overlay only, in the free
+         band at the bottom centre between Head up / Bear away and the
+         shortcut buttons; Classic landscape keeps the map (its grid already
+         takes half the height). One compact row: Readout shows the tiles the
+         top strip does not (the strip stays the quick glance), Chart shows
+         the strips side by side, scrolling sideways. */
+      .bp-phone:not(.bp-phone-landscape) body { --ph-h: 112px; }
+      .bp-phone:not(.bp-phone-landscape) #instrument_panel {
+        display: block; position: fixed; z-index: calc(var(--sz-z-controls) + 5); box-sizing: border-box;
+        left: calc(6px + env(safe-area-inset-left)); right: calc(6px + env(safe-area-inset-right));
+        bottom: calc(6px + env(safe-area-inset-bottom)); height: calc(var(--ph-h) - 6px); padding: 4px 6px 6px; overflow: hidden;
+      }
+      .bp-phone:not(.bp-phone-landscape) body.touch-on #instrument_panel { bottom: calc(var(--touch-panel-h) + 6px); }
+      .bp-phone:not(.bp-phone-landscape) body.touch-on.tc-overlay #instrument_panel { bottom: calc(var(--touch-panel-h) + 4px); }
+      .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel {
+        display: block; position: fixed; z-index: calc(var(--sz-z-controls) + 5); box-sizing: border-box; overflow: hidden;
+        left: calc(var(--tc-in) + 124px + env(safe-area-inset-left)); right: calc(var(--tc-in) + 132px + env(safe-area-inset-right));
+        bottom: calc(8px + env(safe-area-inset-bottom)); height: 106px; padding: 4px 6px 6px;
+      }
+      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-head, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-modes, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-modes { padding: 0; gap: 2px; flex: none; }
+      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-mode, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-mode { flex: none; padding: 0 12px; font-size: var(--sz-fs-md); }
+      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-note, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-note { display: none; }
+      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-window-wrap, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-window-wrap { display: none; margin-left: auto; font-size: 0; }
+      .bp-phone:not(.bp-phone-landscape) #instrument_panel[data-mode="chart"] .instr-window-wrap, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel[data-mode="chart"] .instr-window-wrap { display: inline-flex; }
+      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-window, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-window { min-height: var(--sz-tap); font-size: var(--sz-fs-base); padding: 0 4px; }
+      .bp-phone:not(.bp-phone-landscape) #instrument_panel:not([data-mode="chart"]) .instr-tiles, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel:not([data-mode="chart"]) .instr-tiles { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-tile, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-tile { flex: 0 0 auto; min-width: 58px; padding: 2px 4px; }
+      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-value, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-value { font-size: var(--sz-fs-xl); }
+      .bp-phone:not(.bp-phone-landscape) #instrument_panel[data-mode="chart"] .instr-charts, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel[data-mode="chart"] .instr-charts { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-strip, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-strip { flex: 0 0 62%; }
+      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-strip-svg, .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-strip-svg { height: 26px; }
+      .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-tile[data-key="bs"], .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-tile[data-key="bs"], .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-tile[data-key="vmg"], .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-tile[data-key="vmg"], .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-tile[data-key="twa"], .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-tile[data-key="twa"], .bp-phone:not(.bp-phone-landscape) #instrument_panel .instr-tile[data-key="tws"], .bp-phone-landscape body.touch-on.tc-overlay #instrument_panel .instr-tile[data-key="tws"] { display: none; }
+      .bp-phone:not(.bp-phone-landscape) body.tc-overlay .tc-steer { bottom: calc(var(--touch-panel-h) + 60px + var(--ph-h)); height: min(30vh, 260px); }
+      .bp-phone:not(.bp-phone-landscape) body.touch-on #info, .bp-phone:not(.bp-phone-landscape) body.touch-on #perf_overlay_hud { bottom: calc(var(--touch-panel-h) + 34px + var(--ph-h)); }
       /* Leaderboard and chat sheet (plan M9): phones only. The top bar gets a
          🏁 button (with the unread chat count) between Boat stats and ☰; the
          floating leaderboard and Chat button move into the sheet. */
@@ -1207,6 +1247,7 @@
       }
       .bp-tablet #instrument_panel .instr-tiles { grid-template-columns: repeat(5, 1fr); }
       .bp-tablet #instrument_panel .instr-modes { padding: 0; }
+      .bp-tablet #instrument_panel .instr-window { min-height: var(--sz-tap); padding: 0 6px; font-size: var(--sz-fs-base); }
       .bp-tablet #instrument_panel .instr-mode { min-height: var(--sz-tap); padding: 0 14px; font-size: var(--sz-fs-base); }
       .bp-tablet body.touch-on #finish_results, .bp-tablet body.touch-on.tc-overlay #finish_results {
         top: calc(var(--m-top) + 10px); bottom: auto; right: calc(10px + env(safe-area-inset-right)); left: auto;
