@@ -666,11 +666,37 @@
       .bp-desktop .rule-toasts { top: auto; left: auto; transform: none; right: var(--hud-right); bottom: 170px; width: 320px; flex-direction: column-reverse; }
 
       /* bp-desktop */
-      .bp-desktop body { --hud-right: 64px; --drawer-w: 280px; }
-      .bp-desktop body.settings-open { --hud-right: calc(var(--drawer-w) + 74px); }
+      .bp-desktop body { --hud-right: 10px; --drawer-w: 280px; --d-bar: 44px; }
+      /* Desktop top bar (standardization PR 8): the phone idea on a wide
+         screen. One 44 px navy row: scenario chip left (the card collapsed
+         into the bar; Show drops it down), rank chip and ☰ right. The drawer
+         and the HUD columns start under it. */
+      .bp-desktop #mobile_bar {
+        display: block; position: fixed; left: 0; right: 0; top: 0; height: var(--d-bar); z-index: calc(var(--sz-z-bar) + 4);
+        background: var(--sz-navy); border-bottom: 1px solid var(--sz-yellow-50); pointer-events: none;
+      }
+      .bp-desktop #scenario_card {
+        top: 0; left: 0; z-index: var(--sz-z-chrome); width: min(520px, calc(100vw - 200px)); box-sizing: border-box;
+        min-height: var(--d-bar); max-height: calc(100% - var(--d-bar) - 20px); padding: 0 10px 0 12px;
+        background: transparent; border: 0; border-radius: 0;
+      }
+      .bp-desktop #scenario_card_head { align-items: center; min-height: var(--d-bar); }
+      .bp-desktop #scenario_card_num { color: var(--sz-yellow); }
+      .bp-desktop #scenario_card.collapsed #scenario_card_title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+      .bp-desktop #scenario_card_toggle { border: 0; color: var(--sz-yellow); text-decoration: underline; font-size: var(--sz-fs-sm); }
+      .bp-desktop #scenario_card:not(.collapsed) {
+        background: var(--sz-navy-97); border: 1px solid var(--sz-yellow-50); border-top: 0; border-radius: 0 0 var(--sz-r-lg) 0;
+        padding-bottom: 10px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      }
+      .bp-desktop #bar_rank {
+        display: inline-flex; align-items: center; position: fixed; top: 8px; right: 56px; z-index: var(--sz-z-chrome); height: 28px; padding: 0 9px; box-sizing: border-box;
+        font: 800 var(--sz-fs-lg)/1 var(--sz-font-ui); font-variant-numeric: tabular-nums; color: var(--sz-navy); background: var(--sz-yellow); border-radius: 14px;
+      }
+      .bp-desktop #bar_rank[hidden] { display: none; }
+      .bp-desktop body.settings-open { --hud-right: calc(var(--drawer-w) + 20px); }
       .bp-desktop #hud_top, .bp-desktop #hud_right {
         display: flex; flex-direction: column; gap: 6px;
-        position: fixed; top: 10px; z-index: calc(var(--sz-z-hud) + 10);
+        position: fixed; top: calc(var(--d-bar) + 10px); z-index: calc(var(--sz-z-hud) + 10);
         pointer-events: none;
       }
       .bp-desktop #hud_top > *, .bp-desktop #hud_right > * { pointer-events: auto; }
@@ -681,7 +707,7 @@
       .bp-desktop #hud_right {
         right: var(--hud-right); width: 260px;
         align-items: flex-end;
-        max-height: calc(100% - 20px); overflow-y: auto;
+        max-height: calc(100% - var(--d-bar) - 20px); overflow-y: auto;
       }
       .bp-desktop #hud_top > #devmode_banner, .bp-desktop #hud_top > #conn_banner, .bp-desktop #hud_top > #start_hud, .bp-desktop #hud_right > #finish_results, .bp-desktop #hud_right > #boat_stats {
         position: static; transform: none; top: auto; left: auto; right: auto; bottom: auto;
@@ -691,17 +717,16 @@
       /* Settings: a right-edge overlay drawer behind the gear button. */
       .bp-desktop #settings_toggle {
         display: flex; align-items: center; justify-content: center;
-        position: fixed; top: 10px; right: 10px; z-index: var(--sz-z-modal);
-        width: var(--sz-tap); height: var(--sz-tap); padding: 0;
+        position: fixed; top: 0; right: 0; z-index: var(--sz-z-modal);
+        width: var(--sz-tap); height: var(--d-bar); padding: 0;
         font-size: 22px; line-height: 1; color: #fff;
-        background: var(--sz-navy-85);
-        border: 1px solid var(--sz-yellow-60); border-radius: var(--sz-r-lg); cursor: pointer;
+        background: transparent; border: 0; border-radius: 0; cursor: pointer;
       }
-      .bp-desktop body.settings-open #settings_toggle { right: calc(var(--drawer-w) + 20px); }
+      .bp-desktop body.settings-open #settings_toggle { background: rgba(255, 196, 0, 0.25); }
       .bp-desktop #settings_backdrop { display: none !important; }
       .bp-desktop #settings {
-        top: 10px; right: 10px; bottom: auto; width: var(--drawer-w);
-        max-height: calc(100% - 20px); z-index: calc(var(--sz-z-drawer) + 40);
+        top: calc(var(--d-bar) + 6px); right: 10px; bottom: auto; width: var(--drawer-w);
+        max-height: calc(100% - var(--d-bar) - 16px); z-index: calc(var(--sz-z-drawer) + 40);
         display: none;
         background: var(--sz-navy-90); border: 1px solid var(--sz-yellow-35); border-radius: var(--sz-r-lg);
         font-family: var(--sz-font-ui); font-size: var(--sz-fs-md);
@@ -991,7 +1016,7 @@
          collapsed into the bar; Show drops it down), Boat stats and the menu.
          The readout strip sits right under it (portrait) or inside it
          (landscape), and the start timer below that, so none of them overlap. */
-      #mobile_bar { display: none; }
+      #mobile_bar, #bar_rank { display: none; }
       /* bp-touch */
       .bp-touch body { --m-bar: calc(44px + env(safe-area-inset-top)); --m-top: calc(var(--m-bar) + 46px); }
       .bp-touch #mobile_bar {
@@ -1295,6 +1320,7 @@
     <div id="mobile_strip" aria-label="Instruments"></div>
     <!-- Mobile top bar backdrop (plan M4): scenario chip, Boat stats and the menu sit on it. -->
     <div id="mobile_bar" aria-hidden="true"></div>
+    <span id="bar_rank" hidden></span>
     <pre id="perf_overlay_hud"></pre>
     <div id="fps" class="dev-only"></div>
     <div id="touch_controls" hidden aria-label="Boat 1 touch controls">

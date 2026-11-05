@@ -22,7 +22,6 @@ import {
   MAP_SIZES,
   mapDims,
 } from './map-size.js';
-import { TOUCH_UI_QUERY } from './layout.js';
 
 let _host, _view, _getCamera;
 let _remote = false;
@@ -248,9 +247,9 @@ export function setWindCeiling(mps) {
 }
 let _windCeiling = windCeilingMps('2f');
 
-// Phones: the card starts collapsed into the top bar (plan M4); Show drops it down.
-let scenarioCardCollapsed = typeof matchMedia === "function"
-  && matchMedia(TOUCH_UI_QUERY).matches;
+// Every size: the card starts collapsed into the top bar (plan M4 on
+// phones, standardization PR 8 on desktop); Show drops it down.
+let scenarioCardCollapsed = true;
 let _appliedConfig = null;
 let _dirty = false;
 let _mapW = ROOM_CONFIG_DEFAULTS.map_width_m;

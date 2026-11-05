@@ -26,11 +26,20 @@ export function rankText(rows, idx) {
 export function setupRankChip({ remote = false } = {}, doc = document) {
   const btn = doc.getElementById('sheet_toggle');
   const chip = btn && btn.querySelector('.st-rank');
+  // Desktop top bar (standardization PR 8): the same text in #bar_rank.
+  const bar = doc.getElementById('bar_rank');
   if (!chip) return { onFrame() {}, setOwnId() {} };
   const tq = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(TABLET_QUERY) : null;
   const label = btn.getAttribute('aria-label') || '';
   let ownId = null, last = undefined;
+  let lastBar;
   function show(text) {
+    if (bar && text !== lastBar) {
+      lastBar = text;
+      bar.hidden = !text;
+      bar.textContent = text || '';
+      if (text) bar.setAttribute('aria-label', 'Rank ' + text.replace('/', ' of '));
+    }
     if (tq && tq.matches) text = null;
     if (text === last) return;
     last = text;
@@ -41,7 +50,7 @@ export function setupRankChip({ remote = false } = {}, doc = document) {
     btn.setAttribute('aria-label', text ? 'Rank ' + text.replace('/', ' of ') + '. ' + label : label);
   }
   return {
-    setOwnId(id) { ownId = id; last = undefined; },
+    setOwnId(id) { ownId = id; last = undefined; lastBar = undefined; },
     onFrame(state) {
       const lb = state && state.hud && state.hud.lb;
       show(lb ? rankText(lb, ownIndex(state.boats, ownId, remote)) : null);
