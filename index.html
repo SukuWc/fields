@@ -69,9 +69,9 @@
          document (overflow: hidden still allows focus scrolling) and moved
          the HUD off screen at 1366x768. */
       body { position: fixed; inset: 0; overscroll-behavior: none; }
-      /* Debug-only UI (physics readout, flow tracers, field plot, forces,
-         refinement border, perf, fps, scenario prose): hidden unless dev
-         view is on (backtick key or ?dev=1, dev-view.js). */
+      /* Debug-only UI (physics readout #info, fps counter, scenario prose):
+         hidden unless dev view is on (backtick key or ?dev=1, dev-view.js).
+         The Dev settings tab is not gated by this. */
       body:not(.dev-view) .dev-only { display: none !important; }
 
 #info {
@@ -131,10 +131,16 @@
       #scenario_card_body {
         margin: 8px 0 0;
       }
-      /* Settings drawer tabs (PR 3): Player | Room, one pane at a time. */
+      /* Settings drawer tabs: Player | Dev | Room, one pane at a time.
+         Dev is always available; it does not require dev view. */
       #settings_tabs { position: sticky; top: 0; z-index: calc(var(--sz-z-base) + 1); margin-bottom: 8px; }
+      #settings_tabs .sz-tab { min-width: 0; white-space: nowrap; }
+      #settings[data-tab="player"] #dev_panel,
       #settings[data-tab="player"] #admin_panel,
-      #settings[data-tab="room"] #player_panel { display: none !important; }
+      #settings[data-tab="dev"] #player_panel,
+      #settings[data-tab="dev"] #admin_panel,
+      #settings[data-tab="room"] #player_panel,
+      #settings[data-tab="room"] #dev_panel { display: none !important; }
       #settings .settings-pane > .settings-heading { display: none; }
       #settings .pref-group {
         margin: 8px 6px; padding: 4px 8px 6px; border: 1px solid rgba(255,255,255,0.18); border-radius: var(--sz-r-md);
@@ -1365,7 +1371,7 @@
 
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-A2bMoSP9.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-K7cceWpM.js"></script>
   </head>
   <body>
 
@@ -1463,6 +1469,7 @@
     <div id="settings" class="sz-panel" data-tab="player">
       <div id="settings_tabs" class="sz-tabs" role="tablist" aria-label="Settings">
         <button type="button" id="settings_tab_player" class="settings-tab sz-tab" role="tab" data-tab="player" aria-controls="player_panel" aria-selected="true">Player</button>
+        <button type="button" id="settings_tab_dev" class="settings-tab sz-tab" role="tab" data-tab="dev" aria-controls="dev_panel" aria-selected="false">Dev</button>
         <button type="button" id="settings_tab_room" class="settings-tab sz-tab" role="tab" data-tab="room" aria-controls="admin_panel" aria-selected="false">Room</button>
       </div>
       <div id="player_panel" class="settings-section settings-pane" role="tabpanel" aria-labelledby="settings_tab_player">
@@ -1499,16 +1506,23 @@
         <label class="setting-row"><input id="touch" autocomplete="off" type="checkbox" title="Boat 1 Overlay touch buttons over the map. On by default on phones and touch screens. Also ?touch=1 / ?touch=0">Touch controls</label>
         <label class="setting-row"><input id="vibrate" autocomplete="off" type="checkbox" title="A short buzz when your boat tacks and a double buzz on a new penalty. Phones that support vibration only (not iPhone). On by default; saved in this browser. Also ?vibrate=0">Vibrate</label>
       </fieldset>
-      <fieldset class="pref-group dev-only"><legend>Developer</legend>
-        <label class="setting-row dev-only"><input id="show_field" autocomplete="off" type="checkbox" title="Wind flow tracers: short streaks carried by the local wind, denser where it blows harder, each with a tail along its own path. Drawn on top of the colour field plot; independent of it.">Flow tracers</label>
-        <span class="setting-row setting-field dev-only" id="tracer_controls" title="Flow tracers: how many (empty = auto for the map size and device (lower + simpler tails on touch); ?tracers=N), how long each lives (?tracerLife=s) and how long a tail of its past path it draws (?tracerTail=s). Applied live.">
+      <div id="wind_info"></div>
+      <div style="color:#ffc400;" id="dist_info"></div>
+      <div class="pref-footer"><input id="reset_settings" type="button" value="Reset settings"><span id="prefs_saved" class="prefs-saved">Saved in this browser</span></div>
+      </div>
+
+      <div id="dev_panel" class="settings-section settings-pane" role="tabpanel" aria-labelledby="settings_tab_dev">
+      <div class="settings-heading" title="This page's field plot and debug overlays. Saved in this browser. Not the room's simulation.">Dev</div>
+      <fieldset class="pref-group"><legend>Developer</legend>
+        <label class="setting-row"><input id="show_field" autocomplete="off" type="checkbox" title="Wind flow tracers: short streaks carried by the local wind, denser where it blows harder, each with a tail along its own path. Drawn on top of the colour field plot; independent of it.">Flow tracers</label>
+        <span class="setting-row setting-field" id="tracer_controls" title="Flow tracers: how many (empty = auto for the map size and device (lower + simpler tails on touch); ?tracers=N), how long each lives (?tracerLife=s) and how long a tail of its past path it draws (?tracerTail=s). Applied live.">
         <label><input id="tracers" autocomplete="off" type="number" step="50" inputmode="numeric" style="width: 80px;" placeholder="auto">tracers</label><br>
         <label><input id="tracerLife" autocomplete="off" type="number" step="0.5" inputmode="decimal" style="width: 46px;">s life</label>
         <label><input id="tracerTail" autocomplete="off" type="number" step="0.25" inputmode="decimal" style="width: 46px;">s tail</label></span>
-        <label class="setting-row dev-only"><input id="show_forces" autocomplete="off" type="checkbox">Toggle Forces</label>
-        <label class="setting-row dev-only"><input id="show_refinement" autocomplete="off" type="checkbox">Show refinement region border</label>
-        <label class="setting-row dev-only"><input id="perf" autocomplete="off" type="checkbox" title="Cells per refinement level and field step time. Also ?perf=1">Perf overlay</label>
-        <div class="setting-block dev-only">
+        <label class="setting-row"><input id="show_forces" autocomplete="off" type="checkbox">Toggle Forces</label>
+        <label class="setting-row"><input id="show_refinement" autocomplete="off" type="checkbox">Show refinement region border</label>
+        <label class="setting-row"><input id="perf" autocomplete="off" type="checkbox" title="Cells per refinement level and field step time. Also ?perf=1">Perf overlay</label>
+        <div class="setting-block">
         <select id="plotSelect" autocomplete="off">
           <option>Plot density</option>
           <option>Plot x velocity</option>
@@ -1518,11 +1532,8 @@
         </select>
         &nbsp;&nbsp;Contrast:
         <input id="contrastSlider" autocomplete="off" type="range" step="1">
-      </div>
+        </div>
       </fieldset>
-      <div id="wind_info"></div>
-      <div style="color:#ffc400;" id="dist_info"></div>
-      <div class="pref-footer"><input id="reset_settings" type="button" value="Reset settings"><span id="prefs_saved" class="prefs-saved">Saved in this browser</span></div>
       </div>
 
       <div id="admin_panel" class="settings-section settings-pane" role="tabpanel" aria-labelledby="settings_tab_room">
