@@ -7,7 +7,9 @@ const [port, stbd] = r.ids;
 console.log(timeline(r.log));
 assert(r.ids.length === 2 && r.ids.every((id) => /^s\d+$/.test(id)), `two scenario boats (${r.ids})`);
 const tack = firstTime(r.log, port, stbd, (p) => p.final === "13");
-assert(tack !== null && tack > 3.5 && tack < 5, `port boat tacks after frame 350: Rule 13 from ${tack?.toFixed(2)} s`);
+// 139 kg: the tack is commanded at frame 350 (~3.9 s) but she passes head
+// to wind later, once the rudder has flow. Was under 5 s at 26.6 kg.
+assert(tack !== null && tack > 3.5 && tack < 8, `port boat tacks after frame 350: Rule 13 from ${tack?.toFixed(2)} s`);
 assert(r.log.every((e) => { const p = pairOf(e, port, stbd); return !p || p.final !== "13" || (p.gw === port && p.row === stbd); }), "Rule 13: the tacking (port) boat keeps clear");
 const r10 = firstTime(r.log, port, stbd, (p) => p.final === "10", tack);
 assert(r10 !== null, `Rule 10 after the tack (${r10?.toFixed(2)} s)`);

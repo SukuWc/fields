@@ -1,4 +1,5 @@
 import planck from 'planck-js';
+import { dinghyTotalMass, LEGACY_DENSITY_MASS_KG } from './dinghy-forces.js';
 
 let pl = planck, Vec2 = pl.Vec2;
 
@@ -7,29 +8,24 @@ let pl = planck, Vec2 = pl.Vec2;
 // It collides with boats like any other body; nothing in the rules engine
 // treats it as a boat (it is not in the players list).
 //
-// Units are the world's: 1 unit = 1 m, mass in the same units planck reports
-// for a boat hull (Boat hull_mass is the polygon density).
+// Units are the world's: 1 unit = 1 m. Boat mass is hull + crew in kilograms.
 
 // 1 m diameter.
 export const MARK_RADIUS = 0.5;
 
 // Mark mass as a fraction of a boat's mass. Scenarios pass the boat's actual
-// body mass (body.getMass()) through markMassForBoat, so a change to the hull
-// shape or hull_mass carries through.
+// body mass (body.getMass()) through markMassForBoat, so a change to the
+// hull mass carries through. Boat/mark mass ratio stays 10:1, so a collision
+// changes their velocities the same way it did at the old 26.625 kg hull.
 export const MARK_MASS_RATIO = 0.1;
 
-// Anchor spring: F = -MARK_SPRING_K · d, d = mark center − anchor (metres).
-// The pull grows linearly with distance. With the current hull (boat mass
-// 26.6, mark mass 2.66) the undamped period is 2π·√(m/k) ≈ 10 s. Soft enough
-// that a close-hauled boat at ~2 m/s shoves the buoy a couple of metres
-// (scenario 11: ~2.3 m) and it drifts back over about five seconds.
-export const MARK_SPRING_K = 1.0;
-
-// Anchor-line damping: F = -MARK_DAMPING · v. Water drag and the line's own
-// losses, so the buoy settles instead of oscillating round the anchor for
-// ever. 2.0 is a damping ratio of c / (2·√(k·m)) ≈ 0.6 for the mass above:
-// a small overshoot (under 0.2 m), then it sits on station.
-export const MARK_DAMPING = 2.0;
+// The spring and damper were tuned at boat mass 26.625 kg (k = 1, c = 2):
+// period 2π·√(m/k) ≈ 10 s, damping ratio ≈ 0.6, and a close-hauled boat
+// shoves the buoy a couple of metres. Both scale with mass so that period
+// and damping ratio, and therefore the buoy's path, stay the same at 139 kg.
+const MARK_MASS_SCALE = dinghyTotalMass() / LEGACY_DENSITY_MASS_KG;
+export const MARK_SPRING_K = 1.0 * MARK_MASS_SCALE;
+export const MARK_DAMPING = 2.0 * MARK_MASS_SCALE;
 
 // Colour of the buoy outline and of the anchor cross / anchor line.
 export const MARK_COLOR = 0xff8c00;
@@ -39,9 +35,9 @@ export const MARK_ANCHOR_COLOR = 0xffd34d;
 export const MARK_LINE_MIN_M = 0.05;
 
 // Mark mass for layouts with no boat to measure (TOML custom scenarios):
-// MARK_MASS_RATIO × the current hull mass (26.6). test/custom-scenario.test.mjs
-// checks it against markMassForBoat on a real boat.
-export const DEFAULT_MARK_MASS = 2.66;
+// MARK_MASS_RATIO × hull + crew. test/custom-scenario.test.mjs checks it
+// against markMassForBoat on a real boat.
+export const DEFAULT_MARK_MASS = dinghyTotalMass() * MARK_MASS_RATIO;
 
 export function markMassForBoat(boatBody) {
   return boatBody.getMass() * MARK_MASS_RATIO;

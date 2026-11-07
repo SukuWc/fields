@@ -8,7 +8,9 @@
 // Equations (SI, per tick, dt = 1/30 s split into HEEL_SUBSTEPS):
 //   M_heel  = F_side · h_CE · cos(phi)                 heeling moment
 //     F_side: sail force component perpendicular to the centreline, in N
-//     (see sailForceToNewtons), already reduced by the heel factor below.
+//     (dinghy-forces.js sailDynamicNewtons). The rigid body integrates that
+//     same vector in the internal unit (× internalForcePerNewton). Already
+//     reduced by the heel factor below.
 //   M_hull  = Δ · g · GZ(phi)                          hull form stability
 //     Δ = boat (hull + rig) mass; GZ is a tabulated dinghy righting-arm
 //     curve (odd in phi): small GM (~0.29 m), peak ~0.21 m at 50°,
@@ -108,13 +110,6 @@ export function sailCeOffsetX(phi, p = DINGHY_DEFAULTS) {
 // application point moves to −z_CLR·sin(φ). φ > 0 → −X (windward).
 export function clrOffsetX(phi, p = DINGHY_DEFAULTS) {
   return -p.clrDepth * Math.sin(phi);
-}
-
-// The boat's sail model is in internal units: F = aws_int² · C · eff, with
-// aws_int · windUnit = aws in m/s. The same coefficients in SI give
-// F_N = ½ ρ A (aws_int · windUnit)² C, so F_N = F_int · ½ρA·windUnit²/eff.
-export function sailForceToNewtons(sailEff, windUnit, area = DINGHY_DEFAULTS.sailArea) {
-  return 0.5 * RHO_AIR * area * windUnit * windUnit / sailEff;
 }
 
 export function createHeelState() {

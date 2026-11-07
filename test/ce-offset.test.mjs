@@ -101,8 +101,11 @@ check('strong wind, offset off: sailing near 45° with small rudder',
 check('strong wind, offset on: heel past the 5° target (overpowered)',
   Math.abs(on.heel) > 8, `heel=${on.heel.toFixed(1)}°`);
 // With CE + CLR, weather helm is slight (a few degrees), still clearly above offset-off.
-check('strong wind, offset on: slight weather helm (|ra| 3..10, > offset-off)',
-  Math.abs(on.rudder) >= 3 && Math.abs(on.rudder) <= 10 && Math.abs(on.rudder) > Math.abs(off.rudder) + 1.5,
+// Sail-force calibration (½ρAV² × 1.45) hikes the boat harder at 9 m/s, so
+// weather helm is a few degrees larger than before. Still well under the
+// autopilot's 30° limit, and still clearly above offset-off.
+check('strong wind, offset on: slight weather helm (|ra| 3..14, > offset-off)',
+  Math.abs(on.rudder) >= 3 && Math.abs(on.rudder) <= 14 && Math.abs(on.rudder) > Math.abs(off.rudder) + 1.5,
   `on=${on.rudder.toFixed(2)} off=${off.rudder.toFixed(2)}`);
 check('weather helm sign: starboard → more negative rudder with offset',
   on.twa < 0 && on.rudder < off.rudder - 1.5,
@@ -162,8 +165,9 @@ check('fourteen tiles incl. RUD', READOUT_TILES.length === 14 && READOUT_TILES.s
   const bs = Math.hypot(b.physics_model.getLinearVelocity().x, b.physics_model.getLinearVelocity().y);
   check('scenario 0: heading near 45° with CE offset on', Math.abs(b.twa) >= 40 && Math.abs(b.twa) <= 55,
     `twa=${b.twa.toFixed(1)}`);
+  // Force calibration: 4.5 m/s close-hauled settles near 2.3 m/s (was ~2.8).
   check('scenario 0: speed settled with CE offset on',
-    bs > 2.4 && bs < 3.1 && Math.abs(bs - bsAt500) < 0.15,
+    bs > 2.0 && bs < 2.6 && Math.abs(bs - bsAt500) < 0.15,
     `bs=${bs.toFixed(3)} at500=${bsAt500.toFixed(3)}`);
 }
 

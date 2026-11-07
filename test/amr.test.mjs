@@ -542,7 +542,8 @@ function enclosedHole(domain) {
 	};
 	// Fixed 30 FPS (boat terms ×3 per tick): settled bs 2.13 → 2.85 in this 1-pass-per-step harness.
 	check('scenario 0 heading near 45°', Math.abs(twa) >= 40 && Math.abs(twa) <= 55, `twa = ${twa.toFixed(1)}`);
-	check('scenario 0 speed settled', bs > 2.4 && bs < 3.1 && Math.abs(bs - bsAt500) < 0.15,
+	// Force calibration: 4.5 m/s close-hauled settles near 2.3 m/s (was ~2.8).
+	check('scenario 0 speed settled', bs > 2.0 && bs < 2.6 && Math.abs(bs - bsAt500) < 0.15,
 		`bs = ${bs.toFixed(3)} (at 500: ${bsAt500.toFixed(3)})`);
 	check('scenario 0 wind still blowing', boat.wind_speed > 12 && st.bad === 0 && st.maxU < 0.3 && st.maxU > 0.1,
 		`TWS = ${boat.wind_speed.toFixed(2)}, max|u| = ${st.maxU.toExponential(2)}, bad = ${st.bad}`);
