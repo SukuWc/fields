@@ -64,6 +64,7 @@ import { setupTouchControls } from './touch-controls.js';
 import { setupPinchZoom } from './pinch-zoom.js';
 import { setupChat } from './chat-panel.js';
 import { setupMobileSheet } from './mobile-sheet.js';
+import { setupFullscreenToggle } from './fullscreen-toggle.js';
 import { setupDevView } from './dev-view.js';
 import { windCeilingMps } from './sim-modes.js';
 
@@ -279,6 +280,7 @@ function startClient() {
   setupControls(host, view, getCamera);
   setupChat(host);
   setupMobileSheet();
+  setupFullscreenToggle();
   setupDevView();
   // Flow tracer inputs (count, life, tail): live, and before installUrlSettings
   // so ?tracers / ?tracerLife / ?tracerTail arrive through these listeners.

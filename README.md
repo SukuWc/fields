@@ -174,6 +174,7 @@ Last updated: 2026-11-05
 - [x] Mobile 10: tablet layout: on touch tablets (at least 769 × 600) the desktop instrument panel, minimap and floating leaderboard with the overlay controls (always Overlay; no readout strip), steer zones at the bottom corners, Head up / Bear away above the left zone, the action row above the instruments; chat in the sheet: [#171](https://github.com/SukuWc/fields/pull/171)
 - [x] Mobile 11: drag-to-look: a one-finger drag on the race view pans the camera and pauses follow; on release it eases back to your boat in 300 ms. Pinch still zooms, drags on steer zones and buttons never pan, spectators keep a plain pan ([#172](https://github.com/SukuWc/fields/pull/172))
 - [ ] Mobile 12: swipe to close the leaderboard and chat sheet: swipe down (bottom sheet, portrait) or right (side sheet, landscape); the sheet follows the finger and closes past 80 px or on a flick, otherwise springs back. Scrolling inside the sheet and drag-to-look work as before ([#174](https://github.com/SukuWc/fields/pull/174))
+- [x] Mobile fullscreen toggle: a 44 px enter/exit button on the phone and tablet top bar, immediately right of the 🏁 rank button and left of ☰. Fullscreen API on the document (not a video). Hidden when the browser cannot fullscreen the page (iPhone Safari); desktop layout unchanged: [#186](https://github.com/SukuWc/fields/pull/186)
 - [ ] Accessibility
 - [ ] Telemetry export
 - [x] Sail flapping animation for luffing sails (visual only): [#54](https://github.com/SukuWc/fields/pull/54)
