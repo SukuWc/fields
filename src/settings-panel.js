@@ -4,7 +4,7 @@
 // textarea (room-config.js), not per-setting inputs.
 import { SETTINGS } from './settings-registry.js';
 
-export const PANEL_IDS = { player: 'player_panel', room: 'admin_panel' };
+export const PANEL_IDS = { player: 'player_panel', dev: 'dev_panel', room: 'admin_panel' };
 
 // Before anything reads a control (url-settings.js captures these as the
 // defaults). Returns the mismatches found (also logged). Skips settings

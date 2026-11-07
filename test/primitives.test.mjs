@@ -9,7 +9,7 @@ test('settings, sheet and instrument tabs share .sz-tabs / .sz-tab', () => {
   assert.match(html, /id="settings_tabs" class="sz-tabs"/);
   assert.match(html, /class="sheet-tabs sz-tabs"/);
   assert.match(html, /class="instr-modes sz-tabs"/);
-  assert.equal((html.match(/class="settings-tab sz-tab"/g) || []).length, 2);
+  assert.equal((html.match(/class="settings-tab sz-tab"/g) || []).length, 3);
   assert.match(html, /id="sheet_tab_board" class="sz-tab"/);
   assert.equal((html.match(/class="instr-mode sz-tab"/g) || []).length, 3);
   // No component rule restyles the tab colours or font.

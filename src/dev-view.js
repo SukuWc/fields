@@ -1,9 +1,10 @@
 // Dev view: shows the debug-only UI (elements with class "dev-only" in
-// index.html: the #info physics readout, fps, flow tracers, field plot and
-// contrast, forces, refinement border, perf, scenario prose). Off by
-// default for players. ?dev=1 turns it on at load (?dev=0 off); the backtick
-// key (`) toggles it, except while typing in a text field. Player-only and
-// client-only: it never sends a room command and does not touch the sim.
+// index.html: the #info physics readout, the fps counter, and the scenario
+// card prose). Off by default. ?dev=1 turns it on at load (?dev=0 leaves it
+// off); the backtick key (`) toggles it, except while typing in a text field.
+// It does not reveal the Dev settings tab: those controls are a normal tab
+// in the settings drawer. Player-only and client-only: it never sends a room
+// command and does not touch the sim.
 
 const CLASS = 'dev-view';
 

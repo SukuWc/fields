@@ -1,12 +1,13 @@
 // Player preferences saved in this browser (UI overhaul PR 3).
 //
-// Every player-scope control in settings-registry.js (panel 'player') is
-// saved to localStorage 'fields.playerPrefs' when the user edits it, and
-// restored on the next load. Only values that differ from the registry
-// default are kept. Precedence on load: a query key (?ghost=1) wins over the
-// saved value, which wins over the default. Restoring dispatches input +
-// change like a real edit, so the existing listeners (and url-settings.js)
-// see it. Reset settings clears the saved values.
+// Every player-scope control in settings-registry.js (panels 'player' and
+// 'dev') is saved to localStorage 'fields.playerPrefs' when the user edits
+// it, and restored on the next load. Only values that differ from the
+// registry default are kept. Precedence on load: a query key (?ghost=1,
+// ?show_field=0) wins over the saved value, which wins over the default.
+// Restoring dispatches input + change like a real edit, so the existing
+// listeners (and url-settings.js) see it. Reset settings clears the saved
+// values. The Dev tab is the same store: it is not a separate preference.
 //
 // Not here: sticky_autopilot (controls.js has its own key) and settings with
 // control:false. Client-only: nothing is sent to the server except through
@@ -16,8 +17,10 @@ import { SETTINGS } from './settings-registry.js';
 export const PREFS_KEY = 'fields.playerPrefs';
 const SKIP = new Set(['sticky_autopilot']);
 
+const PREF_PANELS = new Set(['player', 'dev']);
+
 export function playerPrefIds() {
-  return SETTINGS.filter((s) => s.scope === 'player' && s.panel === 'player' && s.control !== false && !SKIP.has(s.id)).map((s) => s.id);
+  return SETTINGS.filter((s) => s.scope === 'player' && PREF_PANELS.has(s.panel) && s.control !== false && !SKIP.has(s.id)).map((s) => s.id);
 }
 
 function read(el) {
