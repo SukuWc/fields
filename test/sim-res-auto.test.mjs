@@ -73,11 +73,12 @@ const INWAKE = [[12, -6, 5 * Math.PI / 4], [12, -13, 5 * Math.PI / 4]];
 	// Dinghy heel (crew holds 5°, sail force × cos²): → −49.3231 / 2.8330.
 	// Sail CE leeward offset (weather helm via h·sinφ): → −47.5247 / 2.7094.
 	// CE + CLR offsets (ceLateralHeight 0.5, clrDepth 0.5): → −48.9011 / 2.8087.
-	'auto Default scenario 0 pinned: twa −48.90, bs 2.809',
-		near(s0.twa, -48.9011, 0.01) && near(s0.bs, 2.8087, 0.002), `twa=${s0.twa.toFixed(4)} bs=${s0.bs.toFixed(4)}`);
+	// Sail AWS in m/s + hull drag (dinghy-forces.js): → −48.4890 / 2.2780.
+	'auto Default scenario 0 pinned: twa −48.49, bs 2.278',
+		near(s0.twa, -48.4890, 0.01) && near(s0.bs, 2.2780, 0.002), `twa=${s0.twa.toFixed(4)} bs=${s0.bs.toFixed(4)}`);
 	H.setAmrMode('fixed');
 	check('auto Default scenario 0 close-hauled and the in-wake shadow is at least the fixed one',
-		s0.twa < -45 && s0.twa > -54 && s0.bs > 2.4 && s0.bs < 3.1 && wk.shadow > 0.4 && wk.overlapGap < 1e-12,
+		s0.twa < -45 && s0.twa > -54 && s0.bs > 2.0 && s0.bs < 2.6 && wk.shadow > 0.4 && wk.overlapGap < 1e-12,
 		`twa=${s0.twa.toFixed(2)} bs=${s0.bs.toFixed(3)} in-wake ${wk.shadow.toFixed(2)}`);
 }
 

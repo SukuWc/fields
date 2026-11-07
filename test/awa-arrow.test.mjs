@@ -3,6 +3,7 @@
 import './dom-stub.mjs';
 const H = await import('../scripts/sim-res-harness.mjs');
 const { Boat } = await import('../src/boat.js');
+const { WIND_UNIT_MPS } = await import('../src/wind.js');
 let failed = 0;
 const check = (name, cond, detail) => { if (!cond) failed++; console.log(`${cond ? 'PASS' : 'FAIL'}  ${name}${detail !== undefined ? '  ' + detail : ''}`); };
 const { map } = H.makeWorld(1);
@@ -20,8 +21,10 @@ const dir = r => {
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 const deg = a => a * 180 / Math.PI;
 const v = boat.physics_model.m_linearVelocity, w = boat.wind_direction * Math.PI / 180;
-// Apparent flow = true flow − boat velocity = −(true "from" vector + v).
-const flow = Math.atan2(-(v.y + Math.sin(w) * boat.wind_speed), -(v.x + Math.cos(w) * boat.wind_speed));
+// Apparent flow = true flow − boat velocity. Both in m/s: wind_speed is the
+// internal unit (÷ WIND_UNIT_MPS). Adding it raw under-states boat speed.
+const tws = boat.wind_speed * WIND_UNIT_MPS;
+const flow = Math.atan2(-(v.y + Math.sin(w) * tws), -(v.x + Math.cos(w) * tws));
 const tflow = Math.atan2(-Math.sin(w), -Math.cos(w)), tsm = Math.atan2(boat.wind_vy_smooth, boat.wind_vx_smooth);
 const speed = Math.hypot(v.x, v.y);
 check('boat is moving (apparent ≠ true)', speed > 0.5, `${speed.toFixed(2)} m/s, TWA ${boat.twa.toFixed(1)} AWA ${boat.awa.toFixed(1)}`);

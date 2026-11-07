@@ -173,7 +173,10 @@ export function buildScenarios(sim) {
     sim.players.push(new Boat(sim.map, 0, 0, heading));
     // Far enough to port that the reach arrives only after the leeward boat is
     // close-hauled on starboard, and low enough that the hulls meet.
-    sim.players.push(new Boat(sim.map, -18.8, 5.15, heading));
+    // 5.15 was tuned when close-hauled was ~2.8 m/s. After the sail/drag
+    // calibration she is ~2.3 m/s, and 5.15 leaves a 2 m miss. 4.25 crosses
+    // the starboard boat's hull.
+    sim.players.push(new Boat(sim.map, -18.8, 4.25, heading));
   };
   // Autopilot on at frame 3 (the second Sim tick), after one physics step has
   // set each boat's twa. Frames 0-2 run in one tick before any physics step,
@@ -464,11 +467,20 @@ export function buildScenarios(sim) {
   };
   scenarios[15].frames[1] = () => {
     sim.emit({ type: 'bindControls' });
-    // Hold the starting headings on the heading autopilot (its target is
-    // -TWA, read after the first step).
-    for (const boat of sim.players) boat.autopilot_enabled = true;
     sim.emit({ type: 'view', follow: true });
     sim.emit({ type: 'view', zoom: 30 });
+  };
+  // Frames 0–2 run before any physics step, so enabling the autopilot in
+  // frame 1 left heading target 0 (head to wind) and, once the sail could
+  // heel her, she rounded up and stalled short of the zone. One physics
+  // step with the autopilot off stores target = −TWA (the starting run).
+  // Frame 3 holds that. The outside boat bears off a few degrees toward
+  // the inside boat so she still squeezes her before the gate.
+  scenarios[15].frames[3] = () => {
+    const [inside, outside] = sim.players;
+    inside.autopilot_enabled = true;
+    outside.autopilot_enabled = true;
+    outside.autopilot_heading_target = inside.autopilot_heading_target - 14;
   };
 
   // Finish procedure (finish.js FINISH_COURSE_LAYOUT): start line, windward

@@ -185,10 +185,13 @@ export const TEST_RACE_LAYOUT = {
   clock: -3.5,
   // After finishing, P1 / P2 / P3 park here (west of the finish, 10+ m apart).
   parkSpots: [{ x: -25, y: 10 }, { x: -27, y: -3 }, { x: -15, y: 3 }],
+  // Margins stagger the starboard layline. Equal margins let the
+  // middle boat, after the slower calibrated beat, cross the boat still
+  // on port. Later boats overstand more so the tacks stay in sequence.
   boats: [
     { x: -11.8, y: -26.6, margin: 2 },
-    { x: -23.1, y: -22.5, margin: 2 },
-    { x: -34.4, y: -18.4, margin: 2 },
+    { x: -23.1, y: -22.5, margin: 10 },
+    { x: -34.4, y: -18.4, margin: 18 },
   ],
 };
 
