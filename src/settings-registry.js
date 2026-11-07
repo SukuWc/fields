@@ -5,7 +5,9 @@
 //              (apps/server/room.js ROOM_COMMANDS / validateRoomCommand,
 //              broadcast to everyone in a server room);
 //              'player': this page only, or a per-client subscription
-//   panel      'room' (#admin_panel TOML) or 'player' (#player_panel)
+//   panel      'room' (#admin_panel TOML), 'player' (#player_panel)
+//              or 'dev' (#dev_panel). Dev is still scope 'player': this page
+//              only, saved in this browser, never a room command.
 //   control    false: no per-setting DOM (room settings use the TOML box)
 //   type       'bool' | 'number' | 'int' | 'enum' | 'text'
 //   default    the control's default (applied to the page by
@@ -61,17 +63,18 @@ export const SETTINGS = [
   { id: 'touch', scope: 'player', panel: 'player', type: 'bool', default: false },
   { id: 'vibrate', scope: 'player', panel: 'player', type: 'bool', default: true },
   // touch_layout (Classic / Overlay) removed: Overlay is the only touch layout.
-  { id: 'show_field', scope: 'player', panel: 'player', type: 'bool', default: true, subscription: 'flow' },
-  { id: 'tracers', scope: 'player', panel: 'player', type: 'number', default: null, nullable: true, min: 10, max: 20000 },
-  { id: 'tracerLife', scope: 'player', panel: 'player', type: 'number', default: 6, min: 0.5, max: 30 },
-  { id: 'tracerTail', scope: 'player', panel: 'player', type: 'number', default: 1.5, min: 0, max: 10 },
-  { id: 'show_forces', scope: 'player', panel: 'player', type: 'bool', default: false },
-  { id: 'show_refinement', scope: 'player', panel: 'player', type: 'bool', default: false },
-  { id: 'perf', scope: 'player', panel: 'player', type: 'bool', default: false, subscription: 'perf' },
+  // Dev tab: still this page only (scope player). Visible without dev view.
+  { id: 'show_field', scope: 'player', panel: 'dev', type: 'bool', default: true, subscription: 'flow' },
+  { id: 'tracers', scope: 'player', panel: 'dev', type: 'number', default: null, nullable: true, min: 10, max: 20000 },
+  { id: 'tracerLife', scope: 'player', panel: 'dev', type: 'number', default: 6, min: 0.5, max: 30 },
+  { id: 'tracerTail', scope: 'player', panel: 'dev', type: 'number', default: 1.5, min: 0, max: 10 },
+  { id: 'show_forces', scope: 'player', panel: 'dev', type: 'bool', default: false },
+  { id: 'show_refinement', scope: 'player', panel: 'dev', type: 'bool', default: false },
+  { id: 'perf', scope: 'player', panel: 'dev', type: 'bool', default: false, subscription: 'perf' },
   // The plot shapes only this page's field messages ('plot' is a per-client
   // command, never a room command). The URL holds the option text.
-  { id: 'plotSelect', scope: 'player', panel: 'player', type: 'enum', default: 'Plot speed', values: ['Plot density', 'Plot x velocity', 'Plot y velocity', 'Plot speed', 'Plot curl'], command: { type: 'plot', field: 'plotType' }, devModeDisabled: true },
-  { id: 'contrastSlider', scope: 'player', panel: 'player', type: 'number', default: 0, min: -10, max: 10, command: { type: 'plot', field: 'contrastExp' }, devModeDisabled: true },
+  { id: 'plotSelect', scope: 'player', panel: 'dev', type: 'enum', default: 'Plot speed', values: ['Plot density', 'Plot x velocity', 'Plot y velocity', 'Plot speed', 'Plot curl'], command: { type: 'plot', field: 'plotType' }, devModeDisabled: true },
+  { id: 'contrastSlider', scope: 'player', panel: 'dev', type: 'number', default: 0, min: -10, max: 10, command: { type: 'plot', field: 'contrastExp' }, devModeDisabled: true },
 
   // Room settings: still validated / applied as room commands, but the
   // Room settings panel is a single TOML textarea (src/room-config.js).

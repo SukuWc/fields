@@ -1,10 +1,13 @@
-// Settings drawer tabs (UI overhaul PR 3): one pane, two tabs.
+// Settings drawer tabs: one pane, three tabs. The Dev tab is always shown;
+// it does not depend on dev view (backtick / ?dev=1).
 //   Player  #player_panel  this page's preferences (player-prefs.js saves them)
+//   Dev     #dev_panel     this page's field and debug preferences (same store)
 //   Room    #admin_panel   the room's TOML settings (room-config.js / controls.js)
-// The active tab is #settings[data-tab]; CSS hides the other pane. The last
+// The active tab is #settings[data-tab]; CSS hides the other panes. The last
 // tab is remembered in this browser (localStorage 'fields.settingsTab').
 const STORE_KEY = 'fields.settingsTab';
-const TABS = ['player', 'room'];
+export const SETTINGS_TABS = ['player', 'dev', 'room'];
+const TABS = SETTINGS_TABS;
 
 export function setupSettingsTabs(doc = document) {
   const root = doc.getElementById('settings');

@@ -171,7 +171,7 @@ const spanOf = (id) => {
   while ((m = re.exec(html))) { d += m[0] === '</div>' ? -1 : 1; if (d === 0) return [i, re.lastIndex]; }
   return [i, html.length];
 };
-const panels = { settings: spanOf('settings'), player: spanOf(PANEL_IDS.player), room: spanOf(PANEL_IDS.room) };
+const panels = { settings: spanOf('settings'), player: spanOf(PANEL_IDS.player), dev: spanOf(PANEL_IDS.dev), room: spanOf(PANEL_IDS.room) };
 const SKIP = new Set(['button', 'submit', 'reset', 'image', 'file', 'hidden']);
 const controls = [];
 for (const m of html.matchAll(/<(input|select|textarea)\b([^>]*)>/g)) {
@@ -182,7 +182,7 @@ for (const m of html.matchAll(/<(input|select|textarea)\b([^>]*)>/g)) {
   const at = m.index;
   if (at < panels.settings[0] || at > panels.settings[1]) continue;
   const inside = (p) => at > panels[p][0] && at < panels[p][1];
-  const panel = inside('player') ? 'player' : inside('room') ? 'room' : null;
+  const panel = inside('player') ? 'player' : inside('dev') ? 'dev' : inside('room') ? 'room' : null;
   let options = null;
   if (m[1] === 'select') {
     const body = html.slice(at, html.indexOf('</select>', at));
@@ -193,10 +193,10 @@ for (const m of html.matchAll(/<(input|select|textarea)\b([^>]*)>/g)) {
 
 // 4. URL sync: player settings only (room settings are TOML, url:false).
 {
-  const playerControls = controls.filter((c) => c.panel === 'player').map((c) => c.id);
+  const pageControls = controls.filter((c) => c.panel === 'player' || c.panel === 'dev').map((c) => c.id);
   const local = urlSettingIds({ remote: false }), remote = urlSettingIds({ remote: true });
-  check('URL settings (local): exactly the player controls', local.join() === playerControls.join(), local.join());
-  check('URL settings (remote): the same player controls (room never in the URL)', remote.join() === playerControls.join());
+  check('URL settings (local): exactly the Player and Dev controls, in registry order', local.join() === pageControls.join(), local.join());
+  check('URL settings (remote): the same Player and Dev controls (room never in the URL)', remote.join() === pageControls.join());
   check('every room setting is url:false', ROOM_SETTINGS.every((s) => s.url === false));
   check('no player setting is left out of the URL', PLAYER_SETTINGS.every((s) => remote.includes(s.id) && local.includes(s.id)));
 }
@@ -206,16 +206,19 @@ for (const m of html.matchAll(/<(input|select|textarea)\b([^>]*)>/g)) {
 {
   const byPanel = (p) => controls.filter((c) => c.panel === p).map((c) => c.id).join();
   const playerIds = SETTINGS.filter((s) => s.panel === 'player' && s.control !== false).map((s) => s.id).join();
+  const devIds = SETTINGS.filter((s) => s.panel === 'dev' && s.control !== false).map((s) => s.id).join();
   check('the Player panel holds exactly the player-panel settings, in order', byPanel('player') === playerIds, byPanel('player'));
+  check('the Dev panel holds exactly the dev-panel settings, in order', byPanel('dev') === devIds, byPanel('dev'));
   check('the Room settings panel is the TOML editor plus the admin login field (not registry settings)', byPanel('room') === 'room_admin_secret,room_config', byPanel('room'));
   check('room_config textarea is in #admin_panel', /id="room_config"/.test(html) && html.indexOf('id="room_config"') > panels.room[0] && html.indexOf('id="room_config"') < panels.room[1]);
   check('Commit and Reset buttons are in #admin_panel', /id="room_config_commit"/.test(html) && /id="room_config_reset"/.test(html));
   check('Reset heading describes default TOML preset (not discard-to-applied)',
     /Reset fills the default TOML preset/.test(html) && !/discards edits and reloads the current applied/.test(html));
-  check('every control is in one of the two panels', controls.every((c) => c.panel));
+  check('every control is in one of the three panels', controls.every((c) => c.panel));
   check('room settings are control:false (no per-setting DOM)', ROOM_SETTINGS.every((s) => s.control === false));
-  check('room settings sit on the room panel, player settings on the player panel', SETTINGS.every((s) => s.panel === s.scope));
-  const own = controls.filter((c) => c.panel === 'player' && (/\s(value|min|max)="|\schecked\b/.test(' ' + c.attrs) || (c.options && c.options.some((o) => o.selected))));
+  check('room settings sit on the room panel; player-scope settings sit on Player or Dev', SETTINGS.every((s) => s.scope === 'room' ? s.panel === 'room' : s.panel === 'player' || s.panel === 'dev'));
+  check('Dev panel settings stay player-scoped', SETTINGS.filter((s) => s.panel === 'dev').every((s) => s.scope === 'player'));
+  const own = controls.filter((c) => (c.panel === 'player' || c.panel === 'dev') && (/\s(value|min|max)="|\schecked\b/.test(' ' + c.attrs) || (c.options && c.options.some((o) => o.selected))));
   check('the player markup carries no defaults or ranges of its own (value, checked, selected, min, max)', own.length === 0, own.map((c) => c.id).join());
   for (const s of SETTINGS.filter((x) => x.type === 'enum' && x.control !== false)) {
     const c = controls.find((x) => x.id === s.id);
@@ -250,7 +253,7 @@ check('map size default: the registry\'s', MAP_DEFAULT === DEFAULT_MAP_SIZE && s
 // every player control gets the registry default; room settings are skipped.
 {
   const els = new Map();
-  for (const c of controls.filter((x) => x.panel === 'player')) {
+  for (const c of controls.filter((x) => x.panel === 'player' || x.panel === 'dev')) {
     const el = { id: c.id, tagName: c.tag, type: c.tag === 'SELECT' ? 'select-one' : c.type, value: '', defaultValue: '', checked: false, defaultChecked: false,
       closest: (sel) => (sel === '#' + PANEL_IDS[c.panel] ? {} : null) };
     if (c.options) {
