@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-11-05
+Last updated: 2026-11-07
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -71,11 +71,12 @@ Last updated: 2026-11-05
 - [x] True-wind own-sail-force correction on 2f: centre sample + (k0+ka·acc)·F_boat with piecewise gain→(k0,ka), |F| capped at 20 (scenario 20 dir RMS ~0.79/1.25/1.85° at gains 10/16/25; other modes unchanged): [#103](https://github.com/SukuWc/fields/pull/103)
 - [x] Dinghy heel: roll DOF with hull GZ stability, automatic crew hiking toward 5°, sail force × cos²(heel), `heel_deg` / `hike_pct` / `sail_eff_pct` in frame state and the readout (HEEL / HIKE / SAIL %), scenario 24 wind ramp: [#173](https://github.com/SukuWc/fields/pull/173)
 - [ ] Sail CE leeward + CLR windward offsets: sail at ceLateralHeight·sinφ, centreboard at −clrDepth·sinφ (weather helm via planck), `rudder_deg` + RUD tile, CE/CLR debug overlay, scenario 25: [#180](https://github.com/SukuWc/fields/pull/180)
+- [ ] Dinghy force calibration: apparent wind in m/s, one sail force for heel and hull, hull drag against Day's Laser polars (full hike near 5–6 m/s; no planing): [#185](https://github.com/SukuWc/fields/pull/185)
 - [x] Moving-column gusts: elliptical momentum columns injected into the lattice (long axis across the wind, carried downwind at free-stream speed, 10 s life), scenario 22: [#111](https://github.com/SukuWc/fields/pull/111)
 - [x] Large gusts (σ about 10–15 m, as on `europe-1`) sampled at every root cell, removing the checkerboard artifact on the wind field with no gain rescale, scenario 23: [#117](https://github.com/SukuWc/fields/pull/117)
 - [x] Room-config gust rate spawner: Poisson gust arrivals (`gust_rate_per_min`) with mean[,sd] knobs for gain, size, life and direction in room TOML, off by default: [#112](https://github.com/SukuWc/fields/pull/112)
 - [ ] Strategy tuning
-- [ ] Strong-wind speed cap (heel limit): boat speed keeps climbing with wind (about 0.72× wind speed at 15 m/s) because the sail model has no heel or depower limit; real boats level off. Sweep data in [#83](https://github.com/SukuWc/fields/pull/83) (backlog, not started)
+- [ ] Strong-wind speed cap (heel limit): close-hauled speed now levels off with wind ([#185](https://github.com/SukuWc/fields/pull/185)); a planing reach still is not modelled, so strong-wind beam reaches stay at displacement speed. Sweep data in [#83](https://github.com/SukuWc/fields/pull/83)
 
 ### 3. Multiplayer open water
 - [x] Shared world and shared wind: [#60](https://github.com/SukuWc/fields/pull/60) (server rooms + streamed wind); [#61](https://github.com/SukuWc/fields/pull/61) (Join with my boat: each client owns a named boat, steers only that boat, removed on leave or disconnect)
