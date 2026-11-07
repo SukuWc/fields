@@ -221,8 +221,9 @@ check(// Fixed 30 FPS (one pass per tick, boat terms ×3): −49.4023 / 2.1314 �
 // Sail CE leeward offset (weather helm via h·sinφ): → −47.5006 / 2.7098.
 // CE + CLR offsets (ceLateralHeight 0.5, clrDepth 0.5): → −48.9519 / 2.8097.
 // Sail AWS in m/s + hull drag (dinghy-forces.js): → −48.6869 / 2.2831.
-'Default scenario 0 with ?amrMode=fixed pinned (twa −48.69, bs 2.283)',
-	near(s0[1].twa, -48.6869, 0.01) && near(s0[1].bs, 2.2831, 0.002), `twa=${s0[1].twa.toFixed(4)} bs=${s0[1].bs.toFixed(4)}`);
+// Rigid body 139 kg: → −48.6860 / 2.4110.
+'Default scenario 0 with ?amrMode=fixed pinned (twa −48.69, bs 2.411)',
+	near(s0[1].twa, -48.6860, 0.01) && near(s0[1].bs, 2.4110, 0.002), `twa=${s0[1].twa.toFixed(4)} bs=${s0[1].bs.toFixed(4)}`);
 // With the outer rings the boat keeps Default's fine levels, so refinement
 // costs about what it does at Default. Coarse settings must not be slower.
 check('x2 and x4 with refinement are no slower per frame than Default',

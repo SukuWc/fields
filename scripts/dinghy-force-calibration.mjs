@@ -12,7 +12,7 @@ import { SimCore } from '../src/host.js';
 import { LASER_POLAR, POLAR_VALIDATED_TWS_MPS } from '../src/dinghy-forces.js';
 
 const DT = 1 / 30;
-const SETTLES = 22; // seconds. Wind smoothing and the hike ramp finish well inside this.
+const SETTLES = 45; // seconds. A 139 kg hull takes well over 10 s to reach speed.
 const TAIL_S = 3;
 export const TWS_GRID = LASER_POLAR.map((p) => p.tws);
 
@@ -33,7 +33,7 @@ export const HEADINGS = Object.freeze([
   { name: 'beam-reach', target: 90, polar: 'beam' },
 ]);
 
-export function runCase(tws, heading, seconds = SETTLES) {
+export function runCase(tws, heading, seconds = SETTLES, v0 = 0) {
   const core = new SimCore({ mapW: 100, mapH: 200, simRes: '4f', texture: undefined });
   mute(() => {
     core.command({ type: 'devMode', on: true });
@@ -49,14 +49,16 @@ export function runCase(tws, heading, seconds = SETTLES) {
   // and the steady state is never reached.
   if (heading.target != null) {
     const ang = (heading.target === 90) ? 3 * Math.PI / 2 : b.physics_model.getAngle();
-    const speed0 = 0;
     b.physics_model.setTransform(b.physics_model.getPosition(), ang);
-    b.physics_model.setLinearVelocity({ x: Math.sin(ang) * speed0, y: -Math.cos(ang) * speed0 });
+    b.physics_model.setLinearVelocity({ x: Math.sin(ang) * v0, y: -Math.cos(ang) * v0 });
     b.physics_model.setAngularVelocity(0);
     b.autopilot_heading_target = heading.target;
     b.autopilot_compensator_sum_error = 0;
     b.autopilot_compensator_last_error = 0;
     b.rudder_angle = 0;
+  } else if (v0 > 0) {
+    const ang = b.physics_model.getAngle();
+    b.physics_model.setLinearVelocity({ x: Math.sin(ang) * v0, y: -Math.cos(ang) * v0 });
   }
   const speeds = [];
   const ticks = Math.round(seconds * 30);
@@ -86,7 +88,8 @@ export function runCase(tws, heading, seconds = SETTLES) {
     mute(() => { core.map.world.step(DT); core.sim.step(DT, []); });
     const v = b.physics_model.getLinearVelocity();
     const fN = Math.hypot(b.sail_side_force_n || 0, b.sail_drive_force_n || 0);
-    const fI = b.mainsail_force ? Math.hypot(b.mainsail_force.x, b.mainsail_force.y) : NaN;
+    const bodyF = b._bodySailForce || b.mainsail_force;
+    const fI = bodyF ? Math.hypot(bodyF.x, bodyF.y) : NaN;
     samples.push({
       bs: Math.hypot(v.x, v.y),
       twa: b.twa,
@@ -113,6 +116,7 @@ export function runCase(tws, heading, seconds = SETTLES) {
     t90: i90 < 0 ? null : i90 / 30,
     extrapolated: tws > POLAR_VALIDATED_TWS_MPS,
     forceMatch: samples.every((s) => s.forceMatch),
+    wayOn: v0,
   };
 }
 
@@ -121,7 +125,7 @@ export function hikeSaturationTws() {
   let lo = 3, hi = 10, best = null;
   for (let n = 0; n < 8; n++) {
     const mid = (lo + hi) / 2;
-    const r = runCase(mid, HEADINGS[0], 18);
+    const r = runCase(mid, HEADINGS[0]);
     if (r.hike >= 99.5) { best = { tws: mid, ...r }; hi = mid; }
     else lo = mid;
   }
@@ -131,13 +135,25 @@ export function hikeSaturationTws() {
 export function sweep() {
   const rows = [];
   for (const tws of TWS_GRID) {
-    for (const h of HEADINGS) rows.push(runCase(tws, h));
+    for (const h of HEADINGS) {
+      // From rest above about 7.5 m/s close-hauled, heel and weather helm
+      // round her up before the rudder has flow (139 kg is slow to gain
+      // way). 0.6 m/s of steerage reaches the same sailing equilibrium.
+      let row = runCase(tws, h);
+      if (row.bs < 1) {
+        const sailed = runCase(tws, h, SETTLES, 0.6);
+        sailed.stalledFromRest = true;
+        sailed.fromRestBs = row.bs;
+        row = sailed;
+      }
+      rows.push(row);
+    }
   }
   return rows;
 }
 
 function fmt(row) {
-  const tag = row.extrapolated ? ' extrapolated' : '';
+  const tag = (row.extrapolated ? ' extrapolated' : '') + (row.stalledFromRest ? ' stalled-from-rest' : '');
   return `${row.heading.padEnd(13)} TWS ${row.tws.toFixed(1)}  bs ${row.bs.toFixed(2)}  twa ${row.twa.toFixed(1)}  heel ${row.heel.toFixed(1)}  hike ${row.hike.toFixed(0).padStart(3)}%  rud ${row.rudder.toFixed(1)}  side ${row.sideN.toFixed(0).padStart(4)} N  drive ${row.driveN.toFixed(0).padStart(4)} N  t90 ${row.t90 == null ? '—' : row.t90.toFixed(1) + ' s'}${tag}`;
 }
 

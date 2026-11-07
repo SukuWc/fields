@@ -21,7 +21,14 @@ for (const w of WINDS) {
 	const b = new Boat(map, 10, -9, 5 * Math.PI / 4);
 	let lo = Infinity, hi = -Infinity, gap = Infinity, bs = 0, rud = 0;
 	for (let f = 0; f < FRAMES; f++) {
-		if (f === 1) b.input_autopilot_enabled_toggle();
+		if (f === 1) {
+			b.input_autopilot_enabled_toggle();
+			// 139 kg from rest in a strong wind rounds up before the rudder
+			// has flow. 0.6 m/s is enough steerage to reach the sailing state
+			// this sweep measures.
+			const ang = b.physics_model.getAngle();
+			b.physics_model.setLinearVelocity({ x: Math.sin(ang) * 0.6, y: -Math.cos(ang) * 0.6 });
+		}
 		H.frame(map, bm, [b], { amr: true, energy: true });
 		gap = Math.min(gap, SIDE / 2 - Math.abs(b.x), SIDE / 2 - Math.abs(b.y));
 		if (f >= FRAMES - 100) {

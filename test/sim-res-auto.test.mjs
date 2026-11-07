@@ -74,8 +74,9 @@ const INWAKE = [[12, -6, 5 * Math.PI / 4], [12, -13, 5 * Math.PI / 4]];
 	// Sail CE leeward offset (weather helm via h·sinφ): → −47.5247 / 2.7094.
 	// CE + CLR offsets (ceLateralHeight 0.5, clrDepth 0.5): → −48.9011 / 2.8087.
 	// Sail AWS in m/s + hull drag (dinghy-forces.js): → −48.4890 / 2.2780.
-	'auto Default scenario 0 pinned: twa −48.49, bs 2.278',
-		near(s0.twa, -48.4890, 0.01) && near(s0.bs, 2.2780, 0.002), `twa=${s0.twa.toFixed(4)} bs=${s0.bs.toFixed(4)}`);
+	// Rigid body 139 kg: → −48.6747 / 2.4076.
+	'auto Default scenario 0 pinned: twa −48.67, bs 2.408',
+		near(s0.twa, -48.6747, 0.01) && near(s0.bs, 2.4076, 0.002), `twa=${s0.twa.toFixed(4)} bs=${s0.bs.toFixed(4)}`);
 	H.setAmrMode('fixed');
 	check('auto Default scenario 0 close-hauled and the in-wake shadow is at least the fixed one',
 		s0.twa < -45 && s0.twa > -54 && s0.bs > 2.0 && s0.bs < 2.6 && wk.shadow > 0.4 && wk.overlapGap < 1e-12,

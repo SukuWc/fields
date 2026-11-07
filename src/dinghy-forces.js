@@ -9,19 +9,19 @@
 //
 // One sail force:
 //   F_N = ½ ρ_air A aws² C cos²(heel) · SAIL_FORCE_SCALE
-// The heel DOF takes the centreline-normal component in newtons. The
-// rigid body is not in newtons (hull density 6, centreboard and rudder
-// in the legacy internal unit, applyForce × FORCE_PASSES). It receives
-// the same F_N multiplied by internalForcePerNewton. The lattice wake
-// uses that internal vector too: SAIL_LATTICE_COUPLING was tuned to it.
+// The heel DOF takes the side component in newtons. The rigid body mass
+// is hull + crew in kilograms, so the hull integrates that same F_N.
+// applyForce is multiplied by FORCE_PASSES, therefore the vector passed
+// in is F_N / FORCE_PASSES (internalForcePerNewton). Centreboard and
+// rudder formulas are still written in the old internal unit; hydroToInternal
+// brings them into that same pre-applyFinite unit. The lattice wake stays
+// on the legacy internal vector (SAIL_LATTICE_COUPLING was tuned to it).
 //
 // The old split was sail_efficiency = 0.15/3 on the body only, with
 // sailForceToNewtons dividing it back out for heel. Those were not the
-// same force. sail_efficiency is gone. internalForcePerNewton keeps the
-// body's historical scale (so the centreboard, tuned against that scale,
-// still balances) while heel sees true newtons.
+// same force. sail_efficiency is gone.
 
-import { G, RHO_AIR } from './heel.js';
+import { DINGHY_DEFAULTS, G, RHO_AIR } from './heel.js';
 
 export { RHO_AIR };
 
@@ -58,9 +58,43 @@ export const PLANING_HUMP_KN = 6.5;
 const KN_TO_MPS = 0.514444;
 export const PLANING_HUMP_MPS = PLANING_HUMP_KN * KN_TO_MPS;
 
+// ILCA hull length. The drawn collision polygon is 4.0 m (y −2.25 to 1.75);
+// yaw inertia uses the real length.
+export const LASER_LOA_M = 4.23;
+
+// Hull+rig yaw gyradius as a fraction of LOA. A uniform rod is 1/√12 ≈ 0.289.
+// A Laser is fuller amidships than a rod, so the usual small-craft value
+// 0.25 is a bit under that.
+export const HULL_YAW_GYRADIUS_OVER_LOA = 0.25;
+// Seated sailor, centre of gravity at the boat CG (cockpit, near the
+// centre). Own radius of gyration about a vertical axis through that CG.
+export const CREW_YAW_GYRADIUS_M = 0.35;
+
+export function dinghyTotalMass(p = DINGHY_DEFAULTS) {
+  return p.boatMass + p.crewMass;
+}
+
+// kg·m² about the vertical axis through the combined centre of gravity.
+export function yawInertia(p = DINGHY_DEFAULTS) {
+  const kHull = HULL_YAW_GYRADIUS_OVER_LOA * LASER_LOA_M;
+  return p.boatMass * kHull * kHull + p.crewMass * CREW_YAW_GYRADIUS_M * CREW_YAW_GYRADIUS_M;
+}
+
+// Drawn hull polygon area is 4.4375 m². Density 6 made the rigid body
+// 26.625 kg. Kept only so impulses and the mark spring, which were tuned
+// at that mass, can be scaled onto the real mass.
+export const LEGACY_DENSITY_MASS_KG = 26.625;
+
 // Legacy body coefficient (boat.js `0.15/3`, "was 0.35"). Not equal to
-// ½ρA·WIND_UNIT². It survives only inside the unit bridge below.
+// ½ρA·WIND_UNIT². The centreboard and rudder formulas are still in the
+// unit where this was the sail scale.
 export const LEGACY_SAIL_EFF = 0.15 / 3;
+
+// Old pre-applyFinite sail force per newton: LEGACY_SAIL_EFF / (½ρA wu²).
+export function legacyInternalPerNewton(area, windUnit) {
+  const dyn = 0.5 * RHO_AIR * area * windUnit * windUnit;
+  return LEGACY_SAIL_EFF / dyn;
+}
 
 // Residual multiplier on ½ρAV²C after the apparent-wind unit fix.
 // 1 = the lift/drag tables and the corrected AWS, with no extra scale.
@@ -78,11 +112,17 @@ export const SAIL_FORCE_SCALE = 1.45;
 // fully hiked. Fitted to the polars below.
 export const HULL_DRAG_SCALE = 1.55;
 
-// internal force (the vector passed to applyFinite, before FORCE_PASSES)
-// per newton of F_N. Cancels to LEGACY_SAIL_EFF / (½ ρ A windUnit²).
-export function internalForcePerNewton(area, windUnit) {
-  const dyn = 0.5 * RHO_AIR * area * windUnit * windUnit;
-  return LEGACY_SAIL_EFF / dyn;
+// Pre-applyFinite force per newton. applyFinite multiplies by FORCE_PASSES
+// and the body mass is in kilograms, so the integrated force is F_newton
+// when this is 1/FORCE_PASSES.
+export function internalForcePerNewton(forcePasses) {
+  return 1 / forcePasses;
+}
+
+// Centreboard and rudder formulas return the legacy internal unit.
+// Multiply by this to match internalForcePerNewton.
+export function hydroToInternal(area, windUnit, forcePasses) {
+  return internalForcePerNewton(forcePasses) / legacyInternalPerNewton(area, windUnit);
 }
 
 // Boat velocity and true wind both in m/s. windFromRad is the direction

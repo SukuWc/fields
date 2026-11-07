@@ -7,7 +7,7 @@ import {
 } from './rules.js';
 import { WIND_UNIT_MPS, boatTrueWind } from './wind.js';
 import { DINGHY_DEFAULTS, createHeelState, heelForceFactor, sailCeOffsetX, clrOffsetX, stepHeel } from './heel.js';
-import { apparentWindMs, hullResistanceNewtons, internalForcePerNewton, sailDynamicNewtons } from './dinghy-forces.js';
+import { apparentWindMs, dinghyTotalMass, hullResistanceNewtons, hydroToInternal, internalForcePerNewton, LEGACY_DENSITY_MASS_KG, legacyInternalPerNewton, sailDynamicNewtons, yawInertia } from './dinghy-forces.js';
 
 const wrap360 = (d) => ((d % 360) + 360) % 360;
 
@@ -193,7 +193,6 @@ export class Boat{
     this.wind_vx_smooth = 0;
     this.wind_vy_smooth = 0;
 
-    this.hull_mass = 6; // was 6
     this.hull_shape = pl.Polygon([Vec2(0, -2.25), Vec2(-0.5, -1.25), Vec2(-0.75, -0.25),  Vec2(-0.75, 0.5),  Vec2(-0.5, 1.75), Vec2(0.5, 1.75),  Vec2(0.75, 0.5), Vec2(0.75, -0.25), Vec2(0.5, -1.25), Vec2(0, -2.25)])
    
 
@@ -294,16 +293,30 @@ export class Boat{
     let pl = planck, Vec2 = pl.Vec2;
     
 
+    // Planck damping decays velocity by a fraction per second, so the
+    // equivalent force is −c·m·v. 0.1 was tuned at the 26.625 kg hull.
+    // Scale c down with 1/mass so that force stays the same newton drag
+    // on the 139 kg boat; the hull resistance model is the real drag.
+    // Angular damping stays 0.5: it decays yaw rate the same way, and the
+    // yaw inertia was raised in proportion to the rudder torque.
+    const linearDamping = 0.1 * LEGACY_DENSITY_MASS_KG / dinghyTotalMass(this.dinghy);
     let boat = this.map.world.createBody({
       type : 'dynamic',
       angularDamping : 0.5,
-      linearDamping : 0.1,
+      linearDamping,
       position : Vec2(this.x, this.y),
       angle : this.hull_angle,
       allowSleep : false
     });
 
-    boat.createFixture(this.hull_shape, this.hull_mass);
+    // Density only locates the geometric centre. Mass and yaw inertia are
+    // the real dinghy (hull + crew) in kilograms and kg·m².
+    boat.createFixture(this.hull_shape, 1);
+    const mass = dinghyTotalMass(this.dinghy);
+    const center = boat.getLocalCenter();
+    const r2 = center.x * center.x + center.y * center.y;
+    // setMassData wants I about the local origin.
+    boat.setMassData({ mass, center, I: yawInertia(this.dinghy) + mass * r2 });
 
     this.physics_model = boat;
 
@@ -409,13 +422,18 @@ export class Boat{
       centerboard_AoA_degrees += 180
     }
 
-    let centerboard_force = -centerboard_AoA_degrees * Math.abs(d)*Math.abs(d) *2;
+    // Formula is in the legacy internal unit. hydro brings it into the
+    // same pre-applyFinite unit as the sail (newtons / FORCE_PASSES), and
+    // the 150 cap scales with it.
+    const hydro = hydroToInternal(this.dinghy.sailArea, WIND_UNIT_MPS, FORCE_PASSES);
+    let centerboard_force = -centerboard_AoA_degrees * Math.abs(d)*Math.abs(d) * 2 * hydro;
+    const cbCap = 150 * hydro;
 
-    if (centerboard_force>150){
-      centerboard_force = 150
+    if (centerboard_force>cbCap){
+      centerboard_force = cbCap
     }
-    else if (centerboard_force<-150){
-      centerboard_force = -150
+    else if (centerboard_force<-cbCap){
+      centerboard_force = -cbCap
     }
 
     //var f = boat.getWorldVector(Vec2(-q*100, 0)); 
@@ -476,14 +494,17 @@ export class Boat{
 
     // fake motor
 
+    // Fixed impulses, scaled with mass so the speed kick matches the old
+    // 26.625 kg hull. They are not sail forces.
+    const impulseScale = dinghyTotalMass(this.dinghy) / LEGACY_DENSITY_MASS_KG;
     if (this.motor_input === 1) {
-      var f = this.physics_model.getWorldVector(Vec2(0.0, -0.3 * FORCE_PASSES));
+      var f = this.physics_model.getWorldVector(Vec2(0.0, -0.3 * FORCE_PASSES * impulseScale));
       var p = this.physics_model.getWorldPoint(Vec2(0.0, 2.0));
       this.physics_model.applyLinearImpulse(f, p, true);
     }  
     
     if (this.motor_input === -1) {
-      var f = this.physics_model.getWorldVector(Vec2(0.0, 0.3 * FORCE_PASSES));
+      var f = this.physics_model.getWorldVector(Vec2(0.0, 0.3 * FORCE_PASSES * impulseScale));
       var p = this.physics_model.getWorldPoint(Vec2(0.0, 2.0));
       this.physics_model.applyLinearImpulse(f, p, true);
     }
@@ -492,7 +513,7 @@ export class Boat{
     // around), give the same forward shove the motor key uses so the turn
     // can finish. It does not run while she already has way on.
     if (this.penalty_turn && d < 0.6) {
-      const shove = this.physics_model.getWorldVector(Vec2(0.0, -0.35 * FORCE_PASSES));
+      const shove = this.physics_model.getWorldVector(Vec2(0.0, -0.35 * FORCE_PASSES * impulseScale));
       const shoveAt = this.physics_model.getWorldPoint(Vec2(0.0, 2.0));
       this.physics_model.applyLinearImpulse(shove, shoveAt, true);
     }
@@ -606,6 +627,7 @@ export class Boat{
     }
 
     rudder_force += pumpfactor*2
+    rudder_force *= hydro;
 
     let rudder_p = this.physics_model.getWorldPoint(Vec2(0.0, this.rudder_position))
     let rudder_f = {}
@@ -694,7 +716,7 @@ export class Boat{
     // in newtons. One force, two units.
     const heelK = this.heel ? heelForceFactor(this.heel.phi) : 1;
     const qN = sailDynamicNewtons(awsMs, heelK, this.dinghy.sailArea);
-    const perN = internalForcePerNewton(this.dinghy.sailArea, WIND_UNIT_MPS);
+    const perN = internalForcePerNewton(FORCE_PASSES);
     const sailK = qN * perN;
 
     sail_f_drag.x = Math.cos(angle+this.awa/180*Math.PI + Math.PI/2 )*sailK*c_drag
@@ -727,10 +749,14 @@ export class Boat{
 
     this.power = Math.sqrt(mainsail_f.x*mainsail_f.x + mainsail_f.y*mainsail_f.y)
     this.power_direction = Math.atan2(mainsail_f.y, mainsail_f.x) / Math.PI * 180;
-    // Internal unit (lattice, force arrows). The newton vector is this
-    // divided by perN — the same force the heel DOF reads below.
-    this.mainsail_force = { x: mainsail_f.x, y: mainsail_f.y };
+    // Body vector (newtons / FORCE_PASSES). Heel divides by perN.
+    this._bodySailForce = { x: mainsail_f.x, y: mainsail_f.y };
     this._sailForcePerN = perN;
+    // Lattice wake and the true-wind undo were tuned to the legacy
+    // internal sail vector, not to the newton force on the 139 kg hull.
+    const legacyPerN = legacyInternalPerNewton(this.dinghy.sailArea, WIND_UNIT_MPS);
+    const wake = legacyPerN / perN;
+    this.mainsail_force = { x: mainsail_f.x * wake, y: mainsail_f.y * wake };
 
     
     tel.power = this.power;

@@ -95,7 +95,17 @@ export function buildScenarios(sim) {
     "Crossing, then the port boat tacks",
     "A port-tack boat and a starboard-tack boat start on autopilot and close with each other. Partway through, the port boat's autopilot heading is reversed so she tacks. The script removes both boats later. This is a crossing with a tack, and it leaves the outcome to the boats rather than a scored collision."
   );
-  scenarios[3].frames[0] = () => { sim.players.push(new Boat(sim.map, -3, -3, 3 * Math.PI / 4)); sim.players.push(new Boat(sim.map, 18, -11.5, 5 * Math.PI / 4)); };
+  scenarios[3].frames[0] = () => {
+    // Already under way. From rest the 139 kg hull has not got steerage by
+    // the scripted tack (frame 350), so the tack never passes head to wind.
+    const way = (h, v) => ({ x: Math.sin(h) * v, y: -Math.cos(h) * v });
+    const h0 = 3 * Math.PI / 4, h1 = 5 * Math.PI / 4;
+    const a = new Boat(sim.map, -3, -3, h0);
+    const b = new Boat(sim.map, 18, -11.5, h1);
+    // The tacking boat needs way on, or the rudder cannot pass head to wind.
+    a.physics_model.setLinearVelocity(way(h0, 1.2));
+    sim.players.push(a, b);
+  };
   scenarios[3].frames[1] = () => { console.log(1); sim.players[0].input_autopilot_enabled_toggle(); sim.players[1].input_autopilot_enabled_toggle(); };
   scenarios[3].frames[2] = () => { sim.emit({ type: 'bindControls' }); };
   scenarios[3].frames[350] = () => { sim.players[0].input_autopilot_tack_toggle(); };
@@ -105,7 +115,14 @@ export function buildScenarios(sim) {
     "Tack, then a small head-up",
     "A port-tack boat and a starboard-tack boat start on autopilot, in the same kind of layout as scenario 3. The port boat's heading target is reversed so she tacks, and then the other boat heads up by three degrees. The script removes both boats later."
   );
-  scenarios[4].frames[0] = () => { sim.players.push(new Boat(sim.map, -3, -4, 3 * Math.PI / 4)); sim.players.push(new Boat(sim.map, 18, -11.5, 5 * Math.PI / 4)); };
+  scenarios[4].frames[0] = () => {
+    const way = (h, v) => ({ x: Math.sin(h) * v, y: -Math.cos(h) * v });
+    const h0 = 3 * Math.PI / 4, h1 = 5 * Math.PI / 4;
+    const a = new Boat(sim.map, -3, -4, h0);
+    const b = new Boat(sim.map, 18, -11.5, h1);
+    a.physics_model.setLinearVelocity(way(h0, 1.2));
+    sim.players.push(a, b);
+  };
   scenarios[4].frames[1] = () => { console.log(1); sim.players[0].input_autopilot_enabled_toggle(); sim.players[1].input_autopilot_enabled_toggle(); };
   scenarios[4].frames[2] = () => { sim.emit({ type: 'bindControls' }); };
   scenarios[4].frames[300] = () => { sim.players[0].input_autopilot_tack_toggle(); };
@@ -173,10 +190,10 @@ export function buildScenarios(sim) {
     sim.players.push(new Boat(sim.map, 0, 0, heading));
     // Far enough to port that the reach arrives only after the leeward boat is
     // close-hauled on starboard, and low enough that the hulls meet.
-    // 5.15 was tuned when close-hauled was ~2.8 m/s. After the sail/drag
-    // calibration she is ~2.3 m/s, and 5.15 leaves a 2 m miss. 4.25 crosses
-    // the starboard boat's hull.
-    sim.players.push(new Boat(sim.map, -18.8, 4.25, heading));
+    // 5.15 was tuned when close-hauled was ~2.8 m/s. The 139 kg hull
+    // accelerates slower, so the reach meets the starboard boat lower:
+    // 3.70 crosses her hull once, under Rule 10.
+    sim.players.push(new Boat(sim.map, -18.8, 3.70, heading));
   };
   // Autopilot on at frame 3 (the second Sim tick), after one physics step has
   // set each boat's twa. Frames 0-2 run in one tick before any physics step,

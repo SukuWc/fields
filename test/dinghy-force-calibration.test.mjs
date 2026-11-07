@@ -2,9 +2,12 @@
 // Dev mode, one boat, autopilot. Close-hauled hike saturates in 5–6 m/s.
 // Boat speed stays near the Laser polar in src/dinghy-forces.js. True wind
 // above 7.7 m/s is extrapolated (Day 2017 stops at 15 kn) and is labelled.
-import { apparentWindMs, bareHullDragArea, hullResistanceNewtons, internalForcePerNewton, LASER_POLAR, LEGACY_SAIL_EFF, POLAR_VALIDATED_TWS_MPS, residuaryDragArea, RHO_AIR, PLANING_HUMP_MPS } from '../src/dinghy-forces.js';
+import './dom-stub.mjs';
+import { apparentWindMs, bareHullDragArea, dinghyTotalMass, hullResistanceNewtons, hydroToInternal, internalForcePerNewton, LASER_POLAR, legacyInternalPerNewton, POLAR_VALIDATED_TWS_MPS, residuaryDragArea, yawInertia, PLANING_HUMP_MPS } from '../src/dinghy-forces.js';
 import { DINGHY_DEFAULTS } from '../src/heel.js';
 import { WIND_UNIT_MPS } from '../src/wind.js';
+import { Boat, FORCE_PASSES } from '../src/boat.js';
+import { Map } from '../src/map.js';
 import { hikeSaturationTws, sweep } from '../scripts/dinghy-force-calibration.mjs';
 
 let failed = 0;
@@ -23,13 +26,22 @@ function check(name, ok, info = '') {
   check('old mix (m/s boat + internal wind) under-states AWS', oldMixed < 6.5 && oldMixed > 5);
 }
 
-// Unit bridge: internal force × this = the legacy body scale, and the
-// newton force is ½ρAV² with that scale divided out.
+// Mass is kilograms, so the hull integrates newtons: the pre-applyFinite
+// vector is F_newton / FORCE_PASSES. Centreboard and rudder formulas stay
+// in the legacy unit and hydroToInternal matches that.
 {
   const area = DINGHY_DEFAULTS.sailArea;
-  const perN = internalForcePerNewton(area, WIND_UNIT_MPS);
-  const dyn = 0.5 * RHO_AIR * area * WIND_UNIT_MPS * WIND_UNIT_MPS;
-  check('internal-per-newton cancels to the legacy sail coefficient', Math.abs(perN * dyn - LEGACY_SAIL_EFF) < 1e-12, perN.toFixed(4));
+  const perN = internalForcePerNewton(FORCE_PASSES);
+  const legacy = legacyInternalPerNewton(area, WIND_UNIT_MPS);
+  check('internal force per newton is 1/FORCE_PASSES', Math.abs(perN * FORCE_PASSES - 1) < 1e-12, perN.toFixed(4));
+  check('hydro scale lands the centreboard on that unit', Math.abs(hydroToInternal(area, WIND_UNIT_MPS, FORCE_PASSES) * legacy - perN) < 1e-12);
+  const map = new Map(40, 40, 90, 4.5, null);
+  map.physics_model_init();
+  map.setDevMode(true);
+  const boat = new Boat(map, 0, 0, 0);
+  const mass = dinghyTotalMass();
+  check('rigid body mass is hull + crew', Math.abs(boat.physics_model.getMass() - mass) < 1e-9, boat.physics_model.getMass().toFixed(3));
+  check('yaw inertia is the Laser estimate about the CG', Math.abs(boat.physics_model.m_I - yawInertia()) < 1e-6, boat.physics_model.m_I.toFixed(2));
 }
 
 // Bare-hull drag area below the planing hump sits in the Day & Nixon
@@ -63,7 +75,7 @@ for (const row of rows) {
   check(`${row.heading} ${row.tws} m/s forces finite, heel and hull share one force`,
     row.sideN > 20 && row.driveN > 10 && row.forceMatch && Number.isFinite(row.heel) && Number.isFinite(row.rudder),
     `side ${row.sideN.toFixed(0)} drive ${row.driveN.toFixed(0)}`);
-  check(`${row.heading} ${row.tws} m/s reaches 90% speed`, row.t90 > 0 && row.t90 < 20, `${row.t90}`);
+  check(`${row.heading} ${row.tws} m/s reaches 90% speed`, row.t90 > 0 && row.t90 < 40, `${row.t90}`);
   if (row.heading === 'close-hauled') {
     check(`close-hauled ${row.tws} m/s holds a beat`, Math.abs(row.twa) >= 40 && Math.abs(row.twa) <= 55, row.twa.toFixed(1));
   } else if (!row.extrapolated) {
