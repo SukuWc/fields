@@ -1280,6 +1280,36 @@
       }
       .bp-touch #sheet_toggle .st-rank[hidden] { display: none; }
       .bp-touch #sheet_toggle.has-rank .st-badge { top: 0; right: -2px; }
+      /* Fullscreen sits immediately right of the finish flag (left of ☰).
+         Hidden unless the document element can enter fullscreen, so iPhone
+         Safari (no element Fullscreen API) keeps the old top-bar spacing.
+         :has() shifts the flag, Boat stats and the scenario chip only then. */
+      #fullscreen_toggle { display: none; }
+      .bp-touch #fullscreen_toggle:not([hidden]) {
+        display: flex; align-items: center; justify-content: center; position: fixed; z-index: var(--sz-z-chrome);
+        top: env(safe-area-inset-top); right: calc(48px + env(safe-area-inset-right));
+        width: var(--sz-tap); height: var(--sz-tap); min-width: var(--sz-tap); min-height: var(--sz-tap);
+        padding: 0; color: #fff; background: transparent; border: 0; border-radius: var(--sz-r-lg);
+      }
+      .bp-touch #fullscreen_toggle[aria-pressed="true"] { background: rgba(255, 196, 0, 0.25); }
+      .bp-touch #fullscreen_toggle svg { display: block; width: 22px; height: 22px; }
+      .bp-touch #fullscreen_toggle .fs-exit { display: none; }
+      .bp-touch #fullscreen_toggle[aria-pressed="true"] .fs-enter { display: none; }
+      .bp-touch #fullscreen_toggle[aria-pressed="true"] .fs-exit { display: block; }
+      .bp-touch:has(#fullscreen_toggle:not([hidden])) #sheet_toggle { right: calc(96px + env(safe-area-inset-right)); }
+      .bp-touch:has(#fullscreen_toggle:not([hidden])) #sheet_toggle.has-rank { width: 56px; right: calc(94px + env(safe-area-inset-right)); }
+      .bp-touch:has(#fullscreen_toggle:not([hidden])) #boat_stats { right: calc(144px + env(safe-area-inset-right)); }
+      .bp-touch:has(#fullscreen_toggle:not([hidden])) body.rank-on #boat_stats { right: calc(152px + env(safe-area-inset-right)); }
+      .bp-touch:has(#fullscreen_toggle:not([hidden])) #scenario_card,
+      .bp-touch:has(#fullscreen_toggle:not([hidden])) body.touch-on #scenario_card {
+        width: calc(100vw - 44px - 44px - 44px - 116px - env(safe-area-inset-left) - env(safe-area-inset-right));
+      }
+      .bp-touch:has(#fullscreen_toggle:not([hidden])) body.rank-on #scenario_card,
+      .bp-touch:has(#fullscreen_toggle:not([hidden])) body.rank-on.touch-on #scenario_card {
+        width: calc(100vw - 44px - 44px - 44px - 124px - env(safe-area-inset-left) - env(safe-area-inset-right));
+      }
+      /* Tablet with no chat hides the flag. Pull Boat stats up against fullscreen. */
+      .bp-tablet:has(#fullscreen_toggle:not([hidden])) #sheet_toggle[hidden] ~ #boat_stats { right: calc(96px + env(safe-area-inset-right)); }
       .bp-touch body.rank-on #boat_stats { right: calc(104px + env(safe-area-inset-right)); }
       .bp-touch #boat_stats { right: calc(96px + env(safe-area-inset-right)); }
       .bp-touch #scenario_card, .bp-touch body.touch-on #scenario_card {
@@ -1321,6 +1351,17 @@
 
       /* bp-phone-landscape */
       .bp-phone-landscape #mobile_strip { right: calc(env(safe-area-inset-right) + 208px); }
+      /* Landscape: give the readout strip back the 44 px the fullscreen button
+         takes, by shortening the scenario chip. At 568 px wide the strip stays
+         about as wide as before the button. */
+      .bp-phone-landscape:has(#fullscreen_toggle:not([hidden])) #scenario_card,
+      .bp-phone-landscape:has(#fullscreen_toggle:not([hidden])) body.touch-on #scenario_card,
+      .bp-phone-landscape:has(#fullscreen_toggle:not([hidden])) body.rank-on #scenario_card,
+      .bp-phone-landscape:has(#fullscreen_toggle:not([hidden])) body.rank-on.touch-on #scenario_card { width: 178px; }
+      .bp-phone-landscape:has(#fullscreen_toggle:not([hidden])) #mobile_strip {
+        left: calc(env(safe-area-inset-left) + 182px); right: calc(env(safe-area-inset-right) + 256px);
+      }
+      .bp-phone-landscape:has(#fullscreen_toggle:not([hidden])) body.rank-on #mobile_strip { right: calc(env(safe-area-inset-right) + 264px); }
       .bp-phone-landscape #scenario_card, .bp-phone-landscape body.touch-on #scenario_card { width: 226px; }
       .bp-phone-landscape body.rank-on #scenario_card, .bp-phone-landscape body.rank-on.touch-on #scenario_card { width: 226px; }
       .bp-phone-landscape body.rank-on #scenario_card:not(.collapsed) { width: min(420px, 60vw); }
@@ -1371,7 +1412,7 @@
 
     </style>
   
-    <script type="module" crossorigin src="/fields/pr-preview/pr-185/assets/index-Dbg8mBFK.js"></script>
+    <script type="module" crossorigin src="/fields/pr-preview/pr-185/assets/index-_py7Pbop.js"></script>
   </head>
   <body>
 
@@ -1398,6 +1439,10 @@
     <div id="finish_results" class="sz-panel" hidden></div>
     <!-- Phones (plan M9, mobile-sheet.js): leaderboard + chat sheet, opened from the top bar. -->
     <button id="sheet_toggle" type="button" aria-controls="mobile_sheet" aria-expanded="false" aria-label="Leaderboard and chat" title="Leaderboard and chat"><span class="st-flag" aria-hidden="true">🏁</span><span class="st-rank" hidden></span><span class="st-badge sz-badge" hidden>0</span></button>
+    <button id="fullscreen_toggle" type="button" hidden aria-pressed="false" aria-label="Enter fullscreen" title="Enter fullscreen">
+      <svg class="fs-enter" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg class="fs-exit" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 4v5H4M15 4v5h5M20 15h-5v5M4 15h5v5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
     <section id="mobile_sheet" class="sz-panel" hidden aria-label="Leaderboard and chat" data-tab="board">
       <button type="button" class="sheet-handle" aria-label="Close"><span></span></button>
       <div class="sheet-tabs sz-tabs" role="tablist">
