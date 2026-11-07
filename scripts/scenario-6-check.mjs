@@ -1,7 +1,7 @@
 // Scenario 6 "Tack through Rule 13 into Rule 10": headless run (dev mode).
 // Run: node --import ./test/register.mjs scripts/scenario-6-check.mjs
 const { runScenario, assert, firstTime, pairOf, timeline } = await import("./scenario-harness.mjs");
-const r = runScenario(6, 8);
+const r = runScenario(6, 12);
 const [b0, b1] = r.ids;
 console.log(timeline(r.log));
 const first = pairOf(r.log[0], b0, b1);

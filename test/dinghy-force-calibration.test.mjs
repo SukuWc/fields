@@ -27,8 +27,8 @@ function check(name, ok, info = '') {
 }
 
 // Mass is kilograms, so the hull integrates newtons: the pre-applyFinite
-// vector is F_newton / FORCE_PASSES. Centreboard and rudder formulas stay
-// in the legacy unit and hydroToInternal matches that.
+// vector is F_newton / FORCE_PASSES. hydroToInternal is the old centreboard
+// bridge; the foils no longer use it (foil.js).
 {
   const area = DINGHY_DEFAULTS.sailArea;
   const perN = internalForcePerNewton(FORCE_PASSES);

@@ -189,11 +189,12 @@ export function buildScenarios(sim) {
     const heading = 3 * Math.PI / 4;
     sim.players.push(new Boat(sim.map, 0, 0, heading));
     // Far enough to port that the reach arrives only after the leeward boat is
-    // close-hauled on starboard, and low enough that the hulls meet.
-    // 5.15 was tuned when close-hauled was ~2.8 m/s. The 139 kg hull
-    // accelerates slower, so the reach meets the starboard boat lower:
-    // 3.70 crosses her hull once, under Rule 10.
-    sim.players.push(new Boat(sim.map, -18.8, 3.70, heading));
+    // close-hauled on starboard, and at the height of her new track.
+    // 3.70 was the 139 kg crossing. With the rudder and board as real foils
+    // she climbs onto the starboard layline higher and faster, so the
+    // port boat starts further left and higher: she meets the hull once,
+    // after Rule 15 has expired.
+    sim.players.push(new Boat(sim.map, -26.5, 7.0, heading));
   };
   // Autopilot on at frame 3 (the second Sim tick), after one physics step has
   // set each boat's twa. Frames 0-2 run in one tick before any physics step,

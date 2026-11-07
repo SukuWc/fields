@@ -8,7 +8,7 @@ const check = (name, ok, extra = '') => { console.log((ok ? 'PASS  ' : 'FAIL  ')
 check('no DOM globals in this process', typeof document === 'undefined' && typeof window === 'undefined');
 
 const SIM_MODULES = [
-  'boltzmann.js', 'domainTrack.js', 'wind.js', 'ladder-lines.js', 'map.js', 'dinghy-forces.js', 'boat.js', 'mark.js',
+  'boltzmann.js', 'domainTrack.js', 'wind.js', 'ladder-lines.js', 'map.js', 'dinghy-forces.js', 'foil.js', 'boat.js', 'mark.js',
   'course.js', 'start.js', 'finish.js', 'mark-touch.js', 'rules.js',
   'race-bot.js', 'leaderboard.js', 'utils.js', 'loop.js',
   'boundary.js', 'boundary-scenario.js', 'gusts.js', 'scenarios.js', 'sim.js', 'map-size.js',

@@ -115,6 +115,14 @@ const until = async (fn, ms = 3000) => { const t = Date.now(); while (!fn() && D
     const hA = a().physics_model.getAngle(), hB = b().physics_model.getAngle();
     await A.command({ type: 'autopilot', boat: 0 });
     await B.command({ type: 'autopilot', boat: 0 });
+    // The rudder is a ½ρv² foil, so it needs way. A boat with no speed does
+    // not yaw from a tiller input (the old pump term was a sculling fudge).
+    const way = (boat) => {
+      const ang = boat.physics_model.getAngle();
+      boat.physics_model.setLinearVelocity({ x: Math.sin(ang) * 2, y: -Math.cos(ang) * 2 });
+    };
+    way(a());
+    way(b());
     for (let i = 0; i < 30; i++) { A.sendInput({ held: [{ type: 'helm', boat: 0, dir: 1 }] }); B.sendInput({ held: [{ type: 'helm', boat: 0, dir: -1 }] }); await sleep(33); }
     A.sendInput({ held: [] }); B.sendInput({ held: [] });
     await sleep(100);

@@ -33,8 +33,9 @@ const check = (name, cond, detail) => { if (!cond) failed++; console.log(`${cond
 	// CE + CLR offsets (ceLateralHeight 0.5, clrDepth 0.5) → −48.9011 / 2.8087.
 	// Sail AWS in m/s + hull drag (dinghy-forces.js): → −48.4890 / 2.2780.
 	// Rigid body 139 kg: → −48.6747 / 2.4076.
-	'1 boat, default budget: unchanged (twa −48.6747 / bs 2.4076)',
-		Math.abs(r.twa + 48.6747) < 1e-4 && Math.abs(r.bs - 2.4076) < 1e-4,
+	// Explicit foils + hull-drag offset: → −51.1980 / 2.4524.
+	'1 boat, default budget: unchanged (twa −51.1980 / bs 2.4524)',
+		Math.abs(r.twa + 51.1980) < 1e-4 && Math.abs(r.bs - 2.4524) < 1e-4,
 		`${r.twa.toFixed(4)} / ${r.bs.toFixed(4)}`);
 }
 

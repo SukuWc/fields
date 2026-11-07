@@ -12,10 +12,9 @@
 // The heel DOF takes the side component in newtons. The rigid body mass
 // is hull + crew in kilograms, so the hull integrates that same F_N.
 // applyForce is multiplied by FORCE_PASSES, therefore the vector passed
-// in is F_N / FORCE_PASSES (internalForcePerNewton). Centreboard and
-// rudder formulas are still written in the old internal unit; hydroToInternal
-// brings them into that same pre-applyFinite unit. The lattice wake stays
-// on the legacy internal vector (SAIL_LATTICE_COUPLING was tuned to it).
+// in is F_N / FORCE_PASSES (internalForcePerNewton). Foil lift and drag
+// are computed in src/foil.js and converted the same way. The lattice
+// wake stays on the legacy internal sail vector.
 //
 // The old split was sail_efficiency = 0.15/3 on the body only, with
 // sailForceToNewtons dividing it back out for heel. Those were not the
@@ -41,12 +40,9 @@ export const LASER_HULL = Object.freeze({
   reynoldsLengthFactor: 0.7,
 });
 
-// Daggerboard length is about 0.90 m (ILCA). Used as the effective span
-// for induced drag. The tank measured the bare hull.
+// Daggerboard span used only by the old induced-drag stand-in. Foil
+// geometry now lives in foil.js.
 export const LASER_FOIL_SPAN_M = 0.90;
-// Viscous drag area of daggerboard + rudder, order of magnitude only.
-// The tank drag area does not include it.
-export const FOIL_DRAG_AREA = 0.0015;
 
 // Day 2017 covers 5–15 kn. Above this true wind the polars are an
 // extrapolation, not a validation.
@@ -104,13 +100,14 @@ export function legacyInternalPerNewton(area, windUnit) {
 // no sheet-spill, only cos²(heel)). Heel and the hull both see it.
 export const SAIL_FORCE_SCALE = 1.45;
 
-// Multiplies residuary + foil drag area only. Friction stays on the ITTC
-// 1957 line and the published wetted area. 1 is the bare curve above.
-// 1.55 stands in for the daggerboard, rudder and induced drag Day 2017
-// puts at about 20 % of upwind hydrodynamic drag in 10 kn, plus the extra
-// residuary needed because the sail has no sheet-spill once the crew is
-// fully hiked. Fitted to the polars below.
-export const HULL_DRAG_SCALE = 1.55;
+// Residuary multiplier. 1 is the Day & Nixon shaped curve (friction is
+// never scaled). The old 1.55 covered that curve plus a foil-drag area
+// and a separate induced-drag term. Those foil terms are gone: lift and
+// drag now come from foil.js. What is left is the hull, and this hull
+// has no sheet-spill once the crew is hiked out, so upwind speed runs
+// past Day 2017 unless residuary is stiffened. 2.40 is that residual,
+// fitted after the foils were made explicit. It is not a foil allowance.
+export const HULL_DRAG_SCALE = 2.40;
 
 // Pre-applyFinite force per newton. applyFinite multiplies by FORCE_PASSES
 // and the body mass is in kilograms, so the integrated force is F_newton
@@ -119,8 +116,8 @@ export function internalForcePerNewton(forcePasses) {
   return 1 / forcePasses;
 }
 
-// Centreboard and rudder formulas return the legacy internal unit.
-// Multiply by this to match internalForcePerNewton.
+// Centreboard and rudder used to return the legacy internal unit.
+// hydroToInternal is that bridge. The foils (foil.js) no longer use it.
 export function hydroToInternal(area, windUnit, forcePasses) {
   return internalForcePerNewton(forcePasses) / legacyInternalPerNewton(area, windUnit);
 }
@@ -172,23 +169,12 @@ export function bareHullDragArea(speedMs) {
   return frictionalDragArea(speedMs) + residuaryDragArea(speedMs);
 }
 
-// Induced drag of the foils (N) from the sail side force. q = ½ρV²,
-// R_i = F² / (π q span²). Floored speed so a near-stop does not explode.
-export function inducedDragNewtons(sideForceN, speedMs, spanM = LASER_FOIL_SPAN_M) {
-  const f = Number.isFinite(sideForceN) ? sideForceN : 0;
-  const v = Math.max(speedMs, 0.5);
-  const q = 0.5 * RHO_WATER * v * v;
-  return (f * f) / (Math.PI * q * spanM * spanM);
-}
-
-// Total hydrodynamic resistance along the velocity, newtons.
-// sideForceN is the sail side force (last tick is fine): induced drag.
-export function hullResistanceNewtons(speedMs, sideForceN = 0) {
+// Bare hull only: ITTC friction on the published wetted area, plus the
+// residuary curve. Foil profile and induced drag are not included.
+export function hullResistanceNewtons(speedMs) {
   if (!(speedMs > 0)) return 0;
-  const cdA = frictionalDragArea(speedMs)
-    + (residuaryDragArea(speedMs) + FOIL_DRAG_AREA) * HULL_DRAG_SCALE;
-  const viscous = 0.5 * RHO_WATER * speedMs * speedMs * cdA;
-  return viscous + inducedDragNewtons(sideForceN, speedMs);
+  const cdA = frictionalDragArea(speedMs) + residuaryDragArea(speedMs) * HULL_DRAG_SCALE;
+  return 0.5 * RHO_WATER * speedMs * speedMs * cdA;
 }
 
 // Close-hauled and beam-reach boat speeds (m/s) for an 80 kg sailor.

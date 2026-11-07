@@ -51,10 +51,15 @@ check('CLR windward = opposite heel sign (φ>0 → −X)', Math.sign(H.clrOffset
     `${b._sailCeLocalX} vs ${expectCe}`);
   check('boat: CLR local X = −clrDepth·sinφ when offset on', Math.abs(b._clrLocalX - expectClr) < 1e-9,
     `${b._clrLocalX} vs ${expectClr}`);
+  const expectDrag = H.hullDragOffsetX(b.heel.phi, b.dinghy);
+  check('boat: hull drag local X = +hullDragLateral·sinφ when offset on', Math.abs(b._dragLocalX - expectDrag) < 1e-9,
+    `${b._dragLocalX} vs ${expectDrag}`);
+  check('hull drag offset has the sail CE sign', Math.sign(expectDrag) === Math.sign(expectCe) && expectDrag > 0);
   b.ceLeewardOffset = false;
   mute(() => b.physics_model_step());
   check('boat: CE local X = 0 when offset off', Math.abs(b._sailCeLocalX) < 1e-12, `${b._sailCeLocalX}`);
   check('boat: CLR local X = 0 when offset off', Math.abs(b._clrLocalX) < 1e-12, `${b._clrLocalX}`);
+  check('boat: hull drag local X = 0 when offset off', Math.abs(b._dragLocalX) < 1e-12, `${b._dragLocalX}`);
 }
 
 // Weather helm: slow wind ramp to 9 m/s on a large map; autopilot holds
@@ -100,15 +105,15 @@ check('strong wind, offset off: sailing near 45° with small rudder',
   `twa=${off.twa.toFixed(1)} ra=${off.rudder.toFixed(2)} bs=${off.bs.toFixed(2)}`);
 check('strong wind, offset on: heel past the 5° target (overpowered)',
   Math.abs(on.heel) > 8, `heel=${on.heel.toFixed(1)}°`);
-// With CE + CLR, weather helm is slight (a few degrees), still clearly above offset-off.
-// Sail-force calibration (½ρAV² × 1.45) hikes the boat harder at 9 m/s, so
-// weather helm is a few degrees larger than before. Still well under the
-// autopilot's 30° limit, and still clearly above offset-off.
-check('strong wind, offset on: slight weather helm (|ra| 3..14, > offset-off)',
-  Math.abs(on.rudder) >= 3 && Math.abs(on.rudder) <= 14 && Math.abs(on.rudder) > Math.abs(off.rudder) + 1.5,
+// The rudder is a real NACA 0012 blade (foil.js), so a couple of degrees
+// already balances the yaw moment. Weather helm from the leeward CE /
+// windward CLR shows up as a small shift toward a lower (more negative)
+// rudder angle on starboard, not as the old 10° tiller.
+check('strong wind, offset on: rudder stays a few degrees',
+  Math.abs(on.rudder) < 8 && Math.abs(off.rudder) < 8,
   `on=${on.rudder.toFixed(2)} off=${off.rudder.toFixed(2)}`);
-check('weather helm sign: starboard → more negative rudder with offset',
-  on.twa < 0 && on.rudder < off.rudder - 1.5,
+check('weather helm sign: starboard offset pulls the rudder down',
+  on.twa < 0 && on.rudder < off.rudder - 0.15,
   `on twa=${on.twa.toFixed(1)} ra=${on.rudder.toFixed(2)} vs off ${off.rudder.toFixed(2)}`);
 check('offset on: boat still holds a course (speed > 2)', on.bs > 2, `bs=${on.bs.toFixed(2)}`);
 check('offset on: CE leeward of centreline', on.cex > 0.1, `cex=${on.cex.toFixed(3)}`);

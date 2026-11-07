@@ -6,8 +6,9 @@ import {
   updateTackingState,
 } from './rules.js';
 import { WIND_UNIT_MPS, boatTrueWind } from './wind.js';
-import { DINGHY_DEFAULTS, createHeelState, heelForceFactor, sailCeOffsetX, clrOffsetX, stepHeel } from './heel.js';
-import { apparentWindMs, dinghyTotalMass, hullResistanceNewtons, hydroToInternal, internalForcePerNewton, LEGACY_DENSITY_MASS_KG, legacyInternalPerNewton, sailDynamicNewtons, yawInertia } from './dinghy-forces.js';
+import { DINGHY_DEFAULTS, createHeelState, heelForceFactor, hullDragOffsetX, sailCeOffsetX, clrOffsetX, stepHeel } from './heel.js';
+import { apparentWindMs, dinghyTotalMass, hullResistanceNewtons, internalForcePerNewton, LEGACY_DENSITY_MASS_KG, legacyInternalPerNewton, sailDynamicNewtons, yawInertia } from './dinghy-forces.js';
+import { DAGGERBOARD, foilForceNewtons, RUDDER_BLADE } from './foil.js';
 
 const wrap360 = (d) => ((d % 360) + 360) % 360;
 
@@ -412,47 +413,34 @@ export class Boat{
     // quadrature (sideways) component of velocity vector
     let q = this.physics_model.m_linearVelocity.x*Math.cos(angle) + this.physics_model.m_linearVelocity.y*Math.sin(angle) 
 
-    // calculate centerboard dynamics
-    let centerboard_AoA_degrees = Math.atan2(q, Math.abs(d)) * 180 / Math.PI
-
-    if (centerboard_AoA_degrees>90){
-      centerboard_AoA_degrees -= 180
-    }
-    else if (centerboard_AoA_degrees<-90){
-      centerboard_AoA_degrees += 180
-    }
-
-    // Formula is in the legacy internal unit. hydro brings it into the
-    // same pre-applyFinite unit as the sail (newtons / FORCE_PASSES), and
-    // the 150 cap scales with it.
-    const hydro = hydroToInternal(this.dinghy.sailArea, WIND_UNIT_MPS, FORCE_PASSES);
-    let centerboard_force = -centerboard_AoA_degrees * Math.abs(d)*Math.abs(d) * 2 * hydro;
-    const cbCap = 150 * hydro;
-
-    if (centerboard_force>cbCap){
-      centerboard_force = cbCap
-    }
-    else if (centerboard_force<-cbCap){
-      centerboard_force = -cbCap
-    }
-
-    //var f = boat.getWorldVector(Vec2(-q*100, 0)); 
-    var centerboard_f = this.physics_model.getWorldVector(Vec2(centerboard_force, 0));
-    // CLR: on the centreline, or offset to windward by −z_CLR·sin(φ) when
-    // ceLeewardOffset is on (same flag as the sail CE leeward offset).
+    // Centreboard: NACA 0012 finite wing (foil.js). Inflow is the hull
+    // velocity at the board. Lift ⟂ inflow, drag ∥ inflow, in newtons,
+    // then ÷ FORCE_PASSES like the sail. Applied at the CLR offset.
+    const perN = internalForcePerNewton(FORCE_PASSES);
+    const cb = foilForceNewtons({
+      vBodyX: q,
+      vBodyY: -d,
+      bladeRad: 0,
+      area: DAGGERBOARD.area,
+      aspectRatio: DAGGERBOARD.effectiveAspect,
+    });
     const clrX = (this.ceLeewardOffset && this.heel)
       ? clrOffsetX(this.heel.phi, this.dinghy) : 0;
-    var centerboard_p = this.physics_model.getWorldPoint(Vec2(clrX, this.centerboard_position));
+    const centerboard_p = this.physics_model.getWorldPoint(Vec2(clrX, this.centerboard_position));
+    const toWorld = (bodyVec) => this.physics_model.getWorldVector(Vec2(bodyVec.x * perN, bodyVec.y * perN));
+    const cbLiftW = toWorld(cb.lift);
+    const cbDragW = toWorld(cb.drag);
+    applyFinite(cbLiftW, centerboard_p);
+    applyFinite(cbDragW, centerboard_p);
     this._clrLocalX = clrX;
     this._clrPoint = centerboard_p;
-    this._clrForce = centerboard_f;
+    this._clrForce = { x: cbLiftW.x + cbDragW.x, y: cbLiftW.y + cbDragW.y };
+    this._cbLift = cbLiftW;
+    this._cbDrag = cbDragW;
+    this.forces.push({ name: 'centerboard-lift', type: 'arrow', vector: cbLiftW, point: centerboard_p });
+    this.forces.push({ name: 'centerboard-drag', type: 'arrow', vector: cbDragW, point: centerboard_p });
 
-    // centerboard
-    applyFinite(centerboard_f, centerboard_p);   
-
-    this.forces.push({name: "centerboard", type: "arrow", vector: centerboard_f, point: centerboard_p})
-
-    tel.qd = centerboard_AoA_degrees;
+    tel.qd = cb.alpha * 180 / Math.PI;
   
 
 
@@ -524,7 +512,6 @@ export class Boat{
  
 
     this.rudder_angle_last = this.rudder_angle;
-    let pumpfactor = 0;
 
     const rudder_turn_rate = (1-Math.abs(d)>0)?1-Math.abs(d)+1:1;
 
@@ -539,15 +526,9 @@ export class Boat{
 
       // N passes of +rate, clamped at the max (no overshoot).
       for (let i = 0; i < N && this.rudder_angle < this.rudder_angle_max; i++) this.rudder_angle = Math.min(this.rudder_angle + rudder_turn_rate, this.rudder_angle_max);
-      // The pump term was per pass (cube of a one-pass step), summed over N
-      // passes by FORCE_PASSES: use the per-pass step here.
-      const stepPerPass = (this.rudder_angle - this.rudder_angle_last) / N;
-      pumpfactor = 1.5 * stepPerPass * stepPerPass * stepPerPass
     } else if (this.rudder_input === 1) {
       
       for (let i = 0; i < N && this.rudder_angle > -this.rudder_angle_max; i++) this.rudder_angle = Math.max(this.rudder_angle - rudder_turn_rate, -this.rudder_angle_max);
-      const stepPerPass = (this.rudder_angle - this.rudder_angle_last) / N;
-      pumpfactor = 1.5 * stepPerPass * stepPerPass * stepPerPass
     }
     else{
 
@@ -613,30 +594,28 @@ export class Boat{
 
 
   
-    // calculate flow directuion under the rudder
-    let angular_velocity = this.physics_model.m_angularVelocity;
-    let q_rot = angular_velocity*this.rudder_lenght;
-    let water_angle = Math.atan2(-q+q_rot, Math.abs(d)) /Math.PI*180
-
-    let rudder_force = 0;
-    if (d>0){
-      rudder_force = d*(this.rudder_angle+water_angle)/7;
-    }
-    else{
-      rudder_force = d*(this.rudder_angle-water_angle)/7; 
-    }
-
-    rudder_force += pumpfactor*2
-    rudder_force *= hydro;
-
-    let rudder_p = this.physics_model.getWorldPoint(Vec2(0.0, this.rudder_position))
-    let rudder_f = {}
-
-    rudder_f.x = Math.cos(angle +this.rudder_angle/180*Math.PI)* rudder_force;
-    rudder_f.y = Math.sin(angle +this.rudder_angle/180*Math.PI)* rudder_force;
-
-    applyFinite(rudder_f, rudder_p); 
-    this.forces.push({name: "rudder", type: "arrow", vector: rudder_f, point: rudder_p})
+    // Rudder: same foil model. Inflow includes the yaw-rate velocity at
+    // the rudder stock (local +Y is aft). Blade angle is rudder_angle
+    // (positive yaws clockwise). No sculling pump: the force is the steady
+    // ½ρv² load at this angle.
+    const omega = this.physics_model.m_angularVelocity;
+    const rudder = foilForceNewtons({
+      vBodyX: q - omega * this.rudder_position,
+      vBodyY: -d,
+      bladeRad: this.rudder_angle * Math.PI / 180,
+      area: RUDDER_BLADE.area,
+      aspectRatio: RUDDER_BLADE.effectiveAspect,
+    });
+    const rudder_p = this.physics_model.getWorldPoint(Vec2(0.0, this.rudder_position));
+    const rudderLiftW = toWorld(rudder.lift);
+    const rudderDragW = toWorld(rudder.drag);
+    applyFinite(rudderLiftW, rudder_p);
+    applyFinite(rudderDragW, rudder_p);
+    this._rudderPoint = rudder_p;
+    this._rudderLift = rudderLiftW;
+    this._rudderDrag = rudderDragW;
+    this.forces.push({ name: 'rudder-lift', type: 'arrow', vector: rudderLiftW, point: rudder_p });
+    this.forces.push({ name: 'rudder-drag', type: 'arrow', vector: rudderDragW, point: rudder_p });
 
     tel.twa = twa;
     tel.tws = this.wind_speed * WIND_UNIT_MPS; // m/s; wind_speed is the internal unit
@@ -716,7 +695,6 @@ export class Boat{
     // in newtons. One force, two units.
     const heelK = this.heel ? heelForceFactor(this.heel.phi) : 1;
     const qN = sailDynamicNewtons(awsMs, heelK, this.dinghy.sailArea);
-    const perN = internalForcePerNewton(FORCE_PASSES);
     const sailK = qN * perN;
 
     sail_f_drag.x = Math.cos(angle+this.awa/180*Math.PI + Math.PI/2 )*sailK*c_drag
@@ -778,11 +756,10 @@ export class Boat{
 
 
 
-    // Hull resistance (dinghy-forces.js) in newtons, applied in the same
-    // internal unit as the sail so drive and drag balance in one force.
-    // Along −velocity. Induced drag uses this tick's sail side force.
+    // Hull resistance in newtons, along −velocity, at the heeled drag
+    // centre: +hullDragLateral·sinφ to leeward when ceLeewardOffset is on.
     var drag_f = {}
-    const resistN = hullResistanceNewtons(bs, this.sail_side_force_n || 0);
+    const resistN = hullResistanceNewtons(bs);
     if (bs > 1e-4) {
       drag_f.x = -this.physics_model.m_linearVelocity.x / bs * resistN * perN;
       drag_f.y = -this.physics_model.m_linearVelocity.y / bs * resistN * perN;
@@ -791,8 +768,11 @@ export class Boat{
       drag_f.y = 0;
     }
 
-
-    var drag_p = this.physics_model.getWorldPoint(Vec2(0.0, 0));
+    const dragX = (this.ceLeewardOffset && this.heel)
+      ? hullDragOffsetX(this.heel.phi, this.dinghy) : 0;
+    var drag_p = this.physics_model.getWorldPoint(Vec2(dragX, 0));
+    this._dragLocalX = dragX;
+    this._dragPoint = drag_p;
     applyFinite(drag_f, drag_p);   
     this.forces.push({name: "drag", type: "arrow", vector: drag_f, point: drag_p})
 
@@ -910,9 +890,19 @@ export class Boat{
         && Number.isFinite(this._clrPoint.x) && Number.isFinite(this._clrPoint.y)) {
       s.clr = [this._clrPoint.x, this._clrPoint.y];
       if (Number.isFinite(this._clrLocalX)) s.clrx = this._clrLocalX;
-      if (this._clrForce && Number.isFinite(this._clrForce.x) && Number.isFinite(this._clrForce.y)) {
-        s.clrf = [this._clrForce.x, this._clrForce.y];
-      }
+      if (this._cbLift && Number.isFinite(this._cbLift.x)) s.cbl = [this._cbLift.x, this._cbLift.y];
+      if (this._cbDrag && Number.isFinite(this._cbDrag.x)) s.cbd = [this._cbDrag.x, this._cbDrag.y];
+    }
+    if (this._dragPoint
+        && Number.isFinite(this._dragPoint.x) && Number.isFinite(this._dragPoint.y)) {
+      s.hd = [this._dragPoint.x, this._dragPoint.y];
+      if (Number.isFinite(this._dragLocalX)) s.hdx = this._dragLocalX;
+    }
+    if (this._rudderPoint
+        && Number.isFinite(this._rudderPoint.x) && Number.isFinite(this._rudderPoint.y)) {
+      s.rd = [this._rudderPoint.x, this._rudderPoint.y];
+      if (this._rudderLift && Number.isFinite(this._rudderLift.x)) s.rdl = [this._rudderLift.x, this._rudderLift.y];
+      if (this._rudderDrag && Number.isFinite(this._rudderDrag.x)) s.rdd = [this._rudderDrag.x, this._rudderDrag.y];
     }
     return s;
   }

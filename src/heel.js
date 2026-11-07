@@ -70,6 +70,12 @@ export const DINGHY_DEFAULTS = Object.freeze({
   // weather helm stays slight once CLR also shifts; roll still uses ceHeight.
   ceLateralHeight: 0.5,  // m; lateral CE = ceLateralHeight·sinφ
   hikeArm: 1.0,          // m, crew CG off the centreline at full hike
+  // Lateral shift of the immersed hull's drag centre at 90° of heel.
+  // ILCA beam is 1.37 m (half-beam 0.685 m). Heeled, the centre of the
+  // immersed section sits inboard of the deck edge; 0.40 m is about 0.6
+  // of the half-beam. Offset = +hullDragLateral·sinφ, leeward, same sign
+  // as the sail CE.
+  hullDragLateral: 0.40,
   rollInertia: 80,       // kg·m²
   rollDamping: 200,      // N·m·s/rad
   targetHeelDeg: 5,      // crew holds this much heel to leeward
@@ -110,6 +116,11 @@ export function sailCeOffsetX(phi, p = DINGHY_DEFAULTS) {
 // application point moves to −z_CLR·sin(φ). φ > 0 → −X (windward).
 export function clrOffsetX(phi, p = DINGHY_DEFAULTS) {
   return -p.clrDepth * Math.sin(phi);
+}
+
+// Top-down leeward offset of hull drag (m, body-local +X). φ > 0 → +X.
+export function hullDragOffsetX(phi, p = DINGHY_DEFAULTS) {
+  return p.hullDragLateral * Math.sin(phi);
 }
 
 export function createHeelState() {

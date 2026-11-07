@@ -56,7 +56,8 @@ const s0 = H.scenario0(1);
 // CE + CLR offsets (ceLateralHeight 0.5, clrDepth 0.5): → −48.9011 / 2.8087.
 // Sail AWS in m/s + hull drag (dinghy-forces.js): → −48.4890 / 2.2780.
 // Rigid body 139 kg (linear damping scaled so its force is unchanged): → −48.6747 / 2.4076.
-check('scenario 0 never toggled: unchanged (twa −48.6747 / bs 2.4076; 139 kg)', Math.abs(s0.twa + 48.6747) < 1e-4 && Math.abs(s0.bs - 2.4076) < 1e-4, `${s0.twa.toFixed(4)} / ${s0.bs.toFixed(4)}`);
+// Explicit foils + hull-drag offset: → −51.1980 / 2.4524.
+check('scenario 0 never toggled: unchanged (twa −51.1980 / bs 2.4524; 139 kg)', Math.abs(s0.twa + 51.1980) < 1e-4 && Math.abs(s0.bs - 2.4524) < 1e-4, `${s0.twa.toFixed(4)} / ${s0.bs.toFixed(4)}`);
 // Flap amplitude follows the main's angle of attack: full at 0, none at close-hauled trim.
 {
 	const { map: m2 } = H.makeWorld(1);
