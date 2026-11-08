@@ -208,7 +208,7 @@ for (const k of KS) {
 	const r = H.scenario0(k, { frames: 600 });
 	s0[k] = r;
 	check(`x${k} scenario 0 holds ~45° at a steady speed`,
-		r.twa < -40 && r.twa > -55 && r.twaSpread < 3 && r.bs > 2.4 && r.bs < 3.1 && Math.abs(r.bs - r.bsAt500) < 0.15
+		r.twa < -40 && r.twa > -55 && r.twaSpread < 3 && r.bs > 2.0 && r.bs < 2.6 && Math.abs(r.bs - r.bsAt500) < 0.15
 		&& r.bad === 0 && r.maxU < 0.3,
 		`twa=${r.twa.toFixed(2)} bs=${r.bs.toFixed(3)} tws=${r.tws.toFixed(2)} ms/frame=${r.msPerFrame.toFixed(2)}`);
 	check(`x${k} scenario 0 boat sits in a ${2 + Math.log2(k) + 1}-level stack with 1/8-unit cells`,
@@ -220,8 +220,11 @@ check(// Fixed 30 FPS (one pass per tick, boat terms ×3): −49.4023 / 2.1314 �
 // Dinghy heel (crew holds 5°, sail force × cos²): → −49.3053 / 2.8339.
 // Sail CE leeward offset (weather helm via h·sinφ): → −47.5006 / 2.7098.
 // CE + CLR offsets (ceLateralHeight 0.5, clrDepth 0.5): → −48.9519 / 2.8097.
-'Default scenario 0 with ?amrMode=fixed pinned (twa −48.95, bs 2.810)',
-	near(s0[1].twa, -48.9519, 0.01) && near(s0[1].bs, 2.8097, 0.002), `twa=${s0[1].twa.toFixed(4)} bs=${s0[1].bs.toFixed(4)}`);
+// Sail AWS in m/s + hull drag (dinghy-forces.js): → −48.6869 / 2.2831.
+// Rigid body 139 kg: → −48.6860 / 2.4110.
+// Explicit foils + hull-drag offset: → −51.1895 / 2.4541.
+'Default scenario 0 with ?amrMode=fixed pinned (twa −51.19, bs 2.454)',
+	near(s0[1].twa, -51.1895, 0.01) && near(s0[1].bs, 2.4541, 0.002), `twa=${s0[1].twa.toFixed(4)} bs=${s0[1].bs.toFixed(4)}`);
 // With the outer rings the boat keeps Default's fine levels, so refinement
 // costs about what it does at Default. Coarse settings must not be slower.
 check('x2 and x4 with refinement are no slower per frame than Default',
@@ -270,7 +273,7 @@ for (const k of [2, 4]) {
 			`steps=${n} U=${bm.speed.toFixed(4)} TWS=${w.speed.toFixed(3)} ν=${bm.nu}/${bm.matchedNu}`);
 		const r = H.scenario0(mode);
 		check(`${mode} scenario 0 holds close-hauled like Default`,
-			r.twa < -45 && r.twa > -54 && r.twaSpread < 3 && r.bs > 2.4 && r.bs < 3.1 && r.bad === 0 && r.finestStep === 0.125,
+			r.twa < -45 && r.twa > -54 && r.twaSpread < 3 && r.bs > 2.0 && r.bs < 2.6 && r.bad === 0 && r.finestStep === 0.125,
 			`twa=${r.twa.toFixed(2)} bs=${r.bs.toFixed(3)}`);
 	}
 	for (const [mode, wind] of [['2f', 15]]) {

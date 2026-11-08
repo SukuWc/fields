@@ -75,6 +75,11 @@ const tex = () => ({ image: { data: new Uint8Array(0) } });
   // A holds helm right, B holds helm left for 1.5 s.
   const h0A = byId(ra.id).physics_model.getAngle(), h0B = byId(rb.id).physics_model.getAngle(), h0S = core.sim.players[0].physics_model.getAngle();
   await B.command({ type: 'autopilot', boat: 0 });
+  // ½ρv² rudder: give each boat way so the tiller can yaw it.
+  for (const boat of [byId(ra.id), byId(rb.id)]) {
+    const ang = boat.physics_model.getAngle();
+    boat.physics_model.setLinearVelocity({ x: Math.sin(ang) * 2, y: -Math.cos(ang) * 2 });
+  }
   for (let i = 0; i < 45; i++) {
     A.tick({ dt: 1 / 30, held: [{ type: 'helm', boat: 0, dir: +1 }], present: true, view });
     B.tick({ dt: 1 / 30, held: [{ type: 'helm', boat: 0, dir: -1 }], present: true, view });

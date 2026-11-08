@@ -54,7 +54,10 @@ const s0 = H.scenario0(1);
 // Dinghy heel (crew holds 5°, sail force × cos²): −49.3048 / 2.8465 → −49.3231 / 2.8330.
 // Sail CE leeward offset (weather helm via h·sinφ): → −47.5247 / 2.7094.
 // CE + CLR offsets (ceLateralHeight 0.5, clrDepth 0.5): → −48.9011 / 2.8087.
-check('scenario 0 never toggled: unchanged (twa −48.9011 / bs 2.8087; CE+CLR)', Math.abs(s0.twa + 48.9011) < 1e-4 && Math.abs(s0.bs - 2.8087) < 1e-4, `${s0.twa.toFixed(4)} / ${s0.bs.toFixed(4)}`);
+// Sail AWS in m/s + hull drag (dinghy-forces.js): → −48.4890 / 2.2780.
+// Rigid body 139 kg (linear damping scaled so its force is unchanged): → −48.6747 / 2.4076.
+// Explicit foils + hull-drag offset: → −51.1980 / 2.4524.
+check('scenario 0 never toggled: unchanged (twa −51.1980 / bs 2.4524; 139 kg)', Math.abs(s0.twa + 51.1980) < 1e-4 && Math.abs(s0.bs - 2.4524) < 1e-4, `${s0.twa.toFixed(4)} / ${s0.bs.toFixed(4)}`);
 // Flap amplitude follows the main's angle of attack: full at 0, none at close-hauled trim.
 {
 	const { map: m2 } = H.makeWorld(1);
@@ -76,9 +79,13 @@ check('scenario 0 never toggled: unchanged (twa −48.9011 / bs 2.8087; CE+CLR)'
 			if (w.bm.stepsDueThisFrame() > 0) trackBoats(w.bm, [b]); w.bm.advance_frame(); } };
 		loop(1);
 		// Turn her dead downwind (TWA 178°, still on one side) and hold it.
+		// The autopilot toggle snaps a downwind target to the VMG angle (160°).
+		// With apparent wind in true m/s that angle no longer pins the boom
+		// on its stop, so hold 178°, where the boom is at the limit.
 		b.physics_model.setAngle(b.physics_model.getAngle() + (b.twa - 178) * Math.PI / 180);
 		b.physics_model_step();
 		b.input_autopilot_enabled_toggle();
+		b.autopilot_heading_target = Math.sign(b.autopilot_heading_target) * 178 || -178;
 		let pw = 0, n = 0;
 		loop(450, t => { if (t === depowerAt) b.input_depower_toggle(); if (t >= 390) { pw += b.power; n++; } });
 		b.graphics_model_render();
@@ -86,7 +93,7 @@ check('scenario 0 never toggled: unchanged (twa −48.9011 / bs 2.8087; CE+CLR)'
 	};
 	const off = run(-1), on = run(300);
 	check('downwind, not depowered: jib does not flap; depowered: it does', off.jibFlap === 0 && on.jibFlap > 0, `jib flap ${off.jibFlap} / ${on.jibFlap.toFixed(2)}`);
-	check('downwind (autopilot settles at TWA ~160°, boom at its limit): depower leaves speed and force within 2 %, main does not flap (jib may, in the main\'s shadow)',
+	check('dead downwind (TWA ~178°, boom at its limit): depower leaves speed and force within 2 %, main does not flap (jib may, in the main\'s shadow)',
 		on.depower === 1 && Math.abs(on.bs / off.bs - 1) < 0.02 && Math.abs(on.power / off.power - 1) < 0.02 && on.flap === 0,
 		`TWA ${off.twa.toFixed(1)} / ${on.twa.toFixed(1)}, bs ${off.bs.toFixed(3)} → ${on.bs.toFixed(3)}, power ${off.power.toFixed(2)} → ${on.power.toFixed(2)}, main flap ${on.flap}, jib flap ${on.jibFlap.toFixed(2)} (AWA ${on.awa.toFixed(0)}°)`);
 }

@@ -114,6 +114,29 @@ export function boatGuides(s, d) {
       graphics.push({ color: 0x66ffff, type: "force",
         x1: cx, y1: cy, x2: cx + s.clrf[0] / 8, y2: cy + s.clrf[1] / 8 });
     }
+    const arrow = (vec, color, scale) => {
+      if (!Array.isArray(vec) || vec.length < 2 || !Number.isFinite(vec[0]) || !Number.isFinite(vec[1])) return;
+      graphics.push({ color, type: "force", x1: cx, y1: cy, x2: cx + vec[0] / scale, y2: cy + vec[1] / scale });
+    };
+    arrow(s.cbl, 0x88ffcc, 8);
+    arrow(s.cbd, 0x228866, 8);
+  }
+  // Hull drag centre (blue): leeward of the centreline when heeled.
+  // Blue, not yellow: the speed plot is yellow, and a gold cross disappears on it.
+  if (Array.isArray(s.hd) && s.hd.length >= 2 && Number.isFinite(s.hd[0]) && Number.isFinite(s.hd[1])) {
+    const hx = s.hd[0], hy = s.hd[1], m = 0.32;
+    graphics.push({ color: 0x2255ff, type: "force", x1: hx - m, y1: hy, x2: hx + m, y2: hy });
+    graphics.push({ color: 0x2255ff, type: "force", x1: hx, y1: hy - m, x2: hx, y2: hy + m });
+  }
+  // Rudder lift (orange) and drag (red), separate from the green force arrows.
+  if (Array.isArray(s.rd) && s.rd.length >= 2 && Number.isFinite(s.rd[0]) && Number.isFinite(s.rd[1])) {
+    const rx = s.rd[0], ry = s.rd[1];
+    const rarrow = (vec, color) => {
+      if (!Array.isArray(vec) || vec.length < 2 || !Number.isFinite(vec[0]) || !Number.isFinite(vec[1])) return;
+      graphics.push({ color, type: "force", x1: rx, y1: ry, x2: rx + vec[0] / 6, y2: ry + vec[1] / 6 });
+    };
+    rarrow(s.rdl, 0xff8844);
+    rarrow(s.rdd, 0xff4422);
   }
   // autopilot guide
   const a = {};

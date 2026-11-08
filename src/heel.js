@@ -8,7 +8,9 @@
 // Equations (SI, per tick, dt = 1/30 s split into HEEL_SUBSTEPS):
 //   M_heel  = F_side · h_CE · cos(phi)                 heeling moment
 //     F_side: sail force component perpendicular to the centreline, in N
-//     (see sailForceToNewtons), already reduced by the heel factor below.
+//     (dinghy-forces.js sailDynamicNewtons). The rigid body integrates that
+//     same vector in the internal unit (× internalForcePerNewton). Already
+//     reduced by the heel factor below.
 //   M_hull  = Δ · g · GZ(phi)                          hull form stability
 //     Δ = boat (hull + rig) mass; GZ is a tabulated dinghy righting-arm
 //     curve (odd in phi): small GM (~0.29 m), peak ~0.21 m at 50°,
@@ -68,6 +70,12 @@ export const DINGHY_DEFAULTS = Object.freeze({
   // weather helm stays slight once CLR also shifts; roll still uses ceHeight.
   ceLateralHeight: 0.5,  // m; lateral CE = ceLateralHeight·sinφ
   hikeArm: 1.0,          // m, crew CG off the centreline at full hike
+  // Lateral shift of the immersed hull's drag centre at 90° of heel.
+  // ILCA beam is 1.37 m (half-beam 0.685 m). Heeled, the centre of the
+  // immersed section sits inboard of the deck edge; 0.40 m is about 0.6
+  // of the half-beam. Offset = +hullDragLateral·sinφ, leeward, same sign
+  // as the sail CE.
+  hullDragLateral: 0.40,
   rollInertia: 80,       // kg·m²
   rollDamping: 200,      // N·m·s/rad
   targetHeelDeg: 5,      // crew holds this much heel to leeward
@@ -110,11 +118,9 @@ export function clrOffsetX(phi, p = DINGHY_DEFAULTS) {
   return -p.clrDepth * Math.sin(phi);
 }
 
-// The boat's sail model is in internal units: F = aws_int² · C · eff, with
-// aws_int · windUnit = aws in m/s. The same coefficients in SI give
-// F_N = ½ ρ A (aws_int · windUnit)² C, so F_N = F_int · ½ρA·windUnit²/eff.
-export function sailForceToNewtons(sailEff, windUnit, area = DINGHY_DEFAULTS.sailArea) {
-  return 0.5 * RHO_AIR * area * windUnit * windUnit / sailEff;
+// Top-down leeward offset of hull drag (m, body-local +X). φ > 0 → +X.
+export function hullDragOffsetX(phi, p = DINGHY_DEFAULTS) {
+  return p.hullDragLateral * Math.sin(phi);
 }
 
 export function createHeelState() {

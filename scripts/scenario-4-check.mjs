@@ -14,7 +14,9 @@ const [port, stbd] = r.ids;
 console.log(timeline(r.log));
 assert(r.ids.length === 2, `two scenario boats (${r.ids})`);
 const tack = firstTime(r.log, port, stbd, (p) => p.final === "13");
-assert(tack !== null && tack > 3 && tack < 4.5, `port boat tacks after frame 300: Rule 13 from ${tack?.toFixed(2)} s`);
+// 139 kg: commanded at frame 300 (~3.3 s), through head to wind a few
+// seconds later. Was under 4.5 s at 26.6 kg.
+assert(tack !== null && tack > 3 && tack < 8, `port boat tacks after frame 300: Rule 13 from ${tack?.toFixed(2)} s`);
 assert(r.log.every((e) => { const p = pairOf(e, port, stbd); return !p || !p.final || p.gw === port; }), "the port (tacking) boat is give-way throughout (Rules 13, 12, 10)");
 assert(headBefore !== null && headAfter !== null && Math.abs(Math.abs(headBefore) - Math.abs(headAfter) - 3) < 1e-9, `boat ${stbd} heads up 3° at frame 700 (target ${headBefore} → ${headAfter})`);
 assert(r.incidents.length === 0, "no contact");

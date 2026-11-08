@@ -226,7 +226,18 @@ check('from the server JSON: geometry within 1e-3', maxRemote <= 1e-3, maxRemote
   let statics = null, ok = true, pairs = 0, pairsAfter = 0, idBefore = null, idxBefore = null, idAfter = null, idxAfter = null, staleOk = true, oldStatics = null;
   mute(() => {
     for (let t = 0; t < 480; t++) {
-      if (t === 240) { oldStatics = statics; core.command({ type: 'removeBoat', id: b1.id }); }
+      if (t === 240) {
+        oldStatics = statics;
+        core.command({ type: 'removeBoat', id: b1.id });
+        // Foil hydro changes the tracks, so the two survivors are no longer
+        // in rule range. Put P2 alongside the scenario boat; the pair fields
+        // must still name the boats that are actually there.
+        const s0 = sim.players.find((b) => !b.spawnId);
+        const p2 = sim.players.find((b) => b.spawnId === b2.id);
+        const p = s0.physics_model.getPosition();
+        p2.physics_model.setTransform({ x: p.x + 3, y: p.y + 1 }, s0.physics_model.getAngle());
+        p2.physics_model.setLinearVelocity(s0.physics_model.getLinearVelocity());
+      }
       const f = core.tick({ dt: 1 / 30, held: [], present: true, view });
       if (f.statics) statics = f.statics;
       const s = f.state;
