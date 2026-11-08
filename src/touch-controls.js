@@ -8,12 +8,16 @@
 // lift, like a key.
 //
 // Default: on for phones, small windows and touch-only devices (the same
-// media query as the mobile settings menu), off otherwise. The default is
-// read once at startup and stored as the checkbox's markup default, so the
-// URL only carries touch=1 / touch=0 when it differs from this device's
-// default, and Reset settings returns to it.
+// media query as the mobile settings menu), off otherwise. That device
+// default is the checkbox's markup default, so the URL only carries
+// touch=1 / touch=0 when it differs, and Reset settings returns to it.
+// Precedence: ?touch= wins, then a saved player preference, then the device
+// default. An explicit choice (URL, saved value, or a real click) is not
+// replaced when the window is resized or the pointer type changes. A page
+// with no explicit choice follows the media query, including across resize.
 
 import { setVirtualKey } from './controls.js';
+import { PREFS_KEY } from './player-prefs.js';
 
 import { TOUCH_UI_QUERY, TABLET_QUERY, PHONE_QUERY } from './layout.js';
 export { TABLET_QUERY, PHONE_QUERY };
@@ -27,12 +31,26 @@ export function normalizeTouchLayout(v) { return 'overlay'; }
 
 const STOP_EVENTS = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'mousemove', 'mouseup', 'wheel', 'click', 'dblclick', 'contextmenu'];
 
-export function setupTouchControls() {
-  const box = document.getElementById('touch');
-  const panel = document.getElementById('touch_controls');
+// True when this load already chose Touch controls (query or saved pref).
+export function touchChoiceIsExplicit(win = window) {
+  try {
+    if (new URLSearchParams(win.location && win.location.search || '').has('touch')) return true;
+  } catch { /* no location */ }
+  try {
+    const raw = win.localStorage && win.localStorage.getItem(PREFS_KEY);
+    const o = raw ? JSON.parse(raw) : null;
+    if (o && Object.prototype.hasOwnProperty.call(o, 'touch')) return true;
+  } catch { /* no storage or bad JSON */ }
+  return false;
+}
+
+export function setupTouchControls(doc = document, win = window) {
+  const box = doc.getElementById('touch');
+  const panel = doc.getElementById('touch_controls');
   if (!box || !panel) return;
 
-  const deviceDefault = !!(window.matchMedia && window.matchMedia(TOUCH_DEFAULT_QUERY).matches);
+  const mq = win.matchMedia && win.matchMedia(TOUCH_DEFAULT_QUERY);
+  const deviceDefault = !!(mq && mq.matches);
   box.defaultChecked = deviceDefault;
   box.checked = deviceDefault;
 
@@ -84,23 +102,37 @@ export function setupTouchControls() {
   }
 
   function apply(on) {
-    document.body.classList.toggle('touch-on', on);
+    doc.body.classList.toggle('touch-on', !!on);
     panel.hidden = !on;
     if (!on) buttons.forEach(release);
     // The canvas box changes; renderer.js resizes from it (ResizeObserver),
     // and a resize event covers browsers without one.
-    window.dispatchEvent(new Event('resize'));
+    win.dispatchEvent(new Event('resize'));
   }
 
   // Overlay-only: Classic grid is gone; every touch layout is the see-through
   // Overlay controls over a full-height map (phones, tablets, and the Touch
-  // controls checkbox on larger screens).
-  if (!document.body.classList.contains('tc-overlay')) {
-    document.body.classList.add('tc-overlay');
-    window.dispatchEvent(new Event('resize'));
+  // controls checkbox on larger screens). The panel stays hidden until apply().
+  if (!doc.body.classList.contains('tc-overlay')) {
+    doc.body.classList.add('tc-overlay');
+    win.dispatchEvent(new Event('resize'));
   }
 
-  box.addEventListener('change', () => apply(box.checked));
-  window.addEventListener('blur', () => buttons.forEach(release));
+  // A real click pins the choice. URL restore and saved prefs also dispatch
+  // change, but those are not trusted; they are pinned via touchChoiceIsExplicit.
+  let pinned = touchChoiceIsExplicit(win);
+  box.addEventListener('change', (e) => {
+    if (e && e.isTrusted) pinned = true;
+    apply(box.checked);
+  });
+  if (mq && mq.addEventListener) mq.addEventListener('change', () => {
+    if (pinned) return;
+    const on = !!mq.matches;
+    if (box.checked === on) return;
+    box.checked = on;
+    apply(on);
+  });
+  win.addEventListener('blur', () => buttons.forEach(release));
   apply(box.checked);
+  return { apply, get pinned() { return pinned; } };
 }
