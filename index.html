@@ -516,6 +516,10 @@
       body.tc-overlay #touch_controls {
         top: 0; height: auto; display: block; padding: 0; background: transparent; border: 0; pointer-events: none;
       }
+      /* display:block above beats #touch_controls[hidden] (one extra element),
+         so unchecking Touch controls left the buttons on screen and clickable.
+         This rule wins, and display:none drops their hit areas. */
+      body.tc-overlay #touch_controls[hidden] { display: none; }
       body.tc-overlay .tc-btn {
         position: absolute; pointer-events: auto; box-sizing: border-box;
         --sz-btn-bg: rgba(18, 28, 48, 0.55); --sz-btn-border: rgba(255, 255, 255, 0.35);
@@ -738,6 +742,21 @@
         font-family: var(--sz-font-ui); font-size: var(--sz-fs-md);
       }
       .bp-desktop body.settings-open #settings { display: block; }
+      /* Desktop with Touch controls on: keep the overlay buttons off the
+         instrument panel (bottom centre), the minimap (bottom left) and chat
+         (above the minimap). Phone and tablet rules are unchanged. Chat stays
+         at its wide-layout spot; body.touch-on would otherwise lift it into
+         the minimap. */
+      .bp-wide body.touch-on #chat_panel { bottom: 276px; }
+      .bp-desktop body.touch-on.tc-overlay .tc-steer,
+      .bp-desktop body.touch-on.tc-overlay .tc-steer.tc-right {
+        top: 120px; bottom: auto; height: min(28vh, 220px); width: 88px;
+      }
+      .bp-desktop body.touch-on.tc-overlay .tc-steer { left: 16px; right: auto; }
+      .bp-desktop body.touch-on.tc-overlay .tc-steer.tc-right { left: auto; right: 16px; }
+      .bp-desktop body.touch-on.tc-overlay .tc-btn[data-key="38"],
+      .bp-desktop body.touch-on.tc-overlay .tc-btn[data-key="40"] { bottom: 250px; }
+      .bp-desktop body.touch-on.tc-overlay .tc-btn[data-short] { bottom: 180px; }
 
       /* bp-wide */
       .bp-wide #instrument_panel {

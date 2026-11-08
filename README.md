@@ -143,6 +143,7 @@ Last updated: 2026-11-07
 - [x] Hamburger settings menu on phones and touch screens: [#29](https://github.com/SukuWc/fields/pull/29)
 - [x] Boat 1 touch controls in the bottom half of the screen: [#30](https://github.com/SukuWc/fields/pull/30)
 - [x] Touch controls panel 30% shorter (35% of the screen): [#37](https://github.com/SukuWc/fields/pull/37)
+- [x] Desktop Touch controls actually hide: the overlay stylesheet was forcing the on-screen buttons visible after the checkbox turned them off. Unchecking Player → Touch controls removes the buttons and their hit areas; the choice is saved and is not put back on resize. On a wide screen with the box on, the buttons sit above the instrument panel and clear of the minimap and chat. Phones and tablets are unchanged, and Classic is not back
 - [x] UI overhaul 1: page never scrolls (panels scroll inside), debug panels behind dev view (backtick / `?dev=1`): [#141](https://github.com/SukuWc/fields/pull/141)
 - [x] UI overhaul 2: fixed HUD zones (top bar, leaderboard top right, reserved instrument / minimap / toast zones) and the settings panel as a right-edge drawer that never covers the leaderboard: [#142](https://github.com/SukuWc/fields/pull/142)
 - [x] UI overhaul 3: settings drawer tabs (Player form saved in this browser, Room tab shell): [#145](https://github.com/SukuWc/fields/pull/145)
