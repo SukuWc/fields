@@ -8,12 +8,15 @@ import { ROLE_FLUID, PALETTE } from './boltzmann.js';
 // values): plot 3 (speed), contrast slider at 0.
 const DEFAULT_OPTIONS = () => ({ plotType: 3, contrastExp: 0 });
 
-// Plot options from the page: the #plotSelect index and the #contrastSlider
-// exponent, read each paint as before.
+// Plot options from the old per-control DOM, if those elements still exist.
+// The Dev tab is a TOML document now; main.js sends plot through the host.
 export function domPlotOptions(doc = document) {
   const plotSelect = doc.getElementById('plotSelect');
   const contrastSlider = doc.getElementById('contrastSlider');
-  return () => ({ plotType: plotSelect.selectedIndex, contrastExp: Number(contrastSlider.value) });
+  return () => ({
+    plotType: plotSelect ? plotSelect.selectedIndex : 3,
+    contrastExp: contrastSlider ? Number(contrastSlider.value) : 0,
+  });
 }
 
 export class FieldPainter {

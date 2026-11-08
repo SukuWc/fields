@@ -26,6 +26,7 @@ import { CUSTOM_SCENARIO, customScenario } from './custom-scenario.js';
 import { GustField } from './gusts.js';
 import { Boat } from './boat.js';
 import { settingDefault } from './settings-registry.js';
+import { validateAutopilotGains } from './dev-config.js';
 
 const perfNow = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : () => Date.now();
 
@@ -75,6 +76,11 @@ export { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps };
 //   { type: 'cellBudget', tune, target? }  refinement budget: tune false = off (no
 //                                      budget, scale 1); target a positive number, else
 //                                      the grid default (domainTrack defaultCellUpdateTarget)
+//   { type: 'autopilotGains', kp, ki, kd, boatId? }
+//                                      PID on one boat by id, or (no boatId) the sim
+//                                      default written onto every boat by id. A `boat`
+//                                      index is rejected. dev-config.js describes which
+//                                      host may send the no-id form.
 export const BOAT_ACTIONS = {
   helm: (b, c) => (c.dir < 0 ? b.input_rudder_left() : b.input_rudder_right()),
   autopilotTurn: (b, c) => b.input_autopilot_turn(c.dir),
@@ -105,6 +111,9 @@ export class Sim {
     this._nextSpawn = 1;
     this.events = [];
     this.last = null;
+    // Null: each boat keeps the gains it was given (remote, per owned boat).
+    // Set: local/worker dev Apply, copied onto every boat after scenario frames.
+    this.autopilotGains = null;
     this._reset();
   }
 
@@ -189,6 +198,7 @@ export class Sim {
       case 'restart': return this.loadScenario(c.scenario, c.layout);
       case 'spawnBoat': return this.spawnBoat(c);
       case 'removeBoat': return this.removeBoat(c.id);
+      case 'autopilotGains': return this._autopilotGains(c);
       case 'wind':
         if (Number.isFinite(c.angle)) {
           map.wind_direction = c.angle;
@@ -316,6 +326,31 @@ export class Sim {
     return base;
   }
 
+  _writeAutopilotGains(boat, g) {
+    boat.autopilot_kp = g.kp;
+    boat.autopilot_ki = g.ki;
+    boat.autopilot_kd = g.kd;
+  }
+
+  // PID by boat id. No boatId: sim-wide default (local / worker). A numeric
+  // `boat` index is refused so a client cannot aim at players[i].
+  _autopilotGains(c) {
+    if (c.boat != null) return { error: 'autopilotGains targets boats by id, not by index' };
+    const g = validateAutopilotGains(c);
+    if (g.error) return { error: g.error };
+    if (c.boatId != null) {
+      if (typeof c.boatId !== 'string' || !c.boatId) return { error: 'boatId must be a boat id' };
+      const boat = this.players.find((p) => p.boatId === c.boatId);
+      if (!boat) return { error: 'no boat ' + c.boatId };
+      this._writeAutopilotGains(boat, g);
+      return { ok: true, boats: [boat.boatId] };
+    }
+    this.autopilotGains = { kp: g.kp, ki: g.ki, kd: g.kd };
+    const ids = [];
+    for (const b of this.players) { this._writeAutopilotGains(b, g); ids.push(b.boatId); }
+    return { ok: true, boats: ids };
+  }
+
   spawnBoat({ name, color } = {}) {
     this.activate();
     const p = this.spawnPoint();
@@ -327,6 +362,7 @@ export class Sim {
       boat.physics_model.render = { ...(boat.physics_model.render || {}), stroke: color };
     }
     boat.input_autopilot_enabled_toggle();
+    if (this.autopilotGains) this._writeAutopilotGains(boat, this.autopilotGains);
     this.players.push(boat);
     return { id: boat.spawnId, index: this.players.length - 1, x: p.x, y: p.y, name: boat.spawnName };
   }
@@ -381,6 +417,11 @@ export class Sim {
     if (inputs) for (const c of inputs) this._boatCommand(c);
 
     const players = this.players;
+    // Local/worker dev PID: boats created by the scenario frames above pick
+    // up the page's gains. Remote leaves this null and writes by boat id.
+    if (this.autopilotGains) {
+      for (const b of players) this._writeAutopilotGains(b, this.autopilotGains);
+    }
     // Sum of pairwise distances, before the boats step (the old #dist_info).
     let sum = 0;
     for (let i = 0; i < players.length; i++) {

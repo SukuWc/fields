@@ -113,6 +113,8 @@ export const AUTOPILOT_RUDDER_BLEND = blendN(0.1);     // 0.271 (was /10 per pas
 // with blend 0.271 needs D × 0.081 / 0.271 for the same rudder response.
 export const AUTOPILOT_KD = 100 * (0.1 * 0.81) / AUTOPILOT_RUDDER_BLEND; // 29.9
 export const AUTOPILOT_KP = 2;
+// Integral gain stays 0 unless a dev-config Apply sets autopilot_ki.
+export const AUTOPILOT_KI = 0;
 export const AUTOPILOT_SUM_DECAY = Math.pow(0.85, N);
 // Forces (applyForce accumulates until world.step) and impulses per tick.
 export const FORCE_PASSES = N;
@@ -254,6 +256,11 @@ export class Boat{
     this.autopilot_compensator_p = 0;
     this.autopilot_compensator_i = 0;
     this.autopilot_compensator_d = 0;
+    // Live PID. Defaults are the old hardcoded PD (I = 0). Dev TOML Apply
+    // writes these by boat id; the step below reads them.
+    this.autopilot_kp = AUTOPILOT_KP;
+    this.autopilot_ki = AUTOPILOT_KI;
+    this.autopilot_kd = AUTOPILOT_KD;
 
     this.autopilot_compensator_last_error = 0;
     this.autopilot_compensator_current_error = 0;
@@ -546,9 +553,9 @@ export class Boat{
     
     if (this.autopilot_enabled){
 
-      this.autopilot_compensator_p = AUTOPILOT_KP // 0.5
-      this.autopilot_compensator_i = 0 // 0
-      this.autopilot_compensator_d = AUTOPILOT_KD // 100 at 3 passes/tick
+      this.autopilot_compensator_p = this.autopilot_kp
+      this.autopilot_compensator_i = this.autopilot_ki
+      this.autopilot_compensator_d = this.autopilot_kd
 
       let error = -(this.autopilot_heading_target - (-this.twa))
 

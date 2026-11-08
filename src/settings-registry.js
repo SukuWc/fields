@@ -6,8 +6,9 @@
 //              broadcast to everyone in a server room);
 //              'player': this page only, or a per-client subscription
 //   panel      'room' (#admin_panel TOML), 'player' (#player_panel)
-//              or 'dev' (#dev_panel). Dev is still scope 'player': this page
-//              only, saved in this browser, never a room command.
+//              or 'dev' (#dev_panel TOML, src/dev-config.js). Dev is still
+//              scope 'player': this page only, saved in this browser, never
+//              a room command. Dev entries are control:false (one textarea).
 //   control    false: no per-setting DOM (room settings use the TOML box)
 //   type       'bool' | 'number' | 'int' | 'enum' | 'text'
 //   default    the control's default (applied to the page by
@@ -45,36 +46,49 @@ import {
 export { SIM_RES_MODES, DEFAULT_SIM_RES };
 export const DEFAULT_MAP_SIZE = '100x200';
 export const MAX_WIND_MPS = 30;
+// Autopilot PID defaults. Same numbers as boat.js AUTOPILOT_KP / integral 0 /
+// AUTOPILOT_KD (100 * 0.081 / rudder blend). The registry does not import
+// boat.js; test/dev-config.test.mjs checks these stay equal to the boat constants.
+const AUTOPILOT_RUDDER_BLEND_DEFAULT = 1 - Math.pow(0.9, 3);
+export const AUTOPILOT_KP_DEFAULT = 2;
+export const AUTOPILOT_KI_DEFAULT = 0;
+export const AUTOPILOT_KD_DEFAULT = 100 * (0.1 * 0.81) / AUTOPILOT_RUDDER_BLEND_DEFAULT;
 
 export const SETTINGS = [
-  // Player panel.
+  // Player panel. Trails, ghost and sticky autopilot live in the Dev TOML.
   { id: 'boat_name', scope: 'player', panel: 'player', type: 'text', default: '' },
-  { id: 'boat_trails', scope: 'player', panel: 'player', type: 'bool', default: true },
-  { id: 'trailInterval', scope: 'player', panel: 'player', type: 'number', default: 1, min: 0.1, max: 30 },
-  { id: 'trailDuration', scope: 'player', panel: 'player', type: 'number', default: 60, min: 1, max: 1200 },
-  { id: 'trailSize', scope: 'player', panel: 'player', type: 'number', default: 0.4, min: 0.05, max: 5 },
-  { id: 'ghost', scope: 'player', panel: 'player', type: 'bool', default: false },
-  { id: 'ghostAhead', scope: 'player', panel: 'player', type: 'number', default: 2, min: 0, max: 30 },
   { id: 'show_row_outline', scope: 'player', panel: 'player', type: 'bool', default: false },
   { id: 'camera_follow', scope: 'player', panel: 'player', type: 'bool', default: false },
   { id: 'field_plane', scope: 'player', panel: 'player', type: 'bool', default: true, subscription: 'field' },
-  { id: 'sticky_autopilot', scope: 'player', panel: 'player', type: 'bool', default: true },
   // Default off; touch-controls.js turns it on for phones and touch screens.
   { id: 'touch', scope: 'player', panel: 'player', type: 'bool', default: false },
   { id: 'vibrate', scope: 'player', panel: 'player', type: 'bool', default: true },
   // touch_layout (Classic / Overlay) removed: Overlay is the only touch layout.
-  // Dev tab: still this page only (scope player). Visible without dev view.
-  { id: 'show_field', scope: 'player', panel: 'dev', type: 'bool', default: true, subscription: 'flow' },
-  { id: 'tracers', scope: 'player', panel: 'dev', type: 'number', default: null, nullable: true, min: 10, max: 20000 },
-  { id: 'tracerLife', scope: 'player', panel: 'dev', type: 'number', default: 6, min: 0.5, max: 30 },
-  { id: 'tracerTail', scope: 'player', panel: 'dev', type: 'number', default: 1.5, min: 0, max: 10 },
-  { id: 'show_forces', scope: 'player', panel: 'dev', type: 'bool', default: false },
-  { id: 'show_refinement', scope: 'player', panel: 'dev', type: 'bool', default: false },
-  { id: 'perf', scope: 'player', panel: 'dev', type: 'bool', default: false, subscription: 'perf' },
+  // Dev tab: still this page only (scope player), one TOML document
+  // (src/dev-config.js). control:false = no per-setting DOM. The ids stay
+  // the URL keys (?show_field, ?boat_trails, ?sticky_autopilot, …).
+  { id: 'show_field', scope: 'player', panel: 'dev', control: false, type: 'bool', default: true, subscription: 'flow' },
+  { id: 'tracers', scope: 'player', panel: 'dev', control: false, type: 'number', default: null, nullable: true, min: 10, max: 20000 },
+  { id: 'tracerLife', scope: 'player', panel: 'dev', control: false, type: 'number', default: 6, min: 0.5, max: 30 },
+  { id: 'tracerTail', scope: 'player', panel: 'dev', control: false, type: 'number', default: 1.5, min: 0, max: 10 },
+  { id: 'show_forces', scope: 'player', panel: 'dev', control: false, type: 'bool', default: false },
+  { id: 'show_refinement', scope: 'player', panel: 'dev', control: false, type: 'bool', default: false },
+  { id: 'perf', scope: 'player', panel: 'dev', control: false, type: 'bool', default: false, subscription: 'perf' },
   // The plot shapes only this page's field messages ('plot' is a per-client
   // command, never a room command). The URL holds the option text.
-  { id: 'plotSelect', scope: 'player', panel: 'dev', type: 'enum', default: 'Plot speed', values: ['Plot density', 'Plot x velocity', 'Plot y velocity', 'Plot speed', 'Plot curl'], command: { type: 'plot', field: 'plotType' }, devModeDisabled: true },
-  { id: 'contrastSlider', scope: 'player', panel: 'dev', type: 'number', default: 0, min: -10, max: 10, command: { type: 'plot', field: 'contrastExp' }, devModeDisabled: true },
+  { id: 'plotSelect', scope: 'player', panel: 'dev', control: false, type: 'enum', default: 'Plot speed', values: ['Plot density', 'Plot x velocity', 'Plot y velocity', 'Plot speed', 'Plot curl'], command: { type: 'plot', field: 'plotType' }, devModeDisabled: true },
+  { id: 'contrastSlider', scope: 'player', panel: 'dev', control: false, type: 'number', default: 0, min: -10, max: 10, command: { type: 'plot', field: 'contrastExp' }, devModeDisabled: true },
+  { id: 'boat_trails', scope: 'player', panel: 'dev', control: false, type: 'bool', default: true },
+  { id: 'trailInterval', scope: 'player', panel: 'dev', control: false, type: 'number', default: 1, min: 0.1, max: 30 },
+  { id: 'trailDuration', scope: 'player', panel: 'dev', control: false, type: 'number', default: 60, min: 1, max: 1200 },
+  { id: 'trailSize', scope: 'player', panel: 'dev', control: false, type: 'number', default: 0.4, min: 0.05, max: 5 },
+  { id: 'ghost', scope: 'player', panel: 'dev', control: false, type: 'bool', default: false },
+  { id: 'ghostAhead', scope: 'player', panel: 'dev', control: false, type: 'number', default: 2, min: 0, max: 30 },
+  { id: 'sticky_autopilot', scope: 'player', panel: 'dev', control: false, type: 'bool', default: true },
+  // Autopilot PID. Defaults preserve the previous PD controller (I = 0).
+  { id: 'autopilotKp', scope: 'player', panel: 'dev', control: false, type: 'number', default: AUTOPILOT_KP_DEFAULT, min: 0, max: 20 },
+  { id: 'autopilotKi', scope: 'player', panel: 'dev', control: false, type: 'number', default: AUTOPILOT_KI_DEFAULT, min: 0, max: 2 },
+  { id: 'autopilotKd', scope: 'player', panel: 'dev', control: false, type: 'number', default: AUTOPILOT_KD_DEFAULT, min: 0, max: 200 },
 
   // Room settings: still validated / applied as room commands, but the
   // Room settings panel is a single TOML textarea (src/room-config.js).

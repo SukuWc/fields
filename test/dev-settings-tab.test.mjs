@@ -11,8 +11,7 @@ import { devViewFromQuery, setupDevView } from '../src/dev-view.js';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
-const DEV_IDS = ['show_field', 'tracers', 'tracerLife', 'tracerTail', 'show_forces', 'show_refinement', 'perf', 'plotSelect', 'contrastSlider'];
-const DEV_LABELS = ['Flow tracers', 'Toggle Forces', 'Show refinement region border', 'Perf overlay', 'Plot density', 'Plot x velocity', 'Plot y velocity', 'Plot speed', 'Plot curl', 'Contrast'];
+const DEV_IDS = ['show_field', 'tracers', 'tracerLife', 'tracerTail', 'show_forces', 'show_refinement', 'perf', 'plotSelect', 'contrastSlider', 'boat_trails', 'trailInterval', 'trailDuration', 'trailSize', 'ghost', 'ghostAhead', 'sticky_autopilot', 'autopilotKp', 'autopilotKi', 'autopilotKd'];
 
 function slice(id) {
   const start = html.indexOf(`id="${id}"`);
@@ -64,7 +63,7 @@ test('backtick still toggles dev view and ignores typing in a field', () => {
   assert.equal(api.get(), false);
 });
 
-test('Dev tab is a normal settings tab and holds the moved preferences', () => {
+test('Dev tab is a TOML editor and the old controls are not duplicated', () => {
   assert.deepEqual(SETTINGS_TABS, ['player', 'dev', 'room']);
   assert.match(html, /id="settings_tabs" class="sz-tabs"/);
   assert.match(html, /id="settings_tab_dev" class="settings-tab sz-tab" role="tab" data-tab="dev" aria-controls="dev_panel"/);
@@ -73,21 +72,30 @@ test('Dev tab is a normal settings tab and holds the moved preferences', () => {
   const player = slice('player_panel');
   const room = slice('admin_panel');
   assert.doesNotMatch(dev, /dev-only/);
-  assert.doesNotMatch(dev, /hidden/);
+  assert.match(dev, /id="dev_config"/);
+  assert.match(dev, /id="dev_config_commit"/);
+  assert.match(dev, /id="dev_config_revert"/);
+  assert.match(dev, /id="dev_config_reset"/);
+  assert.match(dev, /value="Apply"/);
+  assert.match(dev, /value="Revert"/);
+  assert.match(dev, /value="Reset"/);
   for (const id of DEV_IDS) {
-    assert.match(dev, new RegExp(`id="${id}"`));
+    assert.doesNotMatch(dev, new RegExp(`id="${id}"`));
     assert.doesNotMatch(player, new RegExp(`id="${id}"`));
     assert.doesNotMatch(room, new RegExp(`id="${id}"`));
   }
-  for (const label of DEV_LABELS) assert.ok(dev.includes(label), label);
-  assert.match(player, /Boat trails/);
-  assert.match(player, /Sticky autopilot/);
+  assert.doesNotMatch(player, /Boat trails/);
+  assert.doesNotMatch(player, /Sticky autopilot/);
+  assert.doesNotMatch(player, /Ghost boat/);
+  assert.match(player, /Right-of-way outlines/);
+  assert.match(player, /Touch controls/);
   assert.match(room, /id="room_config"/);
-  assert.doesNotMatch(dev, /id="touch_layout"|Classic|devmode|windSpeed|simRes|room_config/);
+  assert.doesNotMatch(dev, /id="touch_layout"|Classic|devmode|windSpeed|simRes|id="room_config"/);
   for (const id of DEV_IDS) {
     const s = SETTINGS.find((x) => x.id === id);
     assert.equal(s.scope, 'player');
     assert.equal(s.panel, 'dev');
+    assert.equal(s.control, false);
   }
   assert.equal(settingDefault('show_field'), true);
   assert.equal(settingDefault('tracers'), null);
@@ -98,11 +106,13 @@ test('Dev tab is a normal settings tab and holds the moved preferences', () => {
   assert.equal(settingDefault('perf'), false);
   assert.equal(settingDefault('plotSelect'), 'Plot speed');
   assert.equal(settingDefault('contrastSlider'), 0);
+  assert.equal(settingDefault('boat_trails'), true);
+  assert.equal(settingDefault('sticky_autopilot'), true);
   const prefs = playerPrefIds();
-  for (const id of DEV_IDS) assert.ok(prefs.includes(id), id);
-  assert.ok(prefs.includes('boat_trails'));
+  for (const id of DEV_IDS) assert.ok(!prefs.includes(id), id);
+  assert.ok(prefs.includes('vibrate'));
+  assert.ok(prefs.includes('boat_name'));
   assert.ok(!prefs.includes('windAngle'));
-  assert.ok(!prefs.includes('sticky_autopilot'));
 });
 
 test('arrow keys and clicks move Player, Dev and Room without dev view', () => {

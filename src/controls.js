@@ -466,23 +466,12 @@ export function setupControls(host, view, getCamera) {
   document.onkeyup = checkKeyRelease;
 
   document.getElementById("camera_follow").checked = settingDefault("camera_follow");
-  document.getElementById("show_forces").checked = settingDefault("show_forces");
-  document.getElementById("show_refinement").checked = settingDefault("show_refinement");
-  view.input_show_refinement(settingDefault("show_refinement"));
   document.getElementById("show_row_outline").checked = settingDefault("show_row_outline");
   view.input_show_row_outline(settingDefault("show_row_outline"));
-  document.getElementById("show_field").checked = settingDefault("show_field");
-  view.input_show_fields(settingDefault("show_field"));
 
   _devMode = settingDefault("devmode");
   syncDevModeUi();
 
-  document.getElementById("show_forces").addEventListener("change", () => {
-    view.input_show_forces(document.getElementById("show_forces").checked);
-  });
-  document.getElementById("show_refinement").addEventListener("change", () => {
-    view.input_show_refinement(document.getElementById("show_refinement").checked);
-  });
   document.getElementById("show_row_outline").addEventListener("change", () => {
     view.input_show_row_outline(document.getElementById("show_row_outline").checked);
   });
@@ -493,27 +482,6 @@ export function setupControls(host, view, getCamera) {
     renderScenarioCard(scenarioCardFor(idx), idx);
   });
 
-  document.getElementById("show_field").addEventListener("change", () => {
-    view.input_show_fields(document.getElementById("show_field").checked);
-  });
-
-  const sticky = document.getElementById("sticky_autopilot");
-  if (sticky) {
-    // On by default: an explicit ?sticky_autopilot= wins, then a stored '0'
-    // (user turned it off) keeps it off; anything else is on.
-    let on = true;
-    try { on = localStorage.getItem(STICKY_AUTOPILOT_KEY) !== '0'; } catch (_) { /* no storage */ }
-    try {
-      const q = new URLSearchParams(location.search).get('sticky_autopilot');
-      if (q !== null) on = !(q === '0' || q === 'false');
-    } catch (_) { /* no location */ }
-    sticky.checked = on;
-    setStickyAutopilot(sticky.checked);
-    sticky.addEventListener("change", () => {
-      setStickyAutopilot(sticky.checked);
-      try { localStorage.setItem(STICKY_AUTOPILOT_KEY, sticky.checked ? '1' : '0'); } catch (_) { /* no storage */ }
-    });
-  }
   document.getElementById("camera_follow").addEventListener("change", () => {
     view.input_camera_follow(document.getElementById("camera_follow").checked);
   });

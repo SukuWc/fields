@@ -5,7 +5,6 @@ import { FixedStepLoop } from './loop.js';
 
 import {
   getCamera,
-  getTracerParams,
   initRenderer,
   renderNow,
   resetFluidPlane,
@@ -38,6 +37,7 @@ import { setupBoatStats } from './boat-stats-panel.js';
 import { View } from './view.js';
 import { installUrlSettings } from './url-settings.js';
 import { installPlayerPrefs } from './player-prefs.js';
+import { applyDevEffects, installDevPrefs } from './dev-prefs.js';
 import { setupSettingsTabs } from './settings-tabs.js';
 import { setupInstrumentPanel } from './instrument-panel.js';
 import { setupRuleToasts } from './rule-toasts.js';
@@ -57,6 +57,7 @@ import {
   isPerfOverlayOn,
   perfOverlayFrame,
   recordFieldStep,
+  setPerfOverlayOn,
   setupPerfOverlay,
 } from './perf-overlay.js';
 import { setupMobileMenu } from './mobile-menu.js';
@@ -267,73 +268,21 @@ function startClient() {
       if (l.w !== lattice.w || l.h !== lattice.h) { lattice = l; setFluidPlaneSize(l.w, l.h); dataTextureMaterial.needsUpdate = true; }
     });
   }
-  // Field plot options (#plotSelect, #contrastSlider) go to the host's painter.
-  {
-    const plotSelect = document.getElementById('plotSelect');
-    const contrastSlider = document.getElementById('contrastSlider');
-    const sendPlot = () => host.command({ type: 'plot', plotType: plotSelect.selectedIndex, contrastExp: Number(contrastSlider.value) });
-    plotSelect.addEventListener('change', sendPlot);
-    contrastSlider.addEventListener('input', sendPlot);
-    contrastSlider.addEventListener('change', sendPlot);
-    sendPlot();
-  }
   setupControls(host, view, getCamera);
   setupChat(host);
   setupMobileSheet();
   setupFullscreenToggle();
   setupDevView();
-  // Flow tracer inputs (count, life, tail): live, and before installUrlSettings
-  // so ?tracers / ?tracerLife / ?tracerTail arrive through these listeners.
-  {
-    const num = (id) => { const el = document.getElementById(id); const v = el ? parseFloat(el.value) : NaN; return Number.isFinite(v) ? v : undefined; };
-    const applyTracers = () => {
-      setTracerParams({ count: num('tracers') || null, lifetime: num('tracerLife'), tail: num('tracerTail') });
-      const el = document.getElementById('tracers');
-      if (el) el.placeholder = 'auto ' + getTracerParams().count;
-    };
-    for (const id of ['tracers', 'tracerLife', 'tracerTail']) {
-      const el = document.getElementById(id);
-      if (el) { el.addEventListener('change', applyTracers); el.addEventListener('input', applyTracers); }
-    }
-    applyTracers();
-  }
-  // Boat trail toggle and inputs (dot interval, kept duration, dot size):
-  // live, before installUrlSettings like the tracer inputs.
-  {
-    const num = (id) => { const el = document.getElementById(id); const v = el ? parseFloat(el.value) : NaN; return Number.isFinite(v) ? v : undefined; };
-    const box = document.getElementById('boat_trails');
-    const applyTrails = () => {
-      setBoatTrailsOn(!box || box.checked);
-      setTrailParams({ interval: num('trailInterval'), duration: num('trailDuration'), size: num('trailSize') });
-    };
-    for (const id of ['boat_trails', 'trailInterval', 'trailDuration', 'trailSize']) {
-      const el = document.getElementById(id);
-      if (el) { el.addEventListener('change', applyTrails); el.addEventListener('input', applyTrails); }
-    }
-    applyTrails();
-  }
-  // Ghost boat toggle and lookahead (?ghost=0, ?ghostAhead=s): live.
-  {
-    const box = document.getElementById('ghost');
-    const ahead = document.getElementById('ghostAhead');
-    const applyGhost = () => {
-      const v = ahead ? parseFloat(ahead.value) : NaN;
-      setGhostParams({ on: !box || box.checked, ahead: Number.isFinite(v) ? v : undefined });
-    };
-    for (const el of [box, ahead]) if (el) { el.addEventListener('change', applyGhost); el.addEventListener('input', applyGhost); }
-    applyGhost();
-  }
   // Room settings (TOML) are committed from controls.js. Player URL params
-  // still sync via installUrlSettings; old room query keys (?simRes, ?amr, …)
-  // are no longer applied.
-  // Before installUrlSettings so ?perf=1 turns the overlay on through its change listener.
+  // still sync via installUrlSettings. Dev URL keys are applied by the Dev
+  // TOML editor (dev-prefs.js), which also owns tracers, trails, ghost and
+  // sticky autopilot.
   // Counters: live from the main-thread host, else the latest frame's.
   let lastFrame = null;
   // Remote mode (server clock) is event-driven: the overlay closes a frame per
   // server frame instead of running its own rAF loop.
   const remoteDriven = host.kind === 'remote' && host.mode !== 'client';
   setupPerfOverlay(() => (host.perfStats ? host.perfStats() : lastFrame && lastFrame.perf) || null, { external: remoteDriven });
-  document.getElementById(SUBSCRIPTION_IDS.perf).addEventListener('change', (e) => host.setPerf(e.target.checked));
   // Before installUrlSettings: the device default must be the checkbox default.
   setupTouchControls();
   // After the WebGL canvas exists (#sim_canvas): two-finger pinch zooms the client camera.
@@ -343,18 +292,17 @@ function startClient() {
   installUrlSettings(undefined, { ids: urlSettingIds({ remote }) });
   // After the URL: saved player prefs fill what the query string leaves unset.
   installPlayerPrefs();
+  // Dev TOML: query wins over the saved document, then Apply (visuals + PID).
+  installDevPrefs(document, {
+    host,
+    applyLocal: (effects) => applyDevEffects(effects, {
+      view, host, setTracerParams, setBoatTrailsOn, setTrailParams, setGhostParams, setPerfOverlayOn,
+    }),
+  });
   setupSettingsTabs();
   setWindCeiling(windCeilingMps(_simResKey));
   if (mapSizeClamped) console.info(`map_size ${_askedMapSize} is too small for scenario ${_scenarioParam}; using ${mapSizeKey}`);
   setupMobileMenu();
-
-  // Flow tracers: a per-client subscription in a server room (the server
-  // samples the wind grid only for clients showing them).
-  if (host.setFlow) {
-    const box = document.getElementById(SUBSCRIPTION_IDS.flow);
-    host.setFlow(box.checked);
-    box.addEventListener('change', () => host.setFlow(box.checked));
-  }
 
   let currentGuides = [];
   let devMode = false;
