@@ -163,8 +163,8 @@
       #settings .room-config-mode { font: 600 10px/1.6 var(--sz-font-ui); letter-spacing: 0.06em; text-transform: uppercase;
         padding: 0 6px; border-radius: var(--sz-r-xs); background: var(--sz-yellow); color: var(--sz-navy); }
       #settings .room-config-mode.ro { background: rgba(255,255,255,0.15); color: #fff; }
-      #settings #room_config[readonly] { opacity: 0.8; cursor: default; }
-      #settings #room_config.bad { border-color: #ff9f1a !important; box-shadow: 0 0 0 1px #ff9f1a; }
+      #settings #room_config[readonly], #settings #dev_config[readonly] { opacity: 0.8; cursor: default; }
+      #settings #room_config.bad, #settings #dev_config.bad { border-color: #ff9f1a !important; box-shadow: 0 0 0 1px #ff9f1a; }
       #settings .room-config-check { margin: 4px 6px; font-size: var(--sz-fs-sm); color: rgba(255,255,255,0.7); white-space: pre-wrap; }
       #settings .room-config-check.bad { color: #ffb347; cursor: pointer; text-decoration: underline dotted; }
       #settings .room-config-reject { margin: 4px 6px; padding: 4px 6px; border-left: 3px solid #ff9f1a; background: rgba(255,159,26,0.12); color: #ffd9a8; white-space: pre-wrap; }
@@ -1104,6 +1104,7 @@
       .bp-touch #settings #own_boat_status:empty { display: none; }
       /* Checkbox rows are already 48 px tall labels; the box itself grows a little. */
       .bp-touch #settings input[type="checkbox"] { width: 28px; height: 28px; }
+      .bp-touch #settings .toml-actions input[type="button"] { min-height: var(--sz-tap); padding: 0 12px; }
 
       #chat_panel { max-width: calc(100vw - 120px); }
       #chat_body { width: min(340px, calc(100vw - 132px)); }
@@ -1412,7 +1413,7 @@
 
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-BbOsCID3.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-BeLJRgK0.js"></script>
   </head>
   <body>
 
@@ -1527,14 +1528,6 @@
       </div>
       <div id="spectating_note" class="setting-row" hidden>Spectating: join with your boat to sail.</div>
       <fieldset class="pref-group"><legend>View</legend>
-        <label class="setting-row"><input id="boat_trails" autocomplete="off" type="checkbox" title="A dot at each boat's position every interval of sim time, fading over the kept duration. Reset on scenario change. Also ?boat_trails=0">Boat trails</label>
-        <span class="setting-row setting-field" id="trail_controls" title="Boat trails: a dot every N s of sim time (?trailInterval=s), kept for N s (?trailDuration=s), dot size in m (?trailSize=m). Applied live.">
-        <label><input id="trailInterval" autocomplete="off" type="number" step="0.1" inputmode="decimal" style="width: 46px;">s dot</label>
-        <label><input id="trailDuration" autocomplete="off" type="number" step="10" inputmode="decimal" style="width: 52px;">s kept</label><br>
-        <label><input id="trailSize" autocomplete="off" type="number" step="0.1" inputmode="decimal" style="width: 46px;">m dot size</label></span>
-        <label class="setting-row"><input id="ghost" autocomplete="off" type="checkbox" title="Ghost hull outline at each boat's predicted position, lookahead s ahead (constant turn-rate arc from current velocity and turn rate). Off by default; ?ghost=1 turns it on, ?ghost=0 off">Ghost boat</label>
-        <span class="setting-row setting-field" id="ghost_controls" title="Ghost boat lookahead in s (?ghostAhead=s). Applied live.">
-        <label><input id="ghostAhead" autocomplete="off" type="number" step="0.5" inputmode="decimal" style="width: 46px;">s ahead</label></span>
         <label class="setting-row" title="Opponents inside the 12 m rule gate: red = you keep clear, green = you have right of way, yellow = transitional (Rule 15, room, both keep clear)"><input id="show_row_outline" autocomplete="off" type="checkbox">Right-of-way outlines</label>
         <label class="setting-row"><input id="camera_follow" autocomplete="off" type="checkbox">Camera Follow</label>
         <label class="setting-row" id="field_plane_row" hidden title="Server mode only: the field plot. Off, the server sends this page no field data. Also ?field_plane=0"><input id="field_plane" autocomplete="off" type="checkbox">Show field (server)</label>
@@ -1547,7 +1540,6 @@
       </span>
       </fieldset>
       <fieldset class="pref-group"><legend>Controls</legend>
-        <label class="setting-row" title="Left / Right (A / D) turn the autopilot heading target with no angle limit (tack and gybe through it) instead of the rudder, so the autopilot stays on. On by default; saved in this browser."><input id="sticky_autopilot" autocomplete="off" type="checkbox">Sticky autopilot</label>
         <label class="setting-row"><input id="touch" autocomplete="off" type="checkbox" title="Boat 1 Overlay touch buttons over the map. On by default on phones and touch screens. Also ?touch=1 / ?touch=0">Touch controls</label>
         <label class="setting-row"><input id="vibrate" autocomplete="off" type="checkbox" title="A short buzz when your boat tacks and a double buzz on a new penalty. Phones that support vibration only (not iPhone). On by default; saved in this browser. Also ?vibrate=0">Vibrate</label>
       </fieldset>
@@ -1557,28 +1549,16 @@
       </div>
 
       <div id="dev_panel" class="settings-section settings-pane" role="tabpanel" aria-labelledby="settings_tab_dev">
-      <div class="settings-heading" title="This page's field plot and debug overlays. Saved in this browser. Not the room's simulation.">Dev</div>
-      <fieldset class="pref-group"><legend>Developer</legend>
-        <label class="setting-row"><input id="show_field" autocomplete="off" type="checkbox" title="Wind flow tracers: short streaks carried by the local wind, denser where it blows harder, each with a tail along its own path. Drawn on top of the colour field plot; independent of it.">Flow tracers</label>
-        <span class="setting-row setting-field" id="tracer_controls" title="Flow tracers: how many (empty = auto for the map size and device (lower + simpler tails on touch); ?tracers=N), how long each lives (?tracerLife=s) and how long a tail of its past path it draws (?tracerTail=s). Applied live.">
-        <label><input id="tracers" autocomplete="off" type="number" step="50" inputmode="numeric" style="width: 80px;" placeholder="auto">tracers</label><br>
-        <label><input id="tracerLife" autocomplete="off" type="number" step="0.5" inputmode="decimal" style="width: 46px;">s life</label>
-        <label><input id="tracerTail" autocomplete="off" type="number" step="0.25" inputmode="decimal" style="width: 46px;">s tail</label></span>
-        <label class="setting-row"><input id="show_forces" autocomplete="off" type="checkbox">Toggle Forces</label>
-        <label class="setting-row"><input id="show_refinement" autocomplete="off" type="checkbox">Show refinement region border</label>
-        <label class="setting-row"><input id="perf" autocomplete="off" type="checkbox" title="Cells per refinement level and field step time. Also ?perf=1">Perf overlay</label>
-        <div class="setting-block">
-        <select id="plotSelect" autocomplete="off">
-          <option>Plot density</option>
-          <option>Plot x velocity</option>
-          <option>Plot y velocity</option>
-          <option>Plot speed</option>
-          <option>Plot curl</option>
-        </select>
-        &nbsp;&nbsp;Contrast:
-        <input id="contrastSlider" autocomplete="off" type="range" step="1">
-        </div>
-      </fieldset>
+      <div class="settings-heading" title="This page's dev preferences as one TOML document, checked as you type. Apply updates this page. Autopilot P, I and D go to the sim for the boats this page may control: every boat in local or worker mode, only your own boats (by id) in a server room. Revert restores the applied document. Reset fills the defaults and does not apply. Invalid TOML is not applied.">Dev</div>
+      <div class="room-config-head"><label for="dev_config" title="Flow tracers, tracer count (0 = auto), life and tail, forces, refinement border, perf overlay, plot, contrast, boat trails, ghost boat, sticky autopilot, and autopilot_kp / ki / kd. Saved in this browser.">Dev config (TOML)</label><span id="dev_config_mode" class="room-config-mode">This page</span></div>
+      <textarea id="dev_config" class="toml-box" autocomplete="off" spellcheck="false" rows="18" style="width:100%; max-width:100%; box-sizing:border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; line-height:1.35; background:#1a1a18; color:#f0e6d2; border:1px solid rgba(255,210,120,0.35); border-radius:4px; padding:8px; resize:vertical;"></textarea>
+      <div class="setting-row toml-actions" style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+        <input id="dev_config_commit" class="room-apply" type="button" value="Apply" disabled title="Apply this config (enabled when valid and changed)">
+        <input id="dev_config_revert" type="button" value="Revert" disabled title="Discard edits: back to the applied config">
+        <input id="dev_config_reset" type="button" value="Reset" title="Fill the default preset (does not apply)">
+      </div>
+      <div id="dev_config_check" class="room-config-check" role="status" aria-live="polite" title="Click an error to jump to its line"></div>
+      <div id="dev_config_status" class="setting-row room-config-reject" role="alert" hidden></div>
       </div>
 
       <div id="admin_panel" class="settings-section settings-pane" role="tabpanel" aria-labelledby="settings_tab_room">
@@ -1591,7 +1571,7 @@
       </div>
       <div class="room-config-head"><label for="room_config">Room config (TOML)</label><span id="room_config_mode" class="room-config-mode">Read-only</span></div>
       <textarea id="room_config" autocomplete="off" spellcheck="false" rows="22" style="width:100%; max-width:100%; box-sizing:border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; line-height:1.35; background:#1a1a18; color:#f0e6d2; border:1px solid rgba(255,210,120,0.35); border-radius:4px; padding:8px; resize:vertical;"></textarea>
-      <div class="setting-row" style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+      <div class="setting-row toml-actions" style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
         <input id="room_config_commit" class="room-apply" type="button" value="Apply" disabled title="Send this config to the room (enabled when valid and changed)">
         <input id="room_config_revert" type="button" value="Revert" disabled title="Discard edits: back to the live room config">
         <input id="room_config_reset" type="button" value="Reset" title="Fill the default preset (does not apply)">
