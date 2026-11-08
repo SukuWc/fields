@@ -175,9 +175,9 @@ export function setupPerfOverlay(getStats, options = {}) {
   _getStats = getStats;
   external = !!options.external;
   el = document.getElementById('perf_overlay_hud');
-  const box = document.getElementById('perf');
-  if (!el || !box) return;
-  box.addEventListener('change', () => setEnabled(box.checked));
-  // installUrlSettings applies ?perf=1 through the change event above.
+  if (!el) return;
+  // The Dev TOML editor calls setPerfOverlayOn. The old checkbox is gone.
   setEnabled(false);
 }
+
+export function setPerfOverlayOn(on) { setEnabled(!!on); }

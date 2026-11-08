@@ -193,10 +193,12 @@ for (const m of html.matchAll(/<(input|select|textarea)\b([^>]*)>/g)) {
 
 // 4. URL sync: player settings only (room settings are TOML, url:false).
 {
-  const pageControls = controls.filter((c) => c.panel === 'player' || c.panel === 'dev').map((c) => c.id);
+  const playerControls = controls.filter((c) => c.panel === 'player').map((c) => c.id);
+  const devIds = SETTINGS.filter((s) => s.panel === 'dev').map((s) => s.id);
+  const wantUrl = playerControls.concat(devIds).join();
   const local = urlSettingIds({ remote: false }), remote = urlSettingIds({ remote: true });
-  check('URL settings (local): exactly the Player and Dev controls, in registry order', local.join() === pageControls.join(), local.join());
-  check('URL settings (remote): the same Player and Dev controls (room never in the URL)', remote.join() === pageControls.join());
+  check('URL settings (local): player controls then dev TOML settings, in registry order', local.join() === wantUrl, local.join() + ' vs ' + wantUrl);
+  check('URL settings (remote): the same Player and Dev settings (room never in the URL)', remote.join() === wantUrl);
   check('every room setting is url:false', ROOM_SETTINGS.every((s) => s.url === false));
   check('no player setting is left out of the URL', PLAYER_SETTINGS.every((s) => remote.includes(s.id) && local.includes(s.id)));
 }
@@ -206,9 +208,9 @@ for (const m of html.matchAll(/<(input|select|textarea)\b([^>]*)>/g)) {
 {
   const byPanel = (p) => controls.filter((c) => c.panel === p).map((c) => c.id).join();
   const playerIds = SETTINGS.filter((s) => s.panel === 'player' && s.control !== false).map((s) => s.id).join();
-  const devIds = SETTINGS.filter((s) => s.panel === 'dev' && s.control !== false).map((s) => s.id).join();
   check('the Player panel holds exactly the player-panel settings, in order', byPanel('player') === playerIds, byPanel('player'));
-  check('the Dev panel holds exactly the dev-panel settings, in order', byPanel('dev') === devIds, byPanel('dev'));
+  check('the Dev panel is the TOML editor (no per-setting controls)', byPanel('dev') === 'dev_config', byPanel('dev'));
+  check('dev settings are control:false', SETTINGS.filter((s) => s.panel === 'dev').every((s) => s.control === false));
   check('the Room settings panel is the TOML editor plus the admin login field (not registry settings)', byPanel('room') === 'room_admin_secret,room_config', byPanel('room'));
   check('room_config textarea is in #admin_panel', /id="room_config"/.test(html) && html.indexOf('id="room_config"') > panels.room[0] && html.indexOf('id="room_config"') < panels.room[1]);
   check('Commit and Reset buttons are in #admin_panel', /id="room_config_commit"/.test(html) && /id="room_config_reset"/.test(html));
@@ -275,7 +277,7 @@ check('map size default: the registry\'s', MAP_DEFAULT === DEFAULT_MAP_SIZE && s
   });
   check('applySettingDefaults: each player control holds the registry default', wrong.length === 0, wrong.map((s) => s.id).join());
   const e = (id) => els.get(id);
-  check('applySettingDefaults: number ranges from the registry (player)', e('tracerLife').min === '0.5' && e('contrastSlider').max === '10');
+  check('applySettingDefaults: remaining player checkboxes take the registry default', e('vibrate').checked === true && e('vibrate').defaultChecked === true && e('touch').checked === false);
 }
 
 room.leave(client);

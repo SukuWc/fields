@@ -42,6 +42,7 @@ import {
   SIM_RES_MODES,
   validateRoomSettingCommand,
 } from '../../src/settings-registry.js';
+import { validateAutopilotGains } from '../../src/dev-config.js';
 import {
   commandsFromConfig,
   configFromRoomState,
@@ -404,7 +405,7 @@ export class Room {
       // Keep the boats for the owner's return (see GRACE_MS).
       const prev = this.parked.get(token);
       if (prev) clearTimeout(prev.timer);
-      const entry = { parked: true, token, boats: list, until: this.now() + this.graceMs };
+      const entry = { parked: true, token, boats: list, until: this.now() + this.graceMs, gains: this._gainsFor(client) };
       entry.timer = setTimeout(() => this._expire(token), this.graceMs);
       this.parked.set(token, entry);
       this._markAway(entry);
@@ -454,6 +455,7 @@ export class Room {
     this.parked.delete(token);
     this._markAway(e, false);
     this.owned.set(client, e.boats);
+    if (e.gains) this._rememberGains(client, e.gains);
     if (this._respawn && this._respawn.has(e)) { this._respawn.set(client, this._respawn.get(e)); this._respawn.delete(e); }
   }
 
@@ -612,6 +614,22 @@ export class Room {
       if (r && who) this._chatSystem(`${who.name} left (boat ${who.n})`);
       return !!r;
     }
+    // Dev-tab autopilot PID. Not a room command: only this client's boats,
+    // by id. No boat yet: remember the gains and apply them on spawn.
+    // A `boat` index on the message is ignored so it cannot select someone else.
+    if (c.type === 'autopilotGains') {
+      const g = validateAutopilotGains(c);
+      if (g.error) return { error: g.error };
+      this._rememberGains(client, g);
+      const list = this.owned.get(client) || [];
+      const boats = [];
+      for (const b of list) {
+        const r = this.core.command({ type: 'autopilotGains', boatId: b.id, kp: g.kp, ki: g.ki, kd: g.kd });
+        if (r && r.error) return { error: r.error };
+        boats.push(b.id);
+      }
+      return { ok: true, boats, pending: boats.length === 0 };
+    }
     if (BOAT_ACTIONS[c.type]) {
       const mapped = this._mapBoat(client, c);
       return mapped ? this.core.command(mapped) : undefined;
@@ -696,11 +714,27 @@ export class Room {
     }
   }
 
+  _rememberGains(client, g) {
+    if (!this._gainByClient) this._gainByClient = new Map();
+    this._gainByClient.set(client, { kp: g.kp, ki: g.ki, kd: g.kd });
+  }
+
+  _gainsFor(client) {
+    return this._gainByClient && this._gainByClient.get(client);
+  }
+
+  _applyRememberedGains(client, boatId) {
+    const g = this._gainsFor(client);
+    if (!g || !boatId) return;
+    this.core.command({ type: 'autopilotGains', boatId, kp: g.kp, ki: g.ki, kd: g.kd });
+  }
+
   _spawn(client, { name, color }) {
     const r = this.core.command({ type: 'spawnBoat', name, color });
     const list = this.owned.get(client) || [];
     list.push({ id: r.id, name: r.name, color });
     this.owned.set(client, list);
+    this._applyRememberedGains(client, r.id);
     return r;
   }
 
@@ -717,7 +751,11 @@ export class Room {
       if (key.parked) {
         if (this.parked.get(key.token) !== key) continue;
         key.boats = [];
-        for (const sp of specs) { const r = this.core.command({ type: 'spawnBoat', name: sp.name, color: sp.color }); key.boats.push({ id: r.id, name: r.name, color: sp.color }); }
+        for (const sp of specs) {
+          const r = this.core.command({ type: 'spawnBoat', name: sp.name, color: sp.color });
+          key.boats.push({ id: r.id, name: r.name, color: sp.color });
+          if (key.gains) this.core.command({ type: 'autopilotGains', boatId: r.id, kp: key.gains.kp, ki: key.gains.ki, kd: key.gains.kd });
+        }
         this._markAway(key);
         continue;
       }

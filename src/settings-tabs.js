@@ -1,7 +1,7 @@
 // Settings drawer tabs: one pane, three tabs. The Dev tab is always shown;
 // it does not depend on dev view (backtick / ?dev=1).
 //   Player  #player_panel  this page's preferences (player-prefs.js saves them)
-//   Dev     #dev_panel     this page's field and debug preferences (same store)
+//   Dev     #dev_panel     this page's TOML preferences (dev-prefs.js)
 //   Room    #admin_panel   the room's TOML settings (room-config.js / controls.js)
 // The active tab is #settings[data-tab]; CSS hides the other panes. The last
 // tab is remembered in this browser (localStorage 'fields.settingsTab').
