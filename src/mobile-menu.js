@@ -1,4 +1,5 @@
 import { DESKTOP_QUERY } from './layout.js';
+import { setupSettingsEdge } from './settings-edge.js';
 // Mobile settings menu. On small or touch-only screens (see the media query
 // in index.html) #settings becomes a slide-in sheet behind the ☰ button.
 // The same DOM controls are shown, so URL sync, Reset settings and every
@@ -52,5 +53,14 @@ export function setupMobileMenu() {
   // Typing in a number field must not steer the boat.
   panel.addEventListener('keydown', (e) => {
     if (sheetOpen() && e.key !== 'Escape') e.stopPropagation();
+  });
+
+  const edge = document.getElementById('settings_edge');
+  try {
+    if (edge && new URLSearchParams(location.search).get('settingsEdge') === '1') edge.classList.add('settings-edge-debug');
+  } catch { /* no location */ }
+  setupSettingsEdge({
+    edge, panel, isOpen, setOpen,
+    enabled: () => !desktop.matches,
   });
 }
