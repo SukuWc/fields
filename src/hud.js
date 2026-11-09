@@ -46,7 +46,7 @@ import {
 // Telemetry as the readout shows it (info.js boatTelemetryHtml): values it
 // floors to whole units or tenths are sent as Math.floor(v) / Math.floor(v * 10);
 // the rest (autopilot, heading target, q/d) as they are.
-const FLOOR1 = ['error', 'twa', 'awa'];
+const FLOOR1 = ['error', 'twa', 'awa', 'mainN', 'jibN'];
 const FLOOR10 = ['tws', 'aws', 'bs', 'vmg', 'cd', 'cl', 'power'];
 export function telemetryState(t) {
   const q = { ...t };
@@ -72,6 +72,8 @@ export function telemetryHtmlOf(t) {
   if ('cd' in t) h += 'Cd: ' + t.cd / 10 + '<br>';
   if ('cl' in t) h += 'Cl: ' + t.cl / 10 + '<br>';
   if ('power' in t) h += 'Power: ' + t.power / 10 + '<br>';
+  if ('mainN' in t) h += 'Main: ' + t.mainN + ' N<br>';
+  if ('jibN' in t) h += 'Jib: ' + t.jibN + ' N<br>';
   return h;
 }
 

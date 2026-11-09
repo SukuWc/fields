@@ -7,7 +7,7 @@ import {
 } from './rules.js';
 import { WIND_UNIT_MPS, boatTrueWind } from './wind.js';
 import { DINGHY_DEFAULTS, createHeelState, heelForceFactor, hullDragOffsetX, sailCeOffsetX, clrOffsetX, stepHeel } from './heel.js';
-import { apparentWindMs, dinghyTotalMass, hullResistanceNewtons, internalForcePerNewton, LEGACY_DENSITY_MASS_KG, legacyInternalPerNewton, sailDynamicNewtons, yawInertia } from './dinghy-forces.js';
+import { apparentWindAngleDeg, apparentWindMs, clewOffset, dinghyTotalMass, hullResistanceNewtons, internalForcePerNewton, jibCeLocalY, LEGACY_DENSITY_MASS_KG, legacyInternalPerNewton, mainCeBalanceAft, mainCeLocalY, sailAreas, sailDynamicNewtons, sailLiftDrag, yawInertia } from './dinghy-forces.js';
 import { DAGGERBOARD, foilForceNewtons, RUDDER_BLADE } from './foil.js';
 
 const wrap360 = (d) => ((d % 360) + 360) % 360;
@@ -130,7 +130,8 @@ export const FORCE_PASSES = N;
 // the apparent wind, limited by the boom max; lift and drag then come from
 // the real angle of attack via the tables (upwind: AoA → 0, the sail luffs;
 // dead downwind the boom is already at its limit, nothing changes). The
-// lattice push uses mainsail_force. The autopilot never changes it.
+// lattice push uses mainsail_force, the sum of both sails in the legacy
+// unit. The autopilot never changes it.
 export const DEPOWER_RAMP_S = 0.5;
 const DEPOWER_STEP = (1 / 30) / DEPOWER_RAMP_S;
 
@@ -228,11 +229,17 @@ export class Boat{
     this.jib_boom_length = 1.4
 
     this.jib_boom_angle_max = 55
-    this.jib_boom_angle_factor = 0.65
+    // Sheet fraction of AWA, same as the main. The jib used to ease to
+    // 0.65·AWA for the drawing, when it made no force. That sheet sits
+    // about 4° below the main, on the steep 10–15° part of this lift
+    // table, and the lost drive moved full hike from about 5.3 m/s to
+    // about 5.8 m/s. Upwind, a headsail is sheeted to about the same
+    // angle of attack as the main. The jib still stops at 55° while the
+    // main goes to 80°, so on a reach and a run its angle of attack is
+    // its own.
+    this.jib_boom_angle_factor = 0.5
     this.jib_boom_angle = 0
     this.jib_boom_angle_actual = 0
-
-    this.center_of_lift = -0.05
 
     this.centerboard_position = -0.15;
     this.centerboard_length   = 0.6
@@ -470,15 +477,10 @@ export class Boat{
     // aws stays in the internal unit for telemetry and the flap amplitude.
     // It is now awsMs / WIND_UNIT_MPS, a true conversion, not the mixed sum.
     let aw_vector = awMs;
-    let awa = Math.atan2(aw_vector.y, aw_vector.x)/Math.PI*180 - angle/Math.PI*180 + 90 ;
+    // One apparent wind for the boat. Each sail's angle of attack is its
+    // own boom against this angle.
+    let awa = apparentWindAngleDeg(aw_vector, angle);
     let aws = awsMs / WIND_UNIT_MPS;
-
-    if (awa>180){
-      awa-=360
-    }
-    if (awa<-180){
-      awa+=360
-    }
 
     if (twa>180){
       twa-=360
@@ -679,89 +681,120 @@ export class Boat{
       this.jib_boom_angle = ease(this.jib_boom_angle, this.jib_boom_angle_max);
     }
 
-    const aero = aeroCoefficients(
-      Math.abs(this.mainsail_boom_angle - this.awa),
-      this.aero_lift_lookup,
-      this.aero_drag_lookup,
-      this.aero_lookup_resolution
-    );
-    let c_drag = aero.drag;
-    let c_lift = aero.lift;
-    // Visual only (sail flapping): angle of attack and AWS of this step.
-    this._sailAoaDeg = Math.abs(this.mainsail_boom_angle - this.awa);
-    this._jibAoaDeg = Math.abs(this.jib_boom_angle - this.awa);
+    // Flap amplitude uses the boat apparent wind. Angles of attack are
+    // stored with the sail forces below.
     this._aws = aws;
 
-    let sail_f_drag = {};
-    let sail_f_lift = {};
-
-    tel.cd = c_drag;
-    tel.cl = c_lift;
-
-    // Heel reduces the sail force by cos²(heel) (heel.js): the sail sees the
-    // wind component normal to the heeled mast. Lift and drag both, so the
-    // propulsion, the side force and the lattice wake (mainsail_force) all
-    // carry it. Heel is last tick's value.
-    // F_N = ½ρ A aws² C heelK (dinghy-forces.js). The body and the wake get
-    // the same vector in the internal unit; heel gets the side component
-    // in newtons. One force, two units.
+    // Heel reduces each sail by cos²(heel) (heel.js). Heel is last tick.
+    // F_N = ½ρ A aws² C heelK, per sail (dinghy-forces.js). The body gets
+    // each vector at that sail's centre of effort; heel gets the summed
+    // side component in newtons; the wake gets the sum in the legacy unit.
+    const areas = sailAreas(this.dinghy);
     const heelK = this.heel ? heelForceFactor(this.heel.phi) : 1;
-    const qN = sailDynamicNewtons(awsMs, heelK, this.dinghy.sailArea);
-    const sailK = qN * perN;
-
-    sail_f_drag.x = Math.cos(angle+this.awa/180*Math.PI + Math.PI/2 )*sailK*c_drag
-    sail_f_drag.y = Math.sin(angle+this.awa/180*Math.PI + Math.PI/2 )*sailK*c_drag
-    
-    sail_f_lift.x = -Math.sign(this.awa)*Math.cos(angle+(this.awa)/180*Math.PI )*sailK*c_lift
-    sail_f_lift.y = -Math.sign(this.awa)*Math.sin(angle+(this.awa)/180*Math.PI )*sailK*c_lift
-
-    let mainsail_f = {};
-
-    mainsail_f.x = sail_f_drag.x  + sail_f_lift.x
-    mainsail_f.y = sail_f_drag.y  + sail_f_lift.y
-
-
-    // Application point: on the centreline at center_of_lift, or offset to
-    // leeward by h·sin(φ) when ceLeewardOffset is on (heel.js). The offset
-    // goes through planck applyForce so the yaw moment is real rigid-body
-    // torque; the autopilot then holds course with a steady rudder angle.
     const ceX = (this.ceLeewardOffset && this.heel)
       ? sailCeOffsetX(this.heel.phi, this.dinghy) : 0;
-    var mainsail_p = this.physics_model.getWorldPoint(Vec2(ceX, this.center_of_lift));
+    // Both sails use the boat apparent wind, the free stream the sheets
+    // are trimmed to. Yaw-rate velocity at each centre is not added. The
+    // centres are about a metre and a half apart, and a small yaw puts the
+    // two angles of attack on different sides of this lift table's 10–15°
+    // rise; the couple then rounds her up and a tack dies in irons
+    // (scenario 4). The foils still include yaw-rate inflow.
+    const oneSail = (boomDeg, area, ceY) => {
+      const point = this.physics_model.getWorldPoint(Vec2(ceX, ceY));
+      const aoa = Math.abs(boomDeg - awa);
+      const aero = aeroCoefficients(aoa, this.aero_lift_lookup, this.aero_drag_lookup, this.aero_lookup_resolution);
+      const sailK = sailDynamicNewtons(awsMs, heelK, area) * perN;
+      const parts = sailLiftDrag(angle, awa, sailK, aero.lift, aero.drag);
+      const total = { x: parts.lift.x + parts.drag.x, y: parts.lift.y + parts.drag.y };
+      applyFinite(parts.lift, point);
+      applyFinite(parts.drag, point);
+      return { point, ceY, aoa, awa, awsMs, cl: aero.lift, cd: aero.drag, lift: parts.lift, drag: parts.drag, total };
+    };
+
+    const mainBoomRad = this.mainsail_boom_angle * Math.PI / 180;
+    const jibBoomRad = this.jib_boom_angle * Math.PI / 180;
+    const mastY = this.mainsail_leading_edge_position;
+    const tackY = this.jib_leading_edge_position;
+    const mainClew = clewOffset(this.mainsail_boom_length, mainBoomRad);
+    const jibClew = clewOffset(this.jib_boom_length, jibBoomRad);
+    // Tack at the gooseneck / stem, head of the jib at the mast, clew at
+    // the boom end. CE is the centroid of that triangle (dinghy-forces.js).
+    this._mainTackLocal = { x: 0, y: mastY };
+    this._jibTackLocal = { x: 0, y: tackY };
+    this._jibHeadLocal = { x: 0, y: mastY };
+    this._mainClewLocal = { x: mainClew.x, y: mastY + mainClew.y };
+    this._jibClewLocal = { x: jibClew.x, y: tackY + jibClew.y };
+    // Centres are the amidships centroids (boom angle 0), with the main
+    // shifted aft so the area-weighted rig centre is the old single station
+    // (dinghy-forces RIG_CE_Y). They do not follow the eased boom: that
+    // would walk the rig centre as the sheet opens, and the yaw drift was
+    // enough to open a diagonal contact on the finest wake mask. While both
+    // sails see the same coefficients the two forces are the old single
+    // force at that station. On a run the jib is on its 55° stop and the
+    // main is not, so the force-weighted centre moves on its own.
+    const mainAft = mainCeBalanceAft(mastY, this.mainsail_boom_length, tackY, this.jib_boom_length, areas.fraction);
+    const main = oneSail(this.mainsail_boom_angle, areas.main, mainCeLocalY(mastY, this.mainsail_boom_length, 0, mainAft));
+    const jib = oneSail(this.jib_boom_angle, areas.jib, jibCeLocalY(tackY, mastY, this.jib_boom_length, 0));
+    this._mainSail = main;
+    this._jibSail = jib;
+    this._sailAoaDeg = main.aoa;
+    this._jibAoaDeg = jib.aoa;
+
+    const mainsail_f = { x: main.total.x + jib.total.x, y: main.total.y + jib.total.y };
+    const wm = Math.hypot(main.total.x, main.total.y);
+    const wj = Math.hypot(jib.total.x, jib.total.y);
+    const wt = wm + wj;
+    // Combined CE for the existing magenta marker: force-weighted, so it
+    // sits between the two sails. Both already carry the leeward X offset.
     this._sailCeLocalX = ceX;
-    this._sailCePoint = mainsail_p;
+    this._mainCeLocalY = main.ceY;
+    this._jibCeLocalY = jib.ceY;
+    this._sailCePoint = wt > 0
+      ? { x: (main.point.x * wm + jib.point.x * wj) / wt, y: (main.point.y * wm + jib.point.y * wj) / wt }
+      : { x: main.point.x, y: main.point.y };
 
-    applyFinite(sail_f_lift, mainsail_p);
-    applyFinite(sail_f_drag, mainsail_p);
+    // Area-weighted coefficients for the single Cl/Cd readout. Per-sail
+    // values are on the telemetry as well.
+    tel.cd = main.cd * areas.fraction + jib.cd * (1 - areas.fraction);
+    tel.cl = main.cl * areas.fraction + jib.cl * (1 - areas.fraction);
+    tel.mainCl = main.cl;
+    tel.jibCl = jib.cl;
+    tel.mainCd = main.cd;
+    tel.jibCd = jib.cd;
+    tel.mainAoa = main.aoa;
+    tel.jibAoa = jib.aoa;
 
-    this.forces.push({name: "mainsail", type: "arrow", vector: sail_f_lift, point: mainsail_p})
-    this.forces.push({name: "mainsail", type: "arrow", vector: sail_f_drag, point: mainsail_p})
-
-    this.power = Math.sqrt(mainsail_f.x*mainsail_f.x + mainsail_f.y*mainsail_f.y)
+    this.power = Math.sqrt(mainsail_f.x * mainsail_f.x + mainsail_f.y * mainsail_f.y);
     this.power_direction = Math.atan2(mainsail_f.y, mainsail_f.x) / Math.PI * 180;
-    // Body vector (newtons / FORCE_PASSES). Heel divides by perN.
+    // Body vector (newtons / FORCE_PASSES), the sum. Heel divides by perN.
     this._bodySailForce = { x: mainsail_f.x, y: mainsail_f.y };
     this._sailForcePerN = perN;
-    // Lattice wake and the true-wind undo were tuned to the legacy
-    // internal sail vector, not to the newton force on the 139 kg hull.
+    // Lattice wake and the true-wind undo were tuned to one legacy internal
+    // sail vector, not to the newton force on the 139 kg hull. The vector
+    // is the sum of both sails; getSailSegments still lays it on the main.
     const legacyPerN = legacyInternalPerNewton(this.dinghy.sailArea, WIND_UNIT_MPS);
     const wake = legacyPerN / perN;
     this.mainsail_force = { x: mainsail_f.x * wake, y: mainsail_f.y * wake };
-
-    
+    tel.mainN = wm / perN;
+    tel.jibN = wj / perN;
     tel.power = this.power;
 
-    // Heel: sail side force (perpendicular to the centreline, body +X) in N
-    // drives the roll DOF; the crew hikes automatically (heel.js).
+    // Heel: summed sail side force (perpendicular to the centreline, body
+    // +X) in N drives the roll DOF. Each sail's moment is that sail's side
+    // force times the shared ceHeight; stepHeel applies the sum.
     // Forward (bow, local −Y) for the drive component, same axis as `d`.
     const fwdX = Math.sin(angle), fwdY = -Math.cos(angle);
     const fScale = 1 / perN;
+    const sideOf = (f) => (f.x * Math.cos(angle) + f.y * Math.sin(angle)) * fScale;
+    const driveOf = (f) => (f.x * fwdX + f.y * fwdY) * fScale;
     if (this.heel && Number.isFinite(mainsail_f.x) && Number.isFinite(mainsail_f.y)) {
-      const fSide = (mainsail_f.x * Math.cos(angle) + mainsail_f.y * Math.sin(angle)) * fScale;
-      const fDrive = (mainsail_f.x * fwdX + mainsail_f.y * fwdY) * fScale;
-      this.sail_side_force_n = fSide;
-      this.sail_drive_force_n = fDrive;
-      stepHeel(this.heel, fSide, 1 / 30, this.dinghy);
+      this.main_side_force_n = sideOf(main.total);
+      this.jib_side_force_n = sideOf(jib.total);
+      this.main_drive_force_n = driveOf(main.total);
+      this.jib_drive_force_n = driveOf(jib.total);
+      this.sail_side_force_n = this.main_side_force_n + this.jib_side_force_n;
+      this.sail_drive_force_n = this.main_drive_force_n + this.jib_drive_force_n;
+      stepHeel(this.heel, this.sail_side_force_n, 1 / 30, this.dinghy);
       tel.heel = this.heel.phi * 180 / Math.PI;
       tel.hike = Math.abs(this.heel.hike) * 100;
     }
@@ -889,6 +922,18 @@ export class Boat{
       ...readoutFields(this),
     };
     // CE / CLR application points for the debug overlay (boat-draw.js).
+    // ce is the force-weighted rig centre (magenta). mce / jce are the
+    // per-sail centres; ml/md and jl/jd are that sail's lift and drag in
+    // the same pre-applyFinite unit as the green force arrows.
+    const finiteVec = (v) => v && Number.isFinite(v.x) && Number.isFinite(v.y);
+    const putSail = (sail, ceKey, liftKey, dragKey) => {
+      if (!sail || !finiteVec(sail.point) || !finiteVec(sail.lift) || !finiteVec(sail.drag)) return;
+      s[ceKey] = [sail.point.x, sail.point.y];
+      s[liftKey] = [sail.lift.x, sail.lift.y];
+      s[dragKey] = [sail.drag.x, sail.drag.y];
+    };
+    putSail(this._mainSail, 'mce', 'ml', 'md');
+    putSail(this._jibSail, 'jce', 'jl', 'jd');
     if (this._sailCePoint
         && Number.isFinite(this._sailCePoint.x) && Number.isFinite(this._sailCePoint.y)) {
       s.ce = [this._sailCePoint.x, this._sailCePoint.y];
@@ -933,8 +978,9 @@ export class Boat{
   
 
 
-  // Returns world-space line segments for each sail with the aerodynamic reaction
-  // force (equal and opposite to the force on the boat) as {x0,y0,x1,y1,fx,fy}.
+  // Returns world-space line segments for the lattice wake. The impulse is
+  // the sum of both sails (mainsail_force), laid along the mainsail. The
+  // true-wind undo was fitted to that one vector.
   getSailSegments() {
     const angle   = this.hull_angle;
     const segments = [];
