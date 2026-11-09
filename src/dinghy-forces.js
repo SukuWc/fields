@@ -14,10 +14,12 @@
 // to sailArea, so a rig whose sails see the same coefficients produces
 // the calibrated total.
 // The heel DOF takes the sum of the side components in newtons (one
-// ceHeight, so the heeling moment is the sum of the two moments). The
-// rigid body mass is hull + crew in kilograms, and each sail is applied
-// at its own centre of effort, so the yaw moment is the rigid-body
-// moment of those two forces. applyForce is multiplied by FORCE_PASSES,
+// ceHeight, so the heeling moment is the sum of the two moments). Boom
+// height is not that lever. The rigid body mass is hull + crew in
+// kilograms. In the top-down plane each sail's force starts on that
+// sail's sheeted boom and then walks ceLateralHeight·sinφ to leeward
+// (heel.js sailCeOffsetX), so the yaw moment is the rigid-body moment
+// of those two forces. applyForce is multiplied by FORCE_PASSES,
 // therefore each vector passed in is F_N / FORCE_PASSES
 // (internalForcePerNewton). Foil lift and drag are computed in src/foil.js
 // and converted the same way. The lattice wake stays on the legacy
@@ -167,18 +169,17 @@ export function sailAreas(p = DINGHY_DEFAULTS) {
   return { main, jib: p.sailArea - main, fraction };
 }
 
-// Plan-view centre of area of a triangular sail: the centroid, the
-// average of tack, head and clew. A mainsail's head and tack are both
-// the mast in plan view, so the centroid is a third of the way from the
-// mast to the clew. Larsson & Eliasson, Principles of Yacht Design, take
-// that centre of area as the centre of effort for sail balance. Boom
-// angle 0 sheets the clew dead aft (body +Y). The lateral station is not
-// this centroid: boat.js adds ceLateralHeight·sinφ on top, the same
-// leeward offset for both sails.
+// Chordwise station of a triangular sail's centre of area, measured from
+// the tack / gooseneck toward the clew. A mainsail's head and tack are
+// both the mast in plan view, so this fraction lands on the boom.
+// Larsson & Eliasson, Principles of Yacht Design, take that centre of
+// area as the centre of effort. Boom angle 0 sheets the clew dead aft
+// (body +Y). boat.js then adds ceLateralHeight·sinφ to leeward of the
+// boom point; that walk is not part of the station on the spar.
 export const SAIL_CE_CHORD_FRACTION = 1 / 3;
 
-// Clew offset from the tack / gooseneck, body axes (+X to the side the
-// positive boom angle swings toward, +Y aft).
+// Clew offset from the tack / gooseneck, body axes. +Y is aft. A positive
+// boom angle swings the clew toward −X (the formula the sail drawing uses).
 export function clewOffset(boomLength, boomRad) {
   return {
     x: -Math.sin(boomRad) * boomLength,
@@ -186,30 +187,64 @@ export function clewOffset(boomLength, boomRad) {
   };
 }
 
-// Body Y of the old single sail force. The drawn mast is forward of the
-// daggerboard, so the two triangle centroids put the area-weighted centre
-// ahead of the board. That is lee helm, and a close-hauled tack does not
-// get through the wind (scenario 4). The mainsail centre is shifted aft
-// by mainCeBalanceAft until, with both booms amidships, the area-weighted
-// centre is this station again.
-export const RIG_CE_Y = -0.05;
-
-export function mainCeLocalY(mastY, boomLength, boomRad, aft = 0) {
-  return mastY + Math.cos(boomRad) * boomLength * SAIL_CE_CHORD_FRACTION + aft;
+// Point on a boom. fraction 0 is the tack / gooseneck, 1 is the clew.
+// The spar is the straight tack-to-clew line, not the cambered cloth.
+export function boomStation(originX, originY, boomLength, boomRad, fraction) {
+  const along = clewOffset(boomLength, boomRad);
+  return {
+    x: originX + along.x * fraction,
+    y: originY + along.y * fraction,
+  };
 }
 
-// Metres to add to the mainsail centroid. Boom angle 0 (sheeted amidships).
-export function mainCeBalanceAft(mastY, mainBoom, tackY, jibBoom, fraction) {
-  const jib0 = jibCeLocalY(tackY, mastY, jibBoom, 0);
-  const main0 = mastY + mainBoom * SAIL_CE_CHORD_FRACTION;
-  return (RIG_CE_Y - (1 - fraction) * jib0) / fraction - main0;
+// Orthogonal projection of a plan point onto a boom segment. The result
+// stays on the spar (fraction clamped to [0, 1]).
+export function projectOntoBoom(point, originX, originY, boomLength, boomRad) {
+  const dir = clewOffset(boomLength, boomRad);
+  const len2 = dir.x * dir.x + dir.y * dir.y;
+  if (!(len2 > 0) || !point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+    return { x: originX, y: originY, fraction: 0 };
+  }
+  let fraction = ((point.x - originX) * dir.x + (point.y - originY) * dir.y) / len2;
+  if (fraction < 0) fraction = 0;
+  if (fraction > 1) fraction = 1;
+  return {
+    x: originX + dir.x * fraction,
+    y: originY + dir.y * fraction,
+    fraction,
+  };
 }
 
-// Jib head is at the mast (the forestay). Tack, head and clew are three
-// different plan points.
-export function jibCeLocalY(tackY, mastY, boomLength, boomRad) {
-  const clewY = tackY + Math.cos(boomRad) * boomLength;
-  return (tackY + mastY + clewY) / 3;
+// Mainsail plan centroid. Head and tack are both the mast, so the centre
+// of area already lies on the boom, one third of the way from the
+// gooseneck to the clew (Larsson & Eliasson, Principles of Yacht Design,
+// take that centre of area as the centre of effort). The sheeted boom is
+// the pose: an eased boom puts this point outboard, not on the centreline.
+// No extra aft shift. The old mainCeBalanceAft station (area-weighted rig
+// centre at body y = −0.05 with both booms amidships) was there to keep
+// the pre-split rudder; the boom point does not restore it.
+export function mainBoomForceLocal(mastY, boomLength, boomRad) {
+  return boomStation(0, mastY, boomLength, boomRad, SAIL_CE_CHORD_FRACTION);
+}
+
+// Jib plan centroid: average of tack (stem, the boom's forward end), head
+// (mast) and clew (boom end). The head is not on the foot, so this point
+// sits inboard of the jib boom once the boom is eased.
+export function jibCentroidLocal(tackY, mastY, boomLength, boomRad) {
+  const clew = clewOffset(boomLength, boomRad);
+  return {
+    x: clew.x / 3,
+    y: (tackY + mastY + (tackY + clew.y)) / 3,
+  };
+}
+
+// Where the jib force starts: the centroid dropped perpendicularly onto
+// the jib boom (the foot, tack to clew — the spar jib_boom_length draws).
+// Amidships the centroid already lies on that spar. Eased, the projection
+// stays on the segment; this rig's 1.2 m luff and 1.4 m foot keep it
+// there for |boom| ≤ 90°, and the clamp holds it on the spar otherwise.
+export function jibBoomForceLocal(mastY, tackY, boomLength, boomRad) {
+  return projectOntoBoom(jibCentroidLocal(tackY, mastY, boomLength, boomRad), 0, tackY, boomLength, boomRad);
 }
 
 // Apparent-wind angle in the boat's convention: degrees, +/−180, 0 = from

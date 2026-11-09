@@ -7,7 +7,7 @@ import {
 } from './rules.js';
 import { WIND_UNIT_MPS, boatTrueWind } from './wind.js';
 import { DINGHY_DEFAULTS, createHeelState, heelForceFactor, hullDragOffsetX, sailCeOffsetX, clrOffsetX, stepHeel } from './heel.js';
-import { apparentWindAngleDeg, apparentWindMs, clewOffset, dinghyTotalMass, hullResistanceNewtons, internalForcePerNewton, jibCeLocalY, LEGACY_DENSITY_MASS_KG, legacyInternalPerNewton, mainCeBalanceAft, mainCeLocalY, sailAreas, sailDynamicNewtons, sailLiftDrag, yawInertia } from './dinghy-forces.js';
+import { apparentWindAngleDeg, apparentWindMs, clewOffset, dinghyTotalMass, hullResistanceNewtons, internalForcePerNewton, jibBoomForceLocal, LEGACY_DENSITY_MASS_KG, legacyInternalPerNewton, mainBoomForceLocal, sailAreas, sailDynamicNewtons, sailLiftDrag, yawInertia } from './dinghy-forces.js';
 import { DAGGERBOARD, foilForceNewtons, RUDDER_BLADE } from './foil.js';
 
 const wrap360 = (d) => ((d % 360) + 360) % 360;
@@ -687,20 +687,24 @@ export class Boat{
 
     // Heel reduces each sail by cos²(heel) (heel.js). Heel is last tick.
     // F_N = ½ρ A aws² C heelK, per sail (dinghy-forces.js). The body gets
-    // each vector at that sail's centre of effort; heel gets the summed
-    // side component in newtons; the wake gets the sum in the legacy unit.
+    // each vector on that sail's sheeted boom, then ceLateralHeight·sinφ
+    // to leeward; heel gets the summed side component in newtons at
+    // ceHeight (not the boom); the wake gets the sum in the legacy unit.
     const areas = sailAreas(this.dinghy);
     const heelK = this.heel ? heelForceFactor(this.heel.phi) : 1;
-    const ceX = (this.ceLeewardOffset && this.heel)
+    // Body +X walk. Added to the boom station, so an eased boom is already
+    // off the centreline before heel moves the point any further to leeward.
+    const leewardX = (this.ceLeewardOffset && this.heel)
       ? sailCeOffsetX(this.heel.phi, this.dinghy) : 0;
     // Both sails use the boat apparent wind, the free stream the sheets
     // are trimmed to. Yaw-rate velocity at each centre is not added. The
-    // centres are about a metre and a half apart, and a small yaw puts the
-    // two angles of attack on different sides of this lift table's 10–15°
-    // rise; the couple then rounds her up and a tack dies in irons
-    // (scenario 4). The foils still include yaw-rate inflow.
-    const oneSail = (boomDeg, area, ceY) => {
-      const point = this.physics_model.getWorldPoint(Vec2(ceX, ceY));
+    // centres are about a metre apart, and a small yaw puts the two angles
+    // of attack on different sides of this lift table's 10–15° rise; the
+    // couple then rounds her up and a tack dies in irons (scenario 4).
+    // The foils still include yaw-rate inflow.
+    const oneSail = (boomDeg, area, boom) => {
+      const local = { x: boom.x + leewardX, y: boom.y };
+      const point = this.physics_model.getWorldPoint(Vec2(local.x, local.y));
       const aoa = Math.abs(boomDeg - awa);
       const aero = aeroCoefficients(aoa, this.aero_lift_lookup, this.aero_drag_lookup, this.aero_lookup_resolution);
       const sailK = sailDynamicNewtons(awsMs, heelK, area) * perN;
@@ -708,7 +712,7 @@ export class Boat{
       const total = { x: parts.lift.x + parts.drag.x, y: parts.lift.y + parts.drag.y };
       applyFinite(parts.lift, point);
       applyFinite(parts.drag, point);
-      return { point, ceY, aoa, awa, awsMs, cl: aero.lift, cd: aero.drag, lift: parts.lift, drag: parts.drag, total };
+      return { point, local, boom, ceY: local.y, aoa, awa, awsMs, cl: aero.lift, cd: aero.drag, lift: parts.lift, drag: parts.drag, total };
     };
 
     const mainBoomRad = this.mainsail_boom_angle * Math.PI / 180;
@@ -718,23 +722,14 @@ export class Boat{
     const mainClew = clewOffset(this.mainsail_boom_length, mainBoomRad);
     const jibClew = clewOffset(this.jib_boom_length, jibBoomRad);
     // Tack at the gooseneck / stem, head of the jib at the mast, clew at
-    // the boom end. CE is the centroid of that triangle (dinghy-forces.js).
+    // the boom end. The force starts on that spar (dinghy-forces.js).
     this._mainTackLocal = { x: 0, y: mastY };
     this._jibTackLocal = { x: 0, y: tackY };
     this._jibHeadLocal = { x: 0, y: mastY };
     this._mainClewLocal = { x: mainClew.x, y: mastY + mainClew.y };
     this._jibClewLocal = { x: jibClew.x, y: tackY + jibClew.y };
-    // Centres are the amidships centroids (boom angle 0), with the main
-    // shifted aft so the area-weighted rig centre is the old single station
-    // (dinghy-forces RIG_CE_Y). They do not follow the eased boom: that
-    // would walk the rig centre as the sheet opens, and the yaw drift was
-    // enough to open a diagonal contact on the finest wake mask. While both
-    // sails see the same coefficients the two forces are the old single
-    // force at that station. On a run the jib is on its 55° stop and the
-    // main is not, so the force-weighted centre moves on its own.
-    const mainAft = mainCeBalanceAft(mastY, this.mainsail_boom_length, tackY, this.jib_boom_length, areas.fraction);
-    const main = oneSail(this.mainsail_boom_angle, areas.main, mainCeLocalY(mastY, this.mainsail_boom_length, 0, mainAft));
-    const jib = oneSail(this.jib_boom_angle, areas.jib, jibCeLocalY(tackY, mastY, this.jib_boom_length, 0));
+    const main = oneSail(this.mainsail_boom_angle, areas.main, mainBoomForceLocal(mastY, this.mainsail_boom_length, mainBoomRad));
+    const jib = oneSail(this.jib_boom_angle, areas.jib, jibBoomForceLocal(mastY, tackY, this.jib_boom_length, jibBoomRad));
     this._mainSail = main;
     this._jibSail = jib;
     this._sailAoaDeg = main.aoa;
@@ -744,9 +739,11 @@ export class Boat{
     const wm = Math.hypot(main.total.x, main.total.y);
     const wj = Math.hypot(jib.total.x, jib.total.y);
     const wt = wm + wj;
-    // Combined CE for the existing magenta marker: force-weighted, so it
-    // sits between the two sails. Both already carry the leeward X offset.
-    this._sailCeLocalX = ceX;
+    // Combined CE for the magenta marker: force-weighted, so it sits
+    // between the two boom points. Both already carry the leeward walk.
+    this._sailCeLocalX = wt > 0
+      ? (main.local.x * wm + jib.local.x * wj) / wt
+      : main.local.x;
     this._mainCeLocalY = main.ceY;
     this._jibCeLocalY = jib.ceY;
     this._sailCePoint = wt > 0

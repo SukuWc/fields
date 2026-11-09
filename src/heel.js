@@ -39,14 +39,18 @@
 // (mainsail_force, the sum) all see it. The roll moment uses that summed
 // side force at this ceHeight.
 //
-// Top-down CE / CLR offsets (2D): each sail's force at sailCeOffsetX(phi) =
-// ceLateralHeight·sin(phi) to leeward (same lateral station; the sails
-// differ fore-and-aft); centreboard at clrOffsetX(phi) = −clrDepth·sin(phi)
-// to windward. Heel roll still uses ceHeight (CE above CLR) on the summed
-// side force. Each sail's apply point goes through planck applyForce, so
-// the yaw moment is the two forces at their own centres. ceLateralHeight
-// is tuned for slight weather helm with CLR on; it is not forced to equal
-// ceHeight − clrDepth.
+// Top-down CE / CLR offsets (2D): each sail's force starts on that sail's
+// sheeted boom (dinghy-forces.js), then walks sailCeOffsetX(phi) =
+// ceLateralHeight·sin(phi) further to leeward in body X. The walk is the
+// same one the centreline CE used; it is added to the boom point, not to
+// the old centreline centroid. The two booms are different spars, so the
+// two application points are not one shared lateral station. Centreboard
+// at clrOffsetX(phi) = −clrDepth·sin(phi) to windward. Heel roll still
+// uses ceHeight (CE above CLR) on the summed side force — the boom is not
+// the vertical centre of effort, and this lateral walk is not that lever.
+// Each sail's apply point goes through planck applyForce, so the yaw
+// moment is the two forces at their own points. ceLateralHeight is not
+// forced to equal ceHeight − clrDepth.
 //
 // Capsize: past HEEL_CAPSIZE_DEG the heel is clamped there (roll rate
 // zeroed) and capsized = true; the flag clears once heel drops back below
@@ -115,8 +119,8 @@ export function heelForceFactor(phi) {
   return c * c;
 }
 
-// Top-down leeward CE offset (m, body-local +X): sail force application
-// point at ceLateralHeight·sin(φ). φ > 0 → +X (leeward).
+// Top-down leeward walk (m, body-local +X) added to each sail's boom
+// station. φ > 0 → +X (leeward). Not the roll lever: heelMoment uses ceHeight.
 export function sailCeOffsetX(phi, p = DINGHY_DEFAULTS) {
   return p.ceLateralHeight * Math.sin(phi);
 }

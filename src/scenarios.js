@@ -125,7 +125,12 @@ export function buildScenarios(sim) {
   };
   scenarios[4].frames[1] = () => { console.log(1); sim.players[0].input_autopilot_enabled_toggle(); sim.players[1].input_autopilot_enabled_toggle(); };
   scenarios[4].frames[2] = () => { sim.emit({ type: 'bindControls' }); };
-  scenarios[4].frames[300] = () => { sim.players[0].input_autopilot_tack_toggle(); };
+  // Boom application (no aft balance shift) leaves the rig centre forward of
+  // the old y = −0.05 station, so this turn through the wind is a little
+  // slower. Frame 300 reversed the target while she was still about 6°
+  // short of head to wind and she fell back (no Rule 13). Frame 330 is the
+  // first script tick on which the reversal still carries her across.
+  scenarios[4].frames[330] = () => { sim.players[0].input_autopilot_tack_toggle(); };
   scenarios[4].frames[700] = () => { sim.players[1].input_autopilot_heading_decrease(1); };
   scenarios[4].frames[701] = () => { sim.players[1].input_autopilot_heading_decrease(1); };
   scenarios[4].frames[702] = () => { sim.players[1].input_autopilot_heading_decrease(1); };
@@ -740,7 +745,7 @@ export function buildScenarios(sim) {
     "One Laser-like dinghy close-hauled on starboard autopilot. Wind ramps from "
     + CE_OFFSET_DEMO.from + " to " + CE_OFFSET_DEMO.to + " m/s by "
     + CE_OFFSET_DEMO.step + " every " + CE_OFFSET_DEMO.holdS
-    + " s. Mainsail and jib forces are each applied at their own centre of effort, ceLateralHeight·sin(heel) to leeward, and the centreboard at −clrDepth·sin(heel) to windward, so the autopilot needs a slight steady rudder angle (weather helm). Turn on Forces to see mainsail lift and drag, jib lift and drag, a CE cross per sail, the rig CE (magenta) and the CLR (cyan). Readout: HEEL, HIKE, SAIL %, RUD."
+    + " s. Each sail's force starts on that sail's boom and walks ceLateralHeight·sin(heel) to leeward; the centreboard sits at −clrDepth·sin(heel) to windward. Heel still uses the sail's vertical centre of effort. Turn on Forces to see mainsail lift and drag, jib lift and drag, a cross at each sail's application point, the rig CE (magenta) and the CLR (cyan). Readout: HEEL, HIKE, SAIL %, RUD."
   );
   scenarios[25].frames[0] = () => {
     sim.command({ type: 'wind', angle: 90, speed: CE_OFFSET_DEMO.from });

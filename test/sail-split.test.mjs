@@ -1,8 +1,9 @@
 // Mainsail and jib as two forces: 470 area split of the calibrated total,
-// own angle of attack, own centre of effort, heel on the sum.
+// own angle of attack, each force on that sail's boom then walked leeward
+// with heel, heel moment on the sum at ceHeight.
 import './dom-stub.mjs';
-import { CLASS_470_JIB_M2, CLASS_470_MAIN_FRACTION, CLASS_470_MAIN_M2, jibCeLocalY, mainCeBalanceAft, mainCeLocalY, RIG_CE_Y, sailAreas, SAIL_CE_CHORD_FRACTION } from '../src/dinghy-forces.js';
-import { DINGHY_DEFAULTS, sailCeOffsetX } from '../src/heel.js';
+import { boomStation, CLASS_470_JIB_M2, CLASS_470_MAIN_FRACTION, CLASS_470_MAIN_M2, jibBoomForceLocal, jibCentroidLocal, mainBoomForceLocal, sailAreas, SAIL_CE_CHORD_FRACTION } from '../src/dinghy-forces.js';
+import { DINGHY_DEFAULTS, heelMoment, sailCeOffsetX } from '../src/heel.js';
 import { JIB_CE_COLOR, JIB_DRAG_COLOR, JIB_LIFT_COLOR, MAIN_CE_COLOR, MAIN_DRAG_COLOR, MAIN_LIFT_COLOR, boatGuides } from '../src/boat-draw.js';
 import { SimCore } from '../src/host.js';
 
@@ -24,23 +25,34 @@ check('dinghy main fraction matches the 470 split', Math.abs(DINGHY_DEFAULTS.mai
   check('jib is the smaller sail', a.jib > 1 && a.jib < a.main);
 }
 
-// Centroid: main one third aft of the mast; jib the average of tack, mast and clew.
+// Main: one third of the sheeted boom (the plan centroid lies on the spar).
+// Jib: the triangle centroid projected onto the foot. No aft balance shift.
 {
   const mast = -0.8, boom = 2.2, tack = -2, jibBoom = 1.4;
-  const aft = mainCeBalanceAft(mast, boom, tack, jibBoom, CLASS_470_MAIN_FRACTION);
-  const mainGeom = mainCeLocalY(mast, boom, 0);
-  const mainY = mainCeLocalY(mast, boom, 0, aft);
-  const jibY = jibCeLocalY(tack, mast, jibBoom, 0);
-  check('main centroid is a third of the boom aft of the mast', Math.abs(mainGeom - (mast + boom * SAIL_CE_CHORD_FRACTION)) < 1e-12, mainGeom.toFixed(4));
-  check('balanced main CE is aft of the mast', mainY > mast, mainY.toFixed(3));
-  const weighted = CLASS_470_MAIN_FRACTION * mainY + (1 - CLASS_470_MAIN_FRACTION) * jibY;
-  check('booms amidships: area-weighted CE is the old single station', Math.abs(weighted - RIG_CE_Y) < 1e-9, weighted.toFixed(4));
-  const clewY = tack + jibBoom;
-  check('jib CE is the centroid of tack, head and clew', Math.abs(jibY - (tack + mast + clewY) / 3) < 1e-12, jibY.toFixed(4));
-  check('jib CE is forward of the mast', jibY < mast);
+  const main0 = mainBoomForceLocal(mast, boom, 0);
+  check('main force amidships is a third of the boom aft of the mast',
+    Math.abs(main0.x) < 1e-12 && Math.abs(main0.y - (mast + boom * SAIL_CE_CHORD_FRACTION)) < 1e-12, main0.y.toFixed(4));
   const eased = 40 * DEG;
-  check('eased main CE stays aft of the mast', mainCeLocalY(mast, boom, eased) > mast);
-  check('eased jib CE stays forward of the mast', jibCeLocalY(tack, mast, jibBoom, eased) < mast);
+  const mainE = mainBoomForceLocal(mast, boom, eased);
+  check('eased main force lies on the boom, off the centreline',
+    Math.abs(Math.hypot(mainE.x, mainE.y - mast) - boom * SAIL_CE_CHORD_FRACTION) < 1e-12 && mainE.x !== 0 && mainE.y > mast,
+    `x ${mainE.x.toFixed(3)} y ${mainE.y.toFixed(3)}`);
+  const cen0 = jibCentroidLocal(tack, mast, jibBoom, 0);
+  const jib0 = jibBoomForceLocal(mast, tack, jibBoom, 0);
+  const clewY = tack + jibBoom;
+  check('jib centroid amidships is the average of tack, head and clew',
+    Math.abs(cen0.x) < 1e-12 && Math.abs(cen0.y - (tack + mast + clewY) / 3) < 1e-12, cen0.y.toFixed(4));
+  check('jib amidships: centroid already lies on the boom, forward of the mast',
+    Math.abs(jib0.x - cen0.x) < 1e-12 && Math.abs(jib0.y - cen0.y) < 1e-12 && jib0.y < mast);
+  const cenE = jibCentroidLocal(tack, mast, jibBoom, eased);
+  const jibE = jibBoomForceLocal(mast, tack, jibBoom, eased);
+  const foot = boomStation(0, tack, jibBoom, eased, 1);
+  const cross = (p) => foot.x * (p.y - tack) - (foot.y - tack) * p.x;
+  const boomLen = Math.hypot(foot.x, foot.y - tack);
+  const onSegment = Math.abs(Math.hypot(jibE.x, jibE.y - tack) + Math.hypot(foot.x - jibE.x, foot.y - jibE.y) - boomLen) < 1e-9;
+  check('eased jib force is the centroid projected onto the boom',
+    Math.abs(cross(jibE)) < 1e-9 && onSegment && jibE.y < mast, `y ${jibE.y.toFixed(3)} fraction ${jibE.fraction.toFixed(3)}`);
+  check('eased jib centroid sits inboard of the boom', Math.abs(cross(cenE)) > 0.05, `cross ${cross(cenE).toFixed(3)}`);
 }
 
 const view = { camera_position_x: 0, camera_position_y: 0, camera_zoom: 20, show_forces: true, show_fields: false };
@@ -58,11 +70,20 @@ const view = { camera_position_x: 0, camera_position_y: 0, camera_zoom: 20, show
   mute(() => b.physics_model_step());
   const mainLocal = b.physics_model.getLocalPoint(b._mainSail.point);
   const jibLocal = b.physics_model.getLocalPoint(b._jibSail.point);
-  check('both sails apply at ceLateralHeight·sinφ', Math.abs(mainLocal.x - expectX) < 1e-9 && Math.abs(jibLocal.x - expectX) < 1e-9,
-    `main ${mainLocal.x.toFixed(4)} jib ${jibLocal.x.toFixed(4)} expect ${expectX.toFixed(4)}`);
-  check('main CE is aft of the mast, jib CE is forward',
+  const onBoomPlus = (local, sail) => Math.abs(local.x - (sail.boom.x + expectX)) < 1e-9 && Math.abs(local.y - sail.boom.y) < 1e-9;
+  check('each sail applies at its boom station plus ceLateralHeight·sinφ',
+    onBoomPlus(mainLocal, b._mainSail) && onBoomPlus(jibLocal, b._jibSail),
+    `main (${mainLocal.x.toFixed(3)}, ${mainLocal.y.toFixed(3)}) boom x ${b._mainSail.boom.x.toFixed(3)} + ${expectX.toFixed(3)}`);
+  check('sheeted booms are already off the centreline',
+    Math.abs(b._mainSail.boom.x) > 0.05 && Math.abs(b._jibSail.boom.x) > 0.05,
+    `main boom x ${b._mainSail.boom.x.toFixed(3)} jib ${b._jibSail.boom.x.toFixed(3)}`);
+  check('main force is aft of the mast, jib force is forward',
     mainLocal.y > b.mainsail_leading_edge_position && jibLocal.y < b.mainsail_leading_edge_position,
     `main y ${mainLocal.y.toFixed(3)} mast ${b.mainsail_leading_edge_position} jib y ${jibLocal.y.toFixed(3)}`);
+  check('heel moment uses ceHeight on the summed side force, not boom height',
+    b.dinghy.ceHeight === 2.5
+    && Math.abs(b.heel.mHeel - heelMoment(b.sail_side_force_n, b.heel.phi, b.dinghy)) < 1e-6,
+    `mHeel ${b.heel.mHeel.toFixed(2)} side ${b.sail_side_force_n.toFixed(2)}`);
   check('jib tack is the stem fitting and the head is the mast',
     b._jibTackLocal.y === b.jib_leading_edge_position && b._jibHeadLocal.y === b.mainsail_leading_edge_position);
   check('jib clew is a boom-length from the tack',
