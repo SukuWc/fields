@@ -51,7 +51,13 @@ function readoutFields(b) {
   if (Number.isFinite(b.rudder_angle)) o.rudder_deg = b.rudder_angle;
   return o;
 }
-import { boatGuides, autopilotSnapTarget } from './boat-draw.js';
+import {
+  BEST_VMG_DOWNWIND_DEG,
+  BEST_VMG_UPWIND_DEG,
+  autopilotGuideTarget,
+  boatGuides,
+  penaltyTurnExitTarget,
+} from './boat-draw.js';
 
 // Lattice momentum per frame = sail reaction × SAIL_LATTICE_COUPLING.
 //
@@ -170,9 +176,7 @@ export const AUTOPILOT_HEADING_STEP_DEG = 1.5;
 export const AUTOPILOT_TURN_MAX_LEAD_DEG = 90;
 export function wrapDeg180(a){ a = ((a + 180) % 360 + 360) % 360 - 180; return a === -180 ? 180 : a; }
 
-export const AUTOPILOT_BEAM_SNAP_MIN = 80;
-export const AUTOPILOT_BEAM_SNAP_MAX = 100;
-export { autopilotSnapTarget } from './boat-draw.js';
+export { BEST_VMG_DOWNWIND_DEG, BEST_VMG_UPWIND_DEG, autopilotSnapTarget } from './boat-draw.js';
 
 export class Boat{
 
@@ -250,8 +254,9 @@ export class Boat{
     this.autopilot_heading_target = 0;
     this.autopilot_heading_input = 0;
 
-    this.autopilot_heading_best_vmg_1 = 50;
-    this.autopilot_heading_best_vmg_2 = 160;
+    // Named best-VMG constants (boat-draw.js). Not a polar lookup.
+    this.autopilot_heading_best_vmg_1 = BEST_VMG_UPWIND_DEG;
+    this.autopilot_heading_best_vmg_2 = BEST_VMG_DOWNWIND_DEG;
 
     this.autopilot_compensator_p = 0;
     this.autopilot_compensator_i = 0;
@@ -827,8 +832,7 @@ export class Boat{
   _finishPenaltyTurn() {
     const turn = this.penalty_turn;
     this.penalty_turn = null;
-    let target = -(this.wind_direction - turn.startHeading * 180 / Math.PI + 90);
-    target = ((target + 180) % 360 + 360) % 360 - 180;
+    const target = penaltyTurnExitTarget(this.wind_direction, turn.startHeading);
     this.autopilot_heading_target = target;
     let error = -(target + this.twa);
     error = ((error + 180) % 360 + 360) % 360 - 180;
@@ -971,12 +975,15 @@ export class Boat{
 
   input_autopilot_enabled_toggle(){
     this._cancelPenaltyTurn()
-
-    this.autopilot_heading_target = autopilotSnapTarget(this.autopilot_heading_target, this.autopilot_heading_best_vmg_1, this.autopilot_heading_best_vmg_2)
-
+    // The dashed guide's snap of the current autopilot angle, engaged or not.
+    this.autopilot_heading_target = autopilotGuideTarget({
+      ap: 0,
+      aht: this.autopilot_heading_target,
+      twa: this.twa,
+      bv1: this.autopilot_heading_best_vmg_1,
+      bv2: this.autopilot_heading_best_vmg_2,
+    });
     this.autopilot_enabled = true;
-
-
   }  
   input_autopilot_tack_toggle(){
     this._cancelPenaltyTurn()
