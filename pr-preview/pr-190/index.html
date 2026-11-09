@@ -911,6 +911,31 @@
         visibility: visible;
         transition: transform 0.2s ease;
       }
+      /* Right-edge swipe strip. 16px, inside the safe-area inset, and only
+         in the gap between the top-bar / minimap / leaderboard and the steer
+         zones, so those controls stay reachable. Hidden on desktop.
+         ?settingsEdge=1 adds the yellow outline for screenshots. */
+      #settings_edge { display: none; }
+      .bp-touch #settings_edge {
+        display: block; position: fixed; z-index: var(--sz-z-chrome);
+        right: env(safe-area-inset-right); width: 16px; box-sizing: border-box;
+        top: calc(var(--m-top) + 104px); bottom: var(--touch-panel-h);
+        touch-action: none; background: transparent;
+      }
+      .bp-phone-landscape #settings_edge { top: var(--m-top); }
+      .bp-phone-landscape body.touch-on #settings_edge {
+        bottom: calc(var(--tc-steer-h) + 24px + env(safe-area-inset-bottom));
+      }
+      .bp-tablet #settings_edge {
+        top: calc(var(--m-top) + 10px + 40vh);
+        bottom: calc(var(--tz-h) + 24px + env(safe-area-inset-bottom));
+      }
+      .bp-phone:not(.bp-phone-landscape) body:not(.touch-on) #settings_edge,
+      .bp-phone-landscape body:not(.touch-on) #settings_edge,
+      .bp-tablet body:not(.touch-on) #settings_edge { bottom: env(safe-area-inset-bottom); }
+      .bp-touch #settings_edge.settings-edge-debug {
+        background: rgba(255, 45, 120, 0.55); box-shadow: inset 0 0 0 2px #ff2d78;
+      }
       .bp-touch #settings br {
         display: none;
       }
@@ -1432,7 +1457,7 @@
 
     </style>
   
-    <script type="module" crossorigin src="/fields/pr-preview/pr-190/assets/index-BwxRpRht.js"></script>
+    <script type="module" crossorigin src="/fields/pr-preview/pr-190/assets/index-BaRQppGo.js"></script>
   </head>
   <body>
 
@@ -1529,6 +1554,7 @@
         <div id="chat_status" aria-live="polite"></div>
       </div>
     </div>
+    <div id="settings_edge" aria-hidden="true"></div>
     <button id="settings_toggle" type="button" aria-controls="settings" aria-expanded="false" aria-label="Settings">☰</button>
     <div id="settings_backdrop" hidden></div>
     <div id="settings" class="sz-panel" data-tab="player">
