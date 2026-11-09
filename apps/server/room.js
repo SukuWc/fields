@@ -589,11 +589,14 @@ export class Room {
       const color = Number.isInteger(c.color) && c.color >= 0 && c.color <= 0xffffff ? c.color : undefined;
       // A room-wide restart clears ownership then respawns after the scenario's
       // first ticks. Spawning in that window would orphan the mid-restart boat
-      // when _respawnDue runs; record the join as the pending respawn instead.
+      // when _respawnDue runs. The page shows Join again until the boats come
+      // back, so a spawn while this client already has boats queued is that
+      // re-join: leave the queue alone (appending duplicates a kept boat;
+      // replacing would drop a second one). A spectator with nothing queued
+      // records the one new boat.
       if (this._respawn) {
         const pending = this._respawn.get(client) || [];
-        if (pending.length >= MAX_BOATS_PER_CLIENT) return { error: 'at most ' + MAX_BOATS_PER_CLIENT + ' boats per client' };
-        this._respawn.set(client, [...pending, { name, color }]);
+        if (pending.length === 0) this._respawn.set(client, [{ name, color }]);
         return { ok: true, pending: true };
       }
       const list = this.owned.get(client) || [];
