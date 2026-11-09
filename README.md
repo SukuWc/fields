@@ -141,7 +141,7 @@ Last updated: 2026-11-08
 - [ ] Crash recovery
 - [ ] Spectator mode
 - [x] Hamburger settings menu on phones and touch screens: [#29](https://github.com/SukuWc/fields/pull/29)
-- [x] Settings edge swipe: on phones and tablets a 16 px strip on the right, inside the safe-area inset and clear of the top bar, minimap, leaderboard and steer zones. An inward swipe opens the drawer with the finger; a swipe back toward the edge closes it. The menu button and backdrop tap still close it. Touches on the strip do not pan the race view. Desktop is unchanged
+- [x] Settings edge swipe: on phones and tablets a 16 px strip on the right, inside the safe-area inset and clear of the top bar, minimap, leaderboard and steer zones. An inward swipe opens the drawer with the finger; a swipe back toward the edge closes it. The menu button and backdrop tap still close it. Touches on the strip do not pan the race view. Desktop is unchanged: [#191](https://github.com/SukuWc/fields/pull/191)
 - [x] Boat 1 touch controls in the bottom half of the screen: [#30](https://github.com/SukuWc/fields/pull/30)
 - [x] Touch controls panel 30% shorter (35% of the screen): [#37](https://github.com/SukuWc/fields/pull/37)
 - [x] Desktop Touch controls actually hide: the overlay stylesheet was forcing the on-screen buttons visible after the checkbox turned them off. Unchecking Player → Touch controls removes the buttons and their hit areas; the choice is saved and is not put back on resize. On a wide screen with the box on, the buttons sit above the instrument panel and clear of the minimap and chat. Phones and tablets are unchanged, and Classic is not back: [#188](https://github.com/SukuWc/fields/pull/188)
