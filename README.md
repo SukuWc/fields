@@ -134,7 +134,7 @@ Last updated: 2026-11-09
 - [ ] Incident log (partial: [#12](https://github.com/SukuWc/fields/pull/12) stores contact incidents and a FAULT badge)
 - [ ] Rule-stack labels (partial: [#12](https://github.com/SukuWc/fields/pull/12) shows the active rule and inhibited rules)
 - [ ] Right-of-way outlines setting (off by default): opponents inside the 12 m rule gate get a red (you keep clear), green (you have right of way) or yellow (Rule 15, room, both keep clear) hull outline: [#138](https://github.com/SukuWc/fields/pull/138)
-- [ ] Right-of-way lines setting (on by default): player setting to hide the red/green rule ribbon between boats: [#PR](https://github.com/SukuWc/fields/pulls)
+- [ ] Right-of-way lines setting (on by default): player setting to hide the red/green rule ribbon between boats: [#192](https://github.com/SukuWc/fields/pull/192)
 
 ### 6. Closed beta polish
 - [ ] Remove the two hardcoded collision test circles (r=0.5 m and r=5 m) from the physics world: [#128](https://github.com/SukuWc/fields/pull/128)
