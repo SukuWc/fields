@@ -105,10 +105,18 @@ const tex = () => ({ image: { data: new Uint8Array(0) } });
   for (let i = 0; i < 40 && ownA.at(-1).length !== 2; i++) await sleep(50);
   check('a client may own a second boat; a third is refused', r2.id && r2.id !== again.id && ownA.at(-1).length === 2 && r3.error && /at most 2/.test(r3.error), JSON.stringify([r2, r3]));
   check('two own boats bind two players', binds.at(-1) === 2, JSON.stringify(binds));
+  // The steer check above left helm held on the server clock. Helm turns the
+  // autopilot off, and with it off each physics step rewrites the heading
+  // target to −TWA, so boat 0's target moves during the async tack below
+  // even though that command never touches it. Release the helm and engage
+  // the autopilot so boat 0's target is latched; the tack of boat 1 must
+  // flip only boat 1.
+  A.tick({ dt: 1 / 30, held: [], present: true, view });
+  await A.command({ type: 'autopilot', boat: 0 });
   const before = [byId(again.id).autopilot_heading_target, byId(r2.id).autopilot_heading_target];
   await A.command({ type: 'tack', boat: 1 });
   const after = [byId(again.id).autopilot_heading_target, byId(r2.id).autopilot_heading_target];
-  check('boat 1 commands hit the second boat only', after[0] === before[0] && after[1] === -before[1] && before[1] !== 0, JSON.stringify([before, after]));
+  check('boat 1 commands hit the second boat only', byId(again.id).autopilot_enabled && after[0] === before[0] && after[1] === -before[1] && before[1] !== 0, JSON.stringify([before, after]));
   await A.command({ type: 'restart', scenario: 0 });
   for (let i = 0; i < 60 && !(ownA.at(-1).length === 2 && ownA.at(-1).every((b) => b.id !== again.id && b.id !== r2.id)); i++) await sleep(50);
   check('a restart keeps both boats of the client, in order', ownA.at(-1).length === 2 && ownA.at(-1).map((b) => b.name).join() === 'A,A2', JSON.stringify(ownA.at(-1)));
