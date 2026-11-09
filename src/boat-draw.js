@@ -10,9 +10,8 @@
 // state s: x, y (boat), px, py, pa (physics body position and angle), ha
 //   (hull_angle), awa, tw (smoothed true wind direction, rad), ap (autopilot on),
 //   wd (wind_direction), aht (autopilot heading target), ra (rudder angle),
-//   psh (penalty-turn start heading, rad; present only while a Q/E circle
-//   is in progress), mba, jba (drawn boom angles), mf, jf (main and jib flap
-//   amounts), ph (flap phase), f (forces: [px, py, vx, vy, ...]).
+//   mba, jba (drawn boom angles), mf, jf (main and jib flap amounts), ph
+//   (flap phase), f (forces: [px, py, vx, vy, ...]).
 // def d: rp, rl (rudder position, length), cp, cl (centreboard), mle, mbl
 //   (main leading edge, boom length), jle, jbl (jib).
 export const SAIL_FLAP_AMP_M = 0.12;
@@ -78,13 +77,31 @@ function sail(s, lead, length, boomAngle, fat) {
   return p;
 }
 
-// Autopilot engage snap (Space). t = signed heading target (−TWA convention):
-// |t| in 80..100 (inclusive) → ±90; else ±bv1 (close-hauled) when |t| < 90,
-// ±bv2 (run) otherwise.
-export function autopilotSnapTarget(t, bv1 = 50, bv2 = 160) {
-  const a = Math.abs(t), sg = t < 0 ? -1 : 1;
-  if (a >= 80 && a <= 100) return sg * 90;
-  return sg * (a < 90 ? bv1 : bv2);
+// Best-VMG true-wind angles for the autopilot snap. The sim has no runtime
+// polar: nothing searches boat speed × cos(TWA) for an optimum. 50° is the
+// measured upwind VMG angle in dev mode (leaderboard.js BEAT_ANGLE_DEG).
+// 160° is the downwind angle this autopilot has always snapped to. 90° is
+// a beam reach.
+export const BEST_VMG_UPWIND_DEG = 50;
+export const BEST_VMG_DOWNWIND_DEG = 160;
+export const AUTOPILOT_BEAM_DEG = 90;
+
+// Space snap. t is the signed autopilot angle (−TWA; + = starboard tack).
+// The lock is the nearest of {upwind best-VMG, beam, downwind best-VMG} on
+// the same tack. A tie (exactly halfway) goes to the larger absolute angle,
+// the downwind side of the pair. Defaults are the constants above; a boat
+// can pass its own best-VMG angles. t = 0 (and any non-negative) is starboard.
+export function autopilotSnapTarget(t, bv1 = BEST_VMG_UPWIND_DEG, bv2 = BEST_VMG_DOWNWIND_DEG) {
+  if (!Number.isFinite(t)) return t;
+  const sg = t < 0 ? -1 : 1;
+  const a = Math.abs(t);
+  const cands = [Math.abs(bv1), AUTOPILOT_BEAM_DEG, Math.abs(bv2)];
+  let best = cands[0], bestD = Math.abs(a - best);
+  for (let i = 1; i < cands.length; i++) {
+    const c = cands[i], d = Math.abs(a - c);
+    if (d < bestD || (d === bestD && c > best)) { best = c; bestD = d; }
+  }
+  return sg * best;
 }
 function wrap180(x) { x = ((x + 180) % 360 + 360) % 360 - 180; return x; }
 
@@ -97,18 +114,19 @@ export function penaltyTurnExitTarget(windFromDeg, startHeadingRad) {
   return target;
 }
 
-// Signed target (−TWA) the dashed guide shows, and that the next lock uses.
-//   penalty circle: penaltyTurnExitTarget (the circle's own engage, not Space)
-//   autopilot on: the target it is already holding. Not a fresh snap of the
-//     live TWA — Up/Down, a tack and the race bot all hold angles the snap
-//     buckets (50 / 90 / 160) do not.
-//   autopilot off: autopilotSnapTarget(aht). While disengaged the step sets
-//     aht to −TWA, and Space snaps that value, so the guide and the toggle
-//     read the same number. twa is only a fallback when aht is missing.
+// Dashed guide: the snap Space will lock, on or off. It is the nearest of
+// the three candidates to the current autopilot angle (aht), not the angle
+// itself, so the dashes are not a second copy of the solid line. They share
+// a direction only when aht is already that snap — which is also what Space
+// locks, so the two stay one value. twa is only a fallback when aht is missing.
+//
+// Q/E: while the circle runs the autopilot is off and aht tracks −TWA, so
+// the dashes follow the nearest snap of the live heading. They do not draw
+// the heading the circle will finish on. When it finishes, the solid line
+// is that exit heading and the dashes are the nearest snap of it (the next
+// Space press).
 export function autopilotGuideTarget(s) {
-  const bv1 = s.bv1 ?? 50, bv2 = s.bv2 ?? 160;
-  if (Number.isFinite(s.psh) && Number.isFinite(s.wd)) return penaltyTurnExitTarget(s.wd, s.psh);
-  if (s.ap) return s.aht;
+  const bv1 = s.bv1 ?? BEST_VMG_UPWIND_DEG, bv2 = s.bv2 ?? BEST_VMG_DOWNWIND_DEG;
   const cur = Number.isFinite(s.aht) ? s.aht : (Number.isFinite(s.twa) ? wrap180(-s.twa) : NaN);
   return autopilotSnapTarget(cur, bv1, bv2);
 }
@@ -174,10 +192,13 @@ export function boatGuides(s, d) {
   a.color = 0x556677;
   a.type = "autopilot";
   graphics.push(a);
-  // Dashed guide, longer than the solid target line: the heading the
-  // autopilot will lock to next (Space snap while off, the circle's exit
-  // heading during Q/E) and, while engaged, the target it is holding.
-  // World angle wd + target is the bow heading for that −TWA (bow = wd − TWA).
+  // Dashed guide, longer than the solid target line: the snap nearest the
+  // current autopilot angle (upwind best-VMG, beam, or downwind best-VMG on
+  // this tack). Space locks that same angle. The solid line is the current
+  // angle, so the two differ unless she is already on the snap. World angle
+  // wd + target is the bow heading for that −TWA (bow = wd − TWA).
+  // During a Q/E circle this is still the nearest snap of the live angle,
+  // not the heading the circle finishes on.
   const cur = autopilotGuideTarget(s);
   if (Number.isFinite(cur) && Number.isFinite(s.wd)) {
     const ang = (s.wd + cur) / 180 * Math.PI;

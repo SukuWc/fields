@@ -2,7 +2,7 @@
 // Dev mode (constant wind): the lock is a TWA, the guide is that TWA drawn
 // as a world heading. A few headings and winds, both tacks.
 import './dom-stub.mjs';
-import { autopilotGuideTarget, penaltyTurnExitTarget } from '../src/boat-draw.js';
+import { autopilotGuideTarget, autopilotSnapTarget, penaltyTurnExitTarget } from '../src/boat-draw.js';
 import { Boat } from '../src/boat.js';
 import { Map } from '../src/map.js';
 
@@ -70,49 +70,66 @@ for (const [name, wind, heading] of cases) {
   );
 }
 
-// While engaged the guide stays on the held target even when the live TWA
-// sits in a different snap bucket (mid-tack, or Up/Down off 50/90/160).
-{
-  const { boat, tick } = make(90, ha(90, -45));
-  for (let i = 0; i < 40; i++) tick();
-  boat.input_autopilot_enabled_toggle();
-  const locked = boat.wind_direction + boat.autopilot_heading_target;
-  boat.twa = -85;
+// Dashed line is the nearest of the three snaps to the current autopilot
+// angle, on either tack, engaged or not. Space locks that angle. It is not
+// the raw target, and a live TWA in another bucket does not move it.
+function solidDeg(boat) {
+  const g = boat.graphics_model_render().find((x) => x.type === 'autopilot');
+  return Math.atan2(g.y2 - g.y1, g.x2 - g.x1) * 180 / Math.PI;
+}
+for (const aht of [68, -68, 145, -145, 50, -90, 160]) {
+  const { boat, tick } = make(90, ha(90, -Math.sign(aht || 1) * Math.abs(aht)));
+  for (let i = 0; i < 20; i++) tick();
+  boat.autopilot_enabled = true;
+  boat.autopilot_heading_target = aht;
+  boat.twa = -aht + 30;
+  const snap = autopilotSnapTarget(aht, boat.autopilot_heading_best_vmg_1, boat.autopilot_heading_best_vmg_2);
+  const preview = previewDeg(boat);
+  const solid = solidDeg(boat);
+  const tack = aht < 0 ? 'port' : 'starboard';
   check(
-    'engaged: live TWA 85 does not pull the preview off the lock',
-    absDiff(previewDeg(boat), locked) < 1,
-    `preview ${previewDeg(boat).toFixed(2)}° lock ${locked.toFixed(2)}°`,
+    `${tack} aht ${aht}: dashes are the nearest snap, Space locks it`,
+    absDiff(preview, boat.wind_direction + snap) < 1 && absDiff(solid, boat.wind_direction + aht) < 1,
+    `preview ${preview.toFixed(1)}° solid ${solid.toFixed(1)}° snap ${snap}`,
   );
-  boat.autopilot_heading_target = 68;
-  boat.twa = -85;
-  const moved = boat.wind_direction + 68;
+  if (aht !== snap) check(`${tack} aht ${aht}: dashes are not the solid line`, absDiff(preview, solid) > 5);
+  const shown = preview;
+  boat.input_autopilot_enabled_toggle();
   check(
-    'engaged: non-snap target 68 is the preview, not the 90° re-snap',
-    absDiff(previewDeg(boat), moved) < 1,
-    `preview ${previewDeg(boat).toFixed(2)}°`,
+    `${tack} aht ${aht}: snap key locks the dashed angle`,
+    boat.autopilot_enabled && absDiff(boat.wind_direction + boat.autopilot_heading_target, shown) < 1
+      && boat.autopilot_heading_target === snap,
+    `locked ${boat.autopilot_heading_target} snap ${snap}`,
   );
 }
 
-// Q/E: the dashed line is the heading _finishPenaltyTurn will lock, not the
-// snap of wherever the bow is right now.
+// Q/E: the circle still finishes on the starting heading. While it turns,
+// aht tracks −TWA and the dashes are the nearest snap of that live angle,
+// not the exit heading. Afterwards the solid line is the exit and the
+// dashes are the nearest snap of it (the next Space press).
 {
   const { boat, tick } = make(90, ha(90, -50));
   for (let i = 0; i < 40; i++) tick();
   boat._startPenaltyTurn(1);
-  for (let i = 0; i < 8; i++) tick();
   const exit = penaltyTurnExitTarget(boat.wind_direction, boat.penalty_turn.startHeading);
+  const reach = ha(boat.wind_direction, -145);
+  boat.physics_model.setTransform(boat.physics_model.getPosition(), reach);
+  tick();
+  const liveSnap = autopilotSnapTarget(boat.autopilot_heading_target);
   const preview = previewDeg(boat);
-  const want = boat.wind_direction + exit;
   check(
-    'penalty circle: preview is the exit heading',
-    absDiff(preview, want) < 1,
-    `preview ${preview.toFixed(2)}° exit ${want.toFixed(2)}°`,
+    'penalty circle: dashes are the nearest snap of the live angle, not the exit heading',
+    !boat.autopilot_enabled && absDiff(preview, boat.wind_direction + liveSnap) < 1
+      && absDiff(preview, boat.wind_direction + exit) > 20,
+    `preview ${preview.toFixed(2)}° live snap ${liveSnap} exit ${exit.toFixed(2)} aht ${boat.autopilot_heading_target.toFixed(2)}`,
   );
   boat._finishPenaltyTurn();
+  const after = autopilotSnapTarget(boat.autopilot_heading_target);
   check(
-    'penalty circle: finishing locks that same target',
-    boat.autopilot_enabled && Math.abs(boat.autopilot_heading_target - exit) < 1e-9,
-    `aht ${boat.autopilot_heading_target} exit ${exit}`,
+    'penalty circle: finish locks the exit heading; dashes then snap that',
+    boat.autopilot_enabled && Math.abs(boat.autopilot_heading_target - exit) < 1e-9
+      && absDiff(previewDeg(boat), boat.wind_direction + after) < 1,
+    `aht ${boat.autopilot_heading_target} dashed snap ${after}`,
   );
 }
 

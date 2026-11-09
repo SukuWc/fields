@@ -51,7 +51,13 @@ function readoutFields(b) {
   if (Number.isFinite(b.rudder_angle)) o.rudder_deg = b.rudder_angle;
   return o;
 }
-import { autopilotGuideTarget, boatGuides, penaltyTurnExitTarget } from './boat-draw.js';
+import {
+  BEST_VMG_DOWNWIND_DEG,
+  BEST_VMG_UPWIND_DEG,
+  autopilotGuideTarget,
+  boatGuides,
+  penaltyTurnExitTarget,
+} from './boat-draw.js';
 
 // Lattice momentum per frame = sail reaction × SAIL_LATTICE_COUPLING.
 //
@@ -170,9 +176,7 @@ export const AUTOPILOT_HEADING_STEP_DEG = 1.5;
 export const AUTOPILOT_TURN_MAX_LEAD_DEG = 90;
 export function wrapDeg180(a){ a = ((a + 180) % 360 + 360) % 360 - 180; return a === -180 ? 180 : a; }
 
-export const AUTOPILOT_BEAM_SNAP_MIN = 80;
-export const AUTOPILOT_BEAM_SNAP_MAX = 100;
-export { autopilotSnapTarget } from './boat-draw.js';
+export { BEST_VMG_DOWNWIND_DEG, BEST_VMG_UPWIND_DEG, autopilotSnapTarget } from './boat-draw.js';
 
 export class Boat{
 
@@ -250,8 +254,9 @@ export class Boat{
     this.autopilot_heading_target = 0;
     this.autopilot_heading_input = 0;
 
-    this.autopilot_heading_best_vmg_1 = 50;
-    this.autopilot_heading_best_vmg_2 = 160;
+    // Named best-VMG constants (boat-draw.js). Not a polar lookup.
+    this.autopilot_heading_best_vmg_1 = BEST_VMG_UPWIND_DEG;
+    this.autopilot_heading_best_vmg_2 = BEST_VMG_DOWNWIND_DEG;
 
     this.autopilot_compensator_p = 0;
     this.autopilot_compensator_i = 0;
@@ -883,10 +888,6 @@ export class Boat{
       mf: flapScale, jf: this.jibFlap, ph: flapPhase, f,
       ...readoutFields(this),
     };
-    // Q/E circle: the dashed guide draws the heading the circle will lock
-    // (penaltyTurnExitTarget), which is not the live −TWA aht tracks while
-    // the autopilot is held off.
-    if (this.penalty_turn) s.psh = this.penalty_turn.startHeading;
     // CE / CLR application points for the debug overlay (boat-draw.js).
     if (this._sailCePoint
         && Number.isFinite(this._sailCePoint.x) && Number.isFinite(this._sailCePoint.y)) {
@@ -974,8 +975,7 @@ export class Boat{
 
   input_autopilot_enabled_toggle(){
     this._cancelPenaltyTurn()
-    // Same value the dashed guide shows while disengaged (no penalty): the
-    // snap of the tracked target, not a separate read of the live TWA.
+    // The dashed guide's snap of the current autopilot angle, engaged or not.
     this.autopilot_heading_target = autopilotGuideTarget({
       ap: 0,
       aht: this.autopilot_heading_target,
