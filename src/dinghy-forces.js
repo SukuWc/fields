@@ -7,14 +7,21 @@
 // boat speed as 0.3 m/s of wind, so upwind AWS — and therefore sail
 // force — is low. Callers pass both in m/s (apparentWindMs).
 //
-// One sail force:
+// Each sail, then the sum:
 //   F_N = ½ ρ_air A aws² C cos²(heel) · SAIL_FORCE_SCALE
-// The heel DOF takes the side component in newtons. The rigid body mass
-// is hull + crew in kilograms, so the hull integrates that same F_N.
-// applyForce is multiplied by FORCE_PASSES, therefore the vector passed
-// in is F_N / FORCE_PASSES (internalForcePerNewton). Foil lift and drag
-// are computed in src/foil.js and converted the same way. The lattice
-// wake stays on the legacy internal sail vector.
+// A and C belong to that sail. Both sails use the boat's apparent wind
+// (boat.js); each boom makes its own angle of attack. The areas add up
+// to sailArea, so a rig whose sails see the same coefficients produces
+// the calibrated total.
+// The heel DOF takes the sum of the side components in newtons (one
+// ceHeight, so the heeling moment is the sum of the two moments). The
+// rigid body mass is hull + crew in kilograms, and each sail is applied
+// at its own centre of effort, so the yaw moment is the rigid-body
+// moment of those two forces. applyForce is multiplied by FORCE_PASSES,
+// therefore each vector passed in is F_N / FORCE_PASSES
+// (internalForcePerNewton). Foil lift and drag are computed in src/foil.js
+// and converted the same way. The lattice wake stays on the legacy
+// internal vector of the sum, on the mainsail segment.
 //
 // The old split was sail_efficiency = 0.15/3 on the body only, with
 // sailForceToNewtons dividing it back out for heel. Those were not the
@@ -135,6 +142,101 @@ export function apparentWindMs(boatVel, windFromRad, twsMs) {
 // Dynamic pressure times area times heel factor, in newtons per unit C.
 export function sailDynamicNewtons(awsMs, heelK, area, scale = SAIL_FORCE_SCALE) {
   return 0.5 * RHO_AIR * area * awsMs * awsMs * heelK * scale;
+}
+
+// International 470 class association, "About the 470"
+// (https://www.470.org/en/about-the-470-2): mainsail 9.12 m², jib 3.58 m²,
+// stated total 12.70 m². The spinnaker (13.00 m²) is not part of this rig.
+// DINGHY_DEFAULTS.mainAreaFraction is this ratio. sailArea stays 7.06 m²
+// (ILCA 7), the area the polars and the full-hike wind were calibrated on;
+// only the split changes.
+export const CLASS_470_MAIN_M2 = 9.12;
+export const CLASS_470_JIB_M2 = 3.58;
+export const CLASS_470_MAIN_FRACTION = CLASS_470_MAIN_M2 / (CLASS_470_MAIN_M2 + CLASS_470_JIB_M2);
+
+// No jib-to-main slot factor. Gentry, "The Aerodynamics of Sail
+// Interaction" (Proceedings of the 3rd AIAA Symposium on the
+// Aero/Hydronautics of Sailing, 1971), showed the slot is not a Venturi
+// speed-up with one multiplier: the jib's upwash changes the main's
+// angle of attack, and that needs a flow model this rig does not have.
+// Both sails use the boat's one lift and drag table.
+
+export function sailAreas(p = DINGHY_DEFAULTS) {
+  const fraction = p.mainAreaFraction;
+  const main = p.sailArea * fraction;
+  return { main, jib: p.sailArea - main, fraction };
+}
+
+// Plan-view centre of area of a triangular sail: the centroid, the
+// average of tack, head and clew. A mainsail's head and tack are both
+// the mast in plan view, so the centroid is a third of the way from the
+// mast to the clew. Larsson & Eliasson, Principles of Yacht Design, take
+// that centre of area as the centre of effort for sail balance. Boom
+// angle 0 sheets the clew dead aft (body +Y). The lateral station is not
+// this centroid: boat.js adds ceLateralHeight·sinφ on top, the same
+// leeward offset for both sails.
+export const SAIL_CE_CHORD_FRACTION = 1 / 3;
+
+// Clew offset from the tack / gooseneck, body axes (+X to the side the
+// positive boom angle swings toward, +Y aft).
+export function clewOffset(boomLength, boomRad) {
+  return {
+    x: -Math.sin(boomRad) * boomLength,
+    y: Math.cos(boomRad) * boomLength,
+  };
+}
+
+// Body Y of the old single sail force. The drawn mast is forward of the
+// daggerboard, so the two triangle centroids put the area-weighted centre
+// ahead of the board. That is lee helm, and a close-hauled tack does not
+// get through the wind (scenario 4). The mainsail centre is shifted aft
+// by mainCeBalanceAft until, with both booms amidships, the area-weighted
+// centre is this station again.
+export const RIG_CE_Y = -0.05;
+
+export function mainCeLocalY(mastY, boomLength, boomRad, aft = 0) {
+  return mastY + Math.cos(boomRad) * boomLength * SAIL_CE_CHORD_FRACTION + aft;
+}
+
+// Metres to add to the mainsail centroid. Boom angle 0 (sheeted amidships).
+export function mainCeBalanceAft(mastY, mainBoom, tackY, jibBoom, fraction) {
+  const jib0 = jibCeLocalY(tackY, mastY, jibBoom, 0);
+  const main0 = mastY + mainBoom * SAIL_CE_CHORD_FRACTION;
+  return (RIG_CE_Y - (1 - fraction) * jib0) / fraction - main0;
+}
+
+// Jib head is at the mast (the forestay). Tack, head and clew are three
+// different plan points.
+export function jibCeLocalY(tackY, mastY, boomLength, boomRad) {
+  const clewY = tackY + Math.cos(boomRad) * boomLength;
+  return (tackY + mastY + clewY) / 3;
+}
+
+// Apparent-wind angle in the boat's convention: degrees, +/−180, 0 = from
+// the bow. `aw` is the from-vector from apparentWindMs. `hullAngleRad` is
+// the wrapped hull angle boat.js uses for this.awa.
+export function apparentWindAngleDeg(aw, hullAngleRad) {
+  let awa = Math.atan2(aw.y, aw.x) * 180 / Math.PI - hullAngleRad * 180 / Math.PI + 90;
+  if (awa > 180) awa -= 360;
+  if (awa < -180) awa += 360;
+  return awa;
+}
+
+// World-frame lift and drag of one sail. `sailK` is newtons per unit C in
+// the pre-applyFinite unit (sailDynamicNewtons × internalForcePerNewton).
+// Drag is down the apparent wind; lift is perpendicular, signed by AWA.
+export function sailLiftDrag(hullAngleRad, awaDeg, sailK, cl, cd) {
+  const awaRad = awaDeg * Math.PI / 180;
+  const drag = {
+    x: Math.cos(hullAngleRad + awaRad + Math.PI / 2) * sailK * cd,
+    y: Math.sin(hullAngleRad + awaRad + Math.PI / 2) * sailK * cd,
+  };
+  const sgn = Math.sign(awaDeg);
+  const lift = {
+    x: -sgn * Math.cos(hullAngleRad + awaRad) * sailK * cl,
+    y: -sgn * Math.sin(hullAngleRad + awaRad) * sailK * cl,
+  };
+  return { lift, drag };
 }
 
 export function frictionalDragArea(speedMs) {

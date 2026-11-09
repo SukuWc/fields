@@ -29,20 +29,24 @@
 // it at most CREW_RATE (fraction per second), so tacks take time. Fully
 // hiked and still overpowered, heel grows past the target.
 //
-// Sail force reduction: the sail sees only the wind component normal to the
+// Sail force reduction: each sail sees only the wind component normal to the
 // heeled mast, v·cos(phi), so dynamic pressure (and lift and drag at the
 // same angle of attack) scale with cos²(phi). Equivalently the projected
 // area seen by the horizontal wind is A·cos(phi) and the force on it tilts
 // out of the horizontal plane by another cos(phi). boat.js applies
-// heelForceFactor(phi) = cos²(phi) to lift and drag both, so propulsion,
-// side force and the lattice wake momentum (mainsail_force) all see it.
+// heelForceFactor(phi) = cos²(phi) to both sails' lift and drag, so
+// propulsion, the summed side force and the lattice wake momentum
+// (mainsail_force, the sum) all see it. The roll moment uses that summed
+// side force at this ceHeight.
 //
-// Top-down CE / CLR offsets (2D): sail force at sailCeOffsetX(phi) =
-// ceLateralHeight·sin(phi) to leeward; centreboard at clrOffsetX(phi) =
-// −clrDepth·sin(phi) to windward. Heel roll still uses ceHeight (CE above
-// CLR). Both apply points go through planck applyForce (real yaw / weather
-// helm). ceLateralHeight is tuned for slight weather helm with CLR on;
-// it is not forced to equal ceHeight − clrDepth.
+// Top-down CE / CLR offsets (2D): each sail's force at sailCeOffsetX(phi) =
+// ceLateralHeight·sin(phi) to leeward (same lateral station; the sails
+// differ fore-and-aft); centreboard at clrOffsetX(phi) = −clrDepth·sin(phi)
+// to windward. Heel roll still uses ceHeight (CE above CLR) on the summed
+// side force. Each sail's apply point goes through planck applyForce, so
+// the yaw moment is the two forces at their own centres. ceLateralHeight
+// is tuned for slight weather helm with CLR on; it is not forced to equal
+// ceHeight − clrDepth.
 //
 // Capsize: past HEEL_CAPSIZE_DEG the heel is clamped there (roll rate
 // zeroed) and capsized = true; the flag clears once heel drops back below
@@ -63,7 +67,12 @@ export const RHO_AIR = 1.225;
 export const DINGHY_DEFAULTS = Object.freeze({
   boatMass: 59,          // kg, hull + rig ("displacement" for the hull GZ)
   crewMass: 80,          // kg
-  sailArea: 7.06,        // m²
+  sailArea: 7.06,        // m², ILCA 7 total. Main + jib keep this sum.
+  // Mainsail's share of sailArea. International 470 (470 Sailing,
+  // https://www.470.org/en/about-the-470-2): mainsail 9.12 m², jib 3.58 m²
+  // (12.70 m²; spinnaker excluded). Equals CLASS_470_MAIN_FRACTION in
+  // dinghy-forces.js. The jib is the rest.
+  mainAreaFraction: 9.12 / (9.12 + 3.58),
   ceHeight: 2.5,         // m, CE above CLR (roll lever only)
   clrDepth: 0.5,         // m, CLR below waterline; lateral CLR = −clrDepth·sinφ
   // Top-down CE height above waterline. Smaller than (ceHeight − clrDepth) so

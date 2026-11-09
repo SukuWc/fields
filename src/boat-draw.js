@@ -11,7 +11,9 @@
 //   (hull_angle), awa, tw (smoothed true wind direction, rad), ap (autopilot on),
 //   wd (wind_direction), aht (autopilot heading target), ra (rudder angle),
 //   mba, jba (drawn boom angles), mf, jf (main and jib flap amounts), ph
-//   (flap phase), f (forces: [px, py, vx, vy, ...]).
+//   (flap phase), f (forces: [px, py, vx, vy, ...]),
+//   ce (force-weighted rig centre), mce/jce (per-sail centres),
+//   ml/md (mainsail lift and drag), jl/jd (jib lift and drag).
 // def d: rp, rl (rudder position, length), cp, cl (centreboard), mle, mbl
 //   (main leading edge, boom length), jle, jbl (jib).
 export const SAIL_FLAP_AMP_M = 0.12;
@@ -89,6 +91,33 @@ export function autopilotSnapTarget(t, bv1 = 50, bv2 = 160) {
 function wrap180(x) { x = ((x + 180) % 360 + 360) % 360 - 180; return x; }
 export const AUTOPILOT_PREVIEW_LENGTH = 14;
 
+// Per-sail force overlay. Distinct from the green generic arrows, the
+// magenta rig CE, the cyan CLR and the blue hull-drag cross.
+export const MAIN_LIFT_COLOR = 0xffe14a;
+export const MAIN_DRAG_COLOR = 0xff5a1f;
+export const JIB_LIFT_COLOR = 0x3dfff2;
+export const JIB_DRAG_COLOR = 0xc56bff;
+export const MAIN_CE_COLOR = 0xfff1a8;
+export const JIB_CE_COLOR = 0xe0b0ff;
+
+function forceCross(graphics, x, y, m, color) {
+  graphics.push({ color, type: "force", x1: x - m, y1: y, x2: x + m, y2: y });
+  graphics.push({ color, type: "force", x1: x, y1: y - m, x2: x, y2: y + m });
+}
+
+function forceArrow(graphics, x, y, vec, color, scale) {
+  if (!Array.isArray(vec) || vec.length < 2 || !Number.isFinite(vec[0]) || !Number.isFinite(vec[1])) return;
+  graphics.push({ color, type: "force", x1: x, y1: y, x2: x + vec[0] / scale, y2: y + vec[1] / scale });
+}
+
+// Lift and drag from one sail's centre, plus a small CE cross.
+function sailForceOverlay(graphics, ce, lift, drag, liftColor, dragColor, ceColor) {
+  if (!Array.isArray(ce) || ce.length < 2 || !Number.isFinite(ce[0]) || !Number.isFinite(ce[1])) return;
+  forceCross(graphics, ce[0], ce[1], 0.22, ceColor);
+  forceArrow(graphics, ce[0], ce[1], lift, liftColor, 10);
+  forceArrow(graphics, ce[0], ce[1], drag, dragColor, 10);
+}
+
 export function boatGuides(s, d) {
   const graphics = [];
   const f = s.f || [];
@@ -97,11 +126,19 @@ export function boatGuides(s, d) {
   }
   // Sail CE (magenta) and CLR (cyan): markers at the force application
   // points plus distinct arrows. Type "force" so show_forces gates them.
+  // Mainsail lift (yellow), mainsail drag (orange-red), jib lift (mint),
+  // jib drag (purple), each from its own CE cross.
+  sailForceOverlay(graphics, s.mce, s.ml, s.md, MAIN_LIFT_COLOR, MAIN_DRAG_COLOR, MAIN_CE_COLOR);
+  sailForceOverlay(graphics, s.jce, s.jl, s.jd, JIB_LIFT_COLOR, JIB_DRAG_COLOR, JIB_CE_COLOR);
+  // Rig CE (magenta). The combined sail arrow is only the fallback for a
+  // frame that has no per-sail forces; otherwise it would sit on top of
+  // the four component arrows.
   if (Array.isArray(s.ce) && s.ce.length >= 2 && Number.isFinite(s.ce[0]) && Number.isFinite(s.ce[1])) {
     const cx = s.ce[0], cy = s.ce[1], m = 0.35;
     graphics.push({ color: 0xff66cc, type: "force", x1: cx - m, y1: cy, x2: cx + m, y2: cy });
     graphics.push({ color: 0xff66cc, type: "force", x1: cx, y1: cy - m, x2: cx, y2: cy + m });
-    if (Array.isArray(s.sf) && s.sf.length >= 2 && Number.isFinite(s.sf[0]) && Number.isFinite(s.sf[1])) {
+    const split = Array.isArray(s.mce) || Array.isArray(s.jce);
+    if (!split && Array.isArray(s.sf) && s.sf.length >= 2 && Number.isFinite(s.sf[0]) && Number.isFinite(s.sf[1])) {
       graphics.push({ color: 0xffaa00, type: "force",
         x1: cx, y1: cy, x2: cx + s.sf[0] / 8, y2: cy + s.sf[1] / 8 });
     }

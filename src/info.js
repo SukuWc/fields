@@ -43,5 +43,7 @@ export function boatTelemetryHtml(t) {
   if ('cd' in t) h += 'Cd: ' + Math.floor(t.cd * 10) / 10 + '<br>';
   if ('cl' in t) h += 'Cl: ' + Math.floor(t.cl * 10) / 10 + '<br>';
   if ('power' in t) h += 'Power: ' + Math.floor(t.power * 10) / 10 + '<br>';
+  if ('mainN' in t) h += 'Main: ' + Math.floor(t.mainN) + ' N<br>';
+  if ('jibN' in t) h += 'Jib: ' + Math.floor(t.jibN) + ' N<br>';
   return h;
 }

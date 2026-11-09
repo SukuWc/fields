@@ -740,7 +740,7 @@ export function buildScenarios(sim) {
     "One Laser-like dinghy close-hauled on starboard autopilot. Wind ramps from "
     + CE_OFFSET_DEMO.from + " to " + CE_OFFSET_DEMO.to + " m/s by "
     + CE_OFFSET_DEMO.step + " every " + CE_OFFSET_DEMO.holdS
-    + " s. The sail force is applied at ceLateralHeight·sin(heel) to leeward and the centreboard at −clrDepth·sin(heel) to windward, so the autopilot needs a slight steady rudder angle (weather helm). Turn on Forces to see the CE (magenta) and CLR (cyan) crosses. Readout: HEEL, HIKE, SAIL %, RUD."
+    + " s. Mainsail and jib forces are each applied at their own centre of effort, ceLateralHeight·sin(heel) to leeward, and the centreboard at −clrDepth·sin(heel) to windward, so the autopilot needs a slight steady rudder angle (weather helm). Turn on Forces to see mainsail lift and drag, jib lift and drag, a CE cross per sail, the rig CE (magenta) and the CLR (cyan). Readout: HEEL, HIKE, SAIL %, RUD."
   );
   scenarios[25].frames[0] = () => {
     sim.command({ type: 'wind', angle: 90, speed: CE_OFFSET_DEMO.from });
