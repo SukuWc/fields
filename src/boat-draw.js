@@ -10,8 +10,9 @@
 // state s: x, y (boat), px, py, pa (physics body position and angle), ha
 //   (hull_angle), awa, tw (smoothed true wind direction, rad), ap (autopilot on),
 //   wd (wind_direction), aht (autopilot heading target), ra (rudder angle),
-//   mba, jba (drawn boom angles), mf, jf (main and jib flap amounts), ph
-//   (flap phase), f (forces: [px, py, vx, vy, ...]).
+//   psh (penalty-turn start heading, rad; present only while a Q/E circle
+//   is in progress), mba, jba (drawn boom angles), mf, jf (main and jib flap
+//   amounts), ph (flap phase), f (forces: [px, py, vx, vy, ...]).
 // def d: rp, rl (rudder position, length), cp, cl (centreboard), mle, mbl
 //   (main leading edge, boom length), jle, jbl (jib).
 export const SAIL_FLAP_AMP_M = 0.12;
@@ -79,14 +80,38 @@ function sail(s, lead, length, boomAngle, fat) {
 
 // Autopilot engage snap (Space). t = signed heading target (−TWA convention):
 // |t| in 80..100 (inclusive) → ±90; else ±bv1 (close-hauled) when |t| < 90,
-// ±bv2 (run) otherwise. Pure; shared by Boat.input_autopilot_enabled_toggle
-// and the dashed preview line so they cannot diverge.
+// ±bv2 (run) otherwise.
 export function autopilotSnapTarget(t, bv1 = 50, bv2 = 160) {
   const a = Math.abs(t), sg = t < 0 ? -1 : 1;
   if (a >= 80 && a <= 100) return sg * 90;
   return sg * (a < 90 ? bv1 : bv2);
 }
 function wrap180(x) { x = ((x + 180) % 360 + 360) % 360 - 180; return x; }
+
+// Heading the Q/E circle locks when it finishes, as a signed target (−TWA).
+// The starting hull angle (radians, bow on local −Y) against the current
+// wind-from direction. Same expression Boat._finishPenaltyTurn used to inline.
+export function penaltyTurnExitTarget(windFromDeg, startHeadingRad) {
+  let target = -(windFromDeg - startHeadingRad * 180 / Math.PI + 90);
+  target = ((target + 180) % 360 + 360) % 360 - 180;
+  return target;
+}
+
+// Signed target (−TWA) the dashed guide shows, and that the next lock uses.
+//   penalty circle: penaltyTurnExitTarget (the circle's own engage, not Space)
+//   autopilot on: the target it is already holding. Not a fresh snap of the
+//     live TWA — Up/Down, a tack and the race bot all hold angles the snap
+//     buckets (50 / 90 / 160) do not.
+//   autopilot off: autopilotSnapTarget(aht). While disengaged the step sets
+//     aht to −TWA, and Space snaps that value, so the guide and the toggle
+//     read the same number. twa is only a fallback when aht is missing.
+export function autopilotGuideTarget(s) {
+  const bv1 = s.bv1 ?? 50, bv2 = s.bv2 ?? 160;
+  if (Number.isFinite(s.psh) && Number.isFinite(s.wd)) return penaltyTurnExitTarget(s.wd, s.psh);
+  if (s.ap) return s.aht;
+  const cur = Number.isFinite(s.aht) ? s.aht : (Number.isFinite(s.twa) ? wrap180(-s.twa) : NaN);
+  return autopilotSnapTarget(cur, bv1, bv2);
+}
 export const AUTOPILOT_PREVIEW_LENGTH = 14;
 
 export function boatGuides(s, d) {
@@ -149,11 +174,13 @@ export function boatGuides(s, d) {
   a.color = 0x556677;
   a.type = "autopilot";
   graphics.push(a);
-  // Snap preview: dashed, longer than the target line, where Space would put
-  // the target from the current TWA (aht tracks −TWA while the autopilot is off).
-  const cur = Number.isFinite(s.twa) ? wrap180(-s.twa) : s.aht;
-  if (Number.isFinite(cur)) {
-    const ang = (s.wd + autopilotSnapTarget(cur, s.bv1 ?? 50, s.bv2 ?? 160)) / 180 * Math.PI;
+  // Dashed guide, longer than the solid target line: the heading the
+  // autopilot will lock to next (Space snap while off, the circle's exit
+  // heading during Q/E) and, while engaged, the target it is holding.
+  // World angle wd + target is the bow heading for that −TWA (bow = wd − TWA).
+  const cur = autopilotGuideTarget(s);
+  if (Number.isFinite(cur) && Number.isFinite(s.wd)) {
+    const ang = (s.wd + cur) / 180 * Math.PI;
     const ux = Math.cos(ang), uy = Math.sin(ang);
     for (let k = 0; k < AUTOPILOT_PREVIEW_LENGTH; k += 1.2) {
       const e = Math.min(AUTOPILOT_PREVIEW_LENGTH, k + 0.7);

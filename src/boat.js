@@ -51,7 +51,7 @@ function readoutFields(b) {
   if (Number.isFinite(b.rudder_angle)) o.rudder_deg = b.rudder_angle;
   return o;
 }
-import { boatGuides, autopilotSnapTarget } from './boat-draw.js';
+import { autopilotGuideTarget, boatGuides, penaltyTurnExitTarget } from './boat-draw.js';
 
 // Lattice momentum per frame = sail reaction × SAIL_LATTICE_COUPLING.
 //
@@ -827,8 +827,7 @@ export class Boat{
   _finishPenaltyTurn() {
     const turn = this.penalty_turn;
     this.penalty_turn = null;
-    let target = -(this.wind_direction - turn.startHeading * 180 / Math.PI + 90);
-    target = ((target + 180) % 360 + 360) % 360 - 180;
+    const target = penaltyTurnExitTarget(this.wind_direction, turn.startHeading);
     this.autopilot_heading_target = target;
     let error = -(target + this.twa);
     error = ((error + 180) % 360 + 360) % 360 - 180;
@@ -884,6 +883,10 @@ export class Boat{
       mf: flapScale, jf: this.jibFlap, ph: flapPhase, f,
       ...readoutFields(this),
     };
+    // Q/E circle: the dashed guide draws the heading the circle will lock
+    // (penaltyTurnExitTarget), which is not the live −TWA aht tracks while
+    // the autopilot is held off.
+    if (this.penalty_turn) s.psh = this.penalty_turn.startHeading;
     // CE / CLR application points for the debug overlay (boat-draw.js).
     if (this._sailCePoint
         && Number.isFinite(this._sailCePoint.x) && Number.isFinite(this._sailCePoint.y)) {
@@ -971,12 +974,16 @@ export class Boat{
 
   input_autopilot_enabled_toggle(){
     this._cancelPenaltyTurn()
-
-    this.autopilot_heading_target = autopilotSnapTarget(this.autopilot_heading_target, this.autopilot_heading_best_vmg_1, this.autopilot_heading_best_vmg_2)
-
+    // Same value the dashed guide shows while disengaged (no penalty): the
+    // snap of the tracked target, not a separate read of the live TWA.
+    this.autopilot_heading_target = autopilotGuideTarget({
+      ap: 0,
+      aht: this.autopilot_heading_target,
+      twa: this.twa,
+      bv1: this.autopilot_heading_best_vmg_1,
+      bv2: this.autopilot_heading_best_vmg_2,
+    });
     this.autopilot_enabled = true;
-
-
   }  
   input_autopilot_tack_toggle(){
     this._cancelPenaltyTurn()

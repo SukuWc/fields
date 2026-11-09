@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-11-08
+Last updated: 2026-11-09
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -194,6 +194,7 @@ Last updated: 2026-11-08
 - [x] Sticky autopilot tacks and gybes: Left / Right turn the target with no angle limit (wraps through head-to-wind and dead downwind, target capped 90° ahead of the boat), Up / Down unchanged; sticky on by default: [#132](https://github.com/SukuWc/fields/pull/132)
 - [x] Autopilot beam-reach snap: engaging at |TWA| 80–100° (inclusive) jumps the target to exactly 90° on the same side; close-hauled / run snaps unchanged: [#133](https://github.com/SukuWc/fields/pull/133)
 - [x] Autopilot snap preview: always-on dashed line (longer than the target line) showing where Space would set the target; shared `autopilotSnapTarget` helper: [#135](https://github.com/SukuWc/fields/pull/135)
+- [x] Autopilot heading preview matches the lock: the dashed line is the target Space will snap to while the autopilot is off, the target it is already holding while on (tack, Up/Down, race bot), and the Q/E circle's exit heading, instead of re-snapping the live TWA
 
 ### Other
 - [x] SailZone logo: [#14](https://github.com/SukuWc/fields/pull/14)
