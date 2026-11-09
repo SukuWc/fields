@@ -173,7 +173,13 @@ export function buildGuides(state, statics, view) {
   if (state.mr) guides.push(...roomGuidesFromState(state.mr, 'markRoom', boats));
   if (state.pair) {
     const at = pairBoatsFromState(state.boats, statics.hulls);
-    for (const p of state.pair) guides.push(...pairGuidesFromState(p, at));
+    // Player setting "Right-of-way lines": off drops only the red/green ribbons
+    // (labels and stern marks stay). No view (scripts, tests): shown.
+    const lines = !view || view.show_row_lines !== false;
+    for (const p of state.pair) {
+      const g = pairGuidesFromState(p, at);
+      guides.push(...(lines ? g : g.filter((r) => r.type !== 'rule')));
+    }
   }
   if (state.mt) guides.push(...markTouchGuidesFromState(state.mt));
   if (state.cf) guides.push(...contactGuidesFromState(state.cf));
