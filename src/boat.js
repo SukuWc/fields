@@ -154,6 +154,10 @@ export const PENALTY_TURN_KP = 1.2;
 export const PENALTY_TURN_KD = 1.6;
 export const PENALTY_TURN_DONE_DEG = 2.5;
 export const PENALTY_TURN_DONE_RATE_DEG_S = 10;
+// Rudder kept on, in the direction still to turn, once the PD command drops
+// below this. The boom yaw moment otherwise balances a few degrees of
+// rudder and the circle parks just short of the start heading.
+export const PENALTY_TURN_FINISH_RUDDER = 6;
 
 
 
@@ -850,7 +854,18 @@ export class Boat{
       return this.rudder_angle;
     }
 
-    const yawCommand = PENALTY_TURN_KP * error - PENALTY_TURN_KD * rateDeg;
+    let yawCommand = PENALTY_TURN_KP * error - PENALTY_TURN_KD * rateDeg;
+    // Sail force on the boom leaves a yaw moment the old centreline CE did
+    // not. Near the end of the circle the D term flips the rudder every step,
+    // and the P term alone (about 3° at a 3° error) cannot beat that moment,
+    // so she parks a few degrees short and the turn never ends. Damping may
+    // shrink the command but not reverse it while she is outside the done
+    // window, and a few degrees of rudder stay on in the direction still to
+    // turn until she is inside it.
+    if (Math.abs(error) > PENALTY_TURN_DONE_DEG) {
+      if (yawCommand * error < 0) yawCommand = 0;
+      if (Math.abs(yawCommand) < PENALTY_TURN_FINISH_RUDDER) yawCommand = PENALTY_TURN_FINISH_RUDDER * Math.sign(error);
+    }
     let target = -yawCommand * (d < 0 ? -1 : 1);
     if (target > PENALTY_TURN_RUDDER_MAX) target = PENALTY_TURN_RUDDER_MAX;
     if (target < -PENALTY_TURN_RUDDER_MAX) target = -PENALTY_TURN_RUDDER_MAX;

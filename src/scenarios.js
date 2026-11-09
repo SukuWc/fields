@@ -198,8 +198,10 @@ export function buildScenarios(sim) {
     // 3.70 was the 139 kg crossing. With the rudder and board as real foils
     // she climbs onto the starboard layline higher and faster, so the
     // port boat starts further left and higher: she meets the hull once,
-    // after Rule 15 has expired.
-    sim.players.push(new Boat(sim.map, -26.5, 7.0, heading));
+    // after Rule 15 has expired. Boom application moved that layline about
+    // 0.4 m to leeward, so the port boat starts at y = 7.4 and still meets
+    // the hull once.
+    sim.players.push(new Boat(sim.map, -26.5, 7.4, heading));
   };
   // Autopilot on at frame 3 (the second Sim tick), after one physics step has
   // set each boat's twa. Frames 0-2 run in one tick before any physics step,
