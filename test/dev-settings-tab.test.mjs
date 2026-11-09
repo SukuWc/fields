@@ -87,7 +87,8 @@ test('Dev tab is a TOML editor and the old controls are not duplicated', () => {
   assert.doesNotMatch(player, /Boat trails/);
   assert.doesNotMatch(player, /Sticky autopilot/);
   assert.doesNotMatch(player, /Ghost boat/);
-  assert.match(player, /Right-of-way outlines/);
+  assert.match(player, /Right-of-way circles/);
+  assert.match(player, /id="show_row_outline"/);
   assert.match(player, /Touch controls/);
   assert.match(room, /id="room_config"/);
   assert.doesNotMatch(dev, /id="touch_layout"|Classic|devmode|windSpeed|simRes|id="room_config"/);

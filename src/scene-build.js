@@ -6,7 +6,7 @@
 // course.js, finish.js, boundary.js, rules.js, mark-touch.js); here they get
 // plain state instead of live objects.
 //
-// buildScene(state, statics, view) → { guides, bodies }
+// buildScene(state, statics, view) → { guides, bodies, hud, rowCircles? }
 import { unionMaskBorderLines, RefinementDomain } from './boltzmann.js';
 import { windArrowSegments } from './wind.js';
 import { boatGuides } from './boat-draw.js';
@@ -15,7 +15,7 @@ import { startGuidesFromState } from './start.js';
 import { courseGuidesFromState } from './course.js';
 import { finishGuidesFromState } from './finish.js';
 import { boundaryGuides } from './boundary.js';
-import { rowOutlineColors, rowPovId } from './row-outline.js';
+import { rowCircles, rowOutlineColors, rowPovId } from './row-outline.js';
 import {
   contactGuidesFromState,
   pairBoatsFromState,
@@ -201,15 +201,19 @@ export function buildGuides(state, statics, view) {
   return guides;
 }
 
-// { guides, bodies, hud } (hud: hud.js hudFromState, null without HUD state).
+// { guides, bodies, hud, rowCircles? } (hud: hud.js hudFromState, null without
+// HUD state). rowCircles is set only while show_row_outline is on.
 // ownId: this client's player boat in a server room (its readout), or null.
 export function buildScene(state, statics, view, ownId = null) {
   if (!state || !statics) return { guides: [], bodies: [], hud: null };
   const scene = { guides: buildGuides(state, statics, view), bodies: buildBodies(statics.bodies, state.bt), hud: state.hud ? hudFromState(state.hud, ownId, state.boats) : null };
-  // Right-of-way outlines: the player's boat by id (no owned boat: boat 0).
+  // Right-of-way circles: the player's boat by id (no owned boat: boat 0).
+  // Hull colours stay as they are. Only opponents with an active rule pair
+  // (inside the 12 m gate) are in the list.
   if (view && view.show_row_outline) {
     const me = rowPovId(ownId, state.boats);
-    scene.rowOutline = rowOutlineColors(me, state.pair, [...(state.br || []), ...(state.mr || [])]);
+    const colors = rowOutlineColors(me, state.pair, [...(state.br || []), ...(state.mr || [])]);
+    scene.rowCircles = rowCircles(colors, state.boats);
   }
   return scene;
 }

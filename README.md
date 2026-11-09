@@ -134,6 +134,7 @@ Last updated: 2026-11-09
 - [ ] Incident log (partial: [#12](https://github.com/SukuWc/fields/pull/12) stores contact incidents and a FAULT badge)
 - [ ] Rule-stack labels (partial: [#12](https://github.com/SukuWc/fields/pull/12) shows the active rule and inhibited rules)
 - [ ] Right-of-way outlines setting (off by default): opponents inside the 12 m rule gate get a red (you keep clear), green (you have right of way) or yellow (Rule 15, room, both keep clear) hull outline: [#138](https://github.com/SukuWc/fields/pull/138)
+- [ ] Right-of-way circles (player setting `show_row_outline`, off by default): hulls keep their normal colours. Opponents inside the 12 m rule gate get a 3 m circle, green when you have right of way, red when you keep clear, yellow when the call is transitional (Rule 15, room, both keep clear), drawn on the client from the snapshot in local, worker and remote modes: [#189](https://github.com/SukuWc/fields/pull/189)
 - [ ] Right-of-way lines setting (on by default): player setting to hide the red/green rule ribbon between boats: [#192](https://github.com/SukuWc/fields/pull/192)
 
 ### 6. Closed beta polish
@@ -196,6 +197,7 @@ Last updated: 2026-11-09
 - [x] Sticky autopilot tacks and gybes: Left / Right turn the target with no angle limit (wraps through head-to-wind and dead downwind, target capped 90° ahead of the boat), Up / Down unchanged; sticky on by default: [#132](https://github.com/SukuWc/fields/pull/132)
 - [x] Autopilot beam-reach snap: engaging at |TWA| 80–100° (inclusive) jumps the target to exactly 90° on the same side; close-hauled / run snaps unchanged: [#133](https://github.com/SukuWc/fields/pull/133)
 - [x] Autopilot snap preview: always-on dashed line (longer than the target line) showing where Space would set the target; shared `autopilotSnapTarget` helper: [#135](https://github.com/SukuWc/fields/pull/135)
+- [x] Autopilot snap preview is the nearest of upwind best-VMG (50°), beam (90°) and downwind best-VMG (160°) on the current tack — fixed angles, no runtime polar — and Space locks that same angle. The solid line stays the current autopilot angle, so the dashes are not a second copy of it. During a Q/E circle the dashes follow the nearest snap of the live heading; the circle itself still finishes on the starting heading: [#190](https://github.com/SukuWc/fields/pull/190)
 
 ### Other
 - [x] SailZone logo: [#14](https://github.com/SukuWc/fields/pull/14)

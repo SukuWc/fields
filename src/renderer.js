@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
-import { ROW_NONE } from './row-outline.js';
 import {
   GHOST_AHEAD_S,
   GHOST_MAX_AHEAD_S,
@@ -694,7 +693,7 @@ function renderGhosts() {
 // (statics.hulls by boat id at the frame pose, ghostOutlines at t = 0)
 // as a triangle fan; Box2D hulls are convex. Pooled THREE.Meshes.
 const hullFillPool = [];
-function renderHullFills(white = false) {
+function renderHullFills() {
   let k = 0;
   const list = ghostOutlines(_ghostBoats, _ghostHulls, 0);
   for (const g of list) {
@@ -720,10 +719,10 @@ function renderHullFills(white = false) {
     }
     mesh.geometry.setDrawRange(0, o / 3);
     mesh.geometry.attributes.position.needsUpdate = true;
-    // Right-of-way outline mode: every hull white.
-    const rgb = white ? [1, 1, 1] : trailColorOf(g.i);
+    // Palette colour either way. Right-of-way circles do not recolor hulls.
+    const rgb = trailColorOf(g.i);
     mesh.material.color.setRGB(rgb[0], rgb[1], rgb[2]);
-    mesh.material.opacity = white ? 1 : HULL_FILL_OPACITY;
+    mesh.material.opacity = HULL_FILL_OPACITY;
     mesh.visible = true;
     k++;
   }
@@ -731,32 +730,35 @@ function renderHullFills(white = false) {
   if (typeof window !== 'undefined') window.__hullFills = list.map((g) => ({ id: g.id, i: g.i, color: boatColor(g.i) }));
 }
 
-// Right-of-way outlines (row-outline.js). sceneData.rowOutline (Map boat id →
-// colour) is set only while the setting is on: then every hull gets a 2 px
-// fat outline at the hull-fill pose, black by default, the Map's colour for
-// an opponent with an active rule pair. Pooled.
-const rowOutlinePool = [];
-function renderRowOutlines(colors) {
+// Right-of-way circles (row-outline.js). sceneData.rowCircles is set only
+// while the setting is on: one Line2 ring (LINE_WIDTH_PX, same as the other
+// map strokes) per opponent in active rule range, centred on that boat.
+// The stroke sits outside the hull, so the fill stays readable. Pooled.
+const rowCirclePool = [];
+function renderRowCircles(circles) {
   let k = 0;
-  const list = colors ? ghostOutlines(_ghostBoats, _ghostHulls, 0) : [];
-  for (const g of list) {
-    const c = colors.has(g.id) ? colors.get(g.id) : ROW_NONE;
-    const n = g.pts.length / 2;
-    let line = rowOutlinePool[k];
+  const list = circles || [];
+  for (const c of list) {
+    const pts = c.pts;
+    const n = pts && pts.length / 2;
+    if (!n || n < 2) continue;
+    let line = rowCirclePool[k];
     if (!line || fatCapacity(line) < n) {
       if (line) { scene.remove(line); line.geometry.dispose(); line.material.dispose(); }
-      line = fatLine(Math.max(n, 16), markOverlay(fatMaterial({ color: c })));
-      line.renderOrder = ORDER_HULL + 0.05;
+      line = fatLine(Math.max(n, 64), markOverlay(fatMaterial({ color: c.color })));
+      line.renderOrder = ORDER_HULL + 0.15;
       scene.add(line);
-      rowOutlinePool[k] = line;
+      rowCirclePool[k] = line;
     }
-    setFatPoints(line, g.pts, n);
-    line.material.color.setHex(c);
+    setFatPoints(line, pts, n);
+    line.material.color.setHex(c.color);
     line.visible = true;
     k++;
   }
-  for (; k < rowOutlinePool.length; k++) rowOutlinePool[k].visible = false;
-  if (typeof window !== 'undefined') window.__rowOutlines = colors ? [...colors] : [];
+  for (; k < rowCirclePool.length; k++) rowCirclePool[k].visible = false;
+  if (typeof window !== 'undefined') {
+    window.__rowCircles = list.map((c) => ({ id: c.id, x: c.x, y: c.y, r: c.r, color: c.color }));
+  }
 }
 
 function trailColorOf(i) {
@@ -877,8 +879,8 @@ function animation(t) {
   }
 
   renderGhosts();
-  renderHullFills(!!sceneData.rowOutline);
-  renderRowOutlines(sceneData.rowOutline);
+  renderHullFills();
+  renderRowCircles(sceneData.rowCircles);
 
   for (const [id, line] of fixtureLines) {
     if (!seenFixtures.has(id)) {
