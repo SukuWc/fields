@@ -135,6 +135,7 @@ Last updated: 2026-11-09
 - [ ] Rule-stack labels (partial: [#12](https://github.com/SukuWc/fields/pull/12) shows the active rule and inhibited rules)
 - [ ] Right-of-way outlines setting (off by default): opponents inside the 12 m rule gate get a red (you keep clear), green (you have right of way) or yellow (Rule 15, room, both keep clear) hull outline: [#138](https://github.com/SukuWc/fields/pull/138)
 - [ ] Right-of-way circles (player setting `show_row_outline`, off by default): hulls keep their normal colours. Opponents inside the 12 m rule gate get a 3 m circle, green when you have right of way, red when you keep clear, yellow when the call is transitional (Rule 15, room, both keep clear), drawn on the client from the snapshot in local, worker and remote modes: [#189](https://github.com/SukuWc/fields/pull/189)
+- [ ] Right-of-way lines setting (on by default): player setting to hide the red/green rule ribbon between boats: [#192](https://github.com/SukuWc/fields/pull/192)
 
 ### 6. Closed beta polish
 - [ ] Remove the two hardcoded collision test circles (r=0.5 m and r=5 m) from the physics world: [#128](https://github.com/SukuWc/fields/pull/128)

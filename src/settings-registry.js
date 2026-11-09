@@ -58,6 +58,7 @@ export const SETTINGS = [
   // Player panel. Trails, ghost and sticky autopilot live in the Dev TOML.
   { id: 'boat_name', scope: 'player', panel: 'player', type: 'text', default: '' },
   { id: 'show_row_outline', scope: 'player', panel: 'player', type: 'bool', default: false },
+  { id: 'show_row_lines', scope: 'player', panel: 'player', type: 'bool', default: true },
   { id: 'camera_follow', scope: 'player', panel: 'player', type: 'bool', default: false },
   { id: 'field_plane', scope: 'player', panel: 'player', type: 'bool', default: true, subscription: 'field' },
   // Default off; touch-controls.js turns it on for phones and touch screens.

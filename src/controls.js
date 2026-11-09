@@ -468,12 +468,17 @@ export function setupControls(host, view, getCamera) {
   document.getElementById("camera_follow").checked = settingDefault("camera_follow");
   document.getElementById("show_row_outline").checked = settingDefault("show_row_outline");
   view.input_show_row_outline(settingDefault("show_row_outline"));
+  document.getElementById("show_row_lines").checked = settingDefault("show_row_lines");
+  view.input_show_row_lines(settingDefault("show_row_lines"));
 
   _devMode = settingDefault("devmode");
   syncDevModeUi();
 
   document.getElementById("show_row_outline").addEventListener("change", () => {
     view.input_show_row_outline(document.getElementById("show_row_outline").checked);
+  });
+  document.getElementById("show_row_lines").addEventListener("change", () => {
+    view.input_show_row_lines(document.getElementById("show_row_lines").checked);
   });
 
   document.getElementById("scenario_card_toggle").addEventListener("click", () => {
