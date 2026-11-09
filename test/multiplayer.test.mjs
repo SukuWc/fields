@@ -91,9 +91,13 @@ const until = async (fn, ms = 3000) => { const t = Date.now(); while (!fn() && D
     const binds = [];
     A.on((e) => { if (e.type === 'bindControls') binds.push(e.boats); });
     const ra = await A.command({ type: 'spawnBoat', name: 'Ann', color: 0x1e88e5 });
-    const cap = await A.command({ type: 'spawnBoat', name: 'Ann2' });
-    check('boats per client are capped', ra.id && cap && /at most/.test(cap.error) && core.sim.players.filter((b) => b.spawnId).length === 1, JSON.stringify(cap));
-    await until(() => binds.length);
+    const second = await A.command({ type: 'spawnBoat', name: 'Ann2' });
+    const cap = await A.command({ type: 'spawnBoat', name: 'Ann3' });
+    check('boats per client are capped (two)', ra.id && second.id && /at most/.test(cap.error) && core.sim.players.filter((b) => b.spawnId).length === 2, JSON.stringify(cap));
+    await until(() => binds.at(-1) === 2);
+    check('two own boats bind two players', binds.at(-1) === 2 && A.bindings === 2 && B.bindings === 0);
+    await A.command({ type: 'removeBoat', id: second.id });
+    await until(() => binds.at(-1) === 1);
     check('the client\'s key binding follows its own boats (1 with a boat)', binds.at(-1) === 1 && A.bindings === 1 && B.bindings === 0);
     const a = () => core.sim.players.find((p) => p.spawnId === ra.id);
     // Spectator B: one-shot and held commands at boat 0 / at A's boat.
