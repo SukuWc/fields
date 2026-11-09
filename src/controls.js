@@ -470,6 +470,8 @@ export function setupControls(host, view, getCamera) {
   view.input_show_row_outline(settingDefault("show_row_outline"));
   document.getElementById("show_row_lines").checked = settingDefault("show_row_lines");
   view.input_show_row_lines(settingDefault("show_row_lines"));
+  document.getElementById("show_rule_labels").checked = settingDefault("show_rule_labels");
+  view.input_show_rule_labels(settingDefault("show_rule_labels"));
 
   _devMode = settingDefault("devmode");
   syncDevModeUi();
@@ -479,6 +481,9 @@ export function setupControls(host, view, getCamera) {
   });
   document.getElementById("show_row_lines").addEventListener("change", () => {
     view.input_show_row_lines(document.getElementById("show_row_lines").checked);
+  });
+  document.getElementById("show_rule_labels").addEventListener("change", () => {
+    view.input_show_rule_labels(document.getElementById("show_rule_labels").checked);
   });
 
   document.getElementById("scenario_card_toggle").addEventListener("click", () => {
