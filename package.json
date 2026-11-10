@@ -10,11 +10,12 @@
     "test:timing": "node --test --test-concurrency=1 --import ./test/register.mjs \"test/*.timing.mjs\"",
     "build": "vite build",
     "build:app": "node scripts/build-app.mjs",
-    "build:server": "esbuild apps/server/index.js --bundle --platform=node --format=esm --target=node20 --outfile=dist-server/server.mjs --log-level=warning \"--banner:js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
+    "build:server": "esbuild apps/server/index.js --bundle --platform=node --format=esm --target=node20 --outfile=dist-server/server.mjs --external:node-datachannel --external:@fails-components/webtransport --log-level=warning \"--banner:js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
     "server": "npm run build:server && node dist-server/server.mjs",
     "serve:app": "npm run build:app && npm run build:server && node dist-server/server.mjs --static dist-app",
     "smoke:server": "node scripts/server-smoke.mjs",
-    "check:all": "node scripts/check-all.mjs"
+    "check:all": "node scripts/check-all.mjs",
+    "bench:transport": "node --import ./test/register.mjs scripts/transport/bench.mjs"
   },
   "repository": {
     "type": "git",
