@@ -66,6 +66,16 @@ function chevron(graphics, s, angle, color, role) {
     x2: s.x + Math.cos(angle) * 5 + Math.cos(angle + p) * 0.5, y2: s.y + Math.sin(angle) * 5 + Math.sin(angle + p) * 0.5 });
 }
 
+// Jib camber depth (m) for a chord at boomDeg to apparent wind awaDeg.
+// 0.05·length per 7.5° of angle between them, capped at a third of the
+// boom. Falls back to the half-trim angle when awa is missing.
+export function jibDepth(length, awaDeg, boomDeg) {
+  const rel = Number.isFinite(awaDeg) && Number.isFinite(boomDeg) ? Math.abs(awaDeg - boomDeg)
+    : Math.abs(Number.isFinite(awaDeg) ? awaDeg : 0) / 2;
+  const depth = length * 0.05 * rel / 7.5;
+  return depth < length / 3 ? depth : length / 3;
+}
+
 function sail(s, lead, length, boomAngle, fat) {
   const p = [];
   p[0] = wp(s, lead);
@@ -273,8 +283,12 @@ export function boatGuides(s, d) {
   // (angle of attack past the luff angle) does not flap.
   const mainFat = (d.mbl * 0.05 * Math.abs(s.awa) / 30 < d.mbl / 10) ? d.mbl * 0.05 * Math.abs(s.awa) / 30 : d.mbl / 10;
   pushSailSegments(graphics, sail(s, d.mle, d.mbl, s.mba, mainFat), SAIL_FLAP_AMP_M * s.mf, s.ph);
-  const jibEase = d.jbl * 0.05 * Math.abs(s.awa) / 15;
-  const jibFat = jibEase < d.jbl / 3 ? jibEase : d.jbl / 3;
+  // Jib depth from the drawn boom against the apparent wind, |awa − jba|.
+  // With the normal trim (boom = ½·awa) that is ½·|awa|, so the 7.5°
+  // divisor gives the same depth as the old |awa|/15 for every sheeted
+  // jib; a jib held aback or eased toward the wind gets the depth of its
+  // own angle to the wind instead of a stand-in.
+  const jibFat = jibDepth(d.jbl, s.awa, s.jba);
   pushSailSegments(graphics, sail(s, d.jle, d.jbl, s.jba, jibFat), SAIL_FLAP_JIB_AMP_M * s.jf, s.ph + 1.3);
   return graphics;
 }

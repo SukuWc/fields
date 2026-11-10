@@ -247,9 +247,10 @@ export class Boat{
     this.jib_boom_angle_factor = 0.5
     this.jib_boom_angle = 0
     this.jib_boom_angle_actual = 0
-    // Slow-tack backwind (dinghy-forces.js jibBackwindStep). On unless a
+    // Backwinded jib through a tack (dinghy-forces.js jibBackwindStep). On unless a
     // caller turns it off to compare the same tack with the sheet released.
     this.jibBackwinded = false;
+    this.jibBackwindArmed = false;
     this.jibBackwindEnabled = true;
     this._jibBackwind = null;
 
@@ -666,9 +667,10 @@ export class Boat{
 
 
 
-    // JIB. Trim follows the apparent wind. Through a tack, while the rudder
-    // is still driving her around, jibBackwindStep holds the sheet she had
-    // when the helm went on (dinghy-forces.js). The force below is the
+    // JIB. Trim follows the apparent wind. Through a tack, jibBackwindStep
+    // remembers the sheet she had when the helm went on and, once the bow
+    // is past head-to-wind and the rudder is still driving her around,
+    // holds the jib there (dinghy-forces.js). The force below is the
     // ordinary sail force at that boom. The mainsail is not held.
 
     const clampBoom = (deg, max) => Math.max(-max, Math.min(max, deg));
@@ -682,6 +684,7 @@ export class Boat{
     });
     this._jibBackwind = backwind;
     this.jibBackwinded = backwind.backwinded;
+    this.jibBackwindArmed = backwind.armed;
     this.jib_boom_angle = backwind.boom;
 
 

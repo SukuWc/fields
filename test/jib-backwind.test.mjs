@@ -1,9 +1,10 @@
-// Backed jib through a tack. The sheet stays on the old side from the
-// moment the rudder goes on until she is close-hauled on the new tack or
-// the helm eases. The drawn shape is the ordinary sail: camber follows
+// Backed jib through a tack. The old sheet is remembered when the rudder
+// goes on; the jib keeps its ordinary trim until the bow is past
+// head-to-wind, then that sheet is fixed until she is close-hauled on the
+// new tack or the helm eases. The drawn shape is the ordinary sail: camber follows
 // which side of the chord the apparent wind is on.
 import './dom-stub.mjs';
-import { JIB_DRAG_COLOR, JIB_LIFT_COLOR, SAIL_COLOR, boatGuides } from '../src/boat-draw.js';
+import { JIB_DRAG_COLOR, JIB_LIFT_COLOR, SAIL_COLOR, boatGuides, jibDepth } from '../src/boat-draw.js';
 import { Boat } from '../src/boat.js';
 import {
   JIB_BACKWIND_ARRIVED_TWA_DEG,
@@ -33,28 +34,40 @@ function sheet(prev, over) {
 {
   let s = sheet(null, { twa: -50, boomTrim: -16, rudderDeg: 3 });
   check('course-keeping helm stores the sheet and does not hold it',
-    s.memory === -16 && s.boom === -16 && !s.backwinded,
+    s.memory === -16 && s.boom === -16 && !s.armed && !s.backwinded,
     `entry ${JIB_BACKWIND_RUDDER_DEG}°`);
   s = sheet(s, { twa: -48, boomTrim: -15, rudderDeg: 22 });
-  check('rudder on at the start of the tack holds the old sheet',
-    s.backwinded && s.boom === -16 && s.rudderSign === 1);
+  check('rudder on at the start of the tack remembers the old sheet but the jib keeps its trim',
+    s.armed && !s.backwinded && s.held === -16 && s.boom === -15 && s.rudderSign === 1);
+  const armed = s;
+  s = sheet(armed, { twa: -10, boomTrim: -4, rudderDeg: 24 });
+  check('heading up before head-to-wind the jib follows the apparent wind, not the old sheet',
+    s.armed && !s.backwinded && s.boom === -4 && s.held === -16);
+  s = sheet(armed, { twa: 0, boomTrim: 0, rudderDeg: 24 });
+  check('exactly head-to-wind is not past it: still the ordinary trim', s.armed && !s.backwinded && s.boom === 0);
+  s = sheet(armed, { twa: 3, boomTrim: 1, rudderDeg: 24 });
+  check('just past head-to-wind the remembered sheet is fixed on the old side',
+    s.armed && s.backwinded && s.boom === -16);
   const held = s;
-  s = sheet(held, { twa: -10, boomTrim: -4, rudderDeg: 24 });
-  check('she keeps the sheet while heading up, before head-to-wind', s.backwinded && s.boom === -16);
-  s = sheet(held, { twa: 0, boomTrim: 0, rudderDeg: 24 });
-  check('head-to-wind keeps the sheet while the rudder is still on', s.backwinded && s.boom === -16);
   s = sheet(held, { twa: 20, boomTrim: 8, rudderDeg: 24 });
   check('past head-to-wind the old sheet stays while the helm still asks', s.backwinded && s.boom === -16);
+  s = sheet(held, { twa: 20, boomTrim: 8, rudderDeg: 12 });
+  check('helm eased to 12°, still more than course-keeping, keeps the sheet', s.backwinded && s.boom === -16);
+  s = sheet(held, { twa: -2, boomTrim: -1, rudderDeg: 24 });
+  check('back on the old side of the wind the jib follows trim again while armed',
+    s.armed && !s.backwinded && s.boom === -1);
   s = sheet(held, { twa: 30, boomTrim: 12, rudderDeg: 2 });
   check('rudder back to neutral releases the sheet',
-    !s.backwinded && s.boom === 12, `neutral ${JIB_BACKWIND_RUDDER_NEUTRAL_DEG}°`);
+    !s.armed && !s.backwinded && s.boom === 12, `neutral ${JIB_BACKWIND_RUDDER_NEUTRAL_DEG}°`);
   s = sheet(held, { twa: 25, boomTrim: 10, rudderDeg: -10 });
-  check('rudder the other way releases the sheet', !s.backwinded && s.boom === 10);
+  check('rudder the other way releases the sheet', !s.armed && !s.backwinded && s.boom === 10);
   s = sheet(held, { twa: JIB_BACKWIND_ARRIVED_TWA_DEG, boomTrim: 16, rudderDeg: 24 });
   check('close-hauled on the new tack releases even if the rudder is still on',
-    !s.backwinded && s.boom === 16, `arrived ${JIB_BACKWIND_ARRIVED_TWA_DEG}°`);
+    !s.armed && !s.backwinded && s.boom === 16, `arrived ${JIB_BACKWIND_ARRIVED_TWA_DEG}°`);
   s = sheet(held, { twa: 15, boomTrim: 6, rudderDeg: 24, depower: 0.5 });
-  check('easing the sheets releases the hold', !s.backwinded && s.boom === 6);
+  check('easing the sheets releases the hold', !s.armed && !s.backwinded && s.boom === 6);
+  s = sheet(armed, { twa: -30, boomTrim: -12, rudderDeg: 2 });
+  check('helm eased before head-to-wind disarms without ever holding', !s.armed && !s.backwinded && s.boom === -12);
 }
 
 {
@@ -89,6 +102,19 @@ function belly(awa, jba) {
   const backed = belly(-12, 15);
   check('sheeted to the wind, the belly is the ordinary leeward side', normal !== 0 && normal === Math.sign(15));
   check('wind on the back of the chord, the belly is the other way', backed !== 0 && backed === -normal);
+}
+
+// Camber depth from the boom against the apparent wind. At the ordinary
+// half-angle trim it is the old |awa|-based depth; a backed chord gets
+// the depth of its own angle to the wind.
+{
+  const L = 1.4;
+  const old = (awa) => Math.min(L * 0.05 * Math.abs(awa) / 15, L / 3);
+  check('trimmed jib depth matches the |awa| depth it replaced',
+    [5, 20, 35, -30, 90, 150].every((awa) => Math.abs(jibDepth(L, awa, awa * 0.5) - old(awa)) < 1e-12));
+  check('backed jib depth follows its angle to the wind, not |awa|',
+    Math.abs(jibDepth(L, 1, -15) - L * 0.05 * 16 / 7.5) < 1e-12 && jibDepth(L, 1, -15) > old(1));
+  check('jib eased onto the wind is flat', jibDepth(L, 20, 20) === 0);
 }
 
 const DT = 1 / 30;
@@ -148,6 +174,12 @@ function tack({ tws, enabled, stall = false, settleS = 10, maxS = 28 }) {
         backed.guides = boatGuides(st, b.renderDef());
       }
       if (!sawBack && b.jibBackwinded) sawBack = true;
+      if (marks.htw === undefined && Math.sign(b.twa) === -before) marks.htw = t;
+      if (b.jibBackwindArmed && !b.jibBackwinded) {
+        marks.armedFree = (marks.armedFree || 0) + 1;
+        const trim = Math.max(-b.jib_boom_angle_max, Math.min(b.jib_boom_angle_max, b.awa * b.jib_boom_angle_factor));
+        if (Math.abs(b.jib_boom_angle - trim) > 1e-9) marks.armedOffTrim = (marks.armedOffTrim || 0) + 1;
+      }
       if (Math.abs(t - 2) < DT / 2) marks.t2 = b.twa;
       if (Math.abs(t - 4) < DT / 2) marks.t4 = b.twa;
       if (done === null && Math.sign(b.twa) === -before && Math.abs(b.twa) > 45) done = t;
@@ -164,12 +196,15 @@ console.info(`8 m/s tack  on ${fastOn.done?.toFixed(2)} s  off ${fastOff.done?.t
 check('8 m/s tack holds the jib and still reaches the new tack',
   fastOn.sawBack === true && fastOff.sawBack === false && fastOn.done != null && fastOff.done != null,
   `on ${fastOn.done?.toFixed(2)} off ${fastOff.done?.toFixed(2)}`);
-check('time to 45° on the new tack is the same either way',
-  Math.abs(fastOn.done - fastOff.done) < DT,
+check('before head-to-wind the armed jib is the ordinary trim',
+  fastOn.marks.armedFree > 0 && !fastOn.marks.armedOffTrim,
+  `${fastOn.marks.armedFree} armed steps, ${fastOn.marks.armedOffTrim || 0} off trim`);
+check('so she reaches head-to-wind at the same moment either way',
+  fastOn.marks.htw != null && Math.abs(fastOn.marks.htw - fastOff.marks.htw) < DT / 2,
+  `${fastOn.marks.htw?.toFixed(2)} vs ${fastOff.marks.htw?.toFixed(2)}`);
+check('and the held jib gets her to 45° on the new tack sooner',
+  fastOn.done < fastOff.done - 0.2,
   `${fastOn.done?.toFixed(2)} vs ${fastOff.done?.toFixed(2)}`);
-check('at 2 s the held sheet is still behind the free sheet through the wind',
-  fastOn.marks.t2 < fastOff.marks.t2,
-  `TWA ${fastOn.marks.t2?.toFixed(1)} vs ${fastOff.marks.t2?.toFixed(1)}`);
 
 const stallOn = tack({ tws: 3, enabled: true, stall: true });
 const stallOff = tack({ tws: 3, enabled: false, stall: true });

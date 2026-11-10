@@ -200,8 +200,12 @@ export function buildScenarios(sim) {
     // port boat starts further left and higher: she meets the hull once,
     // after Rule 15 has expired. Boom application moved that layline about
     // 0.4 m to leeward, so the port boat starts at y = 7.4 and still meets
-    // the hull once.
-    sim.players.push(new Boat(sim.map, -26.5, 7.4, heading));
+    // the hull once. The backed jib (#198) gets boat 0 to close-hauled
+    // sooner, while the reach was still more than 8 m away (RULE15_RANGE_M),
+    // so Rule 15 never opened. The port boat now starts 3 m closer, at
+    // x = -23.5: she is inside 8 m when boat 0 acquires right of way, and
+    // touches after Rule 15 has expired (x from -22.5 to -24.5 all do).
+    sim.players.push(new Boat(sim.map, -23.5, 7.4, heading));
   };
   // Autopilot on at frame 3 (the second Sim tick), after one physics step has
   // set each boat's twa. Frames 0-2 run in one tick before any physics step,

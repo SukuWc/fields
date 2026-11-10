@@ -257,17 +257,19 @@ export function apparentWindAngleDeg(aw, hullAngleRad) {
   return awa;
 }
 
-// Backed jib through a tack. The boom normally tracks half the apparent
-// wind, so a cleated sheet has to be chosen here or the jib arrives
-// amidships and luffs. The hold is the whole tack, not a slow-boat
-// special case: from the moment the helm puts the rudder on to turn
-// through the wind, until she is on the new tack or the helm stops
-// asking. The force is still sailLiftDrag at the held chord (Marchaj,
-// Aero-Hydrodynamics of Sailing). The jib centre is forward of the
-// centre of lateral resistance (Larsson & Eliasson, Principles of Yacht
-// Design), so once the wind is on the back of that chord the force yaws
-// the bow off. Bethwaite, High Performance Sailing, leaves the old
-// headsail sheet cleated for the tack and lets it go on the new tack.
+// Backed jib through a tack. When the helm puts the rudder on to tack,
+// the crew leaves the old jib sheet cleated (Bethwaite, High Performance
+// Sailing: the old headsail sheet stays on through the tack and is let go
+// on the new tack). Until the bow is through head-to-wind the wind is
+// still on the working side of the jib, which then just follows the
+// apparent wind as on any other point of sail: a sheet held hard there
+// oversheets the jib and its forward centre of effort pushes the bow back
+// down, which stalled slow boats short of the eye (scenarios 3, 4, 6).
+// Once true wind is on the other side, the remembered sheet is fixed and
+// the wind fills the jib from the back. The force is still sailLiftDrag
+// at that chord (Marchaj, Aero-Hydrodynamics of Sailing). The jib centre
+// is forward of the centre of lateral resistance (Larsson & Eliasson,
+// Principles of Yacht Design), so it yaws the bow onto the new tack.
 //
 // Rudder sign: positive rudder_angle yaws clockwise with way on, which
 // on this hull increases TWA (starboard toward port). The tack direction
@@ -277,8 +279,8 @@ export function apparentWindAngleDeg(aw, hullAngleRad) {
 // beat, without tacking, uses up to about 19° (measured 16–19° over 1.5–8
 // m/s while she acquires the close-hauled target). A tack drives the
 // rudder to the autopilot stop, about 24°. 21° is above that acquisition
-// helm and at the tack, so settling onto a beat does not pin the sheet
-// and a tack grabs it as the helm goes hard over. Release when that
+// helm and at the tack, so settling onto a beat does not arm the sheet
+// and a tack does as the helm goes hard over. Release when that
 // component is back to 4° or less, or has the other sign: no longer more
 // helm than she uses to hold a course. 4° is the settled helm, so a dip
 // from 24° to 12° (still turning) does not drop the sheet.
@@ -297,21 +299,24 @@ export const JIB_BACKWIND_MIN_SHEET_DEG = 8;
 // One sheeting decision. `prev` is the last return value (or null).
 // `sample`: { twa, boomTrim, rudderDeg, depower, enabled }.
 // `boomTrim` is the boom that would follow the apparent wind this step.
-// Returns { memory, held, backwinded, rudderSign, boom }. `boom` is
-// degrees, the same sign convention as boat.js. No force is computed here.
+// Returns { memory, held, armed, backwinded, rudderSign, boom }.
+// `armed`: the helm is tacking and the old sheet is remembered in `held`.
+// `backwinded`: armed and the bow is past head-to-wind, so `boom` is the
+// held sheet. Otherwise `boom` is boomTrim. Degrees, the same sign
+// convention as boat.js. No force is computed here.
 export function jibBackwindStep(prev, sample) {
   const p = prev && typeof prev === 'object' ? prev : null;
   let memory = p && Number.isFinite(p.memory) ? p.memory : 0;
   let held = p && Number.isFinite(p.held) ? p.held : 0;
   let rudderSign = p && Number.isFinite(p.rudderSign) ? p.rudderSign : 0;
-  let backwinded = !!(p && p.backwinded);
+  let armed = !!(p && p.armed);
   const twa = sample.twa;
   const boomTrim = sample.boomTrim;
   const rudder = Number.isFinite(sample.rudderDeg) ? sample.rudderDeg : 0;
   const depower = sample.depower || 0;
   const enabled = sample.enabled !== false;
   if (!Number.isFinite(twa) || !Number.isFinite(boomTrim)) {
-    return { memory, held: 0, backwinded: false, rudderSign, boom: Number.isFinite(boomTrim) ? boomTrim : 0 };
+    return { memory, held: 0, armed: false, backwinded: false, rudderSign, boom: Number.isFinite(boomTrim) ? boomTrim : 0 };
   }
   const absTwa = Math.abs(twa);
   const twaSign = Math.sign(twa) || 0;
@@ -320,33 +325,36 @@ export function jibBackwindStep(prev, sample) {
   const toward = twaSign === 0 ? 0 : -twaSign;
   const asking = toward !== 0 ? rudder * toward : 0;
   // Track the working sheet only while she is not already in the turn, so
-  // the latched angle is the sheet she had when the helm went on, not the
-  // boom after it has followed the apparent wind toward the centreline.
-  if (!backwinded && !easing && !(asking > JIB_BACKWIND_RUDDER_DEG)
+  // the remembered angle is the sheet she had when the helm went on, not
+  // the boom after it has followed the apparent wind toward the centreline.
+  if (!armed && !easing && !(asking > JIB_BACKWIND_RUDDER_DEG)
       && twaSign !== 0 && Math.sign(boomTrim) === twaSign
       && Math.abs(boomTrim) >= JIB_BACKWIND_MIN_SHEET_DEG && absTwa <= 120) {
     memory = boomTrim;
   }
   // A tack starts upwind of a beam reach. Past that, rudder toward the
   // wind is a head-up from a run, not a tack, and a gybe goes the other way.
-  if (enabled && !backwinded && !easing && asking > JIB_BACKWIND_RUDDER_DEG
+  if (enabled && !armed && !easing && asking > JIB_BACKWIND_RUDDER_DEG
       && absTwa >= 5 && absTwa <= 90
       && Math.abs(memory) >= JIB_BACKWIND_MIN_SHEET_DEG && Math.sign(memory) === twaSign) {
-    backwinded = true;
+    armed = true;
     held = memory;
     rudderSign = toward;
   }
-  if (backwinded) {
+  let backwinded = false;
+  if (armed) {
     const stillAsking = rudder * rudderSign > JIB_BACKWIND_RUDDER_NEUTRAL_DEG;
     const onNewTack = twaSign !== 0 && Math.sign(held) !== 0 && twaSign !== Math.sign(held);
     const arrived = onNewTack && absTwa >= JIB_BACKWIND_ARRIVED_TWA_DEG;
-    if (!enabled || easing || !stillAsking || arrived) backwinded = false;
+    if (!enabled || easing || !stillAsking || arrived) armed = false;
+    else backwinded = onNewTack;
   }
   return {
     memory,
-    held: backwinded ? held : 0,
+    held: armed ? held : 0,
+    armed,
     backwinded,
-    rudderSign: backwinded ? rudderSign : 0,
+    rudderSign: armed ? rudderSign : 0,
     boom: backwinded ? held : boomTrim,
   };
 }
