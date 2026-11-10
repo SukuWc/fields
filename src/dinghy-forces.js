@@ -257,9 +257,125 @@ export function apparentWindAngleDeg(aw, hullAngleRad) {
   return awa;
 }
 
+// Backed jib on a slow tack. The boom normally tracks half the apparent
+// wind (boat.js), so through head-to-wind the jib arrives amidships and
+// luffs. A real sheet stays cleated. Left on the old side once the bow is
+// past head-to-wind, the sail fills from the wrong side: angle of attack
+// is the angle between that chord and the apparent wind, and sailLiftDrag
+// already resolves the force (lift perpendicular to the apparent wind,
+// signed by which side the wind is on, drag downwind). The jib's centre
+// of effort is forward of the centre of lateral resistance (Larsson &
+// Eliasson, Principles of Yacht Design — the same centre jibBoomForceLocal
+// uses), so that transverse force yaws the bow off onto the new tack.
+// Marchaj, Aero-Hydrodynamics of Sailing, treats a sail aback the same
+// way: the aerodynamic force at the angle between chord and wind, applied
+// forward of the lateral resistance. Bethwaite, High Performance Sailing,
+// holds the old headsail sheet through a light-air tack and lets it go
+// once the bow has borne away or the boat has way on again. A tack that
+// still has speed does not hold it.
+//
+// Gates measured on this hull in dev mode (uniform wind from +Y):
+//   An autopilot tack at 8 m/s true wind bottoms near 1.0 m/s and about
+//   20°/s, so it never enters. Scenario 6 crosses near 1.2 m/s and 15°/s.
+//   Scenario 3 crosses near 0.74 m/s and 8°/s, which is the stall this
+//   hold is for.
+// Enter only within 12° of head-to-wind. Further off, the new sheet should
+// fill; hauling the boom back would fight a tack that is already through
+// (scenario 6 is down to 0.76 m/s by 24° true-wind angle, still turning).
+export const JIB_BACKWIND_ENTER_TWA_DEG = 12;
+export const JIB_BACKWIND_ENTER_SPEED_MPS = 0.85;
+export const JIB_BACKWIND_ENTER_YAW_DEG_S = 12;
+// Borne away enough for the new sheet, short of this sim's 40° close-hauled
+// Rule 13 gate, or steerage way back (rudder foil force is usable again).
+export const JIB_BACKWIND_RELEASE_TWA_DEG = 30;
+export const JIB_BACKWIND_RELEASE_SPEED_MPS = 1.2;
+// A sheet this close to the centreline does not back; it is already luffing.
+export const JIB_BACKWIND_MIN_SHEET_DEG = 8;
+// Remember the boom once she is at least this far off the wind, and stop
+// updating inside it, so the held angle is the working sheet as she enters
+// the tack rather than the luff at head-to-wind.
+export const JIB_BACKWIND_MEMORY_TWA_DEG = 38;
+
+// One sheeting decision. `prev` is the last return value (or null).
+// `sample`: { twa, awa, boomTrim, speedMs, yawDegS, depower, enabled }.
+// `boomTrim` is the boom that would follow the apparent wind this step.
+// The sheet is held only once `awa` is on the opposite side of the
+// remembered boom. True wind can cross a step or two before apparent
+// wind; holding through that gap oversheets the jib on the side the
+// wind is still on, and that weather helm fights the tack.
+// Returns { memory, held, backwinded, armed, boom }. `boom` is degrees,
+// the same sign convention as boat.js (positive apparent wind, positive
+// boom, clew to body −X). No force is computed here.
+export function jibBackwindStep(prev, sample) {
+  const p = prev && typeof prev === 'object' ? prev : null;
+  let memory = p && Number.isFinite(p.memory) ? p.memory : 0;
+  let held = p && Number.isFinite(p.held) ? p.held : 0;
+  let backwinded = !!(p && p.backwinded);
+  let armed = !p || p.armed !== false;
+  const twa = sample.twa;
+  const boomTrim = sample.boomTrim;
+  const speed = sample.speedMs;
+  const yaw = Math.abs(sample.yawDegS || 0);
+  const depower = sample.depower || 0;
+  const enabled = sample.enabled !== false;
+  if (!Number.isFinite(twa) || !Number.isFinite(boomTrim) || !Number.isFinite(speed)) {
+    return { memory, held: 0, backwinded: false, armed, boom: Number.isFinite(boomTrim) ? boomTrim : 0 };
+  }
+  const absTwa = Math.abs(twa);
+  const twaSign = Math.sign(twa) || 0;
+  const easing = depower > 0;
+  // Working sheet on the tack she is sailing. Freeze it once she heads
+  // up inside MEMORY_TWA, and don't record a sheet that is being eased.
+  if (!easing && absTwa >= JIB_BACKWIND_MEMORY_TWA_DEG && absTwa <= 120
+      && twaSign !== 0 && Math.sign(boomTrim) === twaSign
+      && Math.abs(boomTrim) >= JIB_BACKWIND_MIN_SHEET_DEG) {
+    memory = boomTrim;
+  }
+  // Armed again only once that remembered sheet belongs to the tack she
+  // is on. A release in the middle of the same crossing does not re-back.
+  if (absTwa >= JIB_BACKWIND_MEMORY_TWA_DEG && twaSign !== 0 && twaSign === Math.sign(memory)) armed = true;
+  const memSign = Math.sign(memory);
+  const opposite = memSign !== 0 && twaSign !== 0 && twaSign !== memSign;
+  const awaSign = Number.isFinite(sample.awa) ? Math.sign(sample.awa) : 0;
+  // Wind on the wrong side of the remembered sheet. A sub-degree flicker
+  // is not a filled sail.
+  const windAback = awaSign !== 0 && memSign !== 0 && awaSign !== memSign && Math.abs(sample.awa) >= 0.5;
+  const slow = speed < JIB_BACKWIND_ENTER_SPEED_MPS && yaw < JIB_BACKWIND_ENTER_YAW_DEG_S;
+  const inWindow = opposite && absTwa <= JIB_BACKWIND_ENTER_TWA_DEG;
+  if (backwinded) {
+    // Sign 0 is head-to-wind: keep the sheet. Releasing on that sample
+    // would drop the back every time the bow kissed the wind. She has
+    // fallen back only once the old tack is a real angle again.
+    const heldSign = Math.sign(held);
+    const fellBack = twaSign !== 0 && heldSign !== 0 && twaSign === heldSign
+      && absTwa >= JIB_BACKWIND_ENTER_TWA_DEG;
+    if (!enabled || easing || heldSign === 0 || absTwa >= JIB_BACKWIND_RELEASE_TWA_DEG
+        || speed >= JIB_BACKWIND_RELEASE_SPEED_MPS || fellBack) {
+      backwinded = false;
+    }
+  }
+  if (enabled && !backwinded && armed && !easing && inWindow && slow && windAback
+      && Math.abs(memory) >= JIB_BACKWIND_MIN_SHEET_DEG) {
+    backwinded = true;
+    held = memory;
+    armed = false;
+  }
+  return {
+    memory,
+    held: backwinded ? held : 0,
+    backwinded,
+    armed,
+    boom: backwinded ? held : boomTrim,
+  };
+}
+
 // World-frame lift and drag of one sail. `sailK` is newtons per unit C in
 // the pre-applyFinite unit (sailDynamicNewtons × internalForcePerNewton).
 // Drag is down the apparent wind; lift is perpendicular, signed by AWA.
+// A backed jib uses this unchanged: the boom stays on the old side, so
+// the angle of attack is large and the apparent wind is on the wrong
+// side of the chord. The sign of the lift follows the wind, which is the
+// direction a sail held aback is pushed.
 export function sailLiftDrag(hullAngleRad, awaDeg, sailK, cl, cd) {
   const awaRad = awaDeg * Math.PI / 180;
   const drag = {

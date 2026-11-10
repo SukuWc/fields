@@ -11,7 +11,8 @@
 //   (hull_angle), awa, tw (smoothed true wind direction, rad), ap (autopilot on),
 //   wd (wind_direction), aht (autopilot heading target), ra (rudder angle),
 //   mba, jba (drawn boom angles), mf, jf (main and jib flap amounts), ph
-//   (flap phase), f (forces: [px, py, vx, vy, ...]),
+//   (flap phase), jib_backwinded (1 while the jib is held on the old tack),
+//   f (forces: [px, py, vx, vy, ...]),
 //   ce (force-weighted rig centre), mce/jce (per-sail centres),
 //   ml/md (mainsail lift and drag), jl/jd (jib lift and drag).
 // def d: rp, rl (rudder position, length), cp, cl (centreboard), mle, mbl
@@ -19,11 +20,16 @@
 export const SAIL_FLAP_AMP_M = 0.12;
 export const SAIL_FLAP_JIB_AMP_M = 0.08;
 const SAIL_FLAP_POINTS = 9;
+// Ordinary sail cloth. A jib held aback is drawn apart from it so the old
+// sheet is obvious next to a mainsail that has already crossed. Red, not
+// amber: the speed plot is yellow and an amber sail disappears on it.
+export const SAIL_COLOR = 0x8866ff;
+export const JIB_BACKWIND_COLOR = 0xff1744;
 
 // Sail polyline p[0..3] → segments. amp 0 draws the original three segments.
-export function pushSailSegments(graphics, p, amp, phase) {
+export function pushSailSegments(graphics, p, amp, phase, color = SAIL_COLOR) {
   if (!(amp > 1e-4)) {
-    for (let i = 0; i < 3; i++) graphics.push({ color: 0x8866ff, type: "sail", x1: p[i].x, y1: p[i].y, x2: p[i + 1].x, y2: p[i + 1].y });
+    for (let i = 0; i < 3; i++) graphics.push({ color, type: "sail", x1: p[i].x, y1: p[i].y, x2: p[i + 1].x, y2: p[i + 1].y });
     return;
   }
   const cx = p[3].x - p[0].x, cy = p[3].y - p[0].y;
@@ -37,7 +43,7 @@ export function pushSailSegments(graphics, p, amp, phase) {
     const sN = u / 3;
     const w = amp * Math.sin(Math.PI * sN) * Math.sin(phase - 3 * Math.PI * sN);
     const pt = { x: bx + nx * w, y: by + ny * w };
-    if (prev) graphics.push({ color: 0x8866ff, type: "sail", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y });
+    if (prev) graphics.push({ color, type: "sail", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y });
     prev = pt;
   }
 }
@@ -259,10 +265,17 @@ export function boatGuides(s, d) {
   // Centreboard
   const c0 = wp(s, d.cp + d.cl / 2), c1 = wp(s, d.cp - d.cl / 2);
   graphics.push({ color: 0x550000, type: "hydro", x1: c0.x, y1: c0.y, x2: c1.x, y2: c1.y });
-  // Mainsail and jib
+  // Mainsail and jib. A backwinded jib stays on jba (the old sheet) and is
+  // drawn full and red: the cloth is pressed aback, not luffing, and the
+  // mint/purple jib force arrows (above) leave its centre.
   const mainFat = (d.mbl * 0.05 * Math.abs(s.awa) / 30 < d.mbl / 10) ? d.mbl * 0.05 * Math.abs(s.awa) / 30 : d.mbl / 10;
   pushSailSegments(graphics, sail(s, d.mle, d.mbl, s.mba, mainFat), SAIL_FLAP_AMP_M * s.mf, s.ph);
-  const jibFat = (d.jbl * 0.05 * Math.abs(s.awa) / 15 < d.jbl / 3) ? d.jbl * 0.05 * Math.abs(s.awa) / 15 : d.jbl / 3;
-  pushSailSegments(graphics, sail(s, d.jle, d.jbl, s.jba, jibFat), SAIL_FLAP_JIB_AMP_M * s.jf, s.ph + 1.3);
+  const backed = s.jib_backwinded === 1;
+  const jibEase = d.jbl * 0.05 * Math.abs(s.awa) / 15;
+  const jibFat = backed ? d.jbl / 3 : (jibEase < d.jbl / 3 ? jibEase : d.jbl / 3);
+  const jibSegs = [];
+  pushSailSegments(jibSegs, sail(s, d.jle, d.jbl, s.jba, jibFat), backed ? 0 : SAIL_FLAP_JIB_AMP_M * s.jf, s.ph + 1.3, backed ? JIB_BACKWIND_COLOR : SAIL_COLOR);
+  if (backed) for (const seg of jibSegs) seg.role = "jib-backwind";
+  for (const seg of jibSegs) graphics.push(seg);
   return graphics;
 }
