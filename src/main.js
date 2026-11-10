@@ -64,6 +64,7 @@ import { setupMobileMenu } from './mobile-menu.js';
 import { setupTouchControls } from './touch-controls.js';
 import { setupGamepad } from './gamepad.js';
 import { setupPinchZoom } from './pinch-zoom.js';
+import { setupWheelZoom } from './wheel-zoom.js';
 import { setupChat } from './chat-panel.js';
 import { setupMobileSheet } from './mobile-sheet.js';
 import { setupFullscreenToggle } from './fullscreen-toggle.js';
@@ -289,6 +290,8 @@ function startClient() {
   setupGamepad();
   // After the WebGL canvas exists (#sim_canvas): two-finger pinch zooms the client camera.
   setupPinchZoom(view);
+  // Mouse wheel / trackpad scroll over the race view zooms; panels still scroll.
+  setupWheelZoom(view);
   // One-finger drag on the race view looks around, then eases back (plan M11).
   setupDragLook(view);
   installUrlSettings(undefined, { ids: urlSettingIds({ remote }) });
