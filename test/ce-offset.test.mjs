@@ -47,8 +47,13 @@ check('CLR windward = opposite heel sign (φ>0 → −X)', Math.sign(H.clrOffset
   mute(() => b.physics_model_step());
   const expectCe = H.sailCeOffsetX(30 * DEG, b.dinghy);
   const expectClr = H.clrOffsetX(30 * DEG, b.dinghy);
-  check('boat: CE local X = ceLateralHeight·sinφ when offset on', Math.abs(b._sailCeLocalX - expectCe) < 1e-9,
-    `${b._sailCeLocalX} vs ${expectCe}`);
+  // Boom application: the leeward walk is added to the sheeted boom station,
+  // so local X is boom X + ceLateralHeight·sinφ, not the offset alone.
+  const sailOnBoom = (sail) => Math.abs(sail.local.x - (sail.boom.x + expectCe)) < 1e-9
+    && Math.abs(sail.local.y - sail.boom.y) < 1e-9;
+  check('boat: each sail is its boom point plus ceLateralHeight·sinφ when offset on',
+    sailOnBoom(b._mainSail) && sailOnBoom(b._jibSail) && Math.abs(b._mainSail.boom.x) > 0.02,
+    `main ${b._mainSail.local.x.toFixed(4)} = boom ${b._mainSail.boom.x.toFixed(4)} + ${expectCe.toFixed(4)}`);
   check('boat: CLR local X = −clrDepth·sinφ when offset on', Math.abs(b._clrLocalX - expectClr) < 1e-9,
     `${b._clrLocalX} vs ${expectClr}`);
   const expectDrag = H.hullDragOffsetX(b.heel.phi, b.dinghy);
@@ -57,7 +62,9 @@ check('CLR windward = opposite heel sign (φ>0 → −X)', Math.sign(H.clrOffset
   check('hull drag offset has the sail CE sign', Math.sign(expectDrag) === Math.sign(expectCe) && expectDrag > 0);
   b.ceLeewardOffset = false;
   mute(() => b.physics_model_step());
-  check('boat: CE local X = 0 when offset off', Math.abs(b._sailCeLocalX) < 1e-12, `${b._sailCeLocalX}`);
+  const onSpar = (sail) => Math.abs(sail.local.x - sail.boom.x) < 1e-12 && Math.abs(sail.local.y - sail.boom.y) < 1e-12;
+  check('boat: offset off leaves each sail on its boom', onSpar(b._mainSail) && onSpar(b._jibSail),
+    `main x ${b._mainSail.local.x.toFixed(4)} boom ${b._mainSail.boom.x.toFixed(4)}`);
   check('boat: CLR local X = 0 when offset off', Math.abs(b._clrLocalX) < 1e-12, `${b._clrLocalX}`);
   check('boat: hull drag local X = 0 when offset off', Math.abs(b._dragLocalX) < 1e-12, `${b._dragLocalX}`);
 }
