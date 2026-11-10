@@ -666,21 +666,17 @@ export class Boat{
 
 
 
-    // JIB. Trim follows the apparent wind. On a slow tack, once the bow is
-    // just past head-to-wind, jibBackwindStep holds the working sheet from
-    // the old tack instead (dinghy-forces.js). The force below is the
-    // ordinary sail force at that boom: the apparent wind is then on the
-    // wrong side of the chord, and the jib's forward centre yaws the bow
-    // onto the new tack. The mainsail is not held.
+    // JIB. Trim follows the apparent wind. Through a tack, while the rudder
+    // is still driving her around, jibBackwindStep holds the sheet she had
+    // when the helm went on (dinghy-forces.js). The force below is the
+    // ordinary sail force at that boom. The mainsail is not held.
 
     const clampBoom = (deg, max) => Math.max(-max, Math.min(max, deg));
     const jibTrim = clampBoom(this.awa * this.jib_boom_angle_factor, this.jib_boom_angle_max);
     const backwind = jibBackwindStep(this._jibBackwind, {
       twa: this.twa,
-      awa: this.awa,
       boomTrim: jibTrim,
-      speedMs: bs,
-      yawDegS: this.physics_model.getAngularVelocity() * 180 / Math.PI,
+      rudderDeg: this.rudder_angle,
       depower: this.depower,
       enabled: this.jibBackwindEnabled !== false,
     });

@@ -257,114 +257,96 @@ export function apparentWindAngleDeg(aw, hullAngleRad) {
   return awa;
 }
 
-// Backed jib on a slow tack. The boom normally tracks half the apparent
-// wind (boat.js), so through head-to-wind the jib arrives amidships and
-// luffs. A real sheet stays cleated. Left on the old side once the bow is
-// past head-to-wind, the sail fills from the wrong side: angle of attack
-// is the angle between that chord and the apparent wind, and sailLiftDrag
-// already resolves the force (lift perpendicular to the apparent wind,
-// signed by which side the wind is on, drag downwind). The jib's centre
-// of effort is forward of the centre of lateral resistance (Larsson &
-// Eliasson, Principles of Yacht Design — the same centre jibBoomForceLocal
-// uses), so that transverse force yaws the bow off onto the new tack.
-// Marchaj, Aero-Hydrodynamics of Sailing, treats a sail aback the same
-// way: the aerodynamic force at the angle between chord and wind, applied
-// forward of the lateral resistance. Bethwaite, High Performance Sailing,
-// holds the old headsail sheet through a light-air tack and lets it go
-// once the bow has borne away or the boat has way on again. A tack that
-// still has speed does not hold it.
+// Backed jib through a tack. The boom normally tracks half the apparent
+// wind, so a cleated sheet has to be chosen here or the jib arrives
+// amidships and luffs. The hold is the whole tack, not a slow-boat
+// special case: from the moment the helm puts the rudder on to turn
+// through the wind, until she is on the new tack or the helm stops
+// asking. The force is still sailLiftDrag at the held chord (Marchaj,
+// Aero-Hydrodynamics of Sailing). The jib centre is forward of the
+// centre of lateral resistance (Larsson & Eliasson, Principles of Yacht
+// Design), so once the wind is on the back of that chord the force yaws
+// the bow off. Bethwaite, High Performance Sailing, leaves the old
+// headsail sheet cleated for the tack and lets it go on the new tack.
 //
-// Gates measured on this hull in dev mode (uniform wind from +Y):
-//   An autopilot tack at 8 m/s true wind bottoms near 1.0 m/s and about
-//   20°/s, so it never enters. Scenario 6 crosses near 1.2 m/s and 15°/s.
-//   Scenario 3 crosses near 0.74 m/s and 8°/s, which is the stall this
-//   hold is for.
-// Enter only within 12° of head-to-wind. Further off, the new sheet should
-// fill; hauling the boom back would fight a tack that is already through
-// (scenario 6 is down to 0.76 m/s by 24° true-wind angle, still turning).
-export const JIB_BACKWIND_ENTER_TWA_DEG = 12;
-export const JIB_BACKWIND_ENTER_SPEED_MPS = 0.85;
-export const JIB_BACKWIND_ENTER_YAW_DEG_S = 12;
-// Borne away enough for the new sheet, short of this sim's 40° close-hauled
-// Rule 13 gate, or steerage way back (rudder foil force is usable again).
-export const JIB_BACKWIND_RELEASE_TWA_DEG = 30;
-export const JIB_BACKWIND_RELEASE_SPEED_MPS = 1.2;
-// A sheet this close to the centreline does not back; it is already luffing.
+// Rudder sign: positive rudder_angle yaws clockwise with way on, which
+// on this hull increases TWA (starboard toward port). The tack direction
+// is the rudder sign that reduces |TWA|, -sign(TWA).
+//
+// Course-keeping helm on a settled beat sits near 4°. Steering onto the
+// beat, without tacking, uses up to about 19° (measured 16–19° over 1.5–8
+// m/s while she acquires the close-hauled target). A tack drives the
+// rudder to the autopilot stop, about 24°. 21° is above that acquisition
+// helm and at the tack, so settling onto a beat does not pin the sheet
+// and a tack grabs it as the helm goes hard over. Release when that
+// component is back to 4° or less, or has the other sign: no longer more
+// helm than she uses to hold a course. 4° is the settled helm, so a dip
+// from 24° to 12° (still turning) does not drop the sheet.
+//
+// Arrived: |TWA| >= 40° on the side opposite the held sheet. 40° is
+// CLOSE_HAULED_TWA_DEG in rules.js, the angle this sim already treats as
+// being on the new tack (Rule 13 ends). A slow boat keeps the rudder
+// hard over past that, so the rudder test alone would hold the jib into
+// the new beat; arriving releases it so the new sheet can fill.
+export const JIB_BACKWIND_RUDDER_DEG = 21;
+export const JIB_BACKWIND_RUDDER_NEUTRAL_DEG = 4;
+export const JIB_BACKWIND_ARRIVED_TWA_DEG = 40;
+// A boom on the centreline is not a cleated working sheet.
 export const JIB_BACKWIND_MIN_SHEET_DEG = 8;
-// Remember the boom once she is at least this far off the wind, and stop
-// updating inside it, so the held angle is the working sheet as she enters
-// the tack rather than the luff at head-to-wind.
-export const JIB_BACKWIND_MEMORY_TWA_DEG = 38;
 
 // One sheeting decision. `prev` is the last return value (or null).
-// `sample`: { twa, awa, boomTrim, speedMs, yawDegS, depower, enabled }.
+// `sample`: { twa, boomTrim, rudderDeg, depower, enabled }.
 // `boomTrim` is the boom that would follow the apparent wind this step.
-// The sheet is held only once `awa` is on the opposite side of the
-// remembered boom. True wind can cross a step or two before apparent
-// wind; holding through that gap oversheets the jib on the side the
-// wind is still on, and that weather helm fights the tack.
-// Returns { memory, held, backwinded, armed, boom }. `boom` is degrees,
-// the same sign convention as boat.js (positive apparent wind, positive
-// boom, clew to body −X). No force is computed here.
+// Returns { memory, held, backwinded, rudderSign, boom }. `boom` is
+// degrees, the same sign convention as boat.js. No force is computed here.
 export function jibBackwindStep(prev, sample) {
   const p = prev && typeof prev === 'object' ? prev : null;
   let memory = p && Number.isFinite(p.memory) ? p.memory : 0;
   let held = p && Number.isFinite(p.held) ? p.held : 0;
+  let rudderSign = p && Number.isFinite(p.rudderSign) ? p.rudderSign : 0;
   let backwinded = !!(p && p.backwinded);
-  let armed = !p || p.armed !== false;
   const twa = sample.twa;
   const boomTrim = sample.boomTrim;
-  const speed = sample.speedMs;
-  const yaw = Math.abs(sample.yawDegS || 0);
+  const rudder = Number.isFinite(sample.rudderDeg) ? sample.rudderDeg : 0;
   const depower = sample.depower || 0;
   const enabled = sample.enabled !== false;
-  if (!Number.isFinite(twa) || !Number.isFinite(boomTrim) || !Number.isFinite(speed)) {
-    return { memory, held: 0, backwinded: false, armed, boom: Number.isFinite(boomTrim) ? boomTrim : 0 };
+  if (!Number.isFinite(twa) || !Number.isFinite(boomTrim)) {
+    return { memory, held: 0, backwinded: false, rudderSign, boom: Number.isFinite(boomTrim) ? boomTrim : 0 };
   }
   const absTwa = Math.abs(twa);
   const twaSign = Math.sign(twa) || 0;
   const easing = depower > 0;
-  // Working sheet on the tack she is sailing. Freeze it once she heads
-  // up inside MEMORY_TWA, and don't record a sheet that is being eased.
-  if (!easing && absTwa >= JIB_BACKWIND_MEMORY_TWA_DEG && absTwa <= 120
+  // Rudder sign that heads her toward the wind from this tack.
+  const toward = twaSign === 0 ? 0 : -twaSign;
+  const asking = toward !== 0 ? rudder * toward : 0;
+  // Track the working sheet only while she is not already in the turn, so
+  // the latched angle is the sheet she had when the helm went on, not the
+  // boom after it has followed the apparent wind toward the centreline.
+  if (!backwinded && !easing && !(asking > JIB_BACKWIND_RUDDER_DEG)
       && twaSign !== 0 && Math.sign(boomTrim) === twaSign
-      && Math.abs(boomTrim) >= JIB_BACKWIND_MIN_SHEET_DEG) {
+      && Math.abs(boomTrim) >= JIB_BACKWIND_MIN_SHEET_DEG && absTwa <= 120) {
     memory = boomTrim;
   }
-  // Armed again only once that remembered sheet belongs to the tack she
-  // is on. A release in the middle of the same crossing does not re-back.
-  if (absTwa >= JIB_BACKWIND_MEMORY_TWA_DEG && twaSign !== 0 && twaSign === Math.sign(memory)) armed = true;
-  const memSign = Math.sign(memory);
-  const opposite = memSign !== 0 && twaSign !== 0 && twaSign !== memSign;
-  const awaSign = Number.isFinite(sample.awa) ? Math.sign(sample.awa) : 0;
-  // Wind on the wrong side of the remembered sheet. A sub-degree flicker
-  // is not a filled sail.
-  const windAback = awaSign !== 0 && memSign !== 0 && awaSign !== memSign && Math.abs(sample.awa) >= 0.5;
-  const slow = speed < JIB_BACKWIND_ENTER_SPEED_MPS && yaw < JIB_BACKWIND_ENTER_YAW_DEG_S;
-  const inWindow = opposite && absTwa <= JIB_BACKWIND_ENTER_TWA_DEG;
-  if (backwinded) {
-    // Sign 0 is head-to-wind: keep the sheet. Releasing on that sample
-    // would drop the back every time the bow kissed the wind. She has
-    // fallen back only once the old tack is a real angle again.
-    const heldSign = Math.sign(held);
-    const fellBack = twaSign !== 0 && heldSign !== 0 && twaSign === heldSign
-      && absTwa >= JIB_BACKWIND_ENTER_TWA_DEG;
-    if (!enabled || easing || heldSign === 0 || absTwa >= JIB_BACKWIND_RELEASE_TWA_DEG
-        || speed >= JIB_BACKWIND_RELEASE_SPEED_MPS || fellBack) {
-      backwinded = false;
-    }
-  }
-  if (enabled && !backwinded && armed && !easing && inWindow && slow && windAback
-      && Math.abs(memory) >= JIB_BACKWIND_MIN_SHEET_DEG) {
+  // A tack starts upwind of a beam reach. Past that, rudder toward the
+  // wind is a head-up from a run, not a tack, and a gybe goes the other way.
+  if (enabled && !backwinded && !easing && asking > JIB_BACKWIND_RUDDER_DEG
+      && absTwa >= 5 && absTwa <= 90
+      && Math.abs(memory) >= JIB_BACKWIND_MIN_SHEET_DEG && Math.sign(memory) === twaSign) {
     backwinded = true;
     held = memory;
-    armed = false;
+    rudderSign = toward;
+  }
+  if (backwinded) {
+    const stillAsking = rudder * rudderSign > JIB_BACKWIND_RUDDER_NEUTRAL_DEG;
+    const onNewTack = twaSign !== 0 && Math.sign(held) !== 0 && twaSign !== Math.sign(held);
+    const arrived = onNewTack && absTwa >= JIB_BACKWIND_ARRIVED_TWA_DEG;
+    if (!enabled || easing || !stillAsking || arrived) backwinded = false;
   }
   return {
     memory,
     held: backwinded ? held : 0,
     backwinded,
-    armed,
+    rudderSign: backwinded ? rudderSign : 0,
     boom: backwinded ? held : boomTrim,
   };
 }

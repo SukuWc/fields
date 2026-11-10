@@ -20,11 +20,7 @@
 export const SAIL_FLAP_AMP_M = 0.12;
 export const SAIL_FLAP_JIB_AMP_M = 0.08;
 const SAIL_FLAP_POINTS = 9;
-// Ordinary sail cloth. A jib held aback is drawn apart from it so the old
-// sheet is obvious next to a mainsail that has already crossed. Red, not
-// amber: the speed plot is yellow and an amber sail disappears on it.
 export const SAIL_COLOR = 0x8866ff;
-export const JIB_BACKWIND_COLOR = 0xff1744;
 
 // Sail polyline p[0..3] → segments. amp 0 draws the original three segments.
 export function pushSailSegments(graphics, p, amp, phase, color = SAIL_COLOR) {
@@ -74,7 +70,13 @@ function sail(s, lead, length, boomAngle, fat) {
   const p = [];
   p[0] = wp(s, lead);
   const ang = boomAngle / 180 * Math.PI;
-  const sg = Math.sign(boomAngle);
+  // Belly away from the wind, off the chord. sign(awa − boom) is the
+  // leeward side of that chord: the same as sign(boom) while the boom is
+  // sheeted to the wind (|boom| ≤ |awa|, same sign), and the other way
+  // when the wind is on the back of the sail. A missing awa keeps the old
+  // boom-sign belly so a partial state does not flip every sail.
+  const rel = Number.isFinite(s.awa) ? s.awa - boomAngle : boomAngle;
+  const sg = Math.sign(rel);
   for (const [k, frac] of [[1, 0.25], [2, 0.5]]) {
     p[k] = {
       x: p[0].x + Math.cos(s.ha + Math.PI / 2 + ang) * length * frac + Math.cos(s.ha + ang) * -fat * sg,
@@ -265,17 +267,14 @@ export function boatGuides(s, d) {
   // Centreboard
   const c0 = wp(s, d.cp + d.cl / 2), c1 = wp(s, d.cp - d.cl / 2);
   graphics.push({ color: 0x550000, type: "hydro", x1: c0.x, y1: c0.y, x2: c1.x, y2: c1.y });
-  // Mainsail and jib. A backwinded jib stays on jba (the old sheet) and is
-  // drawn full and red: the cloth is pressed aback, not luffing, and the
-  // mint/purple jib force arrows (above) leave its centre.
+  // Mainsail and jib. Camber and luff come from the boom against the
+  // apparent wind for both, including a jib held aback: the belly is on
+  // whichever side of the chord the wind is not, and a powered sail
+  // (angle of attack past the luff angle) does not flap.
   const mainFat = (d.mbl * 0.05 * Math.abs(s.awa) / 30 < d.mbl / 10) ? d.mbl * 0.05 * Math.abs(s.awa) / 30 : d.mbl / 10;
   pushSailSegments(graphics, sail(s, d.mle, d.mbl, s.mba, mainFat), SAIL_FLAP_AMP_M * s.mf, s.ph);
-  const backed = s.jib_backwinded === 1;
   const jibEase = d.jbl * 0.05 * Math.abs(s.awa) / 15;
-  const jibFat = backed ? d.jbl / 3 : (jibEase < d.jbl / 3 ? jibEase : d.jbl / 3);
-  const jibSegs = [];
-  pushSailSegments(jibSegs, sail(s, d.jle, d.jbl, s.jba, jibFat), backed ? 0 : SAIL_FLAP_JIB_AMP_M * s.jf, s.ph + 1.3, backed ? JIB_BACKWIND_COLOR : SAIL_COLOR);
-  if (backed) for (const seg of jibSegs) seg.role = "jib-backwind";
-  for (const seg of jibSegs) graphics.push(seg);
+  const jibFat = jibEase < d.jbl / 3 ? jibEase : d.jbl / 3;
+  pushSailSegments(graphics, sail(s, d.jle, d.jbl, s.jba, jibFat), SAIL_FLAP_JIB_AMP_M * s.jf, s.ph + 1.3);
   return graphics;
 }
