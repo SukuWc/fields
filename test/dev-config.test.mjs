@@ -196,6 +196,7 @@ test('Apply, Revert and Reset match the room editor and invalid text does not ap
   assert.equal(commands.length, 1);
   assert.equal(commands[0].type, 'autopilotGains');
   assert.equal(commands[0].kp, AUTOPILOT_KP);
+  assert.equal(commands[0].rudderMax, 60);
   assert.equal(visuals.at(-1).showForces, true);
   assert.equal(visuals.at(-1).stickyAutopilot, false);
   assert.equal(storage.getItem(STICKY_AUTOPILOT_KEY), null);

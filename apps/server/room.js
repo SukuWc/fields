@@ -638,8 +638,8 @@ export class Room {
       if (r && who) this._chatSystem(`${who.name} left (boat ${who.n})`);
       return !!r;
     }
-    // Dev-tab autopilot PID. Not a room command: only this client's boats,
-    // by id. No boat yet: remember the gains and apply them on spawn.
+    // Dev-tab autopilot PID and manual rudder limit (rudderMax). Not a room
+    // command: only this client's boats, by id. No boat yet: remember the gains and apply them on spawn.
     // A `boat` index on the message is ignored so it cannot select someone else.
     if (c.type === 'autopilotGains') {
       const g = validateAutopilotGains(c);
@@ -648,7 +648,7 @@ export class Room {
       const list = this.owned.get(client) || [];
       const boats = [];
       for (const b of list) {
-        const r = this.core.command({ type: 'autopilotGains', boatId: b.id, kp: g.kp, ki: g.ki, kd: g.kd });
+        const r = this.core.command({ type: 'autopilotGains', boatId: b.id, ...g });
         if (r && r.error) return { error: r.error };
         boats.push(b.id);
       }
@@ -740,7 +740,10 @@ export class Room {
 
   _rememberGains(client, g) {
     if (!this._gainByClient) this._gainByClient = new Map();
-    this._gainByClient.set(client, { kp: g.kp, ki: g.ki, kd: g.kd });
+    // A later Apply without rudderMax (older client) keeps the remembered limit.
+    const prev = this._gainByClient.get(client);
+    const rudderMax = g.rudderMax !== undefined ? g.rudderMax : prev && prev.rudderMax;
+    this._gainByClient.set(client, { kp: g.kp, ki: g.ki, kd: g.kd, ...(rudderMax !== undefined ? { rudderMax } : {}) });
   }
 
   _gainsFor(client) {
@@ -750,7 +753,7 @@ export class Room {
   _applyRememberedGains(client, boatId) {
     const g = this._gainsFor(client);
     if (!g || !boatId) return;
-    this.core.command({ type: 'autopilotGains', boatId, kp: g.kp, ki: g.ki, kd: g.kd });
+    this.core.command({ type: 'autopilotGains', boatId, ...g });
   }
 
   _spawn(client, { name, color }) {
@@ -778,7 +781,7 @@ export class Room {
         for (const sp of specs) {
           const r = this.core.command({ type: 'spawnBoat', name: sp.name, color: sp.color });
           key.boats.push({ id: r.id, name: r.name, color: sp.color });
-          if (key.gains) this.core.command({ type: 'autopilotGains', boatId: r.id, kp: key.gains.kp, ki: key.gains.ki, kd: key.gains.kd });
+          if (key.gains) this.core.command({ type: 'autopilotGains', boatId: r.id, ...key.gains });
         }
         this._markAway(key);
         continue;

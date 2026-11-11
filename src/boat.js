@@ -175,8 +175,18 @@ export const PENALTY_TURN_FINISH_RUDDER = 6;
 export const RUDDER_RETURN_SPEEDUP = 3;
 
 /** Autopilot rudder limit. Was rudder_angle_max / 2 (60 / 2); pinned at 30° so
- *  the 60° → 45° manual limit does not slow autopilot tacks and bear-aways. */
+ *  the manual limit (rudder_angle_max) does not change autopilot tacks and
+ *  bear-aways. A manual limit below 30° caps it too. */
 export const AUTOPILOT_RUDDER_MAX = 30;
+
+/** Manual helm hard-over, degrees each side (Boat.rudder_angle_max). Dev
+ *  TOML rudder_max_deg (src/dev-config.js) sets it per boat within
+ *  RUDDER_MAX_DEG_MIN..RUDDER_MAX_DEG_MAX. Was 45° (60° before that). The
+ *  autopilot (AUTOPILOT_RUDDER_MAX) and penalty turns
+ *  (PENALTY_TURN_RUDDER_MAX) keep their own limits, capped at this one. */
+export const RUDDER_MAX_DEG = 60;
+export const RUDDER_MAX_DEG_MIN = 10;
+export const RUDDER_MAX_DEG_MAX = 90;
 
 /** Autopilot heading-target change per sim tick while Up / Down is held (was 1°). */
 export const AUTOPILOT_HEADING_STEP_DEG = 1.5;
@@ -218,7 +228,7 @@ export class Boat{
 
     this.rudder_angle = 0;
     this.rudder_angle_last = 0;
-    this.rudder_angle_max = 45; // was 60
+    this.rudder_angle_max = RUDDER_MAX_DEG;
     this.rudder_position = 1.8
     this.rudder_lenght = 0.5
 
@@ -599,11 +609,12 @@ export class Boat{
 
       this.rudder_angle_target = (comp_p + comp_i + comp_d)*Math.sign(d)
 
-      if (this.rudder_angle_target>AUTOPILOT_RUDDER_MAX){
-        this.rudder_angle_target = AUTOPILOT_RUDDER_MAX;
+      const autopilotMax = Math.min(AUTOPILOT_RUDDER_MAX, this.rudder_angle_max);
+      if (this.rudder_angle_target>autopilotMax){
+        this.rudder_angle_target = autopilotMax;
       }
-      if (this.rudder_angle_target<-AUTOPILOT_RUDDER_MAX){
-        this.rudder_angle_target = -AUTOPILOT_RUDDER_MAX;
+      if (this.rudder_angle_target<-autopilotMax){
+        this.rudder_angle_target = -autopilotMax;
       }
 
       this.rudder_angle += (this.rudder_angle_target - this.rudder_angle) * AUTOPILOT_RUDDER_BLEND
@@ -886,8 +897,9 @@ export class Boat{
       if (Math.abs(yawCommand) < PENALTY_TURN_FINISH_RUDDER) yawCommand = PENALTY_TURN_FINISH_RUDDER * Math.sign(error);
     }
     let target = -yawCommand * (d < 0 ? -1 : 1);
-    if (target > PENALTY_TURN_RUDDER_MAX) target = PENALTY_TURN_RUDDER_MAX;
-    if (target < -PENALTY_TURN_RUDDER_MAX) target = -PENALTY_TURN_RUDDER_MAX;
+    const penaltyMax = Math.min(PENALTY_TURN_RUDDER_MAX, this.rudder_angle_max);
+    if (target > penaltyMax) target = penaltyMax;
+    if (target < -penaltyMax) target = -penaltyMax;
     return target;
   }
 
@@ -1031,6 +1043,17 @@ export class Boat{
     }
 
     return segments;
+  }
+
+  // Manual helm limit, degrees each side. Out-of-range or non-numeric
+  // values are refused (false) and leave the boat as it was. A rudder
+  // already past a lowered limit is brought back inside it.
+  setRudderMax(deg) {
+    if (typeof deg !== 'number' || !Number.isFinite(deg) || deg < RUDDER_MAX_DEG_MIN || deg > RUDDER_MAX_DEG_MAX) return false;
+    this.rudder_angle_max = deg;
+    if (this.rudder_angle > deg) this.rudder_angle = deg;
+    if (this.rudder_angle < -deg) this.rudder_angle = -deg;
+    return true;
   }
 
   input_rudder_left(){

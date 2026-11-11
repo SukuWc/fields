@@ -4,7 +4,8 @@
 // fills the defaults and does not apply. Invalid text never changes the
 // applied config, the URL, or the sim.
 //
-// Apply writes this page's visuals immediately and sends autopilotGains.
+// Apply writes this page's visuals immediately and sends autopilotGains
+// (the PID and rudder_max_deg as rudderMax).
 // The command is sent first. If the sim or the server rejects it, the
 // visuals stay as they were. See src/dev-config.js for which boats get
 // the gains in local, worker and remote modes.
@@ -15,7 +16,7 @@ import {
   DEV_CONFIG_KEY,
   DEV_CONFIG_KEYS,
   DEV_TOML_FIELDS,
-  autopilotGainsOf,
+  devBoatCommand,
   configFromQuery,
   configFromStored,
   devClientEffects,
@@ -162,7 +163,7 @@ export function installDevPrefs(doc, { host, applyLocal, storage } = {}) {
     const my = ++gen;
     const parsed = parseAndValidateDevConfig(text);
     if (parsed.error) { refresh(); return parsed; }
-    const gains = { type: 'autopilotGains', ...autopilotGainsOf(parsed.config) };
+    const gains = devBoatCommand(parsed.config);
     let r;
     try {
       // LocalHost applies inside commandSync, before the first frame.
