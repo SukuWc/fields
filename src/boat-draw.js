@@ -11,7 +11,8 @@
 //   (hull_angle), awa, tw (smoothed true wind direction, rad), ap (autopilot on),
 //   wd (wind_direction), aht (autopilot heading target), ra (rudder angle),
 //   mba, jba (drawn boom angles), mf, jf (main and jib flap amounts), ph
-//   (flap phase), f (forces: [px, py, vx, vy, ...]),
+//   (flap phase), jib_backwinded (1 while the jib is held on the old tack),
+//   f (forces: [px, py, vx, vy, ...]),
 //   ce (force-weighted rig centre), mce/jce (per-sail centres),
 //   ml/md (mainsail lift and drag), jl/jd (jib lift and drag).
 // def d: rp, rl (rudder position, length), cp, cl (centreboard), mle, mbl
@@ -19,11 +20,12 @@
 export const SAIL_FLAP_AMP_M = 0.12;
 export const SAIL_FLAP_JIB_AMP_M = 0.08;
 const SAIL_FLAP_POINTS = 9;
+export const SAIL_COLOR = 0x8866ff;
 
 // Sail polyline p[0..3] → segments. amp 0 draws the original three segments.
-export function pushSailSegments(graphics, p, amp, phase) {
+export function pushSailSegments(graphics, p, amp, phase, color = SAIL_COLOR) {
   if (!(amp > 1e-4)) {
-    for (let i = 0; i < 3; i++) graphics.push({ color: 0x8866ff, type: "sail", x1: p[i].x, y1: p[i].y, x2: p[i + 1].x, y2: p[i + 1].y });
+    for (let i = 0; i < 3; i++) graphics.push({ color, type: "sail", x1: p[i].x, y1: p[i].y, x2: p[i + 1].x, y2: p[i + 1].y });
     return;
   }
   const cx = p[3].x - p[0].x, cy = p[3].y - p[0].y;
@@ -37,7 +39,7 @@ export function pushSailSegments(graphics, p, amp, phase) {
     const sN = u / 3;
     const w = amp * Math.sin(Math.PI * sN) * Math.sin(phase - 3 * Math.PI * sN);
     const pt = { x: bx + nx * w, y: by + ny * w };
-    if (prev) graphics.push({ color: 0x8866ff, type: "sail", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y });
+    if (prev) graphics.push({ color, type: "sail", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y });
     prev = pt;
   }
 }
@@ -64,11 +66,27 @@ function chevron(graphics, s, angle, color, role) {
     x2: s.x + Math.cos(angle) * 5 + Math.cos(angle + p) * 0.5, y2: s.y + Math.sin(angle) * 5 + Math.sin(angle + p) * 0.5 });
 }
 
+// Jib camber depth (m) for a chord at boomDeg to apparent wind awaDeg.
+// 0.05·length per 7.5° of angle between them, capped at a third of the
+// boom. Falls back to the half-trim angle when awa is missing.
+export function jibDepth(length, awaDeg, boomDeg) {
+  const rel = Number.isFinite(awaDeg) && Number.isFinite(boomDeg) ? Math.abs(awaDeg - boomDeg)
+    : Math.abs(Number.isFinite(awaDeg) ? awaDeg : 0) / 2;
+  const depth = length * 0.05 * rel / 7.5;
+  return depth < length / 3 ? depth : length / 3;
+}
+
 function sail(s, lead, length, boomAngle, fat) {
   const p = [];
   p[0] = wp(s, lead);
   const ang = boomAngle / 180 * Math.PI;
-  const sg = Math.sign(boomAngle);
+  // Belly away from the wind, off the chord. sign(awa − boom) is the
+  // leeward side of that chord: the same as sign(boom) while the boom is
+  // sheeted to the wind (|boom| ≤ |awa|, same sign), and the other way
+  // when the wind is on the back of the sail. A missing awa keeps the old
+  // boom-sign belly so a partial state does not flip every sail.
+  const rel = Number.isFinite(s.awa) ? s.awa - boomAngle : boomAngle;
+  const sg = Math.sign(rel);
   for (const [k, frac] of [[1, 0.25], [2, 0.5]]) {
     p[k] = {
       x: p[0].x + Math.cos(s.ha + Math.PI / 2 + ang) * length * frac + Math.cos(s.ha + ang) * -fat * sg,
@@ -259,10 +277,18 @@ export function boatGuides(s, d) {
   // Centreboard
   const c0 = wp(s, d.cp + d.cl / 2), c1 = wp(s, d.cp - d.cl / 2);
   graphics.push({ color: 0x550000, type: "hydro", x1: c0.x, y1: c0.y, x2: c1.x, y2: c1.y });
-  // Mainsail and jib
+  // Mainsail and jib. Camber and luff come from the boom against the
+  // apparent wind for both, including a jib held aback: the belly is on
+  // whichever side of the chord the wind is not, and a powered sail
+  // (angle of attack past the luff angle) does not flap.
   const mainFat = (d.mbl * 0.05 * Math.abs(s.awa) / 30 < d.mbl / 10) ? d.mbl * 0.05 * Math.abs(s.awa) / 30 : d.mbl / 10;
   pushSailSegments(graphics, sail(s, d.mle, d.mbl, s.mba, mainFat), SAIL_FLAP_AMP_M * s.mf, s.ph);
-  const jibFat = (d.jbl * 0.05 * Math.abs(s.awa) / 15 < d.jbl / 3) ? d.jbl * 0.05 * Math.abs(s.awa) / 15 : d.jbl / 3;
+  // Jib depth from the drawn boom against the apparent wind, |awa − jba|.
+  // With the normal trim (boom = ½·awa) that is ½·|awa|, so the 7.5°
+  // divisor gives the same depth as the old |awa|/15 for every sheeted
+  // jib; a jib held aback or eased toward the wind gets the depth of its
+  // own angle to the wind instead of a stand-in.
+  const jibFat = jibDepth(d.jbl, s.awa, s.jba);
   pushSailSegments(graphics, sail(s, d.jle, d.jbl, s.jba, jibFat), SAIL_FLAP_JIB_AMP_M * s.jf, s.ph + 1.3);
   return graphics;
 }

@@ -7,7 +7,7 @@ import {
 } from './rules.js';
 import { WIND_UNIT_MPS, boatTrueWind } from './wind.js';
 import { DINGHY_DEFAULTS, createHeelState, heelForceFactor, hullDragOffsetX, sailCeOffsetX, clrOffsetX, stepHeel } from './heel.js';
-import { apparentWindAngleDeg, apparentWindMs, clewOffset, dinghyTotalMass, hullResistanceNewtons, internalForcePerNewton, jibBoomForceLocal, LEGACY_DENSITY_MASS_KG, legacyInternalPerNewton, mainBoomForceLocal, sailAreas, sailDynamicNewtons, sailLiftDrag, yawInertia } from './dinghy-forces.js';
+import { apparentWindAngleDeg, apparentWindMs, clewOffset, dinghyTotalMass, hullResistanceNewtons, internalForcePerNewton, jibBackwindStep, jibBoomForceLocal, LEGACY_DENSITY_MASS_KG, legacyInternalPerNewton, mainBoomForceLocal, sailAreas, sailDynamicNewtons, sailLiftDrag, yawInertia } from './dinghy-forces.js';
 import { DAGGERBOARD, foilForceNewtons, RUDDER_BLADE } from './foil.js';
 
 const wrap360 = (d) => ((d % 360) + 360) % 360;
@@ -30,6 +30,9 @@ const wrap360 = (d) => ((d % 360) + 360) % 360;
 //   rudder_deg   signed rudder angle, degrees (boat.rudder_angle; positive
 //                yaws clockwise when the boat has way on)
 //   capsized     1 only while past the heel limit (absent otherwise)
+//   jib_backwinded  1 while the jib is held sheeted on the old tack through
+//                a slow head-to-wind (absent otherwise). The drawn jib boom
+//                (jba) stays on that side; the mainsail boom does not.
 // Raw angles (kept): ha / pa are math radians with the bow on local −Y, so
 // the bow points at math angle ha − 90°; wd is the math angle (0 = +X,
 // counter-clockwise) the wind comes from. Compass = 90° − math angle.
@@ -244,6 +247,12 @@ export class Boat{
     this.jib_boom_angle_factor = 0.5
     this.jib_boom_angle = 0
     this.jib_boom_angle_actual = 0
+    // Backwinded jib through a tack (dinghy-forces.js jibBackwindStep). On unless a
+    // caller turns it off to compare the same tack with the sheet released.
+    this.jibBackwinded = false;
+    this.jibBackwindArmed = false;
+    this.jibBackwindEnabled = true;
+    this._jibBackwind = null;
 
     this.centerboard_position = -0.15;
     this.centerboard_length   = 0.6
@@ -658,20 +667,30 @@ export class Boat{
 
 
 
-    // JIB
+    // JIB. Trim follows the apparent wind. Through a tack, jibBackwindStep
+    // remembers the sheet she had when the helm went on and, once the bow
+    // is past head-to-wind and the rudder is still driving her around,
+    // holds the jib there (dinghy-forces.js). The force below is the
+    // ordinary sail force at that boom. The mainsail is not held.
 
-    this.jib_boom_angle = this.awa*this.jib_boom_angle_factor;
-
-    if (this.jib_boom_angle>this.jib_boom_angle_max) this.jib_boom_angle = this.jib_boom_angle_max;
-    if (this.jib_boom_angle<-this.jib_boom_angle_max) this.jib_boom_angle = -this.jib_boom_angle_max;
+    const clampBoom = (deg, max) => Math.max(-max, Math.min(max, deg));
+    const jibTrim = clampBoom(this.awa * this.jib_boom_angle_factor, this.jib_boom_angle_max);
+    const backwind = jibBackwindStep(this._jibBackwind, {
+      twa: this.twa,
+      boomTrim: jibTrim,
+      rudderDeg: this.rudder_angle,
+      depower: this.depower,
+      enabled: this.jibBackwindEnabled !== false,
+    });
+    this._jibBackwind = backwind;
+    this.jibBackwinded = backwind.backwinded;
+    this.jibBackwindArmed = backwind.armed;
+    this.jib_boom_angle = backwind.boom;
 
 
     // MAINSAIL
 
-    this.mainsail_boom_angle = this.awa*this.mainsail_boom_angle_factor;
-
-    if (this.mainsail_boom_angle>this.mainsail_boom_angle_max) this.mainsail_boom_angle = this.mainsail_boom_angle_max;
-    if (this.mainsail_boom_angle<-this.mainsail_boom_angle_max) this.mainsail_boom_angle = -this.mainsail_boom_angle_max;
+    this.mainsail_boom_angle = clampBoom(this.awa * this.mainsail_boom_angle_factor, this.mainsail_boom_angle_max);
 
 
     // Depower eases the sheets: the booms swing from trim toward lying along
@@ -930,6 +949,7 @@ export class Boat{
       ap: this.autopilot_enabled ? 1 : 0, wd: this.wind_direction, aht: this.autopilot_heading_target,
       twa: this.twa, bv1: this.autopilot_heading_best_vmg_1, bv2: this.autopilot_heading_best_vmg_2,
       ra: this.rudder_angle, mba: this.mainsail_boom_angle_actual, jba: this.jib_boom_angle_actual,
+      ...(this.jibBackwinded ? { jib_backwinded: 1 } : {}),
       mf: flapScale, jf: this.jibFlap, ph: flapPhase, f,
       ...readoutFields(this),
     };
