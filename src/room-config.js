@@ -99,7 +99,7 @@ export const ROOM_CONFIG_DEFAULTS = Object.freeze({
   root_cell_m: 2,
   steps_per_frame: 1,
   sail_wake_gain: 16,
-  field_skip: 0,
+  field_skip: 1,
   refine_max_level: 2,
   boat_refine_radius_m: 3,
   budget_target: 50000,

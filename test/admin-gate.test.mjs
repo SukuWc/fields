@@ -1,7 +1,7 @@
 // Room admin gate over the WebSocket (apps/server/room.js): with ADMIN_SECRET
 // set, room-wide commands (config, restart, wind, …) need a client that
-// logged in ('auth' / init adminSecret); with it unset they are refused for
-// everyone (read-only, as on the landing page). Boat and chat commands are
+// logged in ('auth' / init adminSecret); with it unset editing is open:
+// everyone may send them, no login (admin.open). Boat and chat commands are
 // never gated. RemoteHost.login stores the secret under the landing key.
 import { WebSocket } from 'ws';
 import { startServer } from '../apps/server/index.js';
@@ -28,6 +28,7 @@ const mk = (port, extra = {}) => new RemoteHost(`ws://127.0.0.1:${port}/?room=ga
   const sp = await a.command({ type: 'spawnBoat', name: 'Ann' });
   check('spawnBoat not gated', sp && !sp.error, JSON.stringify(sp));
   const bad = await a.login('nope');
+  check('with ADMIN_SECRET: not open', a.admin && a.admin.open === false, JSON.stringify(a.admin));
   check('wrong secret → unauthorized, not stored', bad && bad.error === 'unauthorized' && !store.has(ADMIN_SECRET_KEY));
   const ok = await a.login('s3cret');
   check('right secret → authed + stored under landing key', ok && ok.ok && a.admin.authed && store.get(ADMIN_SECRET_KEY) === 's3cret', JSON.stringify(ok));
@@ -55,12 +56,17 @@ const mk = (port, extra = {}) => new RemoteHost(`ws://127.0.0.1:${port}/?room=ga
   const srv = await startServer({ port: 0, fieldHz: 0, adminSecret: '' });
   const a = mk(srv.port, { adminSecret: 'whatever' });
   await a.ready;
-  check('no ADMIN_SECRET: enabled false', a.admin && a.admin.gate && !a.admin.enabled && !a.admin.authed, JSON.stringify(a.admin));
-  const r = await a.command({ type: 'restart', scenario: 0 });
-  check('no ADMIN_SECRET: room commands refused (read-only)', r && /disabled/.test(r.error || ''), JSON.stringify(r));
+  check('no ADMIN_SECRET: open editing (gate, enabled, authed, open)', a.admin && a.admin.gate && a.admin.enabled && a.admin.authed && a.admin.open === true, JSON.stringify(a.admin));
+  const b = mk(srv.port, { adminSecret: '' });
+  await b.ready;
+  check('no ADMIN_SECRET: a client without any secret is open too', b.admin && b.admin.open === true && b.admin.authed);
+  const r = await b.command({ type: 'restart', scenario: 0 });
+  check('no ADMIN_SECRET: room commands accepted without login', r && !r.error, JSON.stringify(r));
+  const w = await b.command({ type: 'wind', speed: 6 });
+  check('no ADMIN_SECRET: wind command accepted', !(w && w.error), JSON.stringify(w));
   const l = await a.login('whatever');
-  check('no ADMIN_SECRET: login refused', l && /disabled/.test(l.error || ''));
-  a.close && a.close();
+  check('no ADMIN_SECRET: login is a harmless ok', l && l.ok && l.admin && l.admin.open === true, JSON.stringify(l));
+  for (const h of [a, b]) h.close && h.close();
   await srv.close();
 }
 

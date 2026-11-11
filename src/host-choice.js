@@ -28,5 +28,18 @@ export function hostChoice(search, { hasWorker = true, envHost, envServer, loc }
     serverDefault = `${l.protocol === 'https:' ? 'wss' : 'ws'}://${l.host}/ws?room=${encodeURIComponent(q.get('room') || DEFAULT_ROOM)}`;
   }
   if (q.has('server') && q.get('server') === serverDefault) drop.push('server');
-  return { kind, server: kind === 'remote' ? (q.get('server') || serverDefault) : null, drop };
+  let server = kind === 'remote' ? (q.get('server') || serverDefault) : null;
+  // EXPERIMENT (docs/transport-experiments.md): ?transport=ws|rtc|wt and
+  // ?send=buf|latest|ack on the page go on to the server URL.
+  if (server) {
+    for (const k of ['transport', 'send']) {
+      if (!q.has(k)) continue;
+      try {
+        const u = new URL(server);
+        u.searchParams.set(k, q.get(k));
+        server = u.toString();
+      } catch { /* not a URL: leave it */ }
+    }
+  }
+  return { kind, server, drop };
 }

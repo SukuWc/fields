@@ -9,6 +9,8 @@
      a Login button unlocks editable Commit / Reset (Bearer secret remembered
      in localStorage for this origin — never baked into the client bundle);
      Logout clears it. Pre-login the textarea stays visible but read-only.
+     Without ADMIN_SECRET (adminOpen in /api/rooms) editing is open:
+     Commit / Reset show directly, no Login / Logout, no Bearer header.
      Room-list refresh reuses card nodes (syncListChildren) so editing the
      TOML keeps focus and scroll across the 5 s poll.
      ?api=https://host points it at another server (CORS is open). -->
@@ -132,8 +134,10 @@
     const btnLogout = li.querySelector('button.logout');
     const btnCommit = li.querySelector('button.commit');
     const btnReset = li.querySelector('button.reset');
-    const admin = !!room.admin;
-    const loggedIn = admin && isLoggedIn();
+    // open: the server has no ADMIN_SECRET, so anyone may Commit / Reset.
+    const open = !!room.adminOpen;
+    const admin = !!room.admin || open;
+    const loggedIn = admin && (open || isLoggedIn());
     if (ta) {
       ta.readOnly = !loggedIn;
       // Only overwrite when refreshRooms supplied a string; auth-only rebinds pass no config.
@@ -147,14 +151,17 @@
       }
     }
     if (actions) actions.hidden = !admin;
-    if (btnLogin) btnLogin.hidden = !admin || loggedIn;
-    if (btnLogout) btnLogout.hidden = !loggedIn;
+    if (btnLogin) btnLogin.hidden = open || !admin || loggedIn;
+    if (btnLogout) btnLogout.hidden = open || !loggedIn;
     if (btnCommit) btnCommit.hidden = !loggedIn;
     if (btnReset) btnReset.hidden = !loggedIn;
     if (hint) {
-      if (!admin) {
+      if (open) {
         hint.hidden = false;
-        hint.textContent = 'Admin editing disabled (server has no ADMIN_SECRET).';
+        hint.textContent = 'Open editing: anyone can change this room (server has no ADMIN_SECRET).';
+      } else if (!admin) {
+        hint.hidden = false;
+        hint.textContent = 'Admin editing disabled.';
       } else if (!loggedIn) {
         hint.hidden = false;
         hint.textContent = 'Read-only until you log in with ADMIN_SECRET.';
@@ -204,7 +211,7 @@
       setStatus(li, '');
       // Re-bind all cards so Commit/Reset appear everywhere after one Login.
       for (const card of list.querySelectorAll('li.room')) {
-        bindConfigEditors(card, { id: card.dataset.id, admin: card.dataset.admin === '1', config: null });
+        bindConfigEditors(card, { id: card.dataset.id, admin: card.dataset.admin === '1', adminOpen: card.dataset.open === '1', config: null });
       }
     });
 
@@ -214,16 +221,17 @@
       for (const card of list.querySelectorAll('li.room')) {
         markDirty(card, false);
         // No config: keep current textarea text; next refreshRooms syncs from server.
-        bindConfigEditors(card, { id: card.dataset.id, admin: card.dataset.admin === '1' });
+        bindConfigEditors(card, { id: card.dataset.id, admin: card.dataset.admin === '1', adminOpen: card.dataset.open === '1' });
       }
     });
 
     commit.addEventListener('click', async () => {
+      const open = li.dataset.open === '1';
       const secret = getSecret();
-      if (!secret) {
+      if (!secret && !open) {
         setStatus(li, 'Log in first.');
         for (const card of list.querySelectorAll('li.room')) {
-          bindConfigEditors(card, { id: card.dataset.id, admin: card.dataset.admin === '1', config: null });
+          bindConfigEditors(card, { id: card.dataset.id, admin: card.dataset.admin === '1', adminOpen: card.dataset.open === '1', config: null });
         }
         return;
       }
@@ -232,19 +240,17 @@
       try {
         const r = await fetch(api + '/api/rooms/' + encodeURIComponent(room.id) + '/config', {
           method: 'PUT',
-          headers: {
-            'content-type': 'text/plain; charset=utf-8',
-            'authorization': 'Bearer ' + secret,
-          },
+          headers: Object.assign({ 'content-type': 'text/plain; charset=utf-8' },
+            secret && !open ? { authorization: 'Bearer ' + secret } : {}),
           body: ta.value,
           cache: 'no-store',
         });
         const body = await r.json().catch(() => ({}));
-        if (r.status === 401) {
+        if (r.status === 401 && !open) {
           setSecret('');
           setStatus(li, body.error || 'Unauthorized — secret cleared; log in again.');
           for (const card of list.querySelectorAll('li.room')) {
-            bindConfigEditors(card, { id: card.dataset.id, admin: card.dataset.admin === '1', config: null });
+            bindConfigEditors(card, { id: card.dataset.id, admin: card.dataset.admin === '1', adminOpen: card.dataset.open === '1', config: null });
           }
           return;
         }
@@ -277,6 +283,7 @@
 
   function updateRoomCard(li, room) {
     li.dataset.admin = room.admin ? '1' : '0';
+    li.dataset.open = room.adminOpen ? '1' : '0';
     const count = li.querySelector('.count');
     if (count) count.textContent = room.players + (room.players === 1 ? ' player' : ' players');
     const join = li.querySelector('a.join');

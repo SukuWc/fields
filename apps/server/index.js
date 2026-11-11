@@ -12,9 +12,11 @@
 // opens a room that is dropped graceMs after it empties.
 //
 // HTTP on the same port:
-//   GET /api/rooms   [{ id, players, config, admin }]  config = room TOML; admin = writes enabled
-//                    when ADMIN_SECRET is set (CORS *)
-//   PUT|POST /api/rooms/:id/config   apply room TOML (Authorization: Bearer <ADMIN_SECRET>)
+//   GET /api/rooms   [{ id, players, config, admin, adminOpen }]  config = room TOML;
+//                    admin = writes possible; adminOpen = no ADMIN_SECRET set, so
+//                    anyone may write without a token (CORS *)
+//   PUT|POST /api/rooms/:id/config   apply room TOML (Authorization: Bearer <ADMIN_SECRET>
+//                    when ADMIN_SECRET is set; no auth when it is unset = open editing)
 //                    body: raw TOML (text/plain) or JSON { "toml": "..." } / { "config": "..." }
 //   GET /api/perf    { rooms: [{ id, players, sampleHz, windowS, endAt, times, latestMs }] }
 //                    last ~180 s of frameMs (physics + field encode) per room (CORS *)
@@ -24,9 +26,11 @@
 //   anything else    files from staticDir (npm run build:app: landing at /,
 //                    game at /play/); without staticDir, / is the status.
 import http from 'node:http';
+import https from 'node:https';
 import fs from 'node:fs';
 import path from 'node:path';
 import { WebSocketServer } from 'ws';
+import { ClientTx, transportFromQuery, startWebTransport, makeWtCert } from './transport.js';
 import {
   adminSecretsEqual,
   FIELD_HZ,
@@ -127,7 +131,7 @@ export function tomlFromBody(raw, contentType) {
   return { toml: text };
 }
 
-export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, fieldHz = FIELD_HZ, fieldTol = FIELD_TOL, graceMs = GRACE_MS, fixedRooms = [], staticDir = null, adminSecret = process.env.ADMIN_SECRET, adminGate = true } = {}) {
+export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, fieldHz = FIELD_HZ, fieldTol = FIELD_TOL, graceMs = GRACE_MS, fixedRooms = [], staticDir = null, adminSecret = process.env.ADMIN_SECRET, adminGate = true, deflate = false, wtPort = 0, wtNames = null, rtcPortRange = null, rtcAnnounceIp = null, tls = null } = {}) {
   const secret = normalizeAdminSecret(adminSecret);
   const adminEnabled = !!secret;
   const rooms = new Map();
@@ -155,7 +159,9 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
     'access-control-allow-headers': 'Authorization, Content-Type',
     'access-control-max-age': '86400',
   };
-  const server = http.createServer((req, res) => {
+  // EXPERIMENT: tls = { cert, key } serves https/wss (WebTransport needs a
+  // secure page; on a LAN that means a self-signed cert, see --https).
+  const server = (tls ? https.createServer.bind(null, { cert: tls.cert, key: tls.key }) : http.createServer)((req, res) => {
     const url = new URL(req.url || '/', 'http://x');
     if (req.method === 'OPTIONS') {
       res.writeHead(204, corsHeaders);
@@ -165,9 +171,11 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
     const configMatch = /^\/api\/rooms\/([^/]+)\/config$/.exec(url.pathname);
     if (configMatch && (req.method === 'PUT' || req.method === 'POST')) {
       (async () => {
-        if (!adminEnabled) return json(res, 403, { error: 'admin writes disabled (set ADMIN_SECRET)' });
-        const token = bearerToken(req);
-        if (!token || !adminSecretsEqual(token, secret)) return json(res, 401, { error: 'unauthorized' });
+        // No ADMIN_SECRET: open editing, no token needed. With one: Bearer secret.
+        if (adminEnabled) {
+          const token = bearerToken(req);
+          if (!token || !adminSecretsEqual(token, secret)) return json(res, 401, { error: 'unauthorized' });
+        }
         let id;
         try { id = decodeURIComponent(configMatch[1]); } catch { return json(res, 400, { error: 'bad room id' }); }
         const room = rooms.get(id);
@@ -192,7 +200,7 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
     // reconnect grace period do not count.
     if (url.pathname === '/api/rooms') {
       return json(res, 200, [...rooms.values()].map((r) => ({
-        id: r.name, players: r.clients.size, config: r.tomlConfig(), admin: adminEnabled,
+        id: r.name, players: r.clients.size, config: r.tomlConfig(), admin: true, adminOpen: !adminEnabled,
       })));
     }
     if (url.pathname === '/api/perf') {
@@ -205,6 +213,10 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
       });
     }
     if (url.pathname === '/api/status') return json(res, 200, status());
+    // Transport experiments: per-client hot-path counters (apps/server/transport.js).
+    if (url.pathname === '/api/transport') {
+      return json(res, 200, { deflate: !!deflate, wtPort: wt ? wt.port : 0, cpu: process.cpuUsage(), rooms: [...rooms.values()].map((r) => ({ id: r.name, ticks: r.ticks, clients: [...r.clients].map((c) => ({ id: c.txId, ...(c.tx ? c.tx.snapshot() : {}) })) })) });
+    }
     if (url.pathname === '/api/version') return json(res, 200, version);
     if (url.pathname === '/healthz') return json(res, 200, { ok: true });
     if (!root) return json(res, url.pathname === '/' ? 200 : 404, url.pathname === '/' ? status() : { error: 'not found' });
@@ -220,9 +232,22 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
     if (req.method === 'HEAD') return res.end();
     fs.createReadStream(file).pipe(res);
   });
-  const wss = new WebSocketServer({ server });
+  // EXPERIMENT: permessage-deflate (ws default off), WebTransport, WebRTC options.
+  const wss = new WebSocketServer({ server, perMessageDeflate: deflate ? { threshold: 256, zlibDeflateOptions: { level: 1 } } : false });
+  let wt = null;
+  const wtReady = wtPort ? (async () => {
+    const c = tls && tls.hash ? tls : await makeWtCert(wtNames || ['localhost', '127.0.0.1']);
+    wt = await startWebTransport({ port: wtPort, cert: c.cert, key: c.key, hash: c.hash });
+    for (const r of rooms.values()) r.wt = wt;
+    console.info(`webtransport on udp ${wtPort} (cert sha-256 ${c.hash})`);
+  })().catch((e) => console.error('webtransport disabled:', e.message)) : Promise.resolve();
+  const rtcOpts = { portRangeBegin: rtcPortRange ? rtcPortRange[0] : 0, portRangeEnd: rtcPortRange ? rtcPortRange[1] : 0, announceIp: rtcAnnounceIp };
+  let nextTxId = 1;
   wss.on('connection', (ws, req) => {
-    const asked = new URL(req.url || '/', 'http://x').searchParams.get('room');
+    const params = new URL(req.url || '/', 'http://x').searchParams;
+    const asked = params.get('room');
+    ws.txId = nextTxId++;
+    ws.tx = new ClientTx(ws, transportFromQuery(params));
     const name = fixedRooms.length ? (asked || fixedRooms[0]) : (asked || 'default');
     let room = rooms.get(name);
     if (!room && fixedRooms.length) { ws.close(1008, 'no such room'); return; }
@@ -231,6 +256,8 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
       room.onDispose = (r) => { if (rooms.get(name) === r) rooms.delete(name); };
       rooms.set(name, room);
     }
+    room.wt = wt;
+    room.rtcOpts = rtcOpts;
     room.join(ws);
     ws.on('message', (data, isBinary) => {
       if (isBinary) return;
@@ -242,10 +269,10 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
     ws.on('close', () => room.leave(ws));
   });
   return new Promise((resolve) => {
-    server.listen(port, host, () => resolve({
+    server.listen(port, host, () => wtReady.then(() => resolve({
       port: server.address().port, rooms, version,
-      close: () => new Promise((r) => { for (const c of wss.clients) c.terminate(); for (const room of rooms.values()) { room.graceMs = 0; room.persistent = false; room._dispose(); room.stop(); } wss.close(); server.close(() => r()); }),
-    }));
+      close: () => new Promise((r) => { for (const c of wss.clients) c.terminate(); for (const room of rooms.values()) { room.graceMs = 0; room.persistent = false; room._dispose(); room.stop(); } wss.close(); if (wt) wt.close(); server.close(() => r()); }),
+    })));
   });
 }
 
@@ -261,7 +288,20 @@ if (isMain) {
     const log = console.log;
     console.log = (...a) => { if (typeof a[0] === 'string' && a[0].startsWith('Frame')) return; if (typeof a[0] === 'number') return; log(...a); };
   }
+  // EXPERIMENT: --https [names] serves https/wss with a fresh self-signed
+  // ECDSA cert (13 days, also used for WebTransport). names: comma list of
+  // the LAN IPs / hostnames the phone will use (SAN).
+  const httpsArg = arg('https', process.env.HTTPS_NAMES || false);
+  let tls = null;
+  if (httpsArg) {
+    const os = await import('node:os');
+    const ips = Object.values(os.networkInterfaces()).flat().filter((a) => a && a.family === 'IPv4').map((a) => a.address);
+    const names = typeof httpsArg === 'string' ? httpsArg.split(',') : ['localhost', ...ips];
+    tls = await makeWtCert(names);
+    console.info(`https with self-signed cert for ${names.join(', ')}`);
+  }
   const s = await startServer({
+    tls,
     port: Number(arg('port', process.env.PORT || 8787)),
     lockstep: !!arg('lockstep', false),
     fieldHz: Number(arg('field-hz', FIELD_HZ)),
@@ -269,6 +309,12 @@ if (isMain) {
     graceMs: Number(arg('grace-s', GRACE_MS / 1000)) * 1000,
     fixedRooms: arg('open-rooms', false) ? [] : String(arg('rooms', process.env.ROOMS || 'europe-1')).split(',').map((s) => s.trim()).filter(Boolean),
     staticDir: arg('static', process.env.STATIC_DIR || (fs.existsSync('dist-app') ? 'dist-app' : null)),
+    // Transport experiments (docs/transport-experiments.md).
+    deflate: !!arg('deflate', process.env.WS_DEFLATE === '1'),
+    wtPort: Number(arg('wt-port', process.env.WT_PORT || 0)),
+    wtNames: arg('wt-names', process.env.WT_NAMES || '') ? String(arg('wt-names', process.env.WT_NAMES)).split(',') : null,
+    rtcPortRange: arg('rtc-ports', process.env.RTC_PORTS || '') ? String(arg('rtc-ports', process.env.RTC_PORTS)).split('-').map(Number) : null,
+    rtcAnnounceIp: arg('rtc-ip', process.env.RTC_IP || null),
   });
   // Docker/Coolify stop sends SIGTERM: close sockets and the HTTP server,
   // then exit (forced after 5 s).
@@ -282,5 +328,5 @@ if (isMain) {
       s.close().then(() => process.exit(0));
     });
   }
-  console.info(`sim server listening on ws://localhost:${s.port}${arg('lockstep', false) ? ' (lockstep)' : ''}`);
+  console.info(`sim server listening on ${tls ? 'wss' : 'ws'}://localhost:${s.port}${arg('lockstep', false) ? ' (lockstep)' : ''}`);
 }

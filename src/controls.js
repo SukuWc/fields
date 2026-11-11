@@ -320,7 +320,8 @@ export function showRoomError(msg) {
 }
 
 // Remote admin gate (server ADMIN_SECRET): read-only until logged in.
-// host.admin = { gate, enabled, authed }; no gate (local / worker) = editable.
+// host.admin = { gate, enabled, authed, open }; open = no ADMIN_SECRET on the
+// server, everyone may write; no gate (local / worker) = editable.
 export function adminCanWrite(admin) {
   return !admin || !admin.gate || (admin.enabled && admin.authed);
 }
@@ -333,16 +334,18 @@ export function updateAdminUi() {
   if (box) box.style.display = gated ? "flex" : "none";
   const state = document.getElementById("room_admin_state");
   if (state) {
-    state.textContent = !gated ? "" : !admin.enabled ? "Read-only: admin writes disabled (ADMIN_SECRET not set)"
+    // admin.open: the server has no ADMIN_SECRET, so everyone may edit.
+    state.textContent = !gated ? "" : admin.open ? "Open editing: anyone can change room settings (server has no ADMIN_SECRET)"
+      : !admin.enabled ? "Read-only: admin writes disabled (ADMIN_SECRET not set)"
       : admin.authed ? "Logged in as admin" : "Read-only: log in to change room settings";
   }
   const secret = document.getElementById("room_admin_secret");
   const login = document.getElementById("room_admin_login");
   const logout = document.getElementById("room_admin_logout");
-  const showLogin = gated && admin.enabled && !admin.authed;
+  const showLogin = gated && !admin.open && admin.enabled && !admin.authed;
   if (secret) secret.hidden = !showLogin;
   if (login) login.hidden = !showLogin;
-  if (logout) logout.hidden = !(gated && admin.authed);
+  if (logout) logout.hidden = !(gated && !admin.open && admin.authed);
   const ta = roomConfigEl();
   if (ta) ta.readOnly = !can;
   const reset = document.getElementById("room_config_reset");

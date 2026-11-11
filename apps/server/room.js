@@ -56,6 +56,7 @@ import { encodeFieldGrids, decodeFieldGrids } from '../../src/fieldPainter.js';
 import { encodeFieldText } from '../../src/field-codec.js';
 import { encodeWire, fieldForWire } from '../../src/wire-codec.js';
 import { FrameTimeHistory } from './frame-times.js';
+import { ClientTx, rtcSignal } from './transport.js';
 export { FRAME_TIME_WINDOW_S, FRAME_TIME_HZ, FRAME_TIME_CAP } from './frame-times.js';
 import {
   mapDimsError,
@@ -232,7 +233,9 @@ export class Room {
     // Admin gate (index.js turns it on): room-wide commands (ROOM_COMMANDS:
     // config, restart, wind, …) need a client that sent the right
     // ADMIN_SECRET ('auth' / init.adminSecret). With the gate on and no
-    // secret set, room commands are refused for everyone (read-only).
+    // secret set, editing is open: everyone may send room commands
+    // (adminState().open; the landing page and game show Commit / Reset
+    // without Login).
     this.adminGate = !!adminGate;
     this.adminSecret = adminSecret || null;
     this.admins = new Set();
@@ -424,6 +427,7 @@ export class Room {
     this.flowSubs.delete(client);
     this.perfSubs.delete(client);
     this.staticsSent.delete(client);
+    if (client.tx) client.tx.close();
     if (this.clients.size === 0) {
       // Non-persistent: pause while empty (no CPU), keep for graceMs, then drop.
       // Persistent: keep the clock running so the world and /api/perf advance.
@@ -527,9 +531,14 @@ export class Room {
   }
 
   /** Admin state for one client: enabled (writes possible) and authed. */
+  // Open editing: the gate is on but the server has no ADMIN_SECRET, so
+  // every client may change room settings without logging in.
+  get adminOpen() { return this.adminGate && !this.adminSecret; }
+
   adminState(client) {
     if (!this.adminGate) return { gate: false, enabled: true, authed: true };
-    return { gate: true, enabled: !!this.adminSecret, authed: this.admins.has(client) };
+    if (this.adminOpen) return { gate: true, enabled: true, authed: true, open: true };
+    return { gate: true, enabled: true, authed: this.admins.has(client), open: false };
   }
 
   _auth(client, secret) {
@@ -538,7 +547,7 @@ export class Room {
       return { ok: true, admin: this.adminState(client) };
     }
     if (!this.adminGate) return { ok: true, admin: this.adminState(client) };
-    if (!this.adminSecret) return { error: 'admin writes disabled (set ADMIN_SECRET)', admin: this.adminState(client) };
+    if (!this.adminSecret) return { ok: true, admin: this.adminState(client) };
     if (typeof secret === 'string' && adminSecretsEqual(secret, this.adminSecret)) {
       this.admins.add(client);
       return { ok: true, admin: this.adminState(client) };
@@ -548,6 +557,18 @@ export class Room {
   }
 
   message(client, m) {
+    // Transport experiments (apps/server/transport.js).
+    if (m.type === 'ack') { const tx = this._tx(client); if (m.s !== undefined) tx.onAckSeq(m.s, m.b); else tx.onAck(m.b); return; }
+    if (m.type === 'rtc') {
+      rtcSignal(this._tx(client), m, (x) => { if (this.clients.has(client)) this.send(client, x); }, this.rtcOpts || {})
+        .catch((e) => this.send(client, { type: 'rtc', error: String(e.message || e) }));
+      return;
+    }
+    if (m.type === 'wt') {
+      if (!this.wt) this.send(client, { type: 'wt', error: 'server started without --wt-port' });
+      else this.wt.offer(this._tx(client), (x) => { if (this.clients.has(client)) this.send(client, x); }, m.host || 'localhost');
+      return;
+    }
     if (m.type === 'auth') { this.send(client, { type: 'result', id: m.id, r: this._auth(client, m.secret) }); return; }
     if (m.type === 'init') {
       if (typeof m.adminSecret === 'string' && m.adminSecret) this._auth(client, m.adminSecret);
@@ -638,8 +659,8 @@ export class Room {
       return mapped ? this.core.command(mapped) : undefined;
     }
     if (ROOM_COMMANDS.has(c.type)) {
-      if (this.adminGate && !this.admins.has(client)) {
-        return { error: this.adminSecret ? 'admin login required' : 'admin writes disabled (set ADMIN_SECRET)' };
+      if (this.adminGate && this.adminSecret && !this.admins.has(client)) {
+        return { error: 'admin login required' };
       }
       const v = validateRoomCommand(c, this.core);
       if (v.error) return { error: v.error };
@@ -902,52 +923,66 @@ export class Room {
     this.sendSkips = (this.sendSkips || 0) + 1;
   }
 
+  // Hot-path sender for a client (apps/server/transport.js; ws.tx is set
+  // from the connection URL in index.js, default = the old 256 KiB rule).
+  _tx(c) {
+    if (!c.tx) c.tx = new ClientTx(c, { bufMax: SEND_BUF_MAX });
+    c.tx.lockstep = this.lockstep;
+    return c.tx;
+  }
+
   _publish({ frame, fields, statics, flow, perf }) {
     // Nobody connected: skip outbound work (encode already skipped with no fieldSubs).
     if (this.clients.size === 0) return;
-    for (const f of fields || []) {
-      for (const c of f.clients) {
-        if (!this.clients.has(c)) continue;
-        if (!this._sendOk(c)) { this._skipClient(c); continue; }
-        c.send(f.msg);
-        this.fieldBytesSent += f.msg.byteLength;
-      }
-    }
     if (statics && statics.statics) {
       let msg = null;
       for (const c of this.clients) {
         if (this.staticsSent.get(c) === statics.sv) continue;
-        if (!this._sendOk(c)) { this._skipClient(c); continue; }
+        if ((c.bufferedAmount || 0) > SEND_BUF_MAX) { this._skipClient(c); continue; }
         msg = msg || roundJson({ type: 'statics', sv: statics.sv, statics: statics.statics });
         c.send(msg);
         this.staticsSent.set(c, statics.sv);
         this.staticsBytesSent += msg.length;
       }
     }
-    // Flow grid and perf counters: before the frame they belong to.
-    if (flow) {
-      const m = encodeWire({ type: 'flow', flow });
-      for (const c of this.flowSubs) {
-        if (!this.clients.has(c)) continue;
-        if (!this._sendOk(c)) { this._skipClient(c); continue; }
-        c.send(m);
-      }
-    }
-    if (perf) {
-      const m = encodeWire({ type: 'perf', perf }, { exact: true });
-      for (const c of this.perfSubs) {
-        if (!this.clients.has(c)) continue;
-        if (!this._sendOk(c)) { this._skipClient(c); continue; }
-        c.send(m);
-      }
-    }
     // Binary frame (src/wire-codec.js; same values as roundJson).
     const s = encodeWire({ type: 'frame', frame });
+    const fs = s.byteLength;
+    const fieldFor = new Map();
+    for (const f of fields || []) for (const c of f.clients) fieldFor.set(c, f.msg);
+    const flowMsg = flow ? encodeWire({ type: 'flow', flow }) : null;
+    const perfMsg = perf ? encodeWire({ type: 'perf', perf }, { exact: true }) : null;
     let sent = 0;
     for (const c of this.clients) {
-      if (!this._sendOk(c)) { this._skipClient(c); continue; }
-      c.send(s);
-      sent++;
+      const tx = this._tx(c);
+      const legacy = tx.mode() === 'legacy';
+      // Flow-controlled clients: a due field that did not fit stays owed and
+      // goes on a later tick when the window allows (until a newer one is due
+      // or it is older than ~0.5 s), so with field_skip > 0 a slow link still
+      // gets fields between the due ticks. Legacy: just skipped, as on main.
+      if (fieldFor.has(c)) tx.owedField = null;
+      else if (tx.owedField && this.ticks - tx.owedField.tick > 15) tx.owedField = null;
+      const field = fieldFor.get(c) || (!legacy && tx.owedField ? tx.owedField.msg : null);
+      const sendField = () => {
+        if (!field) return;
+        // The frame of this tick has priority over its field (ack window).
+        if (!tx.ok(field.byteLength, legacy ? 0 : fs, 'field')) {
+          this._skipClient(c);
+          if (!legacy && fieldFor.has(c)) tx.owedField = { msg: field, tick: this.ticks };
+          return;
+        }
+        tx.send(field, 'field');
+        tx.owedField = null;
+        this.fieldBytesSent += field.byteLength;
+      };
+      // Old order (legacy): field first, so the texture is there with the frame.
+      if (legacy) sendField();
+      // Flow grid and perf counters: before the frame they belong to.
+      if (flowMsg && this.flowSubs.has(c)) { if (tx.ok(flowMsg.byteLength, fs, 'flow')) tx.send(flowMsg, 'flow'); else this._skipClient(c); }
+      if (perfMsg && this.perfSubs.has(c)) { if (tx.ok(perfMsg.byteLength, fs, 'perf')) tx.send(perfMsg, 'perf'); else this._skipClient(c); }
+      if (tx.ok(fs, 0, 'frame')) { tx.send(s, 'frame'); sent++; } else { this._skipClient(c); tx.stats.skips++; }
+      // Other policies: the frame first, the field only if it still fits.
+      if (!legacy) sendField();
     }
     this.lastFrameBytes = s.byteLength;
     this.frameBytesSent += s.byteLength * sent;

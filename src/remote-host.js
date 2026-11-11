@@ -77,8 +77,29 @@ export function writeAdminSecret(v) {
   } catch (_) { /* private mode */ }
 }
 
+// EXPERIMENT: transport selection carried on the server URL.
+export function transportParams(url) {
+  let q;
+  try { q = new URL(url, 'http://x').searchParams; } catch { q = new URLSearchParams(); }
+  const transport = ['ws', 'rtc', 'wt'].includes(q.get('transport')) ? q.get('transport') : 'ws';
+  // Default on the WebSocket: ack (the server's flow-control window);
+  // ?send=legacy (alias buf) = the old behaviour, no acks.
+  let send = ['legacy', 'buf', 'latest', 'ack'].includes(q.get('send')) ? q.get('send') : (transport === 'ws' ? 'ack' : 'latest');
+  if (send === 'buf') send = 'legacy';
+  return { transport, send };
+}
+function wtHost(url) { try { return new URL(url).hostname; } catch { return 'localhost'; } }
+// Apply fn to each a=candidate line of an SDP (null drops the line).
+function mapSdp(sdp, fn) {
+  return sdp.split(/\r?\n/).map((l) => {
+    if (!l.startsWith('a=candidate:')) return l;
+    const c = fn(l.slice(2));
+    return c ? 'a=' + c.replace(/^a=/, '') : null;
+  }).filter((l) => l !== null).join('\r\n');
+}
+
 export class RemoteHost {
-  constructor(url, opts, texture, { maxInFlight = 0, WebSocketImpl, coalesce = true, token = null, reconnect = false, backoffMs = [500, 1000, 2000, 4000, 8000], adminSecret } = {}) {
+  constructor(url, opts, texture, { maxInFlight = 0, WebSocketImpl, coalesce = true, token = null, reconnect = false, backoffMs = [500, 1000, 2000, 4000, 8000], adminSecret, RTCPeerConnectionImpl, WebTransportImpl, rtcMapCandidate, wtMapUrl } = {}) {
     this.kind = 'remote';
     // Room admin login (same secret as the landing page, localStorage
     // ADMIN_SECRET_KEY). Sent with every init so a reconnect stays logged in.
@@ -87,6 +108,19 @@ export class RemoteHost {
     this.admin = null;
     this._adminListeners = [];
     this.url = url;
+    // EXPERIMENT (docs/transport-experiments.md): ?send= / ?transport= on the
+    // server URL pick the hot-path policy and channel (apps/server/transport.js).
+    const tq = transportParams(url);
+    this.sendPolicy = tq.send;
+    this.transport = tq.transport;
+    this.hotChannel = 'ws';
+    this._hotBytes = 0;
+    this._hotSeq = {};
+    this.hotStale = 0;
+    this._RTC = RTCPeerConnectionImpl || globalThis.RTCPeerConnection;
+    this._WT = WebTransportImpl || globalThis.WebTransport;
+    this._rtcMap = rtcMapCandidate || null;
+    this._wtMap = wtMapUrl || null;
     this.texture = texture;
     this.maxInFlight = maxInFlight;
     this.inFlight = 0;
@@ -178,10 +212,17 @@ export class RemoteHost {
       if (this._field.on) ws.send(JSON.stringify({ type: 'field', ...this._field }));
       if (this._flowOn) ws.send(JSON.stringify({ type: 'flow', on: true }));
       if (this._perfOn) ws.send(JSON.stringify({ type: 'perf', on: true }));
+      this.hotChannel = 'ws';
+      this._hotBytes = 0;
+      this._hotSeq = {};
+      this._maxSeq = 0;
+      if (this.transport === 'rtc') this._startRtc(ws).catch((e) => console.warn('rtc:', e.message || e));
+      if (this.transport === 'wt') ws.send(JSON.stringify({ type: 'wt', host: wtHost(this.url) }));
     };
     ws.onerror = () => { if (!this.info) this._rejectReady(new Error('cannot connect to ' + url)); };
     ws.onclose = () => {
       if (this.ws !== ws) return;
+      this._closeAlt();
       if (!this.info) { this._rejectReady(new Error('connection to ' + url + ' closed')); return; }
       // Commands in flight will get no answer on this connection.
       for (const [id, p] of this._pending) { this._pending.delete(id); p({ error: 'disconnected' }); }
@@ -203,8 +244,12 @@ export class RemoteHost {
       // Coalescing: a binary frame / field / flow / perf is only parked raw
       // (newest wins, older ones are dropped undecoded); decode runs once per
       // animation frame in _pump. Text (control) messages run in order.
+      if (typeof e.data !== 'string') this._countHot(e.data);
       if (this.coalesce && typeof e.data !== 'string' && this._park(e.data)) return;
-      if (typeof e.data === 'string') { m = JSON.parse(e.data); bytes = e.data.length; }
+      if (typeof e.data === 'string') {
+        m = JSON.parse(e.data); bytes = e.data.length;
+        if (m.type === 'rtc' || m.type === 'wt') { this._altSignal(ws, m); return; }
+      }
       else {
         try { m = decodeWire(e.data); bytes = e.data.byteLength; }
         catch (err) {
@@ -222,6 +267,110 @@ export class RemoteHost {
       if (m.type === 'field') this._onField(m, bytes);
       else this._onMessage(m);
     };
+  }
+
+  // ---- EXPERIMENT: alternative hot-path channels (docs/transport-experiments.md)
+  // Hot bytes received (any channel); with ?send=ack they are acked so the
+  // server keeps only a small window of frames in flight.
+  _countHot(data) {
+    this._hotBytes += data.byteLength;
+    if (this.sendPolicy !== 'ack' || this._ackQueued) return;
+    this._ackQueued = true;
+    queueMicrotask(() => {
+      this._ackQueued = false;
+      const a = { type: 'ack', b: this._hotBytes };
+      if (this.hotChannel !== 'ws' && this._maxSeq) a.s = this._maxSeq;
+      this._send(a);
+    });
+  }
+
+  // A message from an unordered channel: [u32 seq][wire message]. Older
+  // than the newest seen of its kind = stale, dropped (hotStale).
+  _onAltHot(buf) {
+    const u = new Uint8Array(buf);
+    if (u.length < 7) return;
+    const seq = (u[0] << 24 | u[1] << 16 | u[2] << 8 | u[3]) >>> 0;
+    const kind = u[6];
+    const data = buf.slice(4);
+    if (seq > (this._maxSeq || 0)) this._maxSeq = seq;
+    this._countHot(data);
+    if ((this._hotSeq[kind] || 0) >= seq) { this.hotStale++; return; }
+    this._hotSeq[kind] = seq;
+    if (this.coalesce && this._park(data)) return;
+    const m = decodeWire(data);
+    if (m.type === 'field') this._onField(m, data.byteLength); else this._onMessage(m);
+  }
+
+  async _startRtc(ws) {
+    if (typeof this._RTC !== 'function') { console.warn('rtc: RTCPeerConnection not available, staying on WebSocket'); return; }
+    const pc = new this._RTC({ iceServers: [] });
+    this._pc = pc;
+    const dc = pc.createDataChannel('hot', { ordered: false, maxRetransmits: 0 });
+    dc.binaryType = 'arraybuffer';
+    dc.onmessage = (e) => { if (this.ws === ws) this._onAltHot(e.data instanceof ArrayBuffer ? e.data : new Uint8Array(e.data).slice().buffer); };
+    pc.onicecandidate = (e) => {
+      if (!e.candidate || !e.candidate.candidate) return;
+      let c = e.candidate.candidate;
+      if (this._rtcMap) { c = this._rtcMap(c, 'local'); if (!c) return; }
+      if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'rtc', cand: { c, mid: e.candidate.sdpMid || '0' } }));
+    };
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    let sdp = pc.localDescription.sdp;
+    if (this._rtcMap) sdp = mapSdp(sdp, (c) => this._rtcMap(c, 'local'));
+    ws.send(JSON.stringify({ type: 'rtc', offer: { sdp, type: 'offer' } }));
+  }
+
+  async _startWt(ws, m) {
+    if (typeof this._WT !== 'function') { console.warn('wt: WebTransport not available, staying on WebSocket'); return; }
+    const url = this._wtMap ? this._wtMap(m.url) : m.url;
+    const hash = Uint8Array.from(atob(m.hash), (ch) => ch.charCodeAt(0));
+    const t = new this._WT(url, { serverCertificateHashes: [{ algorithm: 'sha-256', value: hash }] });
+    this._wt = t;
+    await t.ready;
+    const w = t.datagrams.writable.getWriter();
+    const key = new TextEncoder().encode(m.key);
+    const hello = () => { if (this.hotChannel !== 'wt' && this._wt === t && this.ws === ws) { w.write(key).catch(() => {}); setTimeout(hello, 250); } };
+    hello();
+    const streams = t.incomingUnidirectionalStreams.getReader();
+    for (;;) {
+      const { value: st, done } = await streams.read();
+      if (done || this._wt !== t) break;
+      (async () => {
+        const r = st.getReader();
+        const parts = []; let n = 0;
+        for (;;) { const { value, done: d } = await r.read(); if (d) break; parts.push(value); n += value.byteLength; }
+        const buf = new Uint8Array(n); let o = 0;
+        for (const p of parts) { buf.set(p, o); o += p.byteLength; }
+        if (this.ws === ws) this._onAltHot(buf.buffer);
+      })().catch(() => { /* reset */ });
+    }
+  }
+
+  async _altSignal(ws, m) {
+    if (m.error) { console.warn(m.type + ': ' + m.error); return; }
+    if (m.type === 'wt') {
+      if (m.url) await this._startWt(ws, m).catch((e) => console.warn('wt:', e.message || e));
+      if ('open' in m) this.hotChannel = m.open ? 'wt' : 'ws';
+      return;
+    }
+    const pc = this._pc;
+    if (!pc) return;
+    if (m.answer) {
+      let sdp = m.answer.sdp;
+      if (this._rtcMap) sdp = mapSdp(sdp, (c) => this._rtcMap(c, 'remote'));
+      await pc.setRemoteDescription({ type: 'answer', sdp });
+    } else if (m.cand) {
+      let c = m.cand.c.replace(/^a=/, '');
+      if (this._rtcMap) { c = this._rtcMap(c, 'remote'); if (!c) return; }
+      await pc.addIceCandidate({ candidate: c, sdpMid: m.cand.mid }).catch(() => {});
+    } else if ('open' in m) this.hotChannel = m.open ? 'rtc' : 'ws';
+  }
+
+  _closeAlt() {
+    this.hotChannel = 'ws';
+    if (this._pc) { try { this._pc.close(); } catch { /* */ } this._pc = null; }
+    if (this._wt) { try { this._wt.close(); } catch { /* */ } this._wt = null; }
   }
 
   // Park one binary hot-path message (see onmessage). Returns false for a
@@ -544,6 +693,7 @@ export class RemoteHost {
 
   terminate() {
     this._closed = true;
+    this._closeAlt();
     if (this._retryTimer) { clearTimeout(this._retryTimer); this._retryTimer = null; }
     try { this.ws.close(); } catch { /* closed */ }
     if (this._channel) this._channel.port1.close();
