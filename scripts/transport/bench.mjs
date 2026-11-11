@@ -6,7 +6,7 @@
 // published that tick (same machine clock).
 //
 //   node --import ./test/register.mjs scripts/transport/bench.mjs
-// env: VARIANT=ws|ws-latest|ws-ack|rtc|wt   DEFLATE=1   DUR_S=60 WARM_S=5
+// env: VARIANT=ws (= send=legacy, main before #197)|ws-latest|ws-ack (the default)|rtc|rtc-ack|wt|wt-ack   DEFLATE=1   DUR_S=60 WARM_S=5
 //      PHONES=2 DESKTOPS=3   RATE_KBPS=3000 DELAY_MS=15 QUEUE_KB=256
 //      STALL_PCT=2 STALL_MS=300 LOSS_PCT=1   DECODE_MS=20 RENDER_MS=15 FIELD_MS=8
 //      FIELD=1 (phones show the field)  OUT=file.json
@@ -123,7 +123,7 @@ if (role === 'server') {
   const DUR = num('DUR_S', 60) * 1000, WARM = num('WARM_S', 5) * 1000;
   const link = { rateKbps: num('RATE_KBPS', 3000), delayMs: num('DELAY_MS', 15), queueBytes: num('QUEUE_KB', 256) * 1024, stallPct: num('STALL_PCT', 2), stallMs: num('STALL_MS', 300), lossPct: num('LOSS_PCT', 1) };
   const transport = VARIANT.startsWith('rtc') ? 'rtc' : VARIANT.startsWith('wt') ? 'wt' : 'ws';
-  const send = VARIANT.endsWith('-latest') ? 'latest' : VARIANT.endsWith('-ack') ? 'ack' : transport === 'ws' ? 'buf' : 'latest';
+  const send = VARIANT.endsWith('-latest') ? 'latest' : VARIANT.endsWith('-ack') ? 'ack' : transport === 'ws' ? 'legacy' : 'latest';
   const wtPort = transport === 'wt' ? 20000 + Math.floor(Math.random() * 20000) : 0;
   const server = fork(self, ['server'], { execArgv: process.execArgv, env: { ...env, WT_PORT: String(wtPort) }, stdio: ['ignore', 'ignore', 'inherit', 'ipc'] });
   const { port } = await new Promise((r) => server.on('message', (m) => { if (m.ev === 'port') r(m); }));

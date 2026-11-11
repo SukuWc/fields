@@ -1,8 +1,47 @@
 # Transport experiments: why phones still lag, and what fixes it
 
-Branch `exp/transport`. EXPERIMENT ONLY: nothing here changes the default
-behaviour. Every variant is opt-in per client with a query parameter, so
-phones and desktops can be A/B tested in the same room.
+PR #197. **Status: the ack flow-control window is now the default for
+every WebSocket client.** The other variants stay in the codebase as
+opt-in experiments, chosen per client with a query parameter, so phones
+and desktops can be A/B tested in the same room.
+
+| query (page `/play/?…` or WS URL) | hot path | policy |
+| --- | --- | --- |
+| _(none)_, or `send=ack` (explicit, same thing) | WebSocket | **ack window (default)** |
+| `send=legacy` (alias `send=buf`) | WebSocket | main before #197: skip while `bufferedAmount` > 256 KiB, no acks |
+| `send=latest` | WebSocket | skip while `bufferedAmount` > 16 KB (shown not to help) |
+| `transport=rtc` / `transport=rtc&send=ack` | WebRTC DataChannel | latest / ack window (seq acks) |
+| `transport=wt` / `transport=wt&send=ack` | WebTransport streams | ≤ 1 unfinished stream per kind / ack window |
+| `ackms=N` (30–1000, default 120) | any | ack window target |
+
+Compatibility:
+
+- **Old cached page against the new server:** it never sends `ack`. The
+  server keeps it on the legacy rule until its first ack (`ackSeen: false`,
+  `mode: legacy` in `/api/transport`), so it is never starved.
+- **New page against an old server:** the old server ignores the unknown
+  `ack` message, so nothing changes.
+- **Acks that stop mid-session** (stuck tab): after 3 s with bytes in
+  flight, the server forgives them (acked = sent). That allows at most one
+  window per 3 s, never a permanent stall.
+- **Lockstep rooms** (tests) never skip.
+- **Native packages** (`node-datachannel`, `@fails-components/webtransport`)
+  are optional and loaded lazily. Without them, which is the production
+  Docker image:
+  - The server starts normally.
+  - A `transport=rtc` client gets `{ type: 'rtc', error }` and stays on
+    the WebSocket.
+  - `--wt-port` logs `webtransport disabled: …`.
+
+Also in this PR:
+
+- The remote room default `field_skip` is now **1**: fields at 15 Hz,
+  about half the field bytes. This is set in `ROOM_CONFIG_DEFAULTS`, which
+  the fixed rooms use at startup and Reset uses.
+- With the ack window, a due field that didn't fit is retried on the next
+  ticks, until a newer one is due or it is ~0.5 s old.
+- When `ADMIN_SECRET` is unset, room editing is open to everyone. See
+  `docs/deploy-coolify.md`.
 
 ## TL;DR
 
@@ -34,7 +73,7 @@ phones and desktops can be A/B tested in the same room.
   through Docker and Coolify, extra native npm packages and, for WebTransport,
   HTTPS. Not worth it for this problem today.
 
-## How the hot path works today (main)
+## How the hot path worked before this PR (now `send=legacy`)
 
 - The server (`apps/server/room.js`, 30 Hz clock) sends, per client and tick,
   a binary frame (wire v1) and, while the client shows the field (the
@@ -110,14 +149,19 @@ Run it yourself:
 
     npm ci
     npm i --no-save node-datachannel@0.33.6 @fails-components/webtransport@1.6.11 @fails-components/webtransport-transport-http3-quiche@1.6.11   # only for rtc / wt
-    VARIANT=ws      npm run bench:transport          # main's behaviour
-    VARIANT=ws-ack  npm run bench:transport
+    VARIANT=ws      npm run bench:transport          # send=legacy (main before #197)
+    VARIANT=ws-ack  npm run bench:transport          # the default
     VARIANT=rtc-ack npm run bench:transport
     VARIANT=wt      npm run bench:transport
     # link / phone knobs: RATE_KBPS DELAY_MS QUEUE_KB STALL_PCT STALL_MS LOSS_PCT
     #                     DECODE_MS RENDER_MS FIELD_MS ACK_MS DEFLATE=1 DUR_S VERBOSE=1
 
 ## Results (60 s per run, 2 phones)
+
+The tables in this section were measured **before** the `field_skip = 1`
+default and the owed-field retry, with fields at 30 Hz. "main" there is
+today's `send=legacy`. For a re-run with the new defaults, see the next
+section.
 
 Staleness is in ms. "render/s" and "field/s" are frames and fields the phone
 actually drew. "KB/s" is hot-path bytes the phone received. Server CPU is the
@@ -163,6 +207,35 @@ Reading the tables:
 - Max values (0.5–0.9 s) in every variant are the simulated WiFi stalls
   (300–400 ms freezes). No transport can hide those.
 - Desktops stay at 22–23 ms in every run except deflate.
+
+### Re-run with the new defaults (`field_skip = 1`, owed-field retry)
+
+These are 60 s runs; raw data is in `docs/transport-bench/defaults-*.json`.
+"default" is a page with no query parameters. Staleness is in ms.
+
+| link | variant | p50 / p95 / max | render/s | field/s | phone KB/s | server CPU | desktops p95 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| A (3 Mbit/s) | `send=legacy` | 3257 / 5989 / 6642 (still growing) | 15.2 | 11.2 | 344 | 100 % | 23 |
+| A | **default (ack)** | **74 / 105 / 622** | 17.5 | 2.8 | 200 | 101 % | 22 |
+| A | `transport=rtc&send=ack` | 81 / 128 / 642 | 15.3 | 1.9 | 165 | 103 % | 23 |
+| A | `transport=wt` | 134 / 309 / 692 | 5.9 | 7.9 | 182 | 105 % | 23 |
+| B (8 Mbit/s) | `send=legacy` | 89 / 288 / 884 | 15.3 | 11.6 | 382 | 99 % | 23 |
+| B | **default (ack)** | **79 / 102 / 711** | 16.2 | 2.3 | 189 | 101 % | 23 |
+
+What changed:
+
+- `field_skip = 1` alone takes legacy on the 3 Mbit/s link from 15.5 s to
+  3.3 s p50, but it still grows without bound.
+- The ack default holds about 75 ms p50 and about 100 ms p95.
+- **The trade-off is the field on CPU-slow phones.** The phone's ~45–60 ms
+  of main-thread time per frame delays its acks, so the measured round trip
+  stays above the 120 ms target. The window then stays at its 32 KB
+  minimum, and only 2–3 fields/s fit, even on 8 Mbit/s.
+- `ackms=250` buys the field back: about 11 fields/s at about 235 ms p50 on
+  the old 30 Hz field run.
+- Desktops and fast clients are unaffected: their window opens fully.
+- A follow-up could size the window from the measured minimum round trip
+  plus the target, BBR-style, or give each client its own field cadence.
 
 ### Why each option behaves as it does
 
@@ -272,10 +345,9 @@ Requirements:
 
 ## Recommendation
 
-1. **Adopt `send=ack` as the default for remote clients.** It's the only change
-   that removes the root cause, it changes nothing for desktops on a good
-   link, and it's deployable today. Next steps:
-   - Make it the default.
+1. **Done in this PR: `send=ack` is the default for WebSocket clients.** It's
+   the only change that removes the root cause, it changes nothing for
+   desktops on a good link, and it's deployable today. Next steps:
    - Tune `ACK_TARGET_MS`: 120 for the freshest frames, 200–250 for more
      fields.
    - Add a per-client field cadence so phones keep a usable field without
@@ -285,7 +357,7 @@ Requirements:
    - Precompress once per tick (−30–40 %), or move to a wire v2 with frame
      deltas against the last acked frame and quantization (frames ~2–3×
      smaller).
-   - Possibly `field_skip = 1` as the room default on sailzone.app.
+   - Done in this PR: `field_skip = 1` is the remote room default.
 3. **Don't move to WebRTC or WebTransport for this.** Once flow control is
    in, they give no measurable freshness gain on this traffic. Each brings
    UDP, cert or proxy work on Coolify, plus a native dependency. Revisit
@@ -305,9 +377,9 @@ WebSocket variants (no extra packages, plain http):
 
 Open on the phone (same room, so one phone can be A and the other B):
 
-- main behaviour: `http://192.168.1.20:8787/play/?room=europe-1`
-- **ack window:** `http://192.168.1.20:8787/play/?room=europe-1&send=ack`
-- ack window, more field: `http://192.168.1.20:8787/play/?room=europe-1&send=ack&ackms=250`
+- **default (ack window):** `http://192.168.1.20:8787/play/?room=europe-1`
+- old behaviour (main before #197): `http://192.168.1.20:8787/play/?room=europe-1&send=legacy`
+- ack window, more field: `http://192.168.1.20:8787/play/?room=europe-1&ackms=250`
 - latest-only (expected not to help): `…&send=latest`
 
 WebRTC and WebTransport (native packages; WebTransport needs https):
@@ -352,8 +424,6 @@ Add `&name=phone1` to a page URL to label that client in `/api/transport`.
   needs them, so a course change may show a frame drawn with the old statics.
 - `send=ack` over rtc/wt acks the newest seq, and messages not acked within
   500 ms count as lost. On the WS it acks bytes.
-- Not touched:
-  - Dockerfile, workflows, package.json dependencies. The native packages are
-    `--no-save` only. `build:server` marks them external so the bundle still
-    builds without them.
-  - The default policy: without query params everything behaves as on main.
+- Not touched: Dockerfile, workflows, package.json dependencies. The native
+  packages are `--no-save` only. `build:server` marks them external so the
+  bundle still builds without them.

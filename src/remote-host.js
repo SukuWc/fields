@@ -82,7 +82,10 @@ export function transportParams(url) {
   let q;
   try { q = new URL(url, 'http://x').searchParams; } catch { q = new URLSearchParams(); }
   const transport = ['ws', 'rtc', 'wt'].includes(q.get('transport')) ? q.get('transport') : 'ws';
-  let send = ['buf', 'latest', 'ack'].includes(q.get('send')) ? q.get('send') : (transport === 'ws' ? 'buf' : 'latest');
+  // Default on the WebSocket: ack (the server's flow-control window);
+  // ?send=legacy (alias buf) = the old behaviour, no acks.
+  let send = ['legacy', 'buf', 'latest', 'ack'].includes(q.get('send')) ? q.get('send') : (transport === 'ws' ? 'ack' : 'latest');
+  if (send === 'buf') send = 'legacy';
   return { transport, send };
 }
 function wtHost(url) { try { return new URL(url).hostname; } catch { return 'localhost'; } }

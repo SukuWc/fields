@@ -50,7 +50,7 @@ path `/healthz`, port `3000`, and expect HTTP 200 with `{"ok":true}`.
 | `PORT` | `3000` (set in the image) | listen port. If you change it, change the app's port too |
 | `ROOMS` | `europe-1` | comma-separated persistent rooms |
 | `STATIC_DIR` | `dist-app` | the built site (already passed via `--static`) |
-| `ADMIN_SECRET` | _(unset)_ | optional shared secret for landing-page room TOML **writes**. Runtime-only in Coolify (mark secret/locked); never commit a real value and never bake it into the client. When unset/empty, `PUT /api/rooms/:id/config` returns 403 and the landing TOML stays read-only. When set, the landing Commit button prompts once for the secret, stores it in `localStorage` for that origin, and sends `Authorization: Bearer …`. |
+| `ADMIN_SECRET` | _(unset)_ | shared secret for room TOML / room-settings **writes** (landing page and in-game). Runtime-only in Coolify (mark secret/locked); never commit a real value and never bake it into the client. **⚠ When unset/empty, editing is OPEN: anyone who can reach the site can Commit / Reset the room TOML on the landing page, change room settings in game, and `PUT /api/rooms/:id/config` without any token** (`/api/rooms` reports `"adminOpen": true`). Set it on any public deployment such as sailzone.app. When set, the landing Commit button prompts once for the secret, stores it in `localStorage` for that origin, and sends `Authorization: Bearer …`; in game, Login / Logout unlock the Room settings. |
 
 The server binds `0.0.0.0`.
 
@@ -69,8 +69,8 @@ rebuilds and redeploys.
 Start the first deployment, then check:
 
     curl -s https://sailzone.app/healthz      # {"ok":true}
-    curl -s https://sailzone.app/api/rooms    # [{"id":"europe-1","players":0,"config":"…","admin":false}]
-    # With ADMIN_SECRET set, admin is true; apply TOML without joining:
+    curl -s https://sailzone.app/api/rooms    # [{"id":"europe-1","players":0,"config":"…","admin":true,"adminOpen":false}]
+    # adminOpen true = ADMIN_SECRET is NOT set and anyone can edit. With it set, apply TOML without joining:
     # curl -s -X PUT -H "Authorization: Bearer $ADMIN_SECRET" -H "Content-Type: text/plain" \
     #   --data-binary @room.toml https://sailzone.app/api/rooms/europe-1/config
 

@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-11-10
+Last updated: 2026-11-11
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -106,7 +106,7 @@ Last updated: 2026-11-10
 - [x] Default room TOML preset matches live `europe-1` (gusts on at 10 per minute, max refinement level 2, `budget_target` 50000), applied to fixed remote rooms at server startup and used by Reset: [#116](https://github.com/SukuWc/fields/pull/116)
 - [x] Binary wire format for server hot-path messages: frames, field keyframes, flow and perf as binary WebSocket messages (about 22–27% smaller than JSON), welcome/statics/events/chat/results stay JSON: [#119](https://github.com/SukuWc/fields/pull/119)
 - [x] Slow (mobile) clients no longer fall progressively behind: the client stores incoming game frames undecoded and decodes/draws only the newest once per screen refresh, dropping stale ones: [#139](https://github.com/SukuWc/fields/pull/139)
-- [ ] Transport experiments for mobile lag: end-to-end ack window over the WebSocket (`?send=ack`), WebRTC DataChannel and WebTransport prototypes, link-shaping bench and findings in `docs/transport-experiments.md`: [#197](https://github.com/SukuWc/fields/pull/197)
+- [ ] Mobile lag fix: WebSocket clients get end-to-end ack flow control by default (`?send=legacy` = old behaviour for A/B; non-acking old clients fall back to legacy), remote room default `field_skip = 1`, open room editing when `ADMIN_SECRET` is unset, plus experimental WebRTC / WebTransport transports (`?transport=rtc|wt`, optional native packages) and the link-shaping bench (`docs/transport-experiments.md`): [#197](https://github.com/SukuWc/fields/pull/197)
 
 ### 4. Core race loop
 - [ ] Course: start line, marks, finish, boundary (partial: [#27](https://github.com/SukuWc/fields/pull/27) adds anchored mark buoy physics and scenario 11; [#28](https://github.com/SukuWc/fields/pull/28) adds anticlockwise triangle course progress, mark rounding, and scenario 12; [#31](https://github.com/SukuWc/fields/pull/31) adds gate marks and windward-leeward scenario 13; [#33](https://github.com/SukuWc/fields/pull/33) adds start line, RRS 26 start sequence, and scenario 14; [#38](https://github.com/SukuWc/fields/pull/38) adds the finish line and scenario 16; [#45](https://github.com/SukuWc/fields/pull/45) adds SailGP-style virtual boundaries, boundary room, crossing penalty, and scenario 19; still open: wider course use of the boundary)

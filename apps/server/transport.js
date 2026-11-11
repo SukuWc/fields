@@ -5,8 +5,10 @@
 //
 // Chosen per client by the WebSocket URL query (the page passes its own
 // ?send= / ?transport= through, src/host-choice.js):
-//   send=buf     (default, unchanged) skip hot messages while ws.bufferedAmount
-//                > SEND_BUF_MAX (256 KiB, room.js).
+//   (default)    WebSocket clients: ack (below). rtc / wt: latest.
+//   send=legacy  the old behaviour (main before #197): skip hot messages while
+//                ws.bufferedAmount > SEND_BUF_MAX (256 KiB, room.js). `buf` is
+//                an alias. For A/B tests.
 //   send=latest  same, with a small threshold (LATEST_BUF_MAX): only ws's
 //                user-space queue is watched, the kernel socket buffer is not.
 //   send=ack     end-to-end window: the client acks the hot bytes it has
@@ -15,6 +17,15 @@
 //                AP queue and browser queue included). A tick that does not
 //                fit is skipped; the next one sent is the newest. The window
 //                follows the measured delivery rate (rate * ACK_TARGET_MS).
+//                Explicit send=ack = the default (accepted, no-op) on ws.
+//                Old clients that never ack: until a client's first ack the
+//                legacy rule applies, so a cached old page is never starved
+//                (ackSeen false in /api/transport). A client that acked
+//                before and then goes silent for ACK_STALE_MS while bytes
+//                are in flight is forgiven (acked = sent): at most one more
+//                window per ACK_STALE_MS, never a permanent stall. The
+//                legacy 256 KiB bufferedAmount limit still applies as a
+//                safety net.
 //   transport=rtc  hot path on a WebRTC DataChannel (unordered,
 //                maxRetransmits 0), signalled over this WebSocket
 //                ({ type: 'rtc', ... }). Needs the optional node-datachannel.
@@ -29,23 +40,27 @@ export const ACK_MAX_WINDOW = 256 * 1024;
 export const ACK_TARGET_MS = 120;
 export const RTC_BUF_MAX = 16 * 1024;
 export const SEQ_LOST_MS = 500;
-const POLICIES = new Set(['buf', 'latest', 'ack']);
+export const ACK_STALE_MS = 3000;
+const POLICIES = new Set(['legacy', 'buf', 'latest', 'ack']);
 const TRANSPORTS = new Set(['ws', 'rtc', 'wt']);
 
 export function transportFromQuery(params) {
   const transport = TRANSPORTS.has(params.get('transport')) ? params.get('transport') : 'ws';
-  let send = POLICIES.has(params.get('send')) ? params.get('send') : (transport === 'ws' ? 'buf' : 'latest');
+  let send = POLICIES.has(params.get('send')) ? params.get('send') : (transport === 'ws' ? 'ack' : 'latest');
+  if (send === 'buf') send = 'legacy';
   const ackMs = Math.max(30, Math.min(1000, Number(params.get('ackms')) || ACK_TARGET_MS));
   return { send, transport, ackMs, name: (params.get('name') || '').slice(0, 32) };
 }
 
 // Per-client state, attached as ws.tx (index.js).
 export class ClientTx {
-  constructor(ws, { send = 'buf', transport = 'ws', ackMs = ACK_TARGET_MS, name = '', bufMax = 256 * 1024, now = () => performance.now() } = {}) {
+  constructor(ws, { send = 'ack', transport = 'ws', ackMs = ACK_TARGET_MS, name = '', bufMax = 256 * 1024, now = () => performance.now() } = {}) {
     this.ws = ws;
     this.name = name;
     this.ackMs = ackMs;
-    this.policy = send;
+    this.policy = send === 'buf' ? 'legacy' : send;
+    this.ackSeen = false;
+    this._lastAckAt = 0;
     this.want = transport;
     this.bufMax = bufMax;
     this.now = now;
@@ -78,14 +93,28 @@ export class ClientTx {
 
   // May a hot message of `size` bytes go now? reserve: bytes to keep free
   // for a higher-priority message of this tick (the frame).
+  // The policy in force: ack only once the client has acked (old clients
+  // never do and keep the legacy rule).
+  // Lockstep rooms (tests) never skip: runs must stay reproducible.
+  mode() { return this.lockstep || (this.policy === 'ack' && !this.ackSeen) ? 'legacy' : this.policy; }
+
   ok(size, reserve = 0, kind = 'frame') {
+    const mode = this.mode();
     // WebTransport: at most one unfinished stream per kind (latest-only).
-    if (this.channel && this.channel.busy && this.policy !== 'ack') return !this.channel.busy(kind);
-    if (this.policy === 'ack') {
-      const f = this.inFlight();
+    if (this.channel && this.channel.busy && mode !== 'ack') return !this.channel.busy(kind);
+    if (mode === 'ack') {
+      let f = this.inFlight();
+      // Acks stopped (stuck page, lost ack path): forgive, send one window.
+      if (f > 0 && this.now() - this._lastAckAt > ACK_STALE_MS) {
+        this.acked = this.sent; this._seqQ.length = 0; this._seqBytes = 0; this._lastAckAt = this.now();
+        this.stats.ackForgives = (this.stats.ackForgives || 0) + 1;
+        f = 0;
+      }
+      // Safety net: never pile onto a full ws buffer (the legacy limit).
+      if (!this.channel && this.buffered() > this.bufMax) return false;
       return f === 0 || f + size + reserve <= this.window;
     }
-    const max = this.policy === 'latest' ? (this.channel ? RTC_BUF_MAX : LATEST_BUF_MAX) : (this.channel ? Math.max(this.bufMax, RTC_BUF_MAX) : this.bufMax);
+    const max = mode === 'latest' ? (this.channel ? RTC_BUF_MAX : LATEST_BUF_MAX) : (this.channel ? Math.max(this.bufMax, RTC_BUF_MAX) : this.bufMax);
     return this.buffered() <= max;
   }
 
@@ -118,6 +147,8 @@ export class ClientTx {
     if (viaSeq) b = Math.min(b, this.sent);
     if (!Number.isFinite(b) || b <= this.acked || b > this.sent) return;
     const t = this.now();
+    this.ackSeen = true;
+    this._lastAckAt = t;
     // Delivery rate over the last second of acks (a burst after a WiFi
     // stall must not look like a fast link).
     this._acks = this._acks || [];
@@ -132,7 +163,7 @@ export class ClientTx {
   }
 
   snapshot() {
-    return { name: this.name, policy: this.policy, transport: this.channel ? this.channel.kind : 'ws', want: this.want, buffered: this.buffered(), wsBuffered: this.ws.bufferedAmount || 0, inFlight: this.policy === 'ack' ? this.inFlight() : null, window: Math.round(this.window), rate: Math.round(this.rate), ...this.stats };
+    return { name: this.name, policy: this.policy, mode: this.mode(), ackSeen: this.ackSeen, transport: this.channel ? this.channel.kind : 'ws', want: this.want, buffered: this.buffered(), wsBuffered: this.ws.bufferedAmount || 0, inFlight: this.mode() === 'ack' ? this.inFlight() : null, window: Math.round(this.window), rate: Math.round(this.rate), ...this.stats };
   }
 
   close() { if (this.channel) { try { this.channel.close(); } catch { /* closed */ } this.channel = null; } }

@@ -12,9 +12,11 @@
 // opens a room that is dropped graceMs after it empties.
 //
 // HTTP on the same port:
-//   GET /api/rooms   [{ id, players, config, admin }]  config = room TOML; admin = writes enabled
-//                    when ADMIN_SECRET is set (CORS *)
-//   PUT|POST /api/rooms/:id/config   apply room TOML (Authorization: Bearer <ADMIN_SECRET>)
+//   GET /api/rooms   [{ id, players, config, admin, adminOpen }]  config = room TOML;
+//                    admin = writes possible; adminOpen = no ADMIN_SECRET set, so
+//                    anyone may write without a token (CORS *)
+//   PUT|POST /api/rooms/:id/config   apply room TOML (Authorization: Bearer <ADMIN_SECRET>
+//                    when ADMIN_SECRET is set; no auth when it is unset = open editing)
 //                    body: raw TOML (text/plain) or JSON { "toml": "..." } / { "config": "..." }
 //   GET /api/perf    { rooms: [{ id, players, sampleHz, windowS, endAt, times, latestMs }] }
 //                    last ~180 s of frameMs (physics + field encode) per room (CORS *)
@@ -169,9 +171,11 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
     const configMatch = /^\/api\/rooms\/([^/]+)\/config$/.exec(url.pathname);
     if (configMatch && (req.method === 'PUT' || req.method === 'POST')) {
       (async () => {
-        if (!adminEnabled) return json(res, 403, { error: 'admin writes disabled (set ADMIN_SECRET)' });
-        const token = bearerToken(req);
-        if (!token || !adminSecretsEqual(token, secret)) return json(res, 401, { error: 'unauthorized' });
+        // No ADMIN_SECRET: open editing, no token needed. With one: Bearer secret.
+        if (adminEnabled) {
+          const token = bearerToken(req);
+          if (!token || !adminSecretsEqual(token, secret)) return json(res, 401, { error: 'unauthorized' });
+        }
         let id;
         try { id = decodeURIComponent(configMatch[1]); } catch { return json(res, 400, { error: 'bad room id' }); }
         const room = rooms.get(id);
@@ -196,7 +200,7 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
     // reconnect grace period do not count.
     if (url.pathname === '/api/rooms') {
       return json(res, 200, [...rooms.values()].map((r) => ({
-        id: r.name, players: r.clients.size, config: r.tomlConfig(), admin: adminEnabled,
+        id: r.name, players: r.clients.size, config: r.tomlConfig(), admin: true, adminOpen: !adminEnabled,
       })));
     }
     if (url.pathname === '/api/perf') {

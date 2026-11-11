@@ -31,8 +31,9 @@ const rooms = async () => { const r = await fetch(base + '/api/rooms'); return {
 
 let r = await rooms();
 const room0 = r.body[0];
-check('/api/rooms at startup: europe-1 with 0 players, CORS *, admin false',
-  room0 && room0.id === 'europe-1' && room0.players === 0 && room0.admin === false && r.cors === '*', JSON.stringify(r.body));
+check('/api/rooms at startup: europe-1 with 0 players, CORS *, no ADMIN_SECRET = open editing',
+  room0 && room0.id === 'europe-1' && room0.players === 0 && room0.admin === true && room0.adminOpen === true && r.cors === '*', JSON.stringify(r.body));
+check('fixed room starts on the remote default field_skip = 1', /\nfield_skip = 1\n/.test(room0.config || ''));
 check('/api/rooms includes current room TOML config',
   typeof room0.config === 'string' && room0.config.includes('scenario =') && room0.config.includes('root_cell_m') && room0.config.includes('budget_target'),
   String(room0 && room0.config).slice(0, 120));
@@ -53,8 +54,10 @@ check('no ?room= joins the first fixed room', (await b.ready).room === 'europe-1
 r = await rooms();
 check('/api/rooms counts 2 connected players', r.body[0].players === 2, JSON.stringify(r.body));
 b.terminate();
-await sleep(150);
-check('count drops to 1 after a leave', (await rooms()).body[0].players === 1);
+// Poll: a fixed 150 ms sleep was flaky when the full suite loads the box.
+let left = 0;
+for (let i = 0; i < 60; i++) { await sleep(50); left = (await rooms()).body[0].players; if (left === 1) break; }
+check('count drops to 1 after a leave', left === 1, `players ${left}`);
 await sleep(500);
 const ticks = room.ticks;
 check('the room ticks while someone is in it', ticks > 5, 'ticks ' + ticks);
@@ -104,10 +107,18 @@ check('CORS preflight answers 204', o.status === 204 && o.headers.get('access-co
 check('CORS preflight allows PUT and Authorization',
   (o.headers.get('access-control-allow-methods') || '').includes('PUT')
   && (o.headers.get('access-control-allow-headers') || '').toLowerCase().includes('authorization'));
-const denied = await fetch(base + '/api/rooms/europe-1/config', {
-  method: 'PUT', headers: { 'content-type': 'text/plain', authorization: 'Bearer x' }, body: 'scenario = 0\n',
-});
-check('PUT config without ADMIN_SECRET is 403', denied.status === 403, await denied.text());
+// No ADMIN_SECRET: open editing. /api/rooms says so and a PUT with no
+// Authorization applies the TOML.
+{
+  const { stringifyRoomConfig, defaultRoomConfig } = await import('../src/room-config.js');
+  const listedOpen = await (await fetch(base + '/api/rooms')).json();
+  check('no ADMIN_SECRET: /api/rooms marks admin + adminOpen', listedOpen[0] && listedOpen[0].admin === true && listedOpen[0].adminOpen === true, JSON.stringify(listedOpen[0] && { admin: listedOpen[0].admin, adminOpen: listedOpen[0].adminOpen }));
+  const openPut = await fetch(base + '/api/rooms/europe-1/config', {
+    method: 'PUT', headers: { 'content-type': 'text/plain' }, body: stringifyRoomConfig({ ...defaultRoomConfig(), wind_speed_mps: 5.5 }),
+  });
+  const ob = await openPut.json().catch(() => ({}));
+  check('no ADMIN_SECRET: PUT config without auth applies (open editing)', openPut.status === 200 && ob.ok === true && /wind_speed_mps = 5\.5/.test(ob.config || ''), JSON.stringify({ s: openPut.status, e: ob.error }));
+}
 await srv.close();
 
 // Admin TOML apply via HTTP (ADMIN_SECRET).
@@ -117,6 +128,7 @@ await srv.close();
   const abase = `http://127.0.0.1:${admin.port}`;
   const listed = await (await fetch(abase + '/api/rooms')).json();
   check('with ADMIN_SECRET, /api/rooms marks admin true', listed[0] && listed[0].admin === true, JSON.stringify(listed));
+  check('with ADMIN_SECRET, adminOpen false', listed[0] && listed[0].adminOpen === false);
 
   const noAuth = await fetch(abase + '/api/rooms/europe-1/config', {
     method: 'PUT', headers: { 'content-type': 'text/plain' }, body: 'scenario = 0\n',
