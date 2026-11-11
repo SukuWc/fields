@@ -62,7 +62,7 @@ function rudderFor(boat, kp, ki, kd) {
   const all = mute(() => host.commandSync({ type: 'autopilotGains', kp: AUTOPILOT_KP, ki: 0, kd: AUTOPILOT_KD }));
   check('no id sets every current boat and the sim default', all.boats.includes(boat.boatId) && sim.autopilotGains.kp === AUTOPILOT_KP && boat.autopilot_kp === AUTOPILOT_KP, JSON.stringify(all));
 
-  // Stay under the 30° rudder clamp so the P term is linear (10° error × kp).
+  // Stay under the rudder limit so the P term is linear (10° error × kp).
   const rDefault = rudderFor(boat, 1, 0, 0);
   const rDouble = rudderFor(boat, 2, 0, 0);
   const rZero = rudderFor(boat, 0, 0, 0);

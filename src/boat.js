@@ -174,16 +174,17 @@ export const PENALTY_TURN_FINISH_RUDDER = 6;
  */
 export const RUDDER_RETURN_SPEEDUP = 3;
 
-/** Autopilot rudder limit. Was rudder_angle_max / 2 (60 / 2); pinned at 30° so
- *  the manual limit (rudder_angle_max) does not change autopilot tacks and
- *  bear-aways. A manual limit below 30° caps it too. */
+/** Former fixed autopilot rudder limit (was rudder_angle_max / 2, then
+ *  pinned at 30°). The autopilot now saturates at the boat's
+ *  rudder_angle_max (Dev TOML rudder_max_deg, default 60°); this constant
+ *  is kept only as the historical value for comparisons. */
 export const AUTOPILOT_RUDDER_MAX = 30;
 
 /** Manual helm hard-over, degrees each side (Boat.rudder_angle_max). Dev
  *  TOML rudder_max_deg (src/dev-config.js) sets it per boat within
  *  RUDDER_MAX_DEG_MIN..RUDDER_MAX_DEG_MAX. Was 45° (60° before that). The
- *  autopilot (AUTOPILOT_RUDDER_MAX) and penalty turns
- *  (PENALTY_TURN_RUDDER_MAX) keep their own limits, capped at this one. */
+ *  autopilot saturates at this limit too. Penalty turns keep their own
+ *  PENALTY_TURN_RUDDER_MAX (50°), capped at this one. */
 export const RUDDER_MAX_DEG = 60;
 export const RUDDER_MAX_DEG_MIN = 10;
 export const RUDDER_MAX_DEG_MAX = 90;
@@ -609,7 +610,7 @@ export class Boat{
 
       this.rudder_angle_target = (comp_p + comp_i + comp_d)*Math.sign(d)
 
-      const autopilotMax = Math.min(AUTOPILOT_RUDDER_MAX, this.rudder_angle_max);
+      const autopilotMax = this.rudder_angle_max;
       if (this.rudder_angle_target>autopilotMax){
         this.rudder_angle_target = autopilotMax;
       }

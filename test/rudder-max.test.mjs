@@ -86,8 +86,7 @@ test('boat: manual helm stops at the limit; setRudderMax clamps and refuses bad 
   assert.equal(boat.rudder_angle_max, 25);
 });
 
-test('boat: autopilot and penalty limits are unchanged at 60 and capped by a lower limit', () => {
-  assert.equal(AUTOPILOT_RUDDER_MAX, 30);
+test('boat: the autopilot saturates at the rudder limit; penalty turns stay at 50 capped by it', () => {
   assert.equal(PENALTY_TURN_RUDDER_MAX, 50);
   const host = boatAt();
   const boat = host.core.sim.players[0];
@@ -101,10 +100,13 @@ test('boat: autopilot and penalty limits are unchanged at 60 and capped by a low
     return peak;
   };
   const at60 = hardOver();
-  assert.ok(at60 > 25 && at60 <= 30 + 1e-9, String(at60));
+  assert.ok(at60 > AUTOPILOT_RUDDER_MAX + 15 && at60 <= 60 + 1e-9, `peak ${at60} (old fixed cap ${AUTOPILOT_RUDDER_MAX})`);
   boat.setRudderMax(15);
   const at15 = hardOver();
   assert.ok(at15 > 12 && at15 <= 15 + 1e-9, String(at15));
+  boat.setRudderMax(80);
+  const at80 = hardOver();
+  assert.ok(at80 > 60 && at80 <= 80 + 1e-9, String(at80));
 });
 
 test('local host: Apply sets every boat and later boats; a command without rudderMax leaves them', () => {

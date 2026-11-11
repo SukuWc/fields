@@ -30,8 +30,8 @@
 // autopilotGains command as optional `rudderMax`, so it reaches the same
 // boats by the same rules as the PID above (local/worker: every boat and
 // later ones; remote: this client's boats, remembered for spawns and
-// reconnects). The autopilot (30°) and penalty-turn (50°) limits stay as
-// they are, capped at this one. A command without rudderMax leaves each
+// reconnects). The autopilot saturates at this limit too; the
+// penalty-turn limit (50°) stays, capped at this one. A command without rudderMax leaves each
 // boat's limit alone.
 //
 // Persistence. Applied config is localStorage 'fields.devConfig'. Older
@@ -86,7 +86,7 @@ export const PLOT_LABELS = ['Plot density', 'Plot x velocity', 'Plot y velocity'
 const HEADER = [
   '# This page only. Apply sends the autopilot gains to boats this page may control.',
   '# A tracer count of 0 is automatic. An integral gain of 0 keeps the previous PD controller.',
-  '# rudder_max_deg: manual helm hard-over each side, 10..90 degrees (default 60). The autopilot (30) and penalty turns (50) stay inside it.',
+  '# rudder_max_deg: manual helm hard-over each side, 10..90 degrees (default 60). The autopilot uses the same limit; penalty turns stay at 50 or less.',
   '',
 ].join('\n');
 
