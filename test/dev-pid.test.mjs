@@ -70,7 +70,7 @@ function rudderFor(boat, kp, ki, kd) {
   check('P gain scales the rudder and zero P does not steer', rDefault > 1 && Math.abs(rDouble / rDefault - 2) < 0.15 && Math.abs(rZero) < 0.05,
     `default ${rDefault} double ${rDouble} zero ${rZero}`);
   check('I gain moves the rudder when P and D are zero', Math.abs(rI) > 0.2, String(rI));
-  check('default D is the boat constant and the blend is the one the step uses', AUTOPILOT_KD > 29 && AUTOPILOT_KD < 30 && AUTOPILOT_RUDDER_BLEND > 0.2);
+  check('default D is 0 (P-only since #200) and the blend is the one the step uses', AUTOPILOT_KD === 0 && AUTOPILOT_RUDDER_BLEND > 0.2);
 
   mute(() => host.commandSync({ type: 'autopilotGains', kp: 0, ki: 0, kd: 0 }));
   const spawned = host.commandSync({ type: 'spawnBoat', name: 'Later' });

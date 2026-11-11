@@ -277,13 +277,15 @@ export function apparentWindAngleDeg(aw, hullAngleRad) {
 //
 // Course-keeping helm on a settled beat sits near 4°. Steering onto the
 // beat, without tacking, uses up to about 19° (measured 16–19° over 1.5–8
-// m/s while she acquires the close-hauled target). A tack drives the
-// rudder to the autopilot stop, about 24°. 21° is above that acquisition
-// helm and at the tack, so settling onto a beat does not arm the sheet
-// and a tack does as the helm goes hard over. Release when that
+// m/s while she acquires the close-hauled target; 13–17° with the P-only
+// autopilot of #200). A tack drives the rudder toward the autopilot stop,
+// now rudder_max_deg (default 60°): measured peaks 48–51° over 1.5–8 m/s
+// (about 24° under the old 30° stop). 21° is above that acquisition helm
+// and well inside the tack, so settling onto a beat does not arm the
+// sheet and a tack does as the helm goes hard over. Release when that
 // component is back to 4° or less, or has the other sign: no longer more
 // helm than she uses to hold a course. 4° is the settled helm, so a dip
-// from 24° to 12° (still turning) does not drop the sheet.
+// from the hard-over to 12° (still turning) does not drop the sheet.
 //
 // Arrived: |TWA| >= 40° on the side opposite the held sheet. 40° is
 // CLOSE_HAULED_TWA_DEG in rules.js, the angle this sim already treats as

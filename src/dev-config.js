@@ -11,7 +11,8 @@
 //
 // Autopilot PID (autopilot_kp / autopilot_ki / autopilot_kd). The sim owns
 // the gains on each boat (boat.js). Defaults are AUTOPILOT_KP (2), integral
-// 0 and AUTOPILOT_KD (~29.9), so an untouched document steers as before.
+// 0 and AUTOPILOT_KD (0; it was ~29.9 before #200), so an untouched
+// document steers with the boat defaults.
 // Apply sends { type: 'autopilotGains', kp, ki, kd } with no boat index.
 //   local / worker: the page owns the sim, so the gains become the sim
 //     default and are written onto every current boat by boat id (spawn id
@@ -85,7 +86,7 @@ export const PLOT_LABELS = ['Plot density', 'Plot x velocity', 'Plot y velocity'
 
 const HEADER = [
   '# This page only. Apply sends the autopilot gains to boats this page may control.',
-  '# A tracer count of 0 is automatic. An integral gain of 0 keeps the previous PD controller.',
+  '# A tracer count of 0 is automatic. Default gains are P 2, I 0, D 0 (P only); D was about 29.9 before #200.',
   '# rudder_max_deg: manual helm hard-over each side, 10..90 degrees (default 60). The autopilot uses the same limit; penalty turns stay at 50 or less.',
   '',
 ].join('\n');

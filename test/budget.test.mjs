@@ -34,9 +34,9 @@ const check = (name, cond, detail) => { if (!cond) failed++; console.log(`${cond
 	// Sail AWS in m/s + hull drag (dinghy-forces.js): → −48.4890 / 2.2780.
 	// Rigid body 139 kg: → −48.6747 / 2.4076.
 	// Explicit foils + hull-drag offset: → −51.1980 / 2.4524.
-	// Sail force on each sheeted boom, then ceLateralHeight·sinφ to leeward: → −52.0398 / 2.4772.
-	'1 boat, default budget: unchanged (twa −52.0398 / bs 2.4772)',
-		Math.abs(r.twa + 52.0398) < 1e-4 && Math.abs(r.bs - 2.4772) < 1e-4,
+	// Sail force on each sheeted boom, then ceLateralHeight·sinφ to leeward; autopilot P-only saturating at rudder_max_deg (60°, #200): → −52.0780 / 2.4785.
+	'1 boat, default budget: unchanged (twa −52.0780 / bs 2.4785)',
+		Math.abs(r.twa + 52.0780) < 1e-4 && Math.abs(r.bs - 2.4785) < 1e-4,
 		`${r.twa.toFixed(4)} / ${r.bs.toFixed(4)}`);
 }
 

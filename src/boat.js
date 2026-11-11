@@ -116,11 +116,18 @@ const blendN = (a) => 1 - Math.pow(1 - a, N);
 export const WIND_SMOOTH_ALPHA = blendN(0.2);          // 0.488
 export const PENALTY_RUDDER_BLEND = blendN(0.45);      // 0.834
 export const AUTOPILOT_RUDDER_BLEND = blendN(0.1);     // 0.271 (was /10 per pass)
-// Old D term: only the first of the three passes saw the heading change
-// (the hull angle moves only at world.step), and its kick went through three
-// /10 lags (0.1·0.9² = 0.081 of it reached the rudder in the tick). One pass
-// with blend 0.271 needs D × 0.081 / 0.271 for the same rudder response.
-export const AUTOPILOT_KD = 100 * (0.1 * 0.81) / AUTOPILOT_RUDDER_BLEND; // 29.9
+// Former D default: only the first of the three passes saw the heading
+// change (the hull angle moves only at world.step), and its kick went
+// through three /10 lags (0.1·0.9² = 0.081 of it reached the rudder in the
+// tick). One pass with blend 0.271 needs D × 0.081 / 0.271 for the same
+// rudder response: AUTOPILOT_KD_LEGACY ≈ 29.9.
+export const AUTOPILOT_KD_LEGACY = 100 * (0.1 * 0.81) / AUTOPILOT_RUDDER_BLEND;
+// Default D is 0 since #200: with the autopilot saturating at
+// rudder_max_deg (60°), P alone tacks and bears away without overshoot
+// beyond the steady P offset and settles without oscillation (measured
+// 1.5–8 m/s), and the D term only slowed the tack. The Dev TOML can still
+// set autopilot_kd.
+export const AUTOPILOT_KD = 0;
 export const AUTOPILOT_KP = 2;
 // Integral gain stays 0 unless a dev-config Apply sets autopilot_ki.
 export const AUTOPILOT_KI = 0;

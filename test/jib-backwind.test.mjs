@@ -202,8 +202,13 @@ check('before head-to-wind the armed jib is the ordinary trim',
 check('so she reaches head-to-wind at the same moment either way',
   fastOn.marks.htw != null && Math.abs(fastOn.marks.htw - fastOff.marks.htw) < DT / 2,
   `${fastOn.marks.htw?.toFixed(2)} vs ${fastOff.marks.htw?.toFixed(2)}`);
+// With the P-only autopilot at the 60° rudder limit (#200) the free-sheet
+// 8 m/s tack is already 1.67 s and the hold saves about 0.17 s (it saved
+// 0.47 s at the old 30° PD autopilot). More than 0.1 s, three ticks, is
+// still a real gain and not step noise. The slow tacks keep a large gain
+// (stalled and light-air checks below).
 check('and the held jib gets her to 45° on the new tack sooner',
-  fastOn.done < fastOff.done - 0.2,
+  fastOn.done < fastOff.done - 0.1,
   `${fastOn.done?.toFixed(2)} vs ${fastOff.done?.toFixed(2)}`);
 
 const stallOn = tack({ tws: 3, enabled: true, stall: true });
