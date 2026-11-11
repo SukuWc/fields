@@ -257,9 +257,115 @@ export function apparentWindAngleDeg(aw, hullAngleRad) {
   return awa;
 }
 
+// Backed jib through a tack. When the helm puts the rudder on to tack,
+// the crew leaves the old jib sheet cleated (Bethwaite, High Performance
+// Sailing: the old headsail sheet stays on through the tack and is let go
+// on the new tack). Until the bow is through head-to-wind the wind is
+// still on the working side of the jib, which then just follows the
+// apparent wind as on any other point of sail: a sheet held hard there
+// oversheets the jib and its forward centre of effort pushes the bow back
+// down, which stalled slow boats short of the eye (scenarios 3, 4, 6).
+// Once true wind is on the other side, the remembered sheet is fixed and
+// the wind fills the jib from the back. The force is still sailLiftDrag
+// at that chord (Marchaj, Aero-Hydrodynamics of Sailing). The jib centre
+// is forward of the centre of lateral resistance (Larsson & Eliasson,
+// Principles of Yacht Design), so it yaws the bow onto the new tack.
+//
+// Rudder sign: positive rudder_angle yaws clockwise with way on, which
+// on this hull increases TWA (starboard toward port). The tack direction
+// is the rudder sign that reduces |TWA|, -sign(TWA).
+//
+// Course-keeping helm on a settled beat sits near 4°. Steering onto the
+// beat, without tacking, uses up to about 19° (measured 16–19° over 1.5–8
+// m/s while she acquires the close-hauled target). A tack drives the
+// rudder to the autopilot stop, about 24°. 21° is above that acquisition
+// helm and at the tack, so settling onto a beat does not arm the sheet
+// and a tack does as the helm goes hard over. Release when that
+// component is back to 4° or less, or has the other sign: no longer more
+// helm than she uses to hold a course. 4° is the settled helm, so a dip
+// from 24° to 12° (still turning) does not drop the sheet.
+//
+// Arrived: |TWA| >= 40° on the side opposite the held sheet. 40° is
+// CLOSE_HAULED_TWA_DEG in rules.js, the angle this sim already treats as
+// being on the new tack (Rule 13 ends). A slow boat keeps the rudder
+// hard over past that, so the rudder test alone would hold the jib into
+// the new beat; arriving releases it so the new sheet can fill.
+export const JIB_BACKWIND_RUDDER_DEG = 21;
+export const JIB_BACKWIND_RUDDER_NEUTRAL_DEG = 4;
+export const JIB_BACKWIND_ARRIVED_TWA_DEG = 40;
+// A boom on the centreline is not a cleated working sheet.
+export const JIB_BACKWIND_MIN_SHEET_DEG = 8;
+
+// One sheeting decision. `prev` is the last return value (or null).
+// `sample`: { twa, boomTrim, rudderDeg, depower, enabled }.
+// `boomTrim` is the boom that would follow the apparent wind this step.
+// Returns { memory, held, armed, backwinded, rudderSign, boom }.
+// `armed`: the helm is tacking and the old sheet is remembered in `held`.
+// `backwinded`: armed and the bow is past head-to-wind, so `boom` is the
+// held sheet. Otherwise `boom` is boomTrim. Degrees, the same sign
+// convention as boat.js. No force is computed here.
+export function jibBackwindStep(prev, sample) {
+  const p = prev && typeof prev === 'object' ? prev : null;
+  let memory = p && Number.isFinite(p.memory) ? p.memory : 0;
+  let held = p && Number.isFinite(p.held) ? p.held : 0;
+  let rudderSign = p && Number.isFinite(p.rudderSign) ? p.rudderSign : 0;
+  let armed = !!(p && p.armed);
+  const twa = sample.twa;
+  const boomTrim = sample.boomTrim;
+  const rudder = Number.isFinite(sample.rudderDeg) ? sample.rudderDeg : 0;
+  const depower = sample.depower || 0;
+  const enabled = sample.enabled !== false;
+  if (!Number.isFinite(twa) || !Number.isFinite(boomTrim)) {
+    return { memory, held: 0, armed: false, backwinded: false, rudderSign, boom: Number.isFinite(boomTrim) ? boomTrim : 0 };
+  }
+  const absTwa = Math.abs(twa);
+  const twaSign = Math.sign(twa) || 0;
+  const easing = depower > 0;
+  // Rudder sign that heads her toward the wind from this tack.
+  const toward = twaSign === 0 ? 0 : -twaSign;
+  const asking = toward !== 0 ? rudder * toward : 0;
+  // Track the working sheet only while she is not already in the turn, so
+  // the remembered angle is the sheet she had when the helm went on, not
+  // the boom after it has followed the apparent wind toward the centreline.
+  if (!armed && !easing && !(asking > JIB_BACKWIND_RUDDER_DEG)
+      && twaSign !== 0 && Math.sign(boomTrim) === twaSign
+      && Math.abs(boomTrim) >= JIB_BACKWIND_MIN_SHEET_DEG && absTwa <= 120) {
+    memory = boomTrim;
+  }
+  // A tack starts upwind of a beam reach. Past that, rudder toward the
+  // wind is a head-up from a run, not a tack, and a gybe goes the other way.
+  if (enabled && !armed && !easing && asking > JIB_BACKWIND_RUDDER_DEG
+      && absTwa >= 5 && absTwa <= 90
+      && Math.abs(memory) >= JIB_BACKWIND_MIN_SHEET_DEG && Math.sign(memory) === twaSign) {
+    armed = true;
+    held = memory;
+    rudderSign = toward;
+  }
+  let backwinded = false;
+  if (armed) {
+    const stillAsking = rudder * rudderSign > JIB_BACKWIND_RUDDER_NEUTRAL_DEG;
+    const onNewTack = twaSign !== 0 && Math.sign(held) !== 0 && twaSign !== Math.sign(held);
+    const arrived = onNewTack && absTwa >= JIB_BACKWIND_ARRIVED_TWA_DEG;
+    if (!enabled || easing || !stillAsking || arrived) armed = false;
+    else backwinded = onNewTack;
+  }
+  return {
+    memory,
+    held: armed ? held : 0,
+    armed,
+    backwinded,
+    rudderSign: armed ? rudderSign : 0,
+    boom: backwinded ? held : boomTrim,
+  };
+}
+
 // World-frame lift and drag of one sail. `sailK` is newtons per unit C in
 // the pre-applyFinite unit (sailDynamicNewtons × internalForcePerNewton).
 // Drag is down the apparent wind; lift is perpendicular, signed by AWA.
+// A backed jib uses this unchanged: the boom stays on the old side, so
+// the angle of attack is large and the apparent wind is on the wrong
+// side of the chord. The sign of the lift follows the wind, which is the
+// direction a sail held aback is pushed.
 export function sailLiftDrag(hullAngleRad, awaDeg, sailK, cl, cd) {
   const awaRad = awaDeg * Math.PI / 180;
   const drag = {

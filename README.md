@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-11-09
+Last updated: 2026-11-10
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -74,6 +74,7 @@ Last updated: 2026-11-09
 - [ ] Dinghy force calibration: apparent wind in m/s, one sail force for heel and hull, hull drag against Day's Laser polars (full hike near 5–6 m/s; no planing). Hull drag is applied to leeward when heeled, and the rudder and centreboard are NACA 0012 foils: [#185](https://github.com/SukuWc/fields/pull/185)
 - [x] Separate mainsail and jib forces: each sail has its own area (International 470 main/jib split of the calibrated 7.06 m²), its own angle of attack and centre of effort, and heel uses the sum of both. No jib-to-main slot factor. Full hike stays near 5.3 m/s: [#193](https://github.com/SukuWc/fields/pull/193)
 - [x] Sail forces applied on each sail's boom, then walked leeward with heel: mainsail at one third of its sheeted boom (the plan centroid lies on the spar), jib at the orthogonal projection of its triangle centroid onto the jib boom. The leeward shift is still ceLateralHeight·sinφ from that boom point. Heel and hike still use the vertical centre of effort (ceHeight), not boom height: [#195](https://github.com/SukuWc/fields/pull/195)
+- [x] Backwinded jib through a tack: when the helm goes on to tack (rudder over more than 21° toward the wind) the jib sheet she had is remembered, but the jib keeps its ordinary trim until the bow is past head-to-wind. From there that old sheet is held while the rudder is still asking for the turn (more than the ~4° course-keeping helm) and is released when that rudder comes off, the sheets are eased, or she is close-hauled (40°) on the new tack. The force is the ordinary sail force at that chord. The drawn camber side and depth come from the jib boom against the apparent wind, the same as any other trim. Every tack reaches head-to-wind at the same moment and gets to 45° on the new tack sooner: stalled 3 m/s 21.6 → 6.1 s, 1.5 m/s 15.8 → 12.8 s, 8 m/s 4.2 → 3.7 s. Scenario 7's port boat starts 3 m closer so Rule 15 still opens: [#198](https://github.com/SukuWc/fields/pull/198)
 - [x] Moving-column gusts: elliptical momentum columns injected into the lattice (long axis across the wind, carried downwind at free-stream speed, 10 s life), scenario 22: [#111](https://github.com/SukuWc/fields/pull/111)
 - [x] Large gusts (σ about 10–15 m, as on `europe-1`) sampled at every root cell, removing the checkerboard artifact on the wind field with no gain rescale, scenario 23: [#117](https://github.com/SukuWc/fields/pull/117)
 - [x] Room-config gust rate spawner: Poisson gust arrivals (`gust_rate_per_min`) with mean[,sd] knobs for gain, size, life and direction in room TOML, off by default: [#112](https://github.com/SukuWc/fields/pull/112)
