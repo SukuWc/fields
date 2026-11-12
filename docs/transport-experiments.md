@@ -405,6 +405,56 @@ Watch what the server does per client:
 
 Add `&name=phone1` to a page URL to label that client in `/api/transport`.
 
+## Field visualization: bandwidth vs client render
+
+Turning off **Show field (server)** (`field_plane`) on a phone cuts jitter a
+lot. That toggle unsubscribes the client, so it stops both the field
+keyframes *and* the client decode / paint / draw work. These query
+parameters keep one side or the other, so you can tell which cost matters.
+They are client-only (not forwarded on the WebSocket) and only apply in
+server mode, on sailzone.app or `?host=remote`.
+
+| query | subscription | decode | paint / texture upload | plane |
+| --- | --- | --- | --- | --- |
+| _(none)_ | on while the box is on | yes | yes | shown while the box is on |
+| `field_mode=recv` | on | yes | yes | hidden |
+| `field_mode=freeze` | one keyframe, then off | first only | first only | last texture stays visible |
+| `field_mode=nopaint` | on | yes | skipped | last texture stays visible (blank until something has been painted) |
+| `field_plane=0` | off | no | no | hidden |
+
+The **Show field (server)** checkbox still works: while it is off, the
+client unsubscribes and hides the plane, same as today, regardless of
+`field_mode`. The experiment mode applies only while the box is on (and
+the room is not in dev mode). Reloading with `?field_mode=freeze` stays
+subscribed just long enough to paint one keyframe, then unsubscribes.
+Unchecking and checking the box again takes a fresh snapshot.
+
+Flow tracers are a **separate** Dev setting (`flow_tracers`, default on,
+URL key `?show_field`). Unchecking Show field does not turn them off.
+Add `show_field=0` to also stop the tracer grid (about 1 MB/s at the
+default 100 × 200 map) and the per-frame tracer draw.
+
+`?hud=1` shows a small on-screen client readout (not the server `?perf=`
+overlay, and not hidden behind backtick / `?dev=1`): the `field_mode` in
+use, rAF interval and worst frame in the last 2 s, last field decode and
+paint times, `framesDropped` / `fieldsDropped`, frames/s received, and
+client / field KB/s. It updates a few times per second.
+
+On sailzone.app, after this is deployed (same query keys work on a local
+`/play/` too):
+
+- Baseline, HUD on: `/play/?room=europe-1&hud=1`
+- Receive + paint, hide the plane: `/play/?room=europe-1&hud=1&field_mode=recv`
+- One field, then stop sending, keep it visible: `/play/?room=europe-1&hud=1&field_mode=freeze`
+- Decode only, skip paint: `/play/?room=europe-1&hud=1&field_mode=nopaint`
+- Same four with tracers off: add `&show_field=0`
+- Field fully off (current toggle): `/play/?room=europe-1&hud=1&field_plane=0`
+
+If `recv` and `nopaint` still hitch but `freeze` and `field_plane=0` are
+smooth, the live field stream (bytes and/or decode) is the cause. If only
+`nopaint` and hiding the plane (`recv` / `field_plane=0`) are smooth,
+paint and the 5 MB texture upload are the expensive part.
+
 ## Caveats
 
 - **The link is simulated in user space**, because the box kernel has no

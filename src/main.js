@@ -51,6 +51,14 @@ import {
   SUBSCRIPTION_IDS,
   urlSettingIds,
 } from './settings-registry.js';
+import {
+  fieldModeFromQuery,
+  fieldModeState,
+} from './field-mode.js';
+import {
+  hudFromQuery,
+  setupClientPerfHud,
+} from './client-perf-hud.js';
 import { applySettingDefaults } from './settings-panel.js';
 import { setInfo, flushInfo } from './info.js';
 import {
@@ -196,6 +204,9 @@ function startClient() {
   // Remote: a server room (host.info: the size it was created with), its
   // room settings (host.room) and this client's role come from the server.
   const remote = host.kind === 'remote';
+  if (hudFromQuery(location.search)) {
+    setupClientPerfHud({ host, getFieldMode: () => fieldModeFromQuery(location.search) });
+  }
   if (remote && (host.info.mapW !== map_w || host.info.mapH !== map_h)) {
     map_w = host.info.mapW;
     map_h = host.info.mapH;
@@ -429,18 +440,31 @@ function startClient() {
     sendInput();
     // Field: the server sends field messages only while this page shows the
     // field (Show field box on and dev mode off); the plot choice was sent
-    // with the 'plot' command above.
+    // with the 'plot' command above. ?field_mode=recv|freeze|nopaint changes
+    // subscribe / paint / plane visibility while the box is on (field-mode.js).
     const fieldBox = document.getElementById(SUBSCRIPTION_IDS.field);
     document.getElementById('field_plane_row').hidden = false;
+    const fieldMode = fieldModeFromQuery(location.search);
     let fieldOn = null;
     let devMode = false;
+    let freezeReady = false;
     const syncField = () => {
-      const on = fieldBox.checked && !devMode;
-      setFieldVisible(fieldBox.checked);
-      if (on !== fieldOn) { fieldOn = on; host.setField({ on }); }
+      const st = fieldModeState(fieldMode, { boxOn: fieldBox.checked, devMode, freezeReady });
+      setFieldVisible(st.visible);
+      host.fieldPaint = st.paint;
+      if (st.subscribe !== fieldOn) { fieldOn = st.subscribe; host.setField({ on: st.subscribe }); }
     };
-    host.onFrame((frame) => { if (!!frame.devMode !== devMode) { devMode = !!frame.devMode; syncField(); } });
-    fieldBox.addEventListener('change', syncField);
+    host.onFrame((frame) => {
+      if (fieldMode === 'freeze' && !freezeReady && host.fieldsReceived > 0) {
+        freezeReady = true;
+        syncField();
+      }
+      if (!!frame.devMode !== devMode) { devMode = !!frame.devMode; syncField(); }
+    });
+    fieldBox.addEventListener('change', () => {
+      if (fieldBox.checked) freezeReady = false;
+      syncField();
+    });
     syncField();
     return;
   }

@@ -51,7 +51,9 @@
 // slow paint from growing an onmessage backlog.
 //
 // Field: only while this client shows it (setField({ on, plotType,
-// contrastExp }); the 'plot' command sets the plot). The server sends
+// contrastExp }); the 'plot' command sets the plot). fieldPaint (default
+// true; ?field_mode=nopaint sets it false) skips paintGrids after decode.
+// The server sends
 // keyframes only (src/field-codec.js, base: 0), at the room's fieldSkip
 // cadence. Painted here into the page's texture with the local palette
 // (FieldPainter.paintGrids), so remote looks like local.
@@ -99,7 +101,7 @@ function mapSdp(sdp, fn) {
 }
 
 export class RemoteHost {
-  constructor(url, opts, texture, { maxInFlight = 0, WebSocketImpl, coalesce = true, token = null, reconnect = false, backoffMs = [500, 1000, 2000, 4000, 8000], adminSecret, RTCPeerConnectionImpl, WebTransportImpl, rtcMapCandidate, wtMapUrl } = {}) {
+  constructor(url, opts, texture, { maxInFlight = 0, WebSocketImpl, coalesce = true, token = null, reconnect = false, backoffMs = [500, 1000, 2000, 4000, 8000], adminSecret, RTCPeerConnectionImpl, WebTransportImpl, rtcMapCandidate, wtMapUrl, fieldPaint = true } = {}) {
     this.kind = 'remote';
     // Room admin login (same secret as the landing page, localStorage
     // ADMIN_SECRET_KEY). Sent with every init so a reconnect stays logged in.
@@ -147,6 +149,10 @@ export class RemoteHost {
     this.fieldsDropped = 0;
     this.fieldBytes = 0;
     this.bytesReceived = 0;
+    // fieldPaint false (?field_mode=nopaint): decode only, skip paintGrids.
+    this.fieldPaint = fieldPaint !== false;
+    this.fieldDecodeMs = 0;
+    this.fieldPaintMs = 0;
     this.protocolError = null;
     this.fieldResyncs = 0;
     this._fieldHeld = null;
@@ -579,9 +585,13 @@ export class RemoteHost {
   }
 
   // Decode the stashed message onto _fieldHeld and paint (called from _deliver).
+  // fieldPaint false skips paintGrids and the texture upload (decode still runs).
   _applyField(m) {
+    const t0 = performance.now();
     const r = decodeFieldText(m, this._fieldHeld);
+    this.fieldDecodeMs = performance.now() - t0;
     if (!r) {
+      this.fieldPaintMs = 0;
       if (this._fieldHeld || !this._fieldAsked) {
         this.fieldResyncs++;
         this._fieldAsked = true;
@@ -594,7 +604,13 @@ export class RemoteHost {
     this._fieldAsked = false;
     this.fieldsReceived++;
     this.lastField = r.msg;
-    if (this._painter) this._painter.paintGrids(r.msg);
+    if (this.fieldPaint && this._painter) {
+      const t1 = performance.now();
+      this._painter.paintGrids(r.msg);
+      this.fieldPaintMs = performance.now() - t1;
+    } else {
+      this.fieldPaintMs = 0;
+    }
   }
 
   _send(m) { if (this.ws.readyState === 1) this.ws.send(JSON.stringify(m)); }
