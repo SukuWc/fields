@@ -76,9 +76,9 @@ const INWAKE = [[12, -6, 5 * Math.PI / 4], [12, -13, 5 * Math.PI / 4]];
 	// Sail AWS in m/s + hull drag (dinghy-forces.js): → −48.4890 / 2.2780.
 	// Rigid body 139 kg: → −48.6747 / 2.4076.
 	// Explicit foils + hull-drag offset: → −51.1980 / 2.4524.
-	// Sail force on each sheeted boom, then ceLateralHeight·sinφ to leeward: → −52.0398 / 2.4772.
-	'auto Default scenario 0 pinned: twa −52.04, bs 2.477',
-		near(s0.twa, -52.0398, 0.01) && near(s0.bs, 2.4772, 0.002), `twa=${s0.twa.toFixed(4)} bs=${s0.bs.toFixed(4)}`);
+	// Sail force on each sheeted boom, then ceLateralHeight·sinφ to leeward; autopilot P-only saturating at rudder_max_deg (60°, #200): → −52.0780 / 2.4785.
+	'auto Default scenario 0 pinned: twa −52.08, bs 2.479',
+		near(s0.twa, -52.0780, 0.01) && near(s0.bs, 2.4785, 0.002), `twa=${s0.twa.toFixed(4)} bs=${s0.bs.toFixed(4)}`);
 	H.setAmrMode('fixed');
 	check('auto Default scenario 0 close-hauled and the in-wake shadow is at least the fixed one',
 		s0.twa < -45 && s0.twa > -54 && s0.bs > 2.0 && s0.bs < 2.6 && wk.shadow > 0.4 && wk.overlapGap < 1e-12,

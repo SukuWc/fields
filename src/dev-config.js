@@ -11,7 +11,8 @@
 //
 // Autopilot PID (autopilot_kp / autopilot_ki / autopilot_kd). The sim owns
 // the gains on each boat (boat.js). Defaults are AUTOPILOT_KP (2), integral
-// 0 and AUTOPILOT_KD (~29.9), so an untouched document steers as before.
+// 0 and AUTOPILOT_KD (0; it was ~29.9 before #200), so an untouched
+// document steers with the boat defaults.
 // Apply sends { type: 'autopilotGains', kp, ki, kd } with no boat index.
 //   local / worker: the page owns the sim, so the gains become the sim
 //     default and are written onto every current boat by boat id (spawn id
@@ -25,6 +26,15 @@
 // One document has one P, I and D. It cannot give two of your boats
 // different gains.
 //
+// Max rudder (rudder_max_deg, default 60°, 10..90). The manual helm's
+// hard-over each side, Boat.rudder_angle_max. It rides on the same
+// autopilotGains command as optional `rudderMax`, so it reaches the same
+// boats by the same rules as the PID above (local/worker: every boat and
+// later ones; remote: this client's boats, remembered for spawns and
+// reconnects). The autopilot saturates at this limit too; the
+// penalty-turn limit (50°) stays, capped at this one. A command without rudderMax leaves each
+// boat's limit alone.
+//
 // Persistence. Applied config is localStorage 'fields.devConfig'. Older
 // saves (fields.playerPrefs keys for these settings, and
 // fields.stickyAutopilot) are copied in once and then removed. A query
@@ -36,6 +46,7 @@ import {
   AUTOPILOT_KD_DEFAULT,
   AUTOPILOT_KI_DEFAULT,
   AUTOPILOT_KP_DEFAULT,
+  RUDDER_MAX_DEG_DEFAULT,
   setting,
 } from './settings-registry.js';
 
@@ -61,6 +72,7 @@ export const DEV_TOML_FIELDS = [
   { key: 'autopilot_kp', id: 'autopilotKp' },
   { key: 'autopilot_ki', id: 'autopilotKi' },
   { key: 'autopilot_kd', id: 'autopilotKd' },
+  { key: 'rudder_max_deg', id: 'rudderMax' },
 ];
 
 export const DEV_CONFIG_KEYS = DEV_TOML_FIELDS.map((f) => f.key);
@@ -74,7 +86,8 @@ export const PLOT_LABELS = ['Plot density', 'Plot x velocity', 'Plot y velocity'
 
 const HEADER = [
   '# This page only. Apply sends the autopilot gains to boats this page may control.',
-  '# A tracer count of 0 is automatic. An integral gain of 0 keeps the previous PD controller.',
+  '# A tracer count of 0 is automatic. Default gains are P 2, I 0, D 0 (P only); D was about 29.9 before #200.',
+  '# rudder_max_deg: manual helm hard-over each side, 10..90 degrees (default 60). The autopilot uses the same limit; penalty turns stay at 50 or less.',
   '',
 ].join('\n');
 
@@ -238,24 +251,37 @@ export function parseAndValidateDevConfig(text) {
   return validateDevConfig(p.config);
 }
 
-/** { kp, ki, kd } or { error }. Used by the sim and the server before any boat is written. */
+/**
+ * { kp, ki, kd[, rudderMax] } or { error }. Used by the sim and the server
+ * before any boat is written. rudderMax is optional (absent: boats keep
+ * their limit) and is returned only when the command carries it.
+ */
 export function validateAutopilotGains(c) {
   if (!c || typeof c !== 'object') return { error: 'autopilotGains needs kp, ki, kd' };
+  const hasRudder = c.rudderMax !== undefined;
   const v = validateDevConfig({
     ...DEV_CONFIG_DEFAULTS,
     autopilot_kp: c.kp,
     autopilot_ki: c.ki,
     autopilot_kd: c.kd,
+    ...(hasRudder ? { rudder_max_deg: c.rudderMax } : {}),
   });
   if (v.error) {
-    if (/autopilot_k[pid]/.test(v.error)) return { error: v.error };
+    if (/autopilot_k[pid]|rudder_max_deg/.test(v.error)) return { error: v.error };
     return { error: 'autopilotGains needs kp, ki, kd' };
   }
-  return { kp: v.config.autopilot_kp, ki: v.config.autopilot_ki, kd: v.config.autopilot_kd };
+  const g = { kp: v.config.autopilot_kp, ki: v.config.autopilot_ki, kd: v.config.autopilot_kd };
+  if (hasRudder) g.rudderMax = v.config.rudder_max_deg;
+  return g;
 }
 
 export function autopilotGainsOf(cfg) {
   return { kp: cfg.autopilot_kp, ki: cfg.autopilot_ki, kd: cfg.autopilot_kd };
+}
+
+/** The boat command a dev Apply sends: the PID plus the manual rudder limit. */
+export function devBoatCommand(cfg) {
+  return { type: 'autopilotGains', ...autopilotGainsOf(cfg), rudderMax: cfg.rudder_max_deg };
 }
 
 /** What the client applies locally from a validated config. PID is separate (the sim command). */
@@ -359,4 +385,4 @@ export function devConfigIds() {
   return DEV_TOML_FIELDS.map((f) => f.id);
 }
 
-export { AUTOPILOT_KP_DEFAULT, AUTOPILOT_KI_DEFAULT, AUTOPILOT_KD_DEFAULT };
+export { AUTOPILOT_KP_DEFAULT, AUTOPILOT_KI_DEFAULT, AUTOPILOT_KD_DEFAULT, RUDDER_MAX_DEG_DEFAULT };

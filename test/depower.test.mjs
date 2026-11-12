@@ -57,8 +57,8 @@ const s0 = H.scenario0(1);
 // Sail AWS in m/s + hull drag (dinghy-forces.js): → −48.4890 / 2.2780.
 // Rigid body 139 kg (linear damping scaled so its force is unchanged): → −48.6747 / 2.4076.
 // Explicit foils + hull-drag offset: → −51.1980 / 2.4524.
-// Sail force on each sheeted boom, then ceLateralHeight·sinφ to leeward: → −52.0398 / 2.4772.
-check('scenario 0 never toggled: unchanged (twa −52.0398 / bs 2.4772; boom application)', Math.abs(s0.twa + 52.0398) < 1e-4 && Math.abs(s0.bs - 2.4772) < 1e-4, `${s0.twa.toFixed(4)} / ${s0.bs.toFixed(4)}`);
+// Sail force on each sheeted boom, then ceLateralHeight·sinφ to leeward; autopilot P-only saturating at rudder_max_deg (60°, #200): → −52.0780 / 2.4785.
+check('scenario 0 never toggled: unchanged (twa −52.0780 / bs 2.4785; boom application)', Math.abs(s0.twa + 52.0780) < 1e-4 && Math.abs(s0.bs - 2.4785) < 1e-4, `${s0.twa.toFixed(4)} / ${s0.bs.toFixed(4)}`);
 // Flap amplitude follows the main's angle of attack: full at 0, none at close-hauled trim.
 {
 	const { map: m2 } = H.makeWorld(1);

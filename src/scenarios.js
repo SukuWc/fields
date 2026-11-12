@@ -101,7 +101,11 @@ export function buildScenarios(sim) {
     const way = (h, v) => ({ x: Math.sin(h) * v, y: -Math.cos(h) * v });
     const h0 = 3 * Math.PI / 4, h1 = 5 * Math.PI / 4;
     const a = new Boat(sim.map, -3, -3, h0);
-    const b = new Boat(sim.map, 18, -11.5, h1);
+    // Starboard boat starts at (17.5, -8), was (18, -11.5): the P-only
+    // autopilot at the 60° rudder limit (#200) tacks so fast that she was
+    // through Rule 13 before the pair came into range. Passing starts span
+    // about x 16..19 at y -8 and y -10..-5 at x 17..18; this is the middle.
+    const b = new Boat(sim.map, 17.5, -8, h1);
     // The tacking boat needs way on, or the rudder cannot pass head to wind.
     a.physics_model.setLinearVelocity(way(h0, 1.2));
     sim.players.push(a, b);
@@ -205,7 +209,10 @@ export function buildScenarios(sim) {
     // so Rule 15 never opened. The port boat now starts 3 m closer, at
     // x = -23.5: she is inside 8 m when boat 0 acquires right of way, and
     // touches after Rule 15 has expired (x from -22.5 to -24.5 all do).
-    sim.players.push(new Boat(sim.map, -23.5, 7.4, heading));
+    // With the P-only autopilot at the 60° rudder limit (#200) no x works at
+    // y = 7.4, so she starts at (-18, 6.0), the middle of the passing region
+    // (x -16..-20 at y 5.5 and 6.0; y 6.5 passes only x -18..-19.5).
+    sim.players.push(new Boat(sim.map, -18, 6.0, heading));
   };
   // Autopilot on at frame 3 (the second Sim tick), after one physics step has
   // set each boat's twa. Frames 0-2 run in one tick before any physics step,

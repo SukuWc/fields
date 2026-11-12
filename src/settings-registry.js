@@ -46,13 +46,17 @@ import {
 export { SIM_RES_MODES, DEFAULT_SIM_RES };
 export const DEFAULT_MAP_SIZE = '100x200';
 export const MAX_WIND_MPS = 30;
-// Autopilot PID defaults. Same numbers as boat.js AUTOPILOT_KP / integral 0 /
-// AUTOPILOT_KD (100 * 0.081 / rudder blend). The registry does not import
-// boat.js; test/dev-config.test.mjs checks these stay equal to the boat constants.
-const AUTOPILOT_RUDDER_BLEND_DEFAULT = 1 - Math.pow(0.9, 3);
+// Autopilot PID defaults. Same numbers as boat.js AUTOPILOT_KP / AUTOPILOT_KI /
+// AUTOPILOT_KD: P 2, I 0, D 0 (D was about 29.9 before #200). The registry does
+// not import boat.js; test/dev-config.test.mjs checks these stay equal to the
+// boat constants.
 export const AUTOPILOT_KP_DEFAULT = 2;
 export const AUTOPILOT_KI_DEFAULT = 0;
-export const AUTOPILOT_KD_DEFAULT = 100 * (0.1 * 0.81) / AUTOPILOT_RUDDER_BLEND_DEFAULT;
+export const AUTOPILOT_KD_DEFAULT = 0;
+// Manual helm hard-over. Same numbers as boat.js RUDDER_MAX_DEG /
+// RUDDER_MAX_DEG_MIN / RUDDER_MAX_DEG_MAX (test/dev-config.test.mjs checks).
+export const RUDDER_MAX_DEG_DEFAULT = 60;
+export const RUDDER_MAX_DEG_LIMITS = Object.freeze({ min: 10, max: 90 });
 
 export const SETTINGS = [
   // Player panel. Trails, ghost and sticky autopilot live in the Dev TOML.
@@ -89,10 +93,12 @@ export const SETTINGS = [
   { id: 'ghost', scope: 'player', panel: 'dev', control: false, type: 'bool', default: false },
   { id: 'ghostAhead', scope: 'player', panel: 'dev', control: false, type: 'number', default: 2, min: 0, max: 30 },
   { id: 'sticky_autopilot', scope: 'player', panel: 'dev', control: false, type: 'bool', default: true },
-  // Autopilot PID. Defaults preserve the previous PD controller (I = 0).
+  // Autopilot PID. Defaults P 2, I 0, D 0 (P only since #200).
   { id: 'autopilotKp', scope: 'player', panel: 'dev', control: false, type: 'number', default: AUTOPILOT_KP_DEFAULT, min: 0, max: 20 },
   { id: 'autopilotKi', scope: 'player', panel: 'dev', control: false, type: 'number', default: AUTOPILOT_KI_DEFAULT, min: 0, max: 2 },
   { id: 'autopilotKd', scope: 'player', panel: 'dev', control: false, type: 'number', default: AUTOPILOT_KD_DEFAULT, min: 0, max: 200 },
+  // Manual helm hard-over, degrees each side. Sent with the PID (autopilotGains).
+  { id: 'rudderMax', scope: 'player', panel: 'dev', control: false, type: 'number', default: RUDDER_MAX_DEG_DEFAULT, min: RUDDER_MAX_DEG_LIMITS.min, max: RUDDER_MAX_DEG_LIMITS.max },
 
   // Room settings: still validated / applied as room commands, but the
   // Room settings panel is a single TOML textarea (src/room-config.js).
