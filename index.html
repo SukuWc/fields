@@ -247,6 +247,25 @@
         border-radius: var(--sz-r-sm);
         pointer-events: none;
       }
+      #client_perf_hud {
+        display: none;
+        position: fixed;
+        top: calc(var(--d-bar, 44px) + env(safe-area-inset-top, 0px) + 6px);
+        left: 8px;
+        z-index: calc(var(--sz-z-hud) + 20);
+        margin: 0;
+        padding: 4px 7px;
+        color: #e8eef6;
+        font-family: var(--sz-font-mono);
+        font-size: 12px;
+        line-height: 1.35;
+        white-space: pre;
+        background: rgba(10, 16, 26, 0.75);
+        border: 1px solid rgba(200, 220, 240, 0.3);
+        border-radius: var(--sz-r-sm);
+        pointer-events: none;
+        font-variant-numeric: tabular-nums;
+      }
       #conn_banner {
         position: absolute;
         top: 50px;
@@ -1457,7 +1476,7 @@
 
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-DyrfqbyU.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-CnAqAwdp.js"></script>
   </head>
   <body>
 
@@ -1529,6 +1548,7 @@
     <div id="mobile_bar" aria-hidden="true"></div>
     <span id="bar_rank" hidden></span>
     <pre id="perf_overlay_hud"></pre>
+    <pre id="client_perf_hud"></pre>
     <div id="fps" class="dev-only"></div>
     <div id="touch_controls" hidden aria-label="Boat 1 touch controls">
       <div class="tc-spectating">Spectating · open ☰ and join with your boat to sail</div>
@@ -1579,7 +1599,7 @@
         <label class="setting-row" title="Red/green line between two boats while a rule applies: green end has right of way, red end must keep clear"><input id="show_row_lines" autocomplete="off" type="checkbox">Right-of-way lines</label>
         <label class="setting-row" title="Rule number between two boats while a rule applies (e.g. Rule 10, Rule 15 blocks Rule 12)"><input id="show_rule_labels" autocomplete="off" type="checkbox">Rule labels</label>
         <label class="setting-row"><input id="camera_follow" autocomplete="off" type="checkbox">Camera Follow</label>
-        <label class="setting-row" id="field_plane_row" hidden title="Server mode only: the field plot. Off, the server sends this page no field data. Also ?field_plane=0"><input id="field_plane" autocomplete="off" type="checkbox">Show field (server)</label>
+        <label class="setting-row" id="field_plane_row" hidden title="Server mode only: the field plot. Off, the server sends this page no field data. Also ?field_plane=0. With ?field_mode=recv|freeze|nopaint, Off still stops the stream and hides the plane; On uses that experiment mode."><input id="field_plane" autocomplete="off" type="checkbox">Show field (server)</label>
         <span class="setting-row setting-buttons"><input id="camera_zoom_in" type="button" value="+" title="Zoom in (W or =)"><input id="camera_zoom_out" type="button" value="-" title="Zoom out (S or -)">Zoom <span title="W / S zoom unless a second local boat is bound (then W / S steer it)">(W / S)</span></span>
         <span class="setting-row setting-buttons">
       <input id="camera_move_left" type="button" value="◄">
