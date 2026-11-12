@@ -76,7 +76,7 @@ export { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps };
 //   { type: 'cellBudget', tune, target? }  refinement budget: tune false = off (no
 //                                      budget, scale 1); target a positive number, else
 //                                      the grid default (domainTrack defaultCellUpdateTarget)
-//   { type: 'autopilotGains', kp, ki, kd, rudderMax?, boatId? }
+//   { type: 'autopilotGains', kp, ki, kd, rudderMax?, rudderMaxForce?, boatId? }
 //                                      PID (and, if given, the manual rudder limit in
 //                                      degrees) on one boat by id, or (no boatId) the sim
 //                                      default written onto every boat by id. A `boat`
@@ -332,6 +332,7 @@ export class Sim {
     boat.autopilot_ki = g.ki;
     boat.autopilot_kd = g.kd;
     if (g.rudderMax !== undefined && boat.rudder_angle_max !== g.rudderMax) boat.setRudderMax(g.rudderMax);
+    if (g.rudderMaxForce !== undefined && boat.rudder_max_force_n !== g.rudderMaxForce) boat.setRudderMaxForce(g.rudderMaxForce);
   }
 
   // PID by boat id. No boatId: sim-wide default (local / worker). A numeric
@@ -347,7 +348,7 @@ export class Sim {
       this._writeAutopilotGains(boat, g);
       return { ok: true, boats: [boat.boatId] };
     }
-    this.autopilotGains = { kp: g.kp, ki: g.ki, kd: g.kd, ...(g.rudderMax !== undefined ? { rudderMax: g.rudderMax } : {}) };
+    this.autopilotGains = { kp: g.kp, ki: g.ki, kd: g.kd, ...(g.rudderMax !== undefined ? { rudderMax: g.rudderMax } : {}), ...(g.rudderMaxForce !== undefined ? { rudderMaxForce: g.rudderMaxForce } : {}) };
     const ids = [];
     for (const b of this.players) { this._writeAutopilotGains(b, g); ids.push(b.boatId); }
     return { ok: true, boats: ids };

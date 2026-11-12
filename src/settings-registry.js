@@ -57,6 +57,10 @@ export const AUTOPILOT_KD_DEFAULT = 0;
 // RUDDER_MAX_DEG_MIN / RUDDER_MAX_DEG_MAX (test/dev-config.test.mjs checks).
 export const RUDDER_MAX_DEG_DEFAULT = 60;
 export const RUDDER_MAX_DEG_LIMITS = Object.freeze({ min: 10, max: 90 });
+// Rudder blade load limit, newtons; 0 is no limit. Same numbers as boat.js
+// RUDDER_MAX_FORCE_N / _MIN / _MAX (test/rudder-force-limit.test.mjs checks).
+export const RUDDER_MAX_FORCE_N_DEFAULT = 100;
+export const RUDDER_MAX_FORCE_N_LIMITS = Object.freeze({ min: 0, max: 5000 });
 
 export const SETTINGS = [
   // Player panel. Trails, ghost and sticky autopilot live in the Dev TOML.
@@ -99,6 +103,8 @@ export const SETTINGS = [
   { id: 'autopilotKd', scope: 'player', panel: 'dev', control: false, type: 'number', default: AUTOPILOT_KD_DEFAULT, min: 0, max: 200 },
   // Manual helm hard-over, degrees each side. Sent with the PID (autopilotGains).
   { id: 'rudderMax', scope: 'player', panel: 'dev', control: false, type: 'number', default: RUDDER_MAX_DEG_DEFAULT, min: RUDDER_MAX_DEG_LIMITS.min, max: RUDDER_MAX_DEG_LIMITS.max },
+  // Rudder blade load limit, newtons (0 = none). Sent with the PID (autopilotGains).
+  { id: 'rudderMaxForce', scope: 'player', panel: 'dev', control: false, type: 'number', default: RUDDER_MAX_FORCE_N_DEFAULT, min: RUDDER_MAX_FORCE_N_LIMITS.min, max: RUDDER_MAX_FORCE_N_LIMITS.max },
 
   // Room settings: still validated / applied as room commands, but the
   // Room settings panel is a single TOML textarea (src/room-config.js).

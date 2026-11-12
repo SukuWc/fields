@@ -9,6 +9,7 @@ import { WIND_UNIT_MPS, boatTrueWind } from './wind.js';
 import { DINGHY_DEFAULTS, createHeelState, heelForceFactor, hullDragOffsetX, sailCeOffsetX, clrOffsetX, stepHeel } from './heel.js';
 import { apparentWindAngleDeg, apparentWindMs, clewOffset, dinghyTotalMass, hullResistanceNewtons, internalForcePerNewton, jibBackwindStep, jibBoomForceLocal, LEGACY_DENSITY_MASS_KG, legacyInternalPerNewton, mainBoomForceLocal, sailAreas, sailDynamicNewtons, sailLiftDrag, yawInertia } from './dinghy-forces.js';
 import { DAGGERBOARD, foilForceNewtons, RUDDER_BLADE } from './foil.js';
+import { limitRudderAngle } from './rudder-limit.js';
 
 const wrap360 = (d) => ((d % 360) + 360) % 360;
 
@@ -27,8 +28,13 @@ const wrap360 = (d) => ((d % 360) + 360) % 360;
 //                always on the windward side)
 //   sail_eff_pct sail force remaining as %, heelForceFactor(phi)×100
 //                (cos²(heel); 100 upright, 25 at 60°)
-//   rudder_deg   signed rudder angle, degrees (boat.rudder_angle; positive
-//                yaws clockwise when the boat has way on)
+//   rudder_deg   signed rudder angle the blade has, degrees, after the force
+//                limit (boat.rudder_angle_effective; boat.rudder_angle is
+//                the commanded one). Positive yaws clockwise with way on.
+//   rudder_limited  1 while the force limit (rudder_max_force_n) holds the
+//                blade below the commanded angle, with rudder_cmd_deg the
+//                commanded angle (both absent otherwise). `ra` is the same
+//                effective angle, for the drawn blade.
 //   capsized     1 only while past the heel limit (absent otherwise)
 //   jib_backwinded  1 while the jib is held sheeted on the old tack through
 //                a slow head-to-wind (absent otherwise). The drawn jib boom
@@ -51,7 +57,8 @@ function readoutFields(b) {
     o.sail_eff_pct = heelForceFactor(b.heel.phi) * 100;
     if (b.heel.capsized) o.capsized = 1;
   }
-  if (Number.isFinite(b.rudder_angle)) o.rudder_deg = b.rudder_angle;
+  const ra = b.rudderAngleShown ? b.rudderAngleShown() : b.rudder_angle;
+  if (Number.isFinite(ra)) o.rudder_deg = ra;
   return o;
 }
 import {
@@ -196,6 +203,17 @@ export const RUDDER_MAX_DEG = 60;
 export const RUDDER_MAX_DEG_MIN = 10;
 export const RUDDER_MAX_DEG_MAX = 90;
 
+/** Rudder blade load limit, newtons (lift and drag together, NACA 0012
+ *  model of src/foil.js). Dev TOML rudder_max_force_n sets it per boat
+ *  within RUDDER_MAX_FORCE_N_MIN..RUDDER_MAX_FORCE_N_MAX; 0 is no limit.
+ *  Each step the commanded angle (helm, autopilot or penalty turn) is
+ *  reduced toward 0 until the load at it is within the limit
+ *  (src/rudder-limit.js). Boat.rudder_angle stays the commanded angle;
+ *  rudder_angle_effective is the one the blade has. */
+export const RUDDER_MAX_FORCE_N = 100;
+export const RUDDER_MAX_FORCE_N_MIN = 0;
+export const RUDDER_MAX_FORCE_N_MAX = 5000;
+
 /** Autopilot heading-target change per sim tick while Up / Down is held (was 1°). */
 export const AUTOPILOT_HEADING_STEP_DEG = 1.5;
 // Sticky helm: max degrees the target may run ahead of the boat's heading.
@@ -237,6 +255,10 @@ export class Boat{
     this.rudder_angle = 0;
     this.rudder_angle_last = 0;
     this.rudder_angle_max = RUDDER_MAX_DEG;
+    this.rudder_max_force_n = RUDDER_MAX_FORCE_N;
+    this.rudder_angle_effective = 0;
+    this.rudderForceLimited = false;
+    this.rudderForceN = 0;
     this.rudder_position = 1.8
     this.rudder_lenght = 0.5
 
@@ -644,11 +666,20 @@ export class Boat{
     // the rudder stock (local +Y is aft). Blade angle is rudder_angle
     // (positive yaws clockwise). No sculling pump: the force is the steady
     // ½ρv² load at this angle.
+    // Force limit: rudder_angle is what the helm or autopilot commands. The
+    // blade gets the largest angle not above it whose load is within
+    // rudder_max_force_n (src/rudder-limit.js), so a tack started at speed
+    // does not slam the blade hard over.
     const omega = this.physics_model.m_angularVelocity;
+    const rudderVx = q - omega * this.rudder_position;
+    const lim = limitRudderAngle({ commandedDeg: this.rudder_angle, vBodyX: rudderVx, vBodyY: -d, maxForceN: this.rudder_max_force_n });
+    this.rudder_angle_effective = lim.deg;
+    this.rudderForceLimited = lim.limited;
+    this.rudderForceN = lim.forceN;
     const rudder = foilForceNewtons({
-      vBodyX: q - omega * this.rudder_position,
+      vBodyX: rudderVx,
       vBodyY: -d,
-      bladeRad: this.rudder_angle * Math.PI / 180,
+      bladeRad: this.rudder_angle_effective * Math.PI / 180,
       area: RUDDER_BLADE.area,
       aspectRatio: RUDDER_BLADE.effectiveAspect,
     });
@@ -697,6 +728,8 @@ export class Boat{
     const backwind = jibBackwindStep(this._jibBackwind, {
       twa: this.twa,
       boomTrim: jibTrim,
+      // The commanded (helm) angle: the sheet follows what the helm asks,
+      // not the force-limited blade.
       rudderDeg: this.rudder_angle,
       depower: this.depower,
       enabled: this.jibBackwindEnabled !== false,
@@ -968,8 +1001,9 @@ export class Boat{
       awa: this.awa, tw: Math.atan2(this.wind_vy_smooth, this.wind_vx_smooth),
       ap: this.autopilot_enabled ? 1 : 0, wd: this.wind_direction, aht: this.autopilot_heading_target,
       twa: this.twa, bv1: this.autopilot_heading_best_vmg_1, bv2: this.autopilot_heading_best_vmg_2,
-      ra: this.rudder_angle, mba: this.mainsail_boom_angle_actual, jba: this.jib_boom_angle_actual,
+      ra: this.rudderAngleShown(), mba: this.mainsail_boom_angle_actual, jba: this.jib_boom_angle_actual,
       ...(this.jibBackwinded ? { jib_backwinded: 1 } : {}),
+      ...(this.rudderForceLimited ? { rudder_limited: 1, rudder_cmd_deg: this.rudder_angle } : {}),
       mf: flapScale, jf: this.jibFlap, ph: flapPhase, f,
       ...readoutFields(this),
     };
@@ -1056,6 +1090,20 @@ export class Boat{
   // Manual helm limit, degrees each side. Out-of-range or non-numeric
   // values are refused (false) and leave the boat as it was. A rudder
   // already past a lowered limit is brought back inside it.
+  // Rudder load limit, newtons (0 = none). Refused (false) outside
+  // RUDDER_MAX_FORCE_N_MIN..RUDDER_MAX_FORCE_N_MAX or non-numeric.
+  setRudderMaxForce(n) {
+    if (typeof n !== 'number' || !Number.isFinite(n) || n < RUDDER_MAX_FORCE_N_MIN || n > RUDDER_MAX_FORCE_N_MAX) return false;
+    this.rudder_max_force_n = n;
+    return true;
+  }
+
+  // The angle the blade has after the force limit (the commanded one
+  // before the first step).
+  rudderAngleShown() {
+    return Number.isFinite(this.rudder_angle_effective) && this.rudderForceLimited ? this.rudder_angle_effective : this.rudder_angle;
+  }
+
   setRudderMax(deg) {
     if (typeof deg !== 'number' || !Number.isFinite(deg) || deg < RUDDER_MAX_DEG_MIN || deg > RUDDER_MAX_DEG_MAX) return false;
     this.rudder_angle_max = deg;
