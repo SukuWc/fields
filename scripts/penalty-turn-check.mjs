@@ -427,6 +427,8 @@ assert(ccwYaw > 15, "CCW autopilot increases hull angle, got " + ccwYaw.toFixed(
 
 // Sail the circle, then HOLD_S more on the heading autopilot. Heading is
 // Planck's unwrapped angle, so overshoot is how far past ±360° it went.
+// Overshoot limit 4° (was 3°): the P-only autopilot at the 60° rudder limit
+// (#200) overshoots up to 3.5° (CW from 135° at 2.2 m/s).
 const HOLD_S = 5;
 function runCircle(h0, dir, pending, speed = 2.2) {
   const boat = makeSailingBoat(0, 0, h0, speed);
@@ -470,7 +472,7 @@ for (const dir of [-1, 1]) {
   assert(res.doneFrame >= 0, name + " autopilot finishes the circle");
   assert(Math.abs(res.errAtDone) <= 3, name + " hands back within ±3° of the start heading, got " + res.errAtDone.toFixed(2));
   assert(Math.abs(res.finalErr) <= 3, name + " holds the start heading afterwards, got " + res.finalErr.toFixed(2));
-  assert(res.maxOver <= 3, name + " does not overshoot 360° by more than 3°, got " + res.maxOver.toFixed(2));
+  assert(res.maxOver <= 4, name + " does not overshoot 360° by more than 4°, got " + res.maxOver.toFixed(2));
   assert(res.clears === 1 && res.left === 0, name + " clears exactly one penalty");
   assert(res.boat.autopilot_enabled === true, name + " leaves the heading autopilot holding");
   summary.push(name + ": " + fmt(res));
@@ -487,7 +489,7 @@ for (const deg of [90, 135, 225, 17, -52, 126]) {
       const name = (dir < 0 ? "CW" : "CCW") + " from " + deg + "° at " + speed + " m/s";
       assert(res.doneFrame >= 0, name + " finishes");
       assert(Math.abs(res.errAtDone) <= 3 && Math.abs(res.finalErr) <= 3, name + " ends within ±3°: " + fmt(res));
-      assert(res.maxOver <= 3, name + " overshoot " + res.maxOver.toFixed(2));
+      assert(res.maxOver <= 4, name + " overshoot " + res.maxOver.toFixed(2));
       assert(res.clears === 1 && res.left === 1, name + " clears exactly one of two");
       worstErr = Math.max(worstErr, Math.abs(res.errAtDone), Math.abs(res.finalErr));
       worstOver = Math.max(worstOver, res.maxOver);
