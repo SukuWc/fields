@@ -59,7 +59,7 @@ export const RUDDER_MAX_DEG_DEFAULT = 60;
 export const RUDDER_MAX_DEG_LIMITS = Object.freeze({ min: 10, max: 90 });
 // Rudder blade load limit, newtons; 0 is no limit. Same numbers as boat.js
 // RUDDER_MAX_FORCE_N / _MIN / _MAX (test/rudder-force-limit.test.mjs checks).
-export const RUDDER_MAX_FORCE_N_DEFAULT = 100;
+export const RUDDER_MAX_FORCE_N_DEFAULT = 200;
 export const RUDDER_MAX_FORCE_N_LIMITS = Object.freeze({ min: 0, max: 5000 });
 
 export const SETTINGS = [

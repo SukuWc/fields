@@ -1,5 +1,6 @@
-// Rudder force limit (rudder_max_force_n): the limiter in src/rudder-limit.js
-// (monotonic and stalled, non-monotonic load curves), the boat applying it
+// Rudder force limit (rudder_max_force_n): the bidirectional limiter in
+// src/rudder-limit.js (less rudder, more rudder, across zero, stalled
+// non-monotonic load curves, nothing within the limit), the boat applying it
 // after the helm / autopilot, the frame state, and the Dev TOML command.
 import './dom-stub.mjs';
 import test from 'node:test';
@@ -32,89 +33,120 @@ test('default and registry match the boat constants', () => {
 test('limiter: under the limit or no limit leaves the angle alone', () => {
   const f30 = rudderForceN(30, AHEAD.vBodyX, AHEAD.vBodyY);
   for (const max of [f30 + 1, 0, -5, NaN, Infinity]) {
-    const r = limitRudderAngle({ commandedDeg: 30, ...AHEAD, maxForceN: max });
+    const r = limitRudderAngle({ commandedDeg: 30, ...AHEAD, maxForceN: max, maxDeg: 60 });
     assert.equal(r.deg, 30, String(max));
     assert.equal(r.limited, false);
   }
-  const still = limitRudderAngle({ commandedDeg: 40, vBodyX: 0, vBodyY: 0, maxForceN: 1 });
+  const still = limitRudderAngle({ commandedDeg: 40, vBodyX: 0, vBodyY: 0, maxForceN: 1, maxDeg: 60 });
   assert.equal(still.deg, 40, 'no flow, no load');
 });
 
-test('limiter: over the limit reduces toward 0, keeps the sign, lands on the limit', () => {
+// Brute force: the within-limit angle in [−maxDeg, maxDeg] nearest cmd.
+function nearestValid(cmd, f, max, maxDeg, step = 0.01) {
+  for (let d = 0; d <= 2 * maxDeg; d += step) {
+    for (const a of [cmd - d, cmd + d]) if (a >= -maxDeg && a <= maxDeg && f(a) <= max) return a;
+  }
+  return null;
+}
+
+test('limiter: straight inflow, over the limit: less rudder, same side, on the limit', () => {
   const max = 0.5 * rudderForceN(8, AHEAD.vBodyX, AHEAD.vBodyY);
   for (const cmd of [8, -8, 45, -45]) {
-    const r = limitRudderAngle({ commandedDeg: cmd, ...AHEAD, maxForceN: max });
+    const r = limitRudderAngle({ commandedDeg: cmd, ...AHEAD, maxForceN: max, maxDeg: 60 });
     assert.equal(r.limited, true);
     assert.equal(Math.sign(r.deg), Math.sign(cmd));
     assert.ok(Math.abs(r.deg) < Math.abs(cmd));
-    assert.ok(r.forceN <= max + 1e-9, `${r.forceN} ≤ ${max}`);
-    assert.ok(r.forceN > max * 0.999, `at the limit: ${r.forceN} vs ${max}`);
+    assert.ok(r.forceN <= max + 1e-9 && r.forceN > max * 0.999, `${r.forceN} vs ${max}`);
     assert.ok(r.commandedForceN > max);
   }
 });
 
-test('limiter: never increases the angle, also in cross flow', () => {
-  for (const vBodyX of [-1.5, -0.3, 0, 0.3, 1.5]) {
+test('limiter: swung inflow (exiting a turn) increases the angle toward the flow', () => {
+  // The stock slides to +X at 1.5 m/s while making 3 m/s: inflow about
+  // 26.6° off the centreline. A centred blade is loaded; the limiter puts
+  // rudder on, toward the flow, until the load is at the limit.
+  const vBodyX = 1.5, vBodyY = -3;
+  const f = (d) => rudderForceN(d, vBodyX, vBodyY);
+  const max = 0.5 * f(0);
+  const r = limitRudderAngle({ commandedDeg: 0, vBodyX, vBodyY, maxForceN: max, maxDeg: 60 });
+  assert.equal(r.limited, true);
+  assert.ok(r.deg > 0, `more rudder toward the flow: ${r.deg}`);
+  assert.ok(r.forceN <= max + 1e-9 && r.forceN > max * 0.999);
+  const ref = nearestValid(0, f, max, 60);
+  assert.ok(Math.abs(r.deg - ref) < 0.02, `${r.deg} vs brute ${ref}`);
+  // And from a small command on the same side: still increased.
+  const r5 = limitRudderAngle({ commandedDeg: 5, vBodyX, vBodyY, maxForceN: max, maxDeg: 60 });
+  assert.ok(r5.deg > 5);
+});
+
+test('limiter: crosses zero when the nearest valid angle is on the other side', () => {
+  const vBodyX = 1.5, vBodyY = -3;
+  const f = (d) => rudderForceN(d, vBodyX, vBodyY);
+  const max = 0.5 * f(0);
+  const r = limitRudderAngle({ commandedDeg: -4, vBodyX, vBodyY, maxForceN: max, maxDeg: 60 });
+  assert.ok(r.deg > 0, `commanded −4°, got ${r.deg}`);
+  assert.ok(r.forceN <= max + 1e-9);
+  const ref = nearestValid(-4, f, max, 60);
+  assert.ok(Math.abs(r.deg - ref) < 0.02, `${r.deg} vs brute ${ref}`);
+});
+
+test('limiter: matches brute force over flows, commands and limits; stays within the stop', () => {
+  for (const vBodyX of [-1.5, -0.4, 0, 0.4, 1.5]) {
+    const f = (d) => rudderForceN(d, vBodyX, -3);
     for (const cmd of [-60, -20, -3, 0, 3, 20, 60]) {
-      for (const max of [5, 30, 100]) {
-        const r = limitRudderAngle({ commandedDeg: cmd, vBodyX, vBodyY: -3, maxForceN: max });
-        assert.ok(Math.abs(r.deg) <= Math.abs(cmd) + 1e-12, `${cmd} → ${r.deg}`);
-        assert.ok(r.deg === 0 || Math.sign(r.deg) === Math.sign(cmd));
-        if (r.forceN > max) {
-          // Not reachable: deg is the least loaded angle in [0, cmd].
-          for (let a = 0; a <= Math.abs(cmd); a += 0.05) {
-            assert.ok(rudderForceN(Math.sign(cmd) * a, vBodyX, -3) >= r.forceN - 1e-6);
-          }
+      for (const max of [20, 100, 300]) {
+        const r = limitRudderAngle({ commandedDeg: cmd, vBodyX, vBodyY: -3, maxForceN: max, maxDeg: 60 });
+        assert.ok(Math.abs(r.deg) <= 60 + 1e-12, `${cmd} → ${r.deg}`);
+        const ref = f(cmd) <= max ? cmd : nearestValid(cmd, f, max, 60, 0.05);
+        if (ref === null) {
+          // Nothing within: the least loaded angle in range.
+          for (let a = -60; a <= 60; a += 0.25) assert.ok(f(a) >= r.forceN - 1e-6, `${vBodyX} ${cmd} ${max}: ${a}`);
+        } else {
+          assert.ok(r.forceN <= max + 1e-9, `${vBodyX} ${cmd} ${max}: ${r.forceN}`);
+          assert.ok(Math.abs(Math.abs(r.deg - cmd) - Math.abs(ref - cmd)) < 0.06, `${vBodyX} ${cmd} ${max}: ${r.deg} vs ${ref}`);
         }
       }
     }
   }
 });
 
-test('limiter, non-monotonic stall: largest angle not above the commanded one within the limit', () => {
-  // Stylised stalled blade: load rises to a peak at 12°, falls to a trough
-  // at 30°, rises again. A limit between trough and peak is met at 30°+ and
-  // under 12°, but not in between.
+test('limiter, non-monotonic stall curve: nearest valid angle on either side', () => {
+  // Stylised stalled blade, symmetric: load rises to a peak at 12°, falls
+  // to a trough at 30°, rises again.
   const load = (deg) => {
     const a = Math.abs(deg);
-    if (a <= 12) return 10 * a;          // 0..120
+    if (a <= 12) return 10 * a;             // 0..120
     if (a <= 30) return 120 - 3 * (a - 12); // 120..66
-    return 66 + 2 * (a - 30);            // 66 at 30°, 126 at 60°
+    return 66 + 2 * (a - 30);               // 66 at 30°, 126 at 60°
   };
-  // 100 N: at 60° the load is 126; the largest angle ≤ 60 with load ≤ 100 is 47°.
-  const r = limitRudderAngle({ commandedDeg: 60, maxForceN: 100, forceAt: load });
+  // 100 N from 60°: valid from 47° down to about 18.67°, nearest is 47°.
+  const r = limitRudderAngle({ commandedDeg: 60, maxForceN: 100, maxDeg: 60, forceAt: load });
   assert.ok(Math.abs(r.deg - 47) < 1e-4, String(r.deg));
-  assert.equal(r.limited, true);
-  // Commanded 25° (load 81): within the limit, unchanged.
-  assert.equal(limitRudderAngle({ commandedDeg: -25, maxForceN: 100, forceAt: load }).deg, -25);
-  // 60 N: no angle from 12° to 60° (minimum 66 at 30°) is within it, so it
-  // goes on down through the stall into the attached range: 6°.
-  const low = limitRudderAngle({ commandedDeg: -60, maxForceN: 60, forceAt: load });
+  // From 15° (load 111): valid below 10° and above 18.67°; 18.67° is 3.67
+  // away, 10° is 5: more rudder, past the stall.
+  const mid = limitRudderAngle({ commandedDeg: 15, maxForceN: 100, maxDeg: 60, forceAt: load });
+  assert.ok(Math.abs(mid.deg - (12 + 20 / 3)) < 1e-4, String(mid.deg));
+  // From 13° (load 117): 10° is 3 away, 18.67° is 5.67 away: less rudder.
+  const less = limitRudderAngle({ commandedDeg: 13, maxForceN: 100, maxDeg: 60, forceAt: load });
+  assert.ok(Math.abs(less.deg - 10) < 1e-4, String(less.deg));
+  // 60 N from −60°: nothing from 12° to 60° qualifies (minimum 66), so
+  // through the stall to −6°.
+  const low = limitRudderAngle({ commandedDeg: -60, maxForceN: 60, maxDeg: 60, forceAt: load });
   assert.ok(Math.abs(low.deg + 6) < 1e-4, String(low.deg));
-  // A within-limit window narrower than one scan step is still not skipped
-  // past a larger valid angle: the scan stops at the first valid step.
+  // Within the limit: unchanged.
+  assert.equal(limitRudderAngle({ commandedDeg: -25, maxForceN: 100, maxDeg: 60, forceAt: load }).deg, -25);
   assert.ok(SCAN_STEP_DEG <= 0.5);
 });
 
-test('limiter on the NACA 0012 blade in cross flow: load is not monotonic in angle, result is the largest valid angle', () => {
-  // The stock slides sideways (leeway / yaw rate): the inflow comes about
-  // 9.5° off the centreline, so the load falls from 0° to that angle and
-  // rises past it. Commanded 40°, limit below the load at 0°: the angles
-  // just under 40° are over it, the ones near the flow angle are within it.
+test('limiter: no angle within the limit takes the least loaded one (blade along the flow)', () => {
   const vBodyX = 0.5, vBodyY = -3;
-  const f = (d) => rudderForceN(d, vBodyX, vBodyY);
-  assert.ok(f(0) > f(9.5) && f(40) > f(9.5), 'load dips near the flow angle');
-  const max = 0.5 * f(0);
-  const r = limitRudderAngle({ commandedDeg: 40, vBodyX, vBodyY, maxForceN: max });
+  const flowDeg = Math.atan2(vBodyX, 3) * 180 / Math.PI;
+  const r = limitRudderAngle({ commandedDeg: -40, vBodyX, vBodyY, maxForceN: 0.01, maxDeg: 60 });
+  assert.ok(Math.abs(r.deg - flowDeg) < 0.05, `${r.deg} vs flow ${flowDeg}`);
   assert.equal(r.limited, true);
-  assert.ok(r.forceN <= max + 1e-9 && r.forceN > max * 0.999);
-  assert.ok(r.deg > 9.5 && r.deg < 40, String(r.deg));
-  for (let a = r.deg + 0.05; a <= 40; a += 0.05) assert.ok(f(a) > max - 1e-6, String(a));
-  // Same flow, the other side: no angle from 0 to −40° is within a limit
-  // below the load at 0°, and 0 is the least loaded there.
-  const other = limitRudderAngle({ commandedDeg: -40, vBodyX, vBodyY, maxForceN: max });
-  assert.equal(other.deg === 0 || Object.is(other.deg, -0), true, String(other.deg));
-  assert.ok(other.forceN > max);
+  // Flow beyond the stop: the stop.
+  const far = limitRudderAngle({ commandedDeg: 0, vBodyX: 3, vBodyY: -1, maxForceN: 0.01, maxDeg: 30 });
+  assert.ok(Math.abs(far.deg - 30) < 1e-6, String(far.deg));
 });
 
 function boatAt() {
@@ -135,7 +167,7 @@ test('boat: hard-over helm at speed is held to the force; frame state shows the 
   let limitedSeen = false;
   for (let i = 0; i < 90; i++) {
     boat.input_rudder_left(); boat.physics_model_step();
-    assert.ok(Math.abs(boat.rudder_angle_effective) <= Math.abs(boat.rudder_angle) + 1e-12);
+    assert.ok(Math.abs(boat.rudder_angle_effective) <= boat.rudder_angle_max + 1e-12);
     if (boat.rudderForceLimited) {
       limitedSeen = true;
       const s = boat.renderState ? boat.renderState() : null;
@@ -149,7 +181,7 @@ test('boat: hard-over helm at speed is held to the force; frame state shows the 
   }
   assert.ok(limitedSeen);
   assert.equal(Math.abs(boat.rudder_angle), 60, 'the commanded angle still reaches the stop');
-  assert.ok(boat.rudderForceN <= 5 + 1e-6 || Math.abs(boat.rudder_angle_effective) === 0);
+  assert.ok(boat.rudderForceN <= 5 + 1e-6, String(boat.rudderForceN));
   assert.ok(Math.abs(boat.rudder_angle_effective) < 60);
   for (const bad of [-1, 5001, NaN, '50', null]) assert.equal(boat.setRudderMaxForce(bad), false);
   assert.equal(boat.setRudderMaxForce(0), true);

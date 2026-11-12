@@ -206,11 +206,12 @@ export const RUDDER_MAX_DEG_MAX = 90;
 /** Rudder blade load limit, newtons (lift and drag together, NACA 0012
  *  model of src/foil.js). Dev TOML rudder_max_force_n sets it per boat
  *  within RUDDER_MAX_FORCE_N_MIN..RUDDER_MAX_FORCE_N_MAX; 0 is no limit.
- *  Each step the commanded angle (helm, autopilot or penalty turn) is
- *  reduced toward 0 until the load at it is within the limit
- *  (src/rudder-limit.js). Boat.rudder_angle stays the commanded angle;
+ *  Each step, if the load at the commanded angle (helm, autopilot or
+ *  penalty turn) is over it, the blade takes the angle closest to the
+ *  command within ±rudder_angle_max whose load is within it, more or less
+ *  rudder, either side (src/rudder-limit.js). Boat.rudder_angle stays the commanded angle;
  *  rudder_angle_effective is the one the blade has. */
-export const RUDDER_MAX_FORCE_N = 100;
+export const RUDDER_MAX_FORCE_N = 200;
 export const RUDDER_MAX_FORCE_N_MIN = 0;
 export const RUDDER_MAX_FORCE_N_MAX = 5000;
 
@@ -667,12 +668,13 @@ export class Boat{
     // (positive yaws clockwise). No sculling pump: the force is the steady
     // ½ρv² load at this angle.
     // Force limit: rudder_angle is what the helm or autopilot commands. The
-    // blade gets the largest angle not above it whose load is within
-    // rudder_max_force_n (src/rudder-limit.js), so a tack started at speed
-    // does not slam the blade hard over.
+    // blade gets the angle nearest it, within the rudder stop, whose load
+    // is within rudder_max_force_n (src/rudder-limit.js): less rudder when
+    // a tack starts at speed, more (toward the swung inflow) when the yaw
+    // rate loads a centred blade on exiting a turn.
     const omega = this.physics_model.m_angularVelocity;
     const rudderVx = q - omega * this.rudder_position;
-    const lim = limitRudderAngle({ commandedDeg: this.rudder_angle, vBodyX: rudderVx, vBodyY: -d, maxForceN: this.rudder_max_force_n });
+    const lim = limitRudderAngle({ commandedDeg: this.rudder_angle, vBodyX: rudderVx, vBodyY: -d, maxForceN: this.rudder_max_force_n, maxDeg: this.rudder_angle_max });
     this.rudder_angle_effective = lim.deg;
     this.rudderForceLimited = lim.limited;
     this.rudderForceN = lim.forceN;

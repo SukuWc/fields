@@ -35,10 +35,11 @@
 // penalty-turn limit (50°) stays, capped at this one. A command without rudderMax leaves each
 // boat's limit alone.
 //
-// Rudder force limit (rudder_max_force_n, newtons, default 100, 0..5000; 0
-// is no limit). Each step the commanded rudder angle (helm, autopilot or
-// penalty turn) is reduced toward 0 until the blade load, lift and drag
-// together from the NACA 0012 model, is within it (src/rudder-limit.js).
+// Rudder force limit (rudder_max_force_n, newtons, default 200, 0..5000; 0
+// is no limit). Each step, if the blade load (lift and drag together, NACA
+// 0012 model) at the commanded angle (helm, autopilot or penalty turn) is
+// over it, the blade takes the nearest angle within ±rudder_max_deg whose
+// load is within it: less or more rudder, either side (src/rudder-limit.js).
 // It rides on autopilotGains as optional `rudderMaxForce`, by the same rules
 // as rudderMax; a command without it leaves each boat's limit alone.
 //
@@ -97,7 +98,7 @@ const HEADER = [
   '# This page only. Apply sends the autopilot gains to boats this page may control.',
   '# A tracer count of 0 is automatic. Default gains are P 2, I 0, D 0 (P only); D was about 29.9 before #200.',
   '# rudder_max_deg: manual helm hard-over each side, 10..90 degrees (default 60). The autopilot uses the same limit; penalty turns stay at 50 or less.',
-  '# rudder_max_force_n: rudder blade load limit in newtons, 0..5000 (default 100, 0 = none). A larger commanded angle is reduced until the load is within it.',
+  '# rudder_max_force_n: rudder blade load limit in newtons, 0..5000 (default 200, 0 = none). Over it, the blade takes the nearest angle within the stop whose load is within it.',
   '',
 ].join('\n');
 
