@@ -5,7 +5,8 @@
 // applied config, the URL, or the sim.
 //
 // Apply writes this page's visuals immediately and sends autopilotGains
-// (the PID and rudder_max_deg as rudderMax).
+// (the PID, rudder_max_deg as rudderMax and rudder_max_force_n as
+// rudderMaxForce).
 // The command is sent first. If the sim or the server rejects it, the
 // visuals stay as they were. See src/dev-config.js for which boats get
 // the gains in local, worker and remote modes.

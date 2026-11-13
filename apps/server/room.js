@@ -638,7 +638,8 @@ export class Room {
       if (r && who) this._chatSystem(`${who.name} left (boat ${who.n})`);
       return !!r;
     }
-    // Dev-tab autopilot PID and manual rudder limit (rudderMax). Not a room
+    // Dev-tab autopilot PID, manual rudder limit (rudderMax) and rudder force
+    // limit (rudderMaxForce). Not a room
     // command: only this client's boats, by id. No boat yet: remember the gains and apply them on spawn.
     // A `boat` index on the message is ignored so it cannot select someone else.
     if (c.type === 'autopilotGains') {
@@ -740,10 +741,16 @@ export class Room {
 
   _rememberGains(client, g) {
     if (!this._gainByClient) this._gainByClient = new Map();
-    // A later Apply without rudderMax (older client) keeps the remembered limit.
+    // A later Apply without rudderMax / rudderMaxForce (older client) keeps
+    // the remembered limit.
     const prev = this._gainByClient.get(client);
     const rudderMax = g.rudderMax !== undefined ? g.rudderMax : prev && prev.rudderMax;
-    this._gainByClient.set(client, { kp: g.kp, ki: g.ki, kd: g.kd, ...(rudderMax !== undefined ? { rudderMax } : {}) });
+    const rudderMaxForce = g.rudderMaxForce !== undefined ? g.rudderMaxForce : prev && prev.rudderMaxForce;
+    this._gainByClient.set(client, {
+      kp: g.kp, ki: g.ki, kd: g.kd,
+      ...(rudderMax !== undefined ? { rudderMax } : {}),
+      ...(rudderMaxForce !== undefined ? { rudderMaxForce } : {}),
+    });
   }
 
   _gainsFor(client) {

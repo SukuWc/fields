@@ -35,6 +35,14 @@
 // penalty-turn limit (50°) stays, capped at this one. A command without rudderMax leaves each
 // boat's limit alone.
 //
+// Rudder force limit (rudder_max_force_n, newtons, default 200, 0..5000; 0
+// is no limit). Each step, if the blade load (lift and drag together, NACA
+// 0012 model) at the commanded angle (helm, autopilot or penalty turn) is
+// over it, the blade takes the nearest angle within ±rudder_max_deg whose
+// load is within it: less or more rudder, either side (src/rudder-limit.js).
+// It rides on autopilotGains as optional `rudderMaxForce`, by the same rules
+// as rudderMax; a command without it leaves each boat's limit alone.
+//
 // Persistence. Applied config is localStorage 'fields.devConfig'. Older
 // saves (fields.playerPrefs keys for these settings, and
 // fields.stickyAutopilot) are copied in once and then removed. A query
@@ -47,6 +55,7 @@ import {
   AUTOPILOT_KI_DEFAULT,
   AUTOPILOT_KP_DEFAULT,
   RUDDER_MAX_DEG_DEFAULT,
+  RUDDER_MAX_FORCE_N_DEFAULT,
   setting,
 } from './settings-registry.js';
 
@@ -73,6 +82,7 @@ export const DEV_TOML_FIELDS = [
   { key: 'autopilot_ki', id: 'autopilotKi' },
   { key: 'autopilot_kd', id: 'autopilotKd' },
   { key: 'rudder_max_deg', id: 'rudderMax' },
+  { key: 'rudder_max_force_n', id: 'rudderMaxForce' },
 ];
 
 export const DEV_CONFIG_KEYS = DEV_TOML_FIELDS.map((f) => f.key);
@@ -88,6 +98,7 @@ const HEADER = [
   '# This page only. Apply sends the autopilot gains to boats this page may control.',
   '# A tracer count of 0 is automatic. Default gains are P 2, I 0, D 0 (P only); D was about 29.9 before #200.',
   '# rudder_max_deg: manual helm hard-over each side, 10..90 degrees (default 60). The autopilot uses the same limit; penalty turns stay at 50 or less.',
+  '# rudder_max_force_n: rudder blade load limit in newtons, 0..5000 (default 200, 0 = none). Over it, the blade takes the nearest angle within the stop whose load is within it.',
   '',
 ].join('\n');
 
@@ -259,19 +270,22 @@ export function parseAndValidateDevConfig(text) {
 export function validateAutopilotGains(c) {
   if (!c || typeof c !== 'object') return { error: 'autopilotGains needs kp, ki, kd' };
   const hasRudder = c.rudderMax !== undefined;
+  const hasForce = c.rudderMaxForce !== undefined;
   const v = validateDevConfig({
     ...DEV_CONFIG_DEFAULTS,
     autopilot_kp: c.kp,
     autopilot_ki: c.ki,
     autopilot_kd: c.kd,
     ...(hasRudder ? { rudder_max_deg: c.rudderMax } : {}),
+    ...(hasForce ? { rudder_max_force_n: c.rudderMaxForce } : {}),
   });
   if (v.error) {
-    if (/autopilot_k[pid]|rudder_max_deg/.test(v.error)) return { error: v.error };
+    if (/autopilot_k[pid]|rudder_max_deg|rudder_max_force_n/.test(v.error)) return { error: v.error };
     return { error: 'autopilotGains needs kp, ki, kd' };
   }
   const g = { kp: v.config.autopilot_kp, ki: v.config.autopilot_ki, kd: v.config.autopilot_kd };
   if (hasRudder) g.rudderMax = v.config.rudder_max_deg;
+  if (hasForce) g.rudderMaxForce = v.config.rudder_max_force_n;
   return g;
 }
 
@@ -281,7 +295,7 @@ export function autopilotGainsOf(cfg) {
 
 /** The boat command a dev Apply sends: the PID plus the manual rudder limit. */
 export function devBoatCommand(cfg) {
-  return { type: 'autopilotGains', ...autopilotGainsOf(cfg), rudderMax: cfg.rudder_max_deg };
+  return { type: 'autopilotGains', ...autopilotGainsOf(cfg), rudderMax: cfg.rudder_max_deg, rudderMaxForce: cfg.rudder_max_force_n };
 }
 
 /** What the client applies locally from a validated config. PID is separate (the sim command). */
@@ -385,4 +399,4 @@ export function devConfigIds() {
   return DEV_TOML_FIELDS.map((f) => f.id);
 }
 
-export { AUTOPILOT_KP_DEFAULT, AUTOPILOT_KI_DEFAULT, AUTOPILOT_KD_DEFAULT, RUDDER_MAX_DEG_DEFAULT };
+export { AUTOPILOT_KP_DEFAULT, AUTOPILOT_KI_DEFAULT, AUTOPILOT_KD_DEFAULT, RUDDER_MAX_DEG_DEFAULT, RUDDER_MAX_FORCE_N_DEFAULT };
