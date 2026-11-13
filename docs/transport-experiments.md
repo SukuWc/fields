@@ -430,15 +430,17 @@ subscribed just long enough to paint one keyframe, then unsubscribes.
 Unchecking and checking the box again takes a fresh snapshot.
 
 Flow tracers are a **separate** Dev setting (`flow_tracers`, default on,
-URL key `?show_field`). Unchecking Show field does not turn them off.
-Add `show_field=0` to also stop the tracer grid (about 1 MB/s at the
-default 100 × 200 map) and the per-frame tracer draw.
+URL key `?show_field`). Unchecking Show field hides the colour plane but
+does **not** unsubscribe if tracers or ladder lines are on: both are
+computed on the client from the same vector stream (see below). Add
+`show_field=0` (and leave the plane off, and `ladder_lines` off) to drop
+the stream as well as the per-frame tracer draw.
 
 `?hud=1` shows a small on-screen client readout (not the server `?perf=`
 overlay, and not hidden behind backtick / `?dev=1`): the `field_mode` in
 use, rAF interval and worst frame in the last 2 s, last field decode and
 paint times, `framesDropped` / `fieldsDropped`, frames/s received, and
-client / field KB/s. It updates a few times per second.
+client / **vector field** KB/s. It updates a few times per second.
 
 On sailzone.app, after this is deployed (same query keys work on a local
 `/play/` too):
@@ -454,6 +456,72 @@ If `recv` and `nopaint` still hitch but `freeze` and `field_plane=0` are
 smooth, the live field stream (bytes and/or decode) is the cause. If only
 `nopaint` and hiding the plane (`recv` / `field_plane=0`) are smooth,
 paint and the 5 MB texture upload are the expensive part.
+
+
+## Vector field wire (speed + direction)
+
+The old remote field keyframe was one contrast-baked, plotType-dependent
+palette byte per AMR cell, and flow tracers rode a separate uncompressed
+uniform grid (~117 KB, 75×149 float32 u,v at 10 Hz). That flow message
+did not fit the default 32 KiB ack window, so tracers vanished on a
+phone unless `?send=legacy` was set.
+
+The live remote path now sends **one shared vector keyframe** for every
+subscriber:
+
+- Same AMR layout as before (europe-1 default: 50×100 root plus boat
+  patches).
+- Two bytes per cell: uint8 speed, linear 0..`SPEED_MAX_MPS` (16 m/s,
+  which covers the 2f ceiling of 15 m/s; 4f winds above 16 m/s
+  saturate), and uint8 direction (256 steps over 360°, downwind
+  `atan2(v, u)`). Barrier / hidden use the 254 / 255 sentinels on the
+  speed plane. `vmax` is on the message.
+- Existing field codec + `encodeWire`, **keyframes only**.
+- `WIRE_VERSION` is **2**. An old client against a new server (or the
+  reverse) fails with a visible `WireVersionError` / `protocolError`
+  ("reload the page"), not silent garbage.
+
+Remote visualization is **speed only**. Density, ux, uy and curl stay
+available in the standalone (local / worker) webapp. Contrast is applied
+on the client (`1.2^contrastExp`) when painting the speed plane through
+the existing JS `paintGrids` path (GPU paint is a follow-up).
+
+The client bilinear-samples the finest covering AMR grid for:
+
+- Flow tracers (`flow_tracers` / `?show_field`)
+- Ladder lines, when the room's `ladder_lines` / `settings.ladder` is
+  on, using the existing `ladder-lines.js` algorithm at the first mark
+  (`state.mk`). The server no longer computes `state.ladder` for remote
+  clients and no longer sends a `flow` message.
+
+Subscription: `{ type: 'field', on }`. The server encodes **once** per
+due tick (`field_skip`) for every subscriber. The client stays
+subscribed while the colour plane, tracers, or ladders need the stream,
+and only hides the plane when "Show field (server)" is off.
+`?field_mode=recv|freeze|nopaint` still applies to the plane; `freeze`
+keeps the last texture but does not drop the stream if tracers or
+ladders are on. Fields are owed and retried under the ack window as
+before. Tracers work under the default `send=ack` and under
+`send=legacy`.
+
+Typical size at default europe-1 (`2f`, `field_skip = 1`, 15 Hz),
+measured on a local room with this change (no flow messages):
+
+- 1 boat: **3,810 B/keyframe** at 15.0 Hz → **55.8 KB/s**
+- 3 boats: **8,615 B/keyframe** at 14.7 Hz → **124.1 KB/s**
+
+versus the previous colour field (~2,569 B / 5,944 B) **plus** the
+uncompressed ~117 KB flow grid at 10 Hz (~1.18–1.23 MB/s per client).
+The vector stream is about **20× smaller** than field+flow, and it
+fits the 32 KiB ack window.
+
+Phone checks after deploy (europe-1):
+
+- Baseline, HUD on: `/play/?room=europe-1&hud=1`
+- Tracers + plane, default ack: `/play/?room=europe-1&hud=1&show_field=1&field_plane=1`
+- Tracers, plane off: `/play/?room=europe-1&hud=1&show_field=1&field_plane=0`
+- A/B legacy: add `&send=legacy`
+- Field-mode experiments: `&field_mode=recv|freeze|nopaint` as above
 
 ## Caveats
 

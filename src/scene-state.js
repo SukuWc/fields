@@ -180,7 +180,9 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
   s.hud = markExact(hudState(sim, rec));
   if (sim.marks.length) s.mk = sim.marks.map((m) => { const p = m.physics_model.getPosition(); return [p.x, p.y]; });
   // Ladder lines (ladder-lines.js): live field sample so sail wake warps them.
-  if (sim.options.ladder && sim.marks.length) {
+  // Remote rooms pass view.omitLadder and let the client build the same
+  // polylines from the vector field (main.js).
+  if (sim.options.ladder && sim.marks.length && !(view && view.omitLadder)) {
     const m = sim.marks[0];
     const p = m.physics_model.getPosition();
     s.ladder = ladderState((x, y) => map.get_wind(x, y), p.x, p.y);

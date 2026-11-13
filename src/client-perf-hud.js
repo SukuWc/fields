@@ -95,7 +95,7 @@ export function setupClientPerfHud({ host, getFieldMode, now = () => performance
       lines.push('decode ' + fmtMs(st.decodeMs) + ' ms  paint ' + fmtMs(st.paintMs) + ' ms');
       lines.push('drop frames ' + st.dropped + '  fields ' + st.fieldDropped);
       lines.push('recv ' + fmtRate(frameHz) + ' fps  ' + fmtRate(kbS) + ' KB/s');
-      lines.push('field ' + fmtRate(fieldKbS) + ' KB/s');
+      lines.push('vector field ' + fmtRate(fieldKbS) + ' KB/s');
     }
     el.textContent = lines.join('\n');
   };

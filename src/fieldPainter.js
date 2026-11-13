@@ -3,6 +3,7 @@
 // dependency; it only calls painter.resize(bm) after a rebuild and
 // painter.paint(bm) after a lattice step.
 import { ROLE_FLUID, PALETTE } from './boltzmann.js';
+import { VECTOR_KIND, VECTOR_BARRIER, VECTOR_HIDDEN, speedByteToColorIndex } from './vector-field.js';
 
 // Default plot options when no getter is given (tests, the old dom-stub
 // values): plot 3 (speed), contrast slider at 0.
@@ -88,21 +89,27 @@ export class FieldPainter {
   // the order sent (parents before children); hidden cells keep the layer
   // below. Colours come from the same palette, so remote matches local up
   // to the 1-byte quantization (at most one palette step).
-  paintGrids(msg) {
+  // contrastExp is used only for kind: 'vec' (speed plot, client-side contrast).
+  // The legacy one-byte plot-scalar message still paints the baked palette index.
+  paintGrids(msg, contrastExp = 0) {
     if (!this.texture) return;
     this.resize({ width: msg.rootW, height: msg.rootH, resolution: msg.resolution });
     const tex = this.texture;
     if (!tex.image || !tex.image.data) return;
     this._width = msg.rootW;
-    const { red, green, blue } = PALETTE;
+    const { red, green, blue, nColors } = PALETTE;
+    const vec = msg.kind === VECTOR_KIND;
     for (const g of msg.grids) {
-      const v = g.values;
+      const v = vec ? g.speed : g.values;
+      if (!v) continue;
       for (let j = 0; j < g.h; j++) {
         for (let i = 0; i < g.w; i++) {
           const b = v[i + j * g.w];
-          if (b === FIELD_HIDDEN) continue;
-          if (b === FIELD_BARRIER) { this.colorSquare(g.x0 + i * g.dx, g.y0 + j * g.dx, g.dx, 0, 0, 0); continue; }
-          const c = byteToColorIndex(b);
+          const hidden = vec ? b === VECTOR_HIDDEN : b === FIELD_HIDDEN;
+          if (hidden) continue;
+          const barrier = vec ? b === VECTOR_BARRIER : b === FIELD_BARRIER;
+          if (barrier) { this.colorSquare(g.x0 + i * g.dx, g.y0 + j * g.dx, g.dx, 0, 0, 0); continue; }
+          const c = vec ? speedByteToColorIndex(b, contrastExp, nColors) : byteToColorIndex(b);
           this.colorSquare(g.x0 + i * g.dx, g.y0 + j * g.dx, g.dx, red[c], green[c], blue[c]);
         }
       }

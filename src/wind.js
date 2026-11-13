@@ -19,7 +19,7 @@
 // wind (UI, Boltzmann, Map, ConstantWind, sample.speed) is in m/s.
 const FIELD_TO_WIND_SPEED = 100 * 4;
 export const WIND_UNIT_MPS = 0.3;
-const FIELD_TO_MPS = FIELD_TO_WIND_SPEED * WIND_UNIT_MPS;
+export const FIELD_TO_MPS = FIELD_TO_WIND_SPEED * WIND_UNIT_MPS;
 
 export function windSample(vx, vy) {
   const speed = Math.sqrt(vx * vx + vy * vy) * FIELD_TO_MPS;

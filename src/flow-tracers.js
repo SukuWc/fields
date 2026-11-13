@@ -1,12 +1,14 @@
 // Wind-field flow tracers (client side, no DOM, no three.js).
 //
-// The host samples the active wind (dev mode: the uniform ConstantWind; full
-// fluid: the lattice velocity) on a coarse grid, sampleFlowGrid(), and sends
-// it on the frame (frame.flow) every FLOW_GRID_EVERY ticks while "Flow
-// tracers" (the old Toggle Field box, view.show_fields) is on. The client
-// keeps a fixed pool of tracers (FlowTracers) and draws each one with a
-// tail along its own past path, one LineSegments buffer for all of them
-// (renderer.js). Live segments are packed densely; the renderer draws only
+// Local / worker hosts sample the active wind (dev mode: the uniform
+// ConstantWind; full fluid: the lattice velocity) on a coarse grid,
+// sampleFlowGrid(), and put it on the frame (frame.flow) every
+// FLOW_GRID_EVERY ticks while "Flow tracers" (view.show_fields) is on.
+// Remote clients instead advect from the vector field keyframe
+// (src/vector-field.js), passed to FlowTracers.setGrid as a kind:'vec'
+// message. The client keeps a fixed pool of tracers (FlowTracers) and
+// draws each one with a tail along its own past path, one LineSegments
+// buffer for all of them (renderer.js). Live segments are packed densely; the renderer draws only
 // that many via setDrawRange (no alpha-0 padding submitted).
 //
 // Tracers spawn at random points on the map, accepted with probability
@@ -23,12 +25,12 @@
 // TRACER_TAIL_SUBDIV segments per interval, fading towards the end. A
 // respawn clears the buffer, so no tail jumps across the map.
 
-import { WIND_UNIT_MPS } from './wind.js';
+import { FIELD_TO_MPS } from './wind.js';
+import { sampleVectorField, vectorFieldBounds, speedFromByte, VECTOR_BARRIER } from './vector-field.js';
 
-// Lattice velocity (Boltzmann.get_field_velocity, wind.js vx/vy) → m/s, the
-// same scale as wind.js windSample().speed: × 400 internal wind units,
-// × WIND_UNIT_MPS each.
-export const FIELD_TO_MPS = 400 * WIND_UNIT_MPS;
+// Lattice velocity (Boltzmann.get_field_velocity, wind.js vx/vy) → m/s.
+// Re-exported from wind.js so existing `flow-tracers.js` imports keep working.
+export { FIELD_TO_MPS };
 // Grid: at most FLOW_GRID_MAX_X × 2·FLOW_GRID_MAX_X nodes (2:1 maps), at
 // least 1 m apart. 50×100 → 1 m, 100×200 → 1.35 m, 200×400 → 2.7 m (finer
 // than the 4 m fast-wind root cell; refined cells near boats are finer still).
@@ -198,14 +200,29 @@ export class FlowTracers {
   }
 
   setGrid(g) {
-    if (!g || !g.v || !(g.nx > 1) || !(g.ny > 1)) return;
+    const vec = g && g.kind === 'vec' && Array.isArray(g.grids) && g.grids.length;
+    const uni = g && g.v && g.nx > 1 && g.ny > 1;
+    if (!vec && !uni) return;
     const first = !this.grid;
     this.grid = g;
     let m = 0, lo = Infinity;
-    for (let k = 0; k < g.v.length; k += 2) {
-      const sp = Math.hypot(g.v[k], g.v[k + 1]);
-      if (sp > m) m = sp;
-      if (sp < lo) lo = sp;
+    if (vec) {
+      const vmax = g.vmax;
+      for (const gr of g.grids) {
+        for (let k = 0; k < gr.speed.length; k++) {
+          const b = gr.speed[k];
+          if (b >= VECTOR_BARRIER) continue;
+          const sp = speedFromByte(b, vmax);
+          if (sp > m) m = sp;
+          if (sp < lo) lo = sp;
+        }
+      }
+    } else {
+      for (let k = 0; k < g.v.length; k += 2) {
+        const sp = Math.hypot(g.v[k], g.v[k + 1]);
+        if (sp > m) m = sp;
+        if (sp < lo) lo = sp;
+      }
     }
     this.maxSpeed = m;
     this.minSpeed = Number.isFinite(lo) ? lo : 0;
@@ -216,6 +233,7 @@ export class FlowTracers {
   velocityAt(x, y, out = { x: 0, y: 0 }) {
     const g = this.grid;
     if (!g) { out.x = 0; out.y = 0; return out; }
+    if (g.kind === 'vec') return sampleVectorField(g, x, y, out);
     let fx = (x - g.x0) / g.cell, fy = (y - g.y0) / g.cell;
     fx = Math.max(0, Math.min(g.nx - 1.000001, fx));
     fy = Math.max(0, Math.min(g.ny - 1.000001, fy));
@@ -231,6 +249,10 @@ export class FlowTracers {
 
   inside(x, y) {
     const g = this.grid;
+    if (g.kind === 'vec') {
+      const b = vectorFieldBounds(g);
+      return x >= b.x0 && y >= b.y0 && x <= b.x1 && y <= b.y1;
+    }
     return x >= g.x0 && y >= g.y0 && x <= g.x0 + (g.nx - 1) * g.cell && y <= g.y0 + (g.ny - 1) * g.cell;
   }
 
@@ -238,10 +260,16 @@ export class FlowTracers {
   // Clears the tracer's history.
   spawn(i) {
     const g = this.grid, rng = this.rng, v = this._v || (this._v = { x: 0, y: 0 });
-    const W = (g.nx - 1) * g.cell, H = (g.ny - 1) * g.cell;
+    let x0, y0, W, H;
+    if (g.kind === 'vec') {
+      const b = vectorFieldBounds(g);
+      x0 = b.x0; y0 = b.y0; W = b.x1 - b.x0; H = b.y1 - b.y0;
+    } else {
+      x0 = g.x0; y0 = g.y0; W = (g.nx - 1) * g.cell; H = (g.ny - 1) * g.cell;
+    }
     let x = 0, y = 0;
     for (let t = 0; t < TRACER_SPAWN_TRIES; t++) {
-      x = g.x0 + rng() * W; y = g.y0 + rng() * H;
+      x = x0 + rng() * W; y = y0 + rng() * H;
       if (!(this.maxSpeed > 0)) break;
       this.velocityAt(x, y, v);
       if (rng() * this.maxSpeed <= Math.hypot(v.x, v.y)) break;

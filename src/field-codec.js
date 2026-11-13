@@ -1,8 +1,8 @@
-// Field stream text codec (server → RemoteHost): a field grid message
-// (fieldPainter.js decodeFieldGrids: { plotType, rootW, rootH, resolution,
-// scale, offset, base, grids: [{ x0, y0, dx, w, h, values }] }) as one JSON
-// text message, keyframe or delta. No DOM; shared by apps/server/room.js and
-// src/remote-host.js.
+// Field stream text codec (server → RemoteHost). The live remote path is
+// a vector keyframe (msg.kind === 'vec': two planes per AMR grid, speed and
+// direction bytes; see src/vector-field.js). The older one-byte plot-scalar
+// keyframe/delta path is still encoded/decoded for tests. No DOM; shared by
+// apps/server/room.js and src/remote-host.js.
 //
 //   { type: 'field', seq, base, p, rw, rh, res, sc, of, ba, g: [grid...] }
 //   seq   this message's number (per plot stream, from 1)
@@ -128,7 +128,39 @@ function decodeValues(s, w, h, refV, di, dj) {
 // tol (bytes, default 0 = lossless): delta cells that moved by at most tol
 // since what the client shows are not sent; then the result's shown is
 // what the client will hold (pass it as prev.msg next time).
+function encodeVectorFieldText(msg, seq) {
+  const g = msg.grids.map((gr) => [
+    gr.x0, gr.y0, gr.dx, gr.w, gr.h, -1,
+    encodeValues(gr.speed, gr.w, gr.h, null, 0, 0),
+    encodeValues(gr.dir, gr.w, gr.h, null, 0, 0),
+  ]);
+  return {
+    shown: msg,
+    m: { type: 'field', kind: 'vec', seq, base: 0, vmax: msg.vmax, rw: msg.rootW, rh: msg.rootH, res: msg.resolution, g },
+  };
+}
+
+function decodeVectorFieldText(m) {
+  if (m.base) return null;
+  try {
+    const grids = m.g.map((a) => {
+      const [x0, y0, dx, w, h, k] = a;
+      if (k >= 0) throw new Error('vec field deltas are not supported');
+      if (typeof a[6] !== 'string' || typeof a[7] !== 'string') throw new Error('vec field missing planes');
+      return {
+        x0, y0, dx, w, h,
+        speed: decodeValues(a[6], w, h, null, 0, 0),
+        dir: decodeValues(a[7], w, h, null, 0, 0),
+      };
+    });
+    return { seq: m.seq, msg: { kind: 'vec', vmax: m.vmax, rootW: m.rw, rootH: m.rh, resolution: m.res, grids } };
+  } catch {
+    return null;
+  }
+}
+
 export function encodeFieldText(msg, seq, prev = null, tol = 0) {
+  if (msg && msg.kind === 'vec') return encodeVectorFieldText(msg, seq);
   const used = [];
   const pg = prev && prev.msg && prev.msg.plotType === msg.plotType && prev.msg.scale === msg.scale && prev.msg.offset === msg.offset && prev.msg.base === msg.base ? prev.msg.grids : null;
   const shownGrids = [];
@@ -149,6 +181,7 @@ export function encodeFieldText(msg, seq, prev = null, tol = 0) {
 // receiver does not hold (ask for a keyframe) or malformed.
 export function decodeFieldText(m, prev = null) {
   if (!m || !Array.isArray(m.g)) return null;
+  if (m.kind === 'vec') return decodeVectorFieldText(m);
   if (m.base && (!prev || prev.seq !== m.base)) return null;
   const pg = m.base ? prev.msg.grids : null;
   try {

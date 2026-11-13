@@ -3,8 +3,8 @@
 import { spawn } from 'node:child_process';
 import { WebSocket } from 'ws';
 import { SimCore } from '../src/host.js';
-import { encodeFieldGrids, decodeFieldGrids } from '../src/fieldPainter.js';
 import { encodeFieldText } from '../src/field-codec.js';
+import { encodeVectorGrids } from '../src/vector-field.js';
 import { startServer } from '../apps/server/index.js';
 import { SEND_BUF_MAX } from '../apps/server/room.js';
 import { RemoteHost } from '../src/remote-host.js';
@@ -24,15 +24,14 @@ function fieldPair() {
   const core = new SimCore({ mapW: 50, mapH: 100, simRes: '2f', oversampling: 8 });
   core.command({ type: 'restart', scenario: 0 });
   core.tick({ dt: 1 / 30, held: [], present: false, view });
-  const g1 = decodeFieldGrids(encodeFieldGrids(core.bm, plot));
+  const g1 = encodeVectorGrids(core.bm);
   const e1 = encodeFieldText(g1, 1, null);
   core.tick({ dt: 1 / 30, held: [], present: false, view });
-  const g2 = decodeFieldGrids(encodeFieldGrids(core.bm, plot));
-  const e2 = encodeFieldText(g2, 2, { seq: 1, msg: e1.shown });
   core.tick({ dt: 1 / 30, held: [], present: false, view });
-  const g3 = decodeFieldGrids(encodeFieldGrids(core.bm, plot));
+  const g3 = encodeVectorGrids(core.bm);
   const e3 = encodeFieldText(g3, 3, null); // keyframe
-  return { k1: e1.m, d2: e2.m, k3: e3.m };
+  const d2 = { type: 'field', kind: 'vec', seq: 2, base: 1, g: [] };
+  return { k1: e1.m, d2, k3: e3.m };
 }
 
 // 1. Unit: stash without paint; drop delta while behind; keyframe replaces stash.

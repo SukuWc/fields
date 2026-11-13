@@ -166,9 +166,9 @@ if (Object.keys(bandwidth).length) quiet('BANDWIDTH_KB_S ' + JSON.stringify(band
   const b0 = bm.length;
   await sleep(50);
   await run(6);
-  check('plot change: next due message is still a keyframe of the new plot',
-    bm.slice(b0).some((m) => m.base === 0 && m.p === 0) && B.lastField && B.lastField.plotType === 0,
-    `after ${bm.length - b0} msgs`);
+  check('plot change is ignored on the wire: still vec keyframes, one shared stream',
+    bm.slice(b0).some((m) => m.base === 0 && m.kind === 'vec') && B.lastField && B.lastField.kind === 'vec',
+    `after ${bm.length - b0} msgs kind=${B.lastField && B.lastField.kind}`);
 
   // Clamp / validation
   const bad = await A.command({ type: 'fieldSkip', n: 99 });

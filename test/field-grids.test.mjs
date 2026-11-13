@@ -131,13 +131,15 @@ await measure('scenario 0, 4f, 3 boats', 3, 5);
   await sleep(1500);
   check('client with the field on gets field messages', A.fieldsReceived >= 3, `A=${A.fieldsReceived}`);
   check('client with the field off gets no field messages', B.fieldsReceived === 0 && B.fieldBytes === 0 && bin === 0 && B.framesReceived > 10, `B fields=${B.fieldsReceived} fieldMsgs=${bin} frames=${B.framesReceived}`);
-  // Different plots: one message per plot, each client gets its own.
+  // Two subscribers, even with different plotType: one shared vector stream.
   B.setField({ on: true, plotType: 0 });
   const e0 = room.fieldEncodes;
+  const a0 = A.fieldsReceived;
   await sleep(1000);
-  check('two plots: each client gets its plot', A.lastField && A.lastField.plotType === 3 && B.lastField && B.lastField.plotType === 0, `A=${A.lastField && A.lastField.plotType} B=${B.lastField && B.lastField.plotType}`);
-  const perDue = (room.fieldEncodes - e0) / Math.max(1, Math.round((A.fieldsReceived)));
-  check('one encode per distinct plot per due tick', room.fieldEncodes - e0 >= 4 && perDue > 0, `encodes=${room.fieldEncodes - e0}`);
+  check('two clients share one vector keyframe', A.lastField && A.lastField.kind === 'vec' && B.lastField && B.lastField.kind === 'vec', `A=${A.lastField && A.lastField.kind} B=${B.lastField && B.lastField.kind}`);
+  const encodes = room.fieldEncodes - e0;
+  const got = (A.fieldsReceived - a0);
+  check('one encode per due tick for every subscriber', encodes >= 2 && encodes <= got + 2, `encodes=${encodes} A msgs=${got}`);
   // Off again: stops.
   A.setField({ on: false }); B.setField({ on: false });
   await sleep(300);
