@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SimCore } from '../src/host.js';
-import { encodeFieldGrids, decodeFieldGrids } from '../src/fieldPainter.js';
+import { encodeVectorGrids } from '../src/vector-field.js';
 import { encodeFieldText } from '../src/field-codec.js';
 import { RemoteHost } from '../src/remote-host.js';
 import { parseServerMessage } from '../src/wire-codec.js';
@@ -68,8 +68,7 @@ function oneKeyframe() {
   const core = new SimCore({ mapW: 50, mapH: 100, simRes: '2f', oversampling: 8 });
   core.command({ type: 'restart', scenario: 0 });
   core.tick({ dt: 1 / 30, held: [], present: false, view });
-  const grids = decodeFieldGrids(encodeFieldGrids(core.bm, { plotType: 3, contrastExp: 0 }));
-  return encodeFieldText(grids, 1, null, 0).m;
+  return encodeFieldText(encodeVectorGrids(core.bm), 1, null, 0).m;
 }
 
 function fakeHost(fieldPaint) {

@@ -8,9 +8,11 @@
 //   freeze   paint one keyframe, then unsubscribe and keep that texture visible
 //   nopaint  stay subscribed and decode, skip paintGrids / the texture upload
 //
-// The Player-panel "Show field (server)" checkbox still wins when it is off
-// (or the room is in dev mode): the client unsubscribes and hides the plane,
-// same as today. field_mode only changes what happens while the box is on.
+// The Player-panel "Show field (server)" checkbox still wins for the colour
+// plane when it is off (or the room is in dev mode): the plane is hidden and
+// this helper unsubscribes the plane. Tracers and ladder lines can still keep
+// the vector stream open (RemoteHost.setFlow / setLadder). field_mode only
+// changes what happens to the plane while the box is on.
 
 export const FIELD_MODES = Object.freeze(['recv', 'freeze', 'nopaint']);
 

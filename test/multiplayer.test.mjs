@@ -166,27 +166,36 @@ const until = async (fn, ms = 3000) => { const t = Date.now(); while (!fn() && D
     A.terminate(); B.terminate();
     await sleep(100);
   }
+  await srv.close();
+}
 
-  // 6. Per-client subscriptions: flow tracers and perf.
+// 6. Per-client subscriptions: vector field (via setFlow) and perf.
+// fieldHz must be on: setFlow now uses the shared vector-field stream.
+{
+  const srv = await startServer({ port: 0, adminGate: false });
+  const url = (r) => `ws://127.0.0.1:${srv.port}/?room=${r}`;
   {
     const A = await connect(url('subs'), { ...opts, scenario: 0 });
     const B = await connect(url('subs'));
-    let aFlow = 0, aPerf = 0, bFlow = 0, bPerf = 0;
-    A.onFrame((f) => { if (f.flow) aFlow++; if (f.perf) aPerf++; });
-    B.onFrame((f) => { if (f.flow) bFlow++; if (f.perf) bPerf++; });
+    let aPerf = 0, bPerf = 0, aFlow = 0, bFlow = 0;
+    A.onFrame((f) => { if (f.perf) aPerf++; if (f.flow) aFlow++; });
+    B.onFrame((f) => { if (f.perf) bPerf++; if (f.flow) bFlow++; });
     const bBytes = [];
     B.onFrameArrival(() => bBytes.push(srv.rooms.get('subs').lastFrameBytes));
     A.setFlow(true);
     A.setPerf(true);
     await sleep(1200);
-    check('one client\'s flow tracers / perf overlay reach only that client', aFlow >= 5 && aPerf >= 10 && bFlow === 0 && bPerf === 0, `A flow ${aFlow} perf ${aPerf}, B flow ${bFlow} perf ${bPerf}`);
+    check('setFlow subscribes only that client to the vector field; perf stays per-client; no flow message',
+      A.fieldsReceived >= 5 && B.fieldsReceived === 0 && aPerf >= 10 && bPerf === 0 && aFlow === 0 && bFlow === 0,
+      `A fields ${A.fieldsReceived} perf ${aPerf} flow ${aFlow}, B fields ${B.fieldsReceived} perf ${bPerf} flow ${bFlow}`);
+    check('the vector field is kind=vec', A.lastField && A.lastField.kind === 'vec');
     const f = B.lastFrame;
-    check('the broadcast frame carries neither (B\'s frames unchanged)', f && !('flow' in f) && !('perf' in f));
+    check('the broadcast frame carries neither flow nor perf (B\'s frames unchanged)', f && !('flow' in f) && !('perf' in f));
     A.setFlow(false); A.setPerf(false);
     await sleep(300);
-    const a0 = aFlow, p0 = aPerf;
+    const a0 = A.fieldsReceived, p0 = aPerf;
     await sleep(500);
-    check('unsubscribing stops them', aFlow === a0 && aPerf === p0);
+    check('unsubscribing stops the vector field and perf', A.fieldsReceived === a0 && aPerf === p0);
     A.terminate(); B.terminate();
     await sleep(100);
   }

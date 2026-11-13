@@ -8,16 +8,17 @@
 // (see Player boats). With lockstep, clients' 'tick' messages drive the room
 // instead (reproducible runs, tests; any client's tick steps it).
 //
-// Field streaming: each client says whether it shows the field and which
-// plot ({ type: 'field', on, plotType, contrastExp }; a 'plot' command sets
-// the plot too). Cadence is the room setting fieldSkip (0 = every tick,
-// N = every N+1 ticks); --field-hz 0 still disables encoding entirely for
-// tests. When due, the room encodes the lattice once per distinct plot among
-// the clients that show it (fieldPainter.js encodeFieldGrids: the root grid
-// and every refinement domain as its own grid, one byte per cell) and sends
-// a keyframe (src/field-codec.js, base: 0; RLE/base64url compression on the
-// keyframe itself — no delta path). See _fieldMessages. Nobody showing it,
-// or dev mode (frozen lattice, the page hides the field): nothing is encoded.
+// Field streaming: each client says whether it wants the vector field
+// ({ type: 'field', on }). Cadence is the room setting fieldSkip (0 = every
+// tick, N = every N+1 ticks); --field-hz 0 still disables encoding entirely
+// for tests. When due, the room encodes the lattice once for every
+// subscriber (src/vector-field.js: two bytes per AMR cell, uint8 speed +
+// uint8 direction) and sends a keyframe (src/field-codec.js, kind: 'vec',
+// base: 0). Plot type and contrast are no longer encoded on the server:
+// remote clients paint speed and apply contrast locally. Tracers and ladder
+// lines are also derived on the client from this stream; the server does
+// not send a 'flow' message or state.ladder. Nobody subscribed, or dev
+// mode (frozen lattice): nothing is encoded.
 //
 // Frames carry compact scene state (src/scene-state.js), not geometry; each
 // client builds its guides and body outlines (src/scene-build.js). Statics
@@ -52,7 +53,7 @@ import {
   validateRoomConfig,
 } from '../../src/room-config.js';
 import { hashSeed } from '../../src/gusts.js';
-import { encodeFieldGrids, decodeFieldGrids } from '../../src/fieldPainter.js';
+import { encodeVectorGrids } from '../../src/vector-field.js';
 import { encodeFieldText } from '../../src/field-codec.js';
 import { encodeWire, fieldForWire } from '../../src/wire-codec.js';
 import { FrameTimeHistory } from './frame-times.js';
@@ -252,12 +253,12 @@ export class Room {
     this.persistent = persistent;
     this.fieldHz = fieldHz;
     this.fieldTol = fieldTol;
-    // Per plot stream (key plotType|contrastExp): { seq } for message numbering.
-    this.fieldStreams = new Map();
+    // One shared vector-field stream: { seq } for message numbering.
+    this.fieldStream = { seq: 0 };
     this.fieldKeys = 0;
-    // Per client: { on, plotType, contrastExp } (absent = field off).
+    // Per client: { on } (absent = field off).
     this.fieldSubs = new Map();
-    // Clients that asked for flow tracer grids / perf counters.
+    // Clients that asked for perf counters. (flow grids are no longer sent.)
     this.flowSubs = new Set();
     this.perfSubs = new Set();
     this.chat = [];
@@ -582,7 +583,7 @@ export class Room {
     }
     if (m.type === 'chat') { this.send(client, { type: 'result', id: m.id, r: this._chat(client, m.text) }); return; }
     if (m.type === 'field') { this._setField(client, m); return; }
-    if (m.type === 'flow') { if (m.on) this.flowSubs.add(client); else this.flowSubs.delete(client); return; }
+    if (m.type === 'flow') { return; }
     if (m.type === 'perf') { if (m.on) this.perfSubs.add(client); else this.perfSubs.delete(client); return; }
     if (!this.core) return;
     if (m.type === 'command') {
@@ -600,9 +601,8 @@ export class Room {
 
   // One command from a client; returns the result to send back.
   _command(client, c) {
-    // Plot options are per client (they only shape its field messages).
+    // Plot / contrast are client-side in remote mode (speed only). Ignore.
     if (c.type === 'plot') {
-      this._setField(client, { ...(this.fieldSubs.get(client) || { on: false }), plotType: c.plotType, contrastExp: c.contrastExp });
       return undefined;
     }
     if (c.type === 'spawnBoat') {
@@ -812,48 +812,33 @@ export class Room {
   }
 
   _setField(client, m) {
-    // Plot / on / resync: subscription update only. Next due send is always a keyframe.
-    const prev = this.fieldSubs.get(client) || { on: false, plotType: 3, contrastExp: 0 };
+    // on / resync: subscription update only. Next due send is always a keyframe.
+    const prev = this.fieldSubs.get(client) || { on: false };
     this.fieldSubs.set(client, {
       on: 'on' in m ? !!m.on : prev.on,
-      plotType: Number.isFinite(m.plotType) ? m.plotType : prev.plotType,
-      contrastExp: Number.isFinite(Number(m.contrastExp)) && m.contrastExp !== undefined ? Number(m.contrastExp) : prev.contrastExp,
     });
   }
 
-  // Field messages due this tick: [{ clients, msg }] per distinct plot
-  // among the clients showing the field; [] (and no encoding) if none does.
-  // Always a keyframe (base: 0). Intra-keyframe compression stays in
-  // encodeFieldText; there is no delta / fieldHave path.
+  // One shared vector-field keyframe for every subscriber, or [] if none.
+  // Intra-keyframe compression stays in encodeFieldText; no delta path.
   _fieldMessages() {
     if (this.core.map.devMode) return [];
-    const groups = new Map();
+    const clients = [];
     for (const [client, sub] of this.fieldSubs) {
-      if (!sub.on || !this.clients.has(client)) continue;
-      const key = sub.plotType + '|' + sub.contrastExp;
-      let g = groups.get(key);
-      if (!g) { g = { key, plot: sub, clients: [] }; groups.set(key, g); }
-      g.clients.push(client);
+      if (sub.on && this.clients.has(client)) clients.push(client);
     }
-    for (const k of this.fieldStreams.keys()) if (!groups.has(k)) this.fieldStreams.delete(k);
-    const out = [];
-    for (const g of groups.values()) {
-      const t0 = this.now();
-      const grids = decodeFieldGrids(encodeFieldGrids(this.core.bm, g.plot));
-      let st = this.fieldStreams.get(g.key);
-      if (!st) { st = { seq: 0 }; this.fieldStreams.set(g.key, st); }
-      const seq = st.seq + 1;
-      const e = encodeFieldText(grids, seq, null, 0);
-      st.seq = seq;
-      this.fieldKeys++;
-      // Binary (src/wire-codec.js): payload as packed 6-bit symbols, no base64 text.
-      const msg = encodeWire(fieldForWire(e.m), { exact: true });
-      this.fieldEncodeMs = this.now() - t0;
-      this.fieldEncodeMsTotal += this.fieldEncodeMs;
-      this.fieldEncodes++;
-      out.push({ clients: g.clients, msg });
-    }
-    return out;
+    if (!clients.length) return [];
+    const t0 = this.now();
+    const grids = encodeVectorGrids(this.core.bm);
+    const seq = this.fieldStream.seq + 1;
+    const e = encodeFieldText(grids, seq, null, 0);
+    this.fieldStream.seq = seq;
+    this.fieldKeys++;
+    const msg = encodeWire(fieldForWire(e.m), { exact: true });
+    this.fieldEncodeMs = this.now() - t0;
+    this.fieldEncodeMsTotal += this.fieldEncodeMs;
+    this.fieldEncodes++;
+    return [{ clients, msg }];
   }
 
   _sendOwn(client) {
@@ -883,16 +868,17 @@ export class Room {
     return out;
   }
 
-  // What the host reads from the view: flow tracer grids while any client
-  // shows them (the camera and the other toggles are the client's own).
+  // The camera and the other toggles are the client's own. omitLadder: the
+  // server does not compute state.ladder; remote clients build it from the
+  // vector field. show_fields is off so SimCore does not sample a flow grid.
   _view() {
-    return { camera_position_x: 0, camera_position_y: 0, show_forces: false, show_fields: this.flowSubs.size > 0 };
+    return { camera_position_x: 0, camera_position_y: 0, show_forces: false, show_fields: false, omitLadder: true };
   }
 
   // Compute one tick (req as SimCore.tick in lockstep, else built from the
   // inputs). Returns what to broadcast; nothing is sent here.
   _compute(req) {
-    const r = req ? { ...req, view: { ...(req.view || {}), show_fields: this.flowSubs.size > 0 } } : { dt: 1 / TICK_HZ, held: this._heldUnion(), present: true, view: this._view() };
+    const r = req ? { ...req, view: { ...(req.view || {}), show_fields: false, omitLadder: true } } : { dt: 1 / TICK_HZ, held: this._heldUnion(), present: true, view: this._view() };
     this.core.perf = this.perfSubs.size > 0;
     // Cadence: room setting fieldSkip (0 = every tick, N = every N+1).
     // --field-hz 0 still disables field encoding (tests); otherwise fieldHz is ignored.
@@ -906,7 +892,7 @@ export class Room {
     this._respawnDue();
     frame.fieldReady = false;
     // Per-client extras go to their subscribers only (_publish).
-    const flow = frame.flow || null, perf = frame.perf || null;
+    const flow = null, perf = frame.perf || null;
     delete frame.flow;
     delete frame.perf;
     // Room tick number: increases by one per tick, the same on every client.
@@ -960,7 +946,7 @@ export class Room {
     const fs = s.byteLength;
     const fieldFor = new Map();
     for (const f of fields || []) for (const c of f.clients) fieldFor.set(c, f.msg);
-    const flowMsg = flow ? encodeWire({ type: 'flow', flow }) : null;
+    const flowMsg = null;
     const perfMsg = perf ? encodeWire({ type: 'perf', perf }, { exact: true }) : null;
     let sent = 0;
     for (const c of this.clients) {

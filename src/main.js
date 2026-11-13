@@ -78,6 +78,8 @@ import { setupMobileSheet } from './mobile-sheet.js';
 import { setupFullscreenToggle } from './fullscreen-toggle.js';
 import { setupDevView } from './dev-view.js';
 import { windCeilingMps } from './sim-modes.js';
+import { ladderState } from './ladder-lines.js';
+import { vectorFieldWind } from './vector-field.js';
 
 import {
   cameraLimits,
@@ -401,6 +403,11 @@ function startClient() {
     const mine = frame.spawned ? ownBoatIds.map((id) => frame.spawned.find((b) => b.id === id)).filter(Boolean) : [];
     followTarget = cameraTarget(mine) || (ownBoatId ? undefined : frame.boat0) || undefined;
     if (frame.fieldSteps > 0 && isPerfOverlayOn()) recordFieldStep(frame.fieldMs);
+    if (host.kind === 'remote' && frame.state && host.room && host.room.settings && host.room.settings.ladder
+        && host.lastField && host.lastField.kind === 'vec' && frame.state.mk && frame.state.mk[0] && !frame.state.ladder) {
+      const mk = frame.state.mk[0];
+      frame.state.ladder = ladderState((x, y) => vectorFieldWind(host.lastField, x, y), mk[0], mk[1]);
+    }
     if (frame.state && frame.statics) {
       // The readout shows this client's own boat in a server room.
       const scene = buildScene(frame.state, frame.statics, view, ownBoatId);
@@ -410,7 +417,11 @@ function startClient() {
       frameRowCircles = scene.rowCircles || null;
     }
     if (frame.fieldReady) dataTextureMaterial.needsUpdate = true;
-    if (frame.flow) setFlowGrid(frame.flow);
+    if (host.kind === 'remote') {
+      if (view.show_fields && host.lastField && host.lastField.kind === 'vec') setFlowGrid(host.lastField);
+    } else if (frame.flow) {
+      setFlowGrid(frame.flow);
+    }
     if (frame.state) updateBoatTrails(frame.state, frame.statics);
     if (frame.state) boatStats.onFrame(frame.state);
     if (frame.state) instruments.onFrame(frame.state);
@@ -438,16 +449,21 @@ function startClient() {
       renderNow();
     });
     sendInput();
-    // Field: the server sends field messages only while this page shows the
-    // field (Show field box on and dev mode off); the plot choice was sent
-    // with the 'plot' command above. ?field_mode=recv|freeze|nopaint changes
-    // subscribe / paint / plane visibility while the box is on (field-mode.js).
+    // Vector field: the server sends one shared speed+direction keyframe
+    // while this page wants the stream. The Show field box (and field_mode)
+    // controls the colour plane (subscribe / paint / visibility). Tracers
+    // and ladder lines also keep the stream open (setFlow / setLadder) even
+    // when the plane is hidden. Remote paint is always speed; contrast is
+    // applied client-side from the Dev TOML / plot command.
     const fieldBox = document.getElementById(SUBSCRIPTION_IDS.field);
     document.getElementById('field_plane_row').hidden = false;
     const fieldMode = fieldModeFromQuery(location.search);
     let fieldOn = null;
     let devMode = false;
     let freezeReady = false;
+    const syncLadder = () => {
+      host.setLadder(!!(host.room && host.room.settings && host.room.settings.ladder));
+    };
     const syncField = () => {
       const st = fieldModeState(fieldMode, { boxOn: fieldBox.checked, devMode, freezeReady });
       setFieldVisible(st.visible);
@@ -465,6 +481,8 @@ function startClient() {
       if (fieldBox.checked) freezeReady = false;
       syncField();
     });
+    host.on((ev) => { if (ev.type === 'room') syncLadder(); });
+    syncLadder();
     syncField();
     return;
   }

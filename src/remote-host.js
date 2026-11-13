@@ -26,9 +26,10 @@
 // { error: 'disconnected' }, and the new welcome is applied as room, ownBoats
 // and bindControls events. Subscriptions and held keys are sent again.
 //
-// Per-client subscriptions: setField (below), setFlow(on) (flow tracer
-// grids, arriving as frame.flow) and setPerf(on) (perf counters, as
-// frame.perf); the server sends each only to clients that asked.
+// Per-client subscriptions: setField / setFlow / setLadder (the shared
+// vector-field stream, kind: 'vec') and setPerf(on) (perf counters, as
+// frame.perf). The server encodes one vector keyframe for every client
+// that asked; tracers and ladders are computed here from lastField.
 //   mode 'client'  (server --lockstep, Node tests only) tick() asks for each
 //                  tick, so runs are reproducible; frames are still broadcast
 //                  to every client. The browser never calls tick() in remote
@@ -50,13 +51,13 @@
 // A newer keyframe replaces a pending stash (fieldsDropped). That stops a
 // slow paint from growing an onmessage backlog.
 //
-// Field: only while this client shows it (setField({ on, plotType,
-// contrastExp }); the 'plot' command sets the plot). fieldPaint (default
-// true; ?field_mode=nopaint sets it false) skips paintGrids after decode.
-// The server sends
-// keyframes only (src/field-codec.js, base: 0), at the room's fieldSkip
-// cadence. Painted here into the page's texture with the local palette
-// (FieldPainter.paintGrids), so remote looks like local.
+// Field: a vector keyframe (speed + direction, src/vector-field.js) while
+// this client wants the stream (setField({ on }), or setFlow / setLadder).
+// fieldPaint (default true; ?field_mode=nopaint sets it false) skips
+// paintGrids after decode. The server sends keyframes only (kind: 'vec',
+// base: 0), at the room's fieldSkip cadence. Remote paint is always the
+// speed plot; contrast is applied here from the last 'plot' command.
+// WIRE_VERSION 2 is a clean break with the old one-byte colour stream.
 import { plainView } from './host-protocol.js';
 import { FieldPainter } from './fieldPainter.js';
 import { decodeFieldText } from './field-codec.js';
@@ -164,6 +165,8 @@ export class RemoteHost {
     this._painter = texture ? new FieldPainter(texture, this._oversampling) : null;
     this._field = { on: false, plotType: 3, contrastExp: 0 };
     this._flowOn = false;
+    this._ladderOn = false;
+    this._fieldSentOn = false;
     this._perfOn = false;
     // Flow grid / perf counters for the next frame (they arrive just before it).
     this._nextFlow = null;
@@ -215,8 +218,7 @@ export class RemoteHost {
       this._fieldHeld = null;
       this._latestField = null;
       if (this._raw) for (const k in this._raw) this._raw[k] = null;
-      if (this._field.on) ws.send(JSON.stringify({ type: 'field', ...this._field }));
-      if (this._flowOn) ws.send(JSON.stringify({ type: 'flow', on: true }));
+      if (this._vectorWanted()) ws.send(JSON.stringify({ type: 'field', on: true }));
       if (this._perfOn) ws.send(JSON.stringify({ type: 'perf', on: true }));
       this.hotChannel = 'ws';
       this._hotBytes = 0;
@@ -580,7 +582,7 @@ export class RemoteHost {
     if (!this._fieldAsked) {
       this.fieldResyncs++;
       this._fieldAsked = true;
-      if (this._field.on) this._send({ type: 'field', ...this._field });
+      if (this._vectorWanted()) this._send({ type: 'field', on: true });
     }
   }
 
@@ -588,14 +590,27 @@ export class RemoteHost {
   // fieldPaint false skips paintGrids and the texture upload (decode still runs).
   _applyField(m) {
     const t0 = performance.now();
+    if (m && m.kind && m.kind !== 'vec') {
+      this.fieldDecodeMs = performance.now() - t0;
+      this.fieldPaintMs = 0;
+      this.protocolError = 'field protocol is kind=vec (WIRE_VERSION ' + '2); got kind=' + m.kind + '. Reload the page so the client and server builds match.';
+      console.error('sim server protocol mismatch: ' + this.protocolError);
+      return;
+    }
     const r = decodeFieldText(m, this._fieldHeld);
     this.fieldDecodeMs = performance.now() - t0;
-    if (!r) {
+    if (!r || (r.msg && r.msg.kind !== 'vec' && r.msg.grids && r.msg.grids[0] && !r.msg.grids[0].speed)) {
       this.fieldPaintMs = 0;
+      if (r && r.msg && r.msg.kind !== 'vec') {
+        this.protocolError = 'field protocol is kind=vec; this message is an old colour keyframe. Reload the page so the client and server builds match.';
+        console.error('sim server protocol mismatch: ' + this.protocolError);
+        this._fieldHeld = null;
+        return;
+      }
       if (this._fieldHeld || !this._fieldAsked) {
         this.fieldResyncs++;
         this._fieldAsked = true;
-        if (this._field.on) this._send({ type: 'field', ...this._field });
+        if (this._vectorWanted()) this._send({ type: 'field', on: true });
       }
       this._fieldHeld = null;
       return;
@@ -606,7 +621,7 @@ export class RemoteHost {
     this.lastField = r.msg;
     if (this.fieldPaint && this._painter) {
       const t1 = performance.now();
-      this._painter.paintGrids(r.msg);
+      this._painter.paintGrids(r.msg, this._field.contrastExp);
       this.fieldPaintMs = performance.now() - t1;
     } else {
       this.fieldPaintMs = 0;
@@ -654,30 +669,48 @@ export class RemoteHost {
   onFrameArrival(fn) { this._arrivalListeners.push(fn); }
   command(c) {
     if (c && c.type === 'plot') {
+      // Remote paint is speed only; contrast is applied client-side.
       if (Number.isFinite(c.plotType)) this._field.plotType = c.plotType;
       if ('contrastExp' in c) this._field.contrastExp = Number(c.contrastExp);
+      if (this.lastField && this.lastField.kind === 'vec' && this.fieldPaint && this._painter) {
+        this._painter.paintGrids(this.lastField, this._field.contrastExp);
+      }
     }
     return this._call('command', 'c', c);
   }
-  // Field messages for this client: on/off and the plot (any subset).
+  _vectorWanted() { return !!(this._field.on || this._flowOn || this._ladderOn); }
+  _sendFieldSub() {
+    const on = this._vectorWanted();
+    this._fieldSentOn = on;
+    this._send({ type: 'field', on });
+  }
+  // Vector-field stream for this client. on = the colour-plane subscription;
+  // setFlow / setLadder also keep the stream open.
   setField(f) {
     const next = { ...this._field };
     if ('on' in f) next.on = !!f.on;
     if (Number.isFinite(f.plotType)) next.plotType = f.plotType;
     if ('contrastExp' in f) next.contrastExp = Number(f.contrastExp);
     this._field = next;
-    this._send({ type: 'field', ...next });
+    this._sendFieldSub();
   }
   // Chat (apps/server/room.js): resolves to { ok, seq } or { error }.
   sendChat(text) { return this._call('chat', 'text', String(text)); }
   query(q) { return this._call('query', 'q', q); }
   // Perf counters in this client's frames (frame.perf), or not.
   setPerf(on) { this._perfOn = !!on; this._send({ type: 'perf', on: !!on }); }
-  // Flow tracer grids in this client's frames (frame.flow), or not.
+  // Flow tracers: keep the vector stream on so the client can advect them.
+  // No separate 'flow' message is sent or received.
   setFlow(on) {
     if (this._flowOn === !!on) return;
     this._flowOn = !!on;
-    this._send({ type: 'flow', on: !!on });
+    this._sendFieldSub();
+  }
+  // Ladder lines: same shared vector stream, computed client-side.
+  setLadder(on) {
+    if (this._ladderOn === !!on) return;
+    this._ladderOn = !!on;
+    this._sendFieldSub();
   }
 
   tick(req) {
@@ -697,7 +730,7 @@ export class RemoteHost {
 
   // Held keys for a server that ticks on its own clock; sent only when they
   // change. (The view stays here: the server only needs the flow
-  // subscription, setFlow.)
+  // subscription is setField / setFlow / setLadder.)
   sendInput({ held }) {
     const input = { held: held || [] };
     const key = JSON.stringify(input);

@@ -1,5 +1,6 @@
 // Binary wire codec for the server → client hot path (apps/server/room.js →
 // src/remote-host.js): frame, field, flow and perf messages go as binary
+// (WIRE_VERSION 2: the field payload is a vector keyframe, kind: 'vec').
 // WebSocket messages; everything else (welcome, statics, events, chat,
 // results) stays JSON text. No DOM, no deps.
 //
@@ -30,7 +31,7 @@
 import { EXACT_JSON } from './host-protocol.js';
 
 export const WIRE_MAGIC = 0xF5;
-export const WIRE_VERSION = 1;
+export const WIRE_VERSION = 2;
 export const WIRE_TYPES = { frame: 1, field: 2, flow: 3, perf: 4 };
 const TYPE_NAMES = [null, 'frame', 'field', 'flow', 'perf'];
 const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -190,7 +191,15 @@ export function decodeWire(data) {
 
 // A field-codec.js message with its grid payload strings as Sym6.
 export function fieldForWire(m) {
-  return { ...m, g: m.g.map((a) => { const b = a.slice(); b[b.length - 1] = new Sym6(b[b.length - 1]); return b; }) };
+  return {
+    ...m,
+    g: m.g.map((a) => {
+      const b = a.slice();
+      const dataStart = b[5] < 0 ? 6 : 8;
+      for (let i = dataStart; i < b.length; i++) if (typeof b[i] === 'string') b[i] = new Sym6(b[i]);
+      return b;
+    }),
+  };
 }
 
 // Any server message (JSON text or binary) as an object (tests, tools).
