@@ -73,8 +73,8 @@ const near = (a, b, e = 1e-6) => Math.abs(a - b) <= e;
   check('non-finite origin → no lines', ladderLines(() => windSample(0, -0.01), NaN, 0, [20]).length === 0);
 }
 
-// Next-target origin: before the start this is the first course mark, never
-// a start-line pin; after rounding it follows courseTextState / targetIndex.
+// Next-target origin: start-line mid before the gun, gate mid or mark
+// while racing, finish-line mid on the last leg.
 {
   const statics = {
     course: {
@@ -84,6 +84,8 @@ const near = (a, b, e = 1e-6) => Math.abs(a - b) <= e;
       start: { x: 0, y: -70 },
       fin: { x: 0, y: -70 },
     },
+    start: { a: { x: -16, y: -70 }, b: { x: 16, y: -70 }, mid: { x: 0, y: -70 } },
+    finish: { a: { x: -16, y: -70 }, b: { x: 16, y: -70 }, mid: { x: 0, y: -70 } },
     lat: { w: 50, h: 100, res: 0.5 },
   };
   const courseC = [{ x: 0.2, y: 64.8 }, [{ x: -8, y: -45 }, { x: 8, y: -45 }], { x: 0.2, y: 64.8 }];
@@ -92,25 +94,68 @@ const near = (a, b, e = 1e-6) => Math.abs(a - b) <= e;
     statics,
     { ownId: 7 },
   );
-  check('before start: origin is the first rounding mark, not the start pin',
-    waiting && Math.abs(waiting.x - 0.2) < 1e-9 && Math.abs(waiting.y - 64.8) < 1e-9,
+  check('before start: origin is the start-line mid, not a pin or the first mark',
+    waiting && Math.abs(waiting.x - 0) < 1e-9 && Math.abs(waiting.y + 70) < 1e-9,
     JSON.stringify(waiting));
+  const fromEnds = ladderOriginFromState(
+    { hud: { co: { w: 1 } } },
+    { start: { a: { x: -16, y: -70 }, b: { x: 16, y: -70 } } },
+  );
+  check('start mid is computed from pin and committee ends when mid is omitted',
+    fromEnds && fromEnds.x === 0 && fromEnds.y === -70, JSON.stringify(fromEnds));
+  const mark = ladderOriginFromState(
+    { hud: { own: { 7: { co: { i: 0, lap: 1 } } } }, course: { c: courseC } },
+    statics,
+    { ownId: 7 },
+  );
+  check('racing: a single mark uses the mark itself',
+    mark && Math.abs(mark.x - 0.2) < 1e-9 && Math.abs(mark.y - 64.8) < 1e-9,
+    JSON.stringify(mark));
   const gate = ladderOriginFromState(
     { hud: { own: { 7: { co: { i: 1, gate: 1, lap: 1 } } } }, course: { c: courseC } },
     statics,
     { ownId: 7 },
   );
-  check('after rounding: origin follows the next target (leeward gate mid)',
+  check('racing: a gate uses the midpoint of its two marks',
     gate && Math.abs(gate.x - 0) < 1e-9 && Math.abs(gate.y + 45) < 1e-9,
     JSON.stringify(gate));
   const done = ladderOriginFromState({ hud: { co: { done: 1, fin: 1 } } }, statics);
-  check('finish next: no ladder origin (finish is a line, not a mark)', done === null);
+  check('finish next: origin is the finish-line mid',
+    done && done.x === 0 && done.y === -70, JSON.stringify(done));
+  const finEnds = ladderOriginFromState(
+    { hud: { co: { done: 1, fin: 1 } } },
+    { finish: { a: { x: -12, y: -68 }, b: { x: 8, y: -72 } } },
+  );
+  check('finish mid is computed from the two ends when mid is omitted',
+    finEnds && finEnds.x === -2 && finEnds.y === -70, JSON.stringify(finEnds));
   const fallback = ladderOriginFromState({ hud: {} }, statics);
-  check('no progress yet: first course mark from statics anchors',
-    fallback && fallback.x === 0 && fallback.y === 65, JSON.stringify(fallback));
-  const sim = { course: { marks: [{ x: 0, y: 65 }, { gate: [{ x: -8, y: -45 }, { x: 8, y: -45 }] }], progressFor() { return { courseComplete: false, waitingForStart: true, targetIndex: 0 }; } } };
-  const fromSim = ladderOriginForSim(sim, {});
-  check('ladderOriginForSim before start uses course mark 1', fromSim && fromSim.x === 0 && fromSim.y === 65, JSON.stringify(fromSim));
+  check('no progress yet, with a start line: start mid',
+    fallback && fallback.x === 0 && fallback.y === -70, JSON.stringify(fallback));
+  const noStart = ladderOriginFromState({ hud: {} }, { course: { anchors: [{ x: 0, y: 65 }] } });
+  check('no progress and no start line: first course mark',
+    noStart && noStart.x === 0 && noStart.y === 65, JSON.stringify(noStart));
+
+  const startLine = { a: { x: -16, y: -70 }, b: { x: 16, y: -70 }, mid: { x: 0, y: -70 } };
+  const finishLine = { a: { x: -16, y: -70 }, b: { x: 16, y: -70 }, mid: { x: 0, y: -70 } };
+  const course = {
+    marks: [{ x: 0, y: 65 }, { gate: [{ x: -8, y: -45 }, { x: 8, y: -45 }] }],
+    start: { x: 0, y: -70 },
+    finish: finishLine,
+    progressFor() { return this._p; },
+    _p: { courseComplete: false, waitingForStart: true, targetIndex: 0 },
+  };
+  const sim = { course, startSequence: { line: startLine } };
+  const fromSimStart = ladderOriginForSim(sim, {});
+  check('ladderOriginForSim before start uses the start-line mid',
+    fromSimStart && fromSimStart.x === 0 && fromSimStart.y === -70, JSON.stringify(fromSimStart));
+  course._p = { courseComplete: false, waitingForStart: false, targetIndex: 1 };
+  const fromSimGate = ladderOriginForSim(sim, {});
+  check('ladderOriginForSim at a gate uses the gate mid',
+    fromSimGate && fromSimGate.x === 0 && fromSimGate.y === -45, JSON.stringify(fromSimGate));
+  course._p = { courseComplete: true, waitingForStart: false, targetIndex: 0 };
+  const fromSimFin = ladderOriginForSim(sim, {});
+  check('ladderOriginForSim on the finish leg uses the finish-line mid',
+    fromSimFin && fromSimFin.x === 0 && fromSimFin.y === -70, JSON.stringify(fromSimFin));
 }
 
 // Bounds: a start-line origin plus the default 50 m half-width would leave

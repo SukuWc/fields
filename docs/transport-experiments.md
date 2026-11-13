@@ -492,9 +492,10 @@ The client bilinear-samples the finest covering AMR grid for:
 - Ladder lines, when the per-client Dev setting `ladder_lines` is on
   (default; URL `?ladder=0` turns them off). The existing
   `ladder-lines.js` algorithm is referenced to the local player's next
-  course-target mark (the first mark after the start before the gun,
-  then the next rounding target; the same progress as the HUD "NEXT"
-  mark). Points are clipped to the map domain. Old room TOML
+  course target (start-line mid before the gun, then the next mark or
+  the mid of a gate, then the finish-line mid; the same progress as
+  the HUD "NEXT" / "NEXT START" logic). Points are clipped to the map
+  domain. Old room TOML
   `ladder_lines` keys are ignored. The server no longer computes
   `state.ladder` for remote clients and no longer sends a `flow`
   message.

@@ -31,8 +31,8 @@
 //          k: [cx, cy, radius] | 0 (disk), m: run lengths of the mask | null,
 //          c: [children] }; absent in dev mode
 //   wind   dev mode: flow direction (deg) for the wind arrow
-//   ladder downwind-distance ladder polylines from the next course-target
-//          mark (ladder-lines.js): [[x0,y0,…], …] for 20 m and 40 m when
+//   ladder downwind-distance ladder polylines from the next course target
+//          (start/gate/finish mid or a mark; ladder-lines.js): [[x0,y0,…], …] for 20 m and 40 m when
 //          view.show_ladder is on (player Dev setting; falls back to
 //          sim.options.ladder when the view flag is absent)
 //   gust   moving-column 1σ ellipses (gusts.js): [[x,y,σ_along,σ_cross,ax,ay], …]
@@ -185,7 +185,8 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
   s.hud = markExact(hudState(sim, rec));
   if (sim.marks.length) s.mk = sim.marks.map((m) => { const p = m.physics_model.getPosition(); return [p.x, p.y]; });
   // Ladder lines (ladder-lines.js): live field sample so sail wake warps them.
-  // Origin is the local player's next course-target mark, not sim.marks[0]
+  // Origin is the local player's next course target (start-line mid,
+  // next mark or gate mid, finish-line mid), not sim.marks[0]
   // (which may be a start-line pin). Remote rooms pass view.omitLadder and
   // let the client build the same polylines from the vector field (main.js).
   // view.show_ladder is the per-client Dev setting; tests and scenario 21

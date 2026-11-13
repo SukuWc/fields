@@ -3,8 +3,10 @@
 // field (including sail wake) and puts compact polylines in the frame;
 // scene-build.js turns them into guides.
 //
-// The origin is the local player's next course-target mark
-// (ladderOriginFromState / ladderOriginForSim), not sim.marks[0].
+// The origin is the local player's next course target
+// (ladderOriginFromState / ladderOriginForSim): start-line mid before the
+// gun, then the next mark or the mid of a gate, then the finish-line mid.
+// Never sim.marks[0] (that may be a start pin).
 // Optional bounds clip the seed front and advection to the map so no
 // point leaves the domain.
 //
@@ -178,29 +180,64 @@ export function ladderMarkCentre(el) {
   return xyOf(el);
 }
 
-// Next-target-mark origin from the live sim (local / worker scene-state).
-// Before the start (and with no progress yet): the first rounding mark
-// after the start, never a start-line pin. After rounding: the current
-// target. When the finish is next, there is no mark and this returns null.
+function lineMid(line) {
+  if (!line) return null;
+  return xyOf(line.mid) || ladderMarkCentre([line.a, line.b]) || ladderMarkCentre([line.pin, line.committee]);
+}
+
+function startMidForSim(sim) {
+  const line = sim && sim.startSequence && sim.startSequence.line;
+  return lineMid(line) || xyOf(sim && sim.course && sim.course.start);
+}
+
+function finishMidForSim(sim) {
+  return lineMid(sim && sim.course && sim.course.finish);
+}
+
+function startMidFromState(statics) {
+  const st = statics && statics.start;
+  const cs = statics && statics.course;
+  return lineMid(st) || xyOf(cs && cs.start);
+}
+
+function finishMidFromState(statics) {
+  const fin = statics && statics.finish;
+  const cs = statics && statics.course;
+  return lineMid(fin) || xyOf(cs && cs.fin);
+}
+
+// Next-target origin from the live sim (local / worker scene-state).
+// Before the start (waitingForStart, or a start sequence with no boat yet):
+// the start-line mid (pin and committee). After a valid start: the current
+// rounding target — a mark, or the mid of a gate. When the finish is next
+// (courseComplete): the finish-line mid.
 export function ladderOriginForSim(sim, boat = null) {
   const course = sim && sim.course;
-  if (!course || !course.marks || !course.marks.length) return null;
-  const p = boat ? course.progressFor(boat) : null;
-  if (p && p.courseComplete) return null;
+  const p = boat && course ? course.progressFor(boat) : null;
+  const waiting = p ? p.waitingForStart : !!(sim && sim.startSequence);
+  if (waiting) return startMidForSim(sim);
+  if (p && p.courseComplete) return finishMidForSim(sim);
+  if (!course || !course.marks || !course.marks.length) return startMidForSim(sim);
   const i = p ? p.targetIndex : 0;
   const el = course.marks[i] || course.marks[0];
   return ladderMarkCentre(el);
 }
 
 // Same origin from compact frame state, for the local player's boat.
-// Reuses courseTextState (hud.own[id].co / hud.co) and course.c centres,
-// falling back to statics.course anchors. waiting (co.w) → mark 1 (index 0).
+// Reuses courseTextState (hud.own[id].co / hud.co): waiting (co.w) → start
+// mid; done → finish mid; otherwise course.c[i] / anchors (gate mid when
+// the target is a gate).
 export function ladderOriginFromState(state, statics, { ownId } = {}) {
   const h = state && state.hud;
   const mine = ownId != null && h && h.own && h.own[ownId];
   const co = (mine && mine.co) || (h && h.co) || null;
-  if (co && co.done) return null;
-  const i = (co && !co.w && Number.isInteger(co.i)) ? co.i : 0;
+  if (co && co.done) return finishMidFromState(statics);
+  if (!co || co.w) {
+    const start = startMidFromState(statics);
+    if (start) return start;
+    if (co && co.w) return null;
+  }
+  const i = (co && Number.isInteger(co.i)) ? co.i : 0;
   const cg = state && state.course;
   const cs = statics && statics.course;
   return ladderMarkCentre(cg && cg.c && cg.c[i])

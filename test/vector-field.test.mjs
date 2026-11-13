@@ -207,9 +207,10 @@ test('client ladder matches server ladderState at a non-centred custom-course ma
   core.command({ type: 'restart', scenario: CUSTOM_SCENARIO, layout });
   for (let i = 0; i < 45; i++) core.tick({ dt: 1 / 30, held: [], present: false, view });
   const courseOrigin = ladderOriginForSim(core.sim, core.sim.players[0] || null);
-  assert.ok(courseOrigin, 'custom course has a next-mark origin');
-  assert.ok(Math.hypot(courseOrigin.x - 0, courseOrigin.y - 65) < 2, `expected windward mark, got ${JSON.stringify(courseOrigin)}`);
-  assert.ok(Math.hypot(courseOrigin.x - 16, courseOrigin.y + 70) > 20, 'origin must not be the start committee');
+  assert.ok(courseOrigin, 'custom course has a next-target origin');
+  // Before the start the origin is the start-line mid (pin −16 and RC +16 at y = −70), not either end.
+  assert.ok(Math.hypot(courseOrigin.x - 0, courseOrigin.y + 70) < 2, `expected start-line mid, got ${JSON.stringify(courseOrigin)}`);
+  assert.ok(Math.abs(courseOrigin.x) < 2, 'origin must not be a start-line end');
   // Off-centre mark on the same live field (not the x=0 windward).
   const origin = { x: 18, y: 40 };
   const bounds = mapBoundsFromLat(core.map);
