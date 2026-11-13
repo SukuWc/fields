@@ -11,7 +11,7 @@ import { devViewFromQuery, setupDevView } from '../src/dev-view.js';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
-const DEV_IDS = ['show_field', 'tracers', 'tracerLife', 'tracerTail', 'show_forces', 'show_refinement', 'perf', 'plotSelect', 'contrastSlider', 'boat_trails', 'trailInterval', 'trailDuration', 'trailSize', 'ghost', 'ghostAhead', 'sticky_autopilot', 'autopilotKp', 'autopilotKi', 'autopilotKd'];
+const DEV_IDS = ['show_field', 'ladder', 'tracers', 'tracerLife', 'tracerTail', 'show_forces', 'show_refinement', 'perf', 'plotSelect', 'contrastSlider', 'boat_trails', 'trailInterval', 'trailDuration', 'trailSize', 'ghost', 'ghostAhead', 'sticky_autopilot', 'autopilotKp', 'autopilotKi', 'autopilotKd'];
 
 function slice(id) {
   const start = html.indexOf(`id="${id}"`);
@@ -99,6 +99,7 @@ test('Dev tab is a TOML editor and the old controls are not duplicated', () => {
     assert.equal(s.control, false);
   }
   assert.equal(settingDefault('show_field'), true);
+  assert.equal(settingDefault('ladder'), true);
   assert.equal(settingDefault('tracers'), null);
   assert.equal(settingDefault('tracerLife'), 6);
   assert.equal(settingDefault('tracerTail'), 1.5);

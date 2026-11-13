@@ -12,7 +12,13 @@ import { RemoteHost } from '../src/remote-host.js';
 import { ACK_MIN_WINDOW } from '../apps/server/transport.js';
 import { FlowTracers } from '../src/flow-tracers.js';
 import { FIELD_TO_MPS } from '../src/wind.js';
-import { ladderState } from '../src/ladder-lines.js';
+import {
+  ladderOriginForSim,
+  ladderState,
+  mapBoundsFromLat,
+} from '../src/ladder-lines.js';
+import { DEFAULT_CUSTOM_COURSE } from '../src/room-config.js';
+import { CUSTOM_SCENARIO, validateCustomLayout } from '../src/custom-scenario.js';
 import {
   SPEED_MAX_MPS,
   SPEED_BYTE_MAX,
@@ -195,66 +201,108 @@ test('client ladder from the vector field matches server ladderState on the same
   assert.ok(maxD < 4, `max point distance ${maxD.toFixed(2)} m`);
 });
 
+test('client ladder matches server ladderState at a non-centred custom-course mark and stays in-domain', () => {
+  const core = new SimCore({ mapW: 100, mapH: 200, simRes: '2f', oversampling: 8 });
+  const layout = validateCustomLayout(DEFAULT_CUSTOM_COURSE, 100, 200);
+  core.command({ type: 'restart', scenario: CUSTOM_SCENARIO, layout });
+  for (let i = 0; i < 45; i++) core.tick({ dt: 1 / 30, held: [], present: false, view });
+  const courseOrigin = ladderOriginForSim(core.sim, core.sim.players[0] || null);
+  assert.ok(courseOrigin, 'custom course has a next-target origin');
+  // Before the start the origin is the start-line mid (pin −16 and RC +16 at y = −70), not either end.
+  assert.ok(Math.hypot(courseOrigin.x - 0, courseOrigin.y + 70) < 2, `expected start-line mid, got ${JSON.stringify(courseOrigin)}`);
+  assert.ok(Math.abs(courseOrigin.x) < 2, 'origin must not be a start-line end');
+  // Off-centre mark on the same live field (not the x=0 windward).
+  const origin = { x: 18, y: 40 };
+  const bounds = mapBoundsFromLat(core.map);
+  assert.ok(bounds && bounds.xmax === 50 && bounds.ymax === 100);
+  const msg = encodeVectorGrids(core.bm);
+  const fromVec = ladderState((x, y) => vectorFieldWind(msg, x, y), origin.x, origin.y, { bounds });
+  const fromWind = ladderState((x, y) => core.map.get_wind(x, y), origin.x, origin.y, { bounds });
+  assert.ok(fromVec.some((f) => f.length >= 4) && fromWind.some((f) => f.length >= 4));
+  let maxD = 0, n = 0, outside = 0;
+  const all = [...fromVec, ...fromWind];
+  for (const flat of all) {
+    for (let k = 0; k + 1 < flat.length; k += 2) {
+      const x = flat[k], y = flat[k + 1];
+      if (x < bounds.xmin - 1e-9 || x > bounds.xmax + 1e-9 || y < bounds.ymin - 1e-9 || y > bounds.ymax + 1e-9) outside++;
+    }
+  }
+  for (let li = 0; li < Math.min(fromVec.length, fromWind.length); li++) {
+    const a = fromVec[li], b = fromWind[li];
+    const npts = Math.min(a.length, b.length) / 2;
+    for (let k = 0; k < npts; k++) {
+      const d = Math.hypot(a[k * 2] - b[k * 2], a[k * 2 + 1] - b[k * 2 + 1]);
+      if (d > maxD) maxD = d;
+      n++;
+    }
+  }
+  assert.ok(n > 10, `compared ${n}`);
+  assert.ok(maxD < 4, `max point distance ${maxD.toFixed(2)} m`);
+  assert.equal(outside, 0, `${outside} points left the 100×200 m domain`);
+});
+
 test('server sends one shared vec keyframe and no flow message', async () => {
   const srv = await startServer({ port: 0, adminGate: false, lockstep: true });
-  const url = `ws://127.0.0.1:${srv.port}/?room=vecshare`;
-  const opts = { mapW: 50, mapH: 100, simRes: '2f', oversampling: 8 };
-  const A = new RemoteHost(url, opts, tex(), { WebSocketImpl: WebSocket, coalesce: false });
-  await A.ready;
-  const B = new RemoteHost(url, opts, tex(), { WebSocketImpl: WebSocket, coalesce: false });
-  await B.ready;
-  await A.command({ type: 'restart', scenario: 0 });
-  const room = srv.rooms.get('vecshare');
-  const typesA = [];
-  const origA = A.ws.onmessage;
-  A.ws.onmessage = (e) => { typesA.push(parseServerMessage(e.data).type); origA(e); };
-  A.setField({ on: true, plotType: 3 });
-  B.setField({ on: true, plotType: 0 });
-  for (let k = 0; k < 12; k++) {
-    A.tick({ dt: 1 / 30, held: [], present: true, view: { ...view, show_fields: true } });
+  const A = new RemoteHost(`ws://127.0.0.1:${srv.port}/?room=vecshare`, { mapW: 50, mapH: 100, simRes: '2f', oversampling: 8 }, tex(), { WebSocketImpl: WebSocket, coalesce: false });
+  const B = new RemoteHost(`ws://127.0.0.1:${srv.port}/?room=vecshare`, { mapW: 50, mapH: 100, simRes: '2f', oversampling: 8 }, tex(), { WebSocketImpl: WebSocket, coalesce: false });
+  try {
+    await A.ready;
+    await B.ready;
+    await A.command({ type: 'restart', scenario: 0 });
+    const room = srv.rooms.get('vecshare');
+    const typesA = [];
+    const origA = A.ws.onmessage;
+    A.ws.onmessage = (e) => { typesA.push(parseServerMessage(e.data).type); origA(e); };
+    A.setField({ on: true, plotType: 3 });
+    B.setField({ on: true, plotType: 0 });
+    for (let k = 0; k < 12; k++) {
+      A.tick({ dt: 1 / 30, held: [], present: true, view: { ...view, show_fields: true } });
+      await A.idle();
+    }
+    await sleep(30);
+    assert.ok(A.fieldsReceived >= 8 && B.fieldsReceived >= 8, `A=${A.fieldsReceived} B=${B.fieldsReceived}`);
+    assert.equal(A.lastField.kind, 'vec');
+    assert.equal(B.lastField.kind, 'vec');
+    assert.ok(!typesA.includes('flow'));
+    assert.ok(A.lastFrame && !('flow' in A.lastFrame) && !('ladder' in (A.lastFrame.state || {})));
+    // One encode per due tick (fieldSkip 0), not one per client.
+    assert.ok(room.fieldEncodes <= A.fieldsReceived + 2, `encodes=${room.fieldEncodes} A=${A.fieldsReceived}`);
+    A.setFlow(true);
+    // setFlow must not start a second stream or a flow message.
+    A.tick({ dt: 1 / 30, held: [], present: true, view });
     await A.idle();
+    assert.ok(!typesA.includes('flow'));
+  } finally {
+    A.terminate();
+    B.terminate();
+    await srv.close();
   }
-  await sleep(30);
-  assert.ok(A.fieldsReceived >= 8 && B.fieldsReceived >= 8, `A=${A.fieldsReceived} B=${B.fieldsReceived}`);
-  assert.equal(A.lastField.kind, 'vec');
-  assert.equal(B.lastField.kind, 'vec');
-  assert.ok(!typesA.includes('flow'));
-  assert.ok(A.lastFrame && !('flow' in A.lastFrame) && !('ladder' in (A.lastFrame.state || {})));
-  // One encode per due tick (fieldSkip 0), not one per client.
-  assert.ok(room.fieldEncodes <= A.fieldsReceived + 2, `encodes=${room.fieldEncodes} A=${A.fieldsReceived}`);
-  A.setFlow(true);
-  // setFlow must not start a second stream or a flow message.
-  const e0 = room.fieldEncodes;
-  A.tick({ dt: 1 / 30, held: [], present: true, view });
-  await A.idle();
-  assert.ok(!typesA.includes('flow'));
-  A.terminate();
-  B.terminate();
-  await srv.close();
 });
 
 test('vector field arrives under send=ack with a limited window', async () => {
   const srv = await startServer({ port: 0, adminGate: false });
-  const url = `ws://127.0.0.1:${srv.port}/?room=vecack&send=ack`;
-  const opts = { mapW: 100, mapH: 200, simRes: '2f', oversampling: 8 };
-  const h = new RemoteHost(url, opts, tex(), { WebSocketImpl: WebSocket, coalesce: false });
-  await h.ready;
-  await h.command({ type: 'restart', scenario: 0 });
-  await h.command({ type: 'spawnBoat', name: 'p1' });
-  const room = srv.rooms.get('vecack');
-  const client = [...room.clients][0];
-  const tx = room._tx(client);
-  assert.equal(tx.mode(), 'ack');
-  // Smaller than the old 117 KB flow grid, larger than a vector keyframe + frame.
-  tx.window = Math.min(ACK_MIN_WINDOW, 16 * 1024);
-  h.setFlow(true);
-  await sleep(1500);
-  assert.ok(h.fieldsReceived >= 8, `fields=${h.fieldsReceived} under window=${tx.window}`);
-  assert.ok(h.lastField && h.lastField.kind === 'vec');
-  const v = sampleVectorField(h.lastField, 0, 0);
-  assert.ok(Number.isFinite(v.x) && Number.isFinite(v.y));
-  h.terminate();
-  await srv.close();
+  const h = new RemoteHost(`ws://127.0.0.1:${srv.port}/?room=vecack&send=ack`, { mapW: 100, mapH: 200, simRes: '2f', oversampling: 8 }, tex(), { WebSocketImpl: WebSocket, coalesce: false });
+  try {
+    await h.ready;
+    await h.command({ type: 'restart', scenario: 0 });
+    await h.command({ type: 'spawnBoat', name: 'p1' });
+    const room = srv.rooms.get('vecack');
+    const client = [...room.clients][0];
+    const tx = room._tx(client);
+    // Until the first ack arrives, mode() stays 'legacy'; the policy is ack.
+    assert.equal(tx.policy, 'ack');
+    // Smaller than the old 117 KB flow grid, larger than a vector keyframe + frame.
+    tx.window = Math.min(ACK_MIN_WINDOW, 16 * 1024);
+    h.setFlow(true);
+    await sleep(1500);
+    assert.ok(h.fieldsReceived >= 8, `fields=${h.fieldsReceived} under window=${tx.window}`);
+    assert.ok(h.lastField && h.lastField.kind === 'vec');
+    const v = sampleVectorField(h.lastField, 0, 0);
+    assert.ok(Number.isFinite(v.x) && Number.isFinite(v.y));
+  } finally {
+    h.terminate();
+    await srv.close();
+  }
 });
 
 test('WIRE_VERSION mismatch is a protocol error, not a silent paint', async () => {

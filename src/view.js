@@ -20,6 +20,7 @@ export class View {
     this.show_row_lines = true;
     this.show_rule_labels = true;
     this.show_fields = false;
+    this.show_ladder = true;
 
     this.camera_follow_target = undefined;
     this.camera_follow = false;
@@ -58,6 +59,7 @@ export class View {
   }
 
   input_show_fields(e) { this.show_fields = e; }
+  input_show_ladder(e) { this.show_ladder = !!e; }
   input_show_forces(e) { this.show_forces = e; }
   input_show_refinement(e) { this.show_refinement = !!e; }
   input_show_row_outline(e) { this.show_row_outline = !!e; }

@@ -46,7 +46,7 @@ export const ROOM_CONFIG_KEYS = [
   'wind_speed_mps',
   'dev_mode',
   'barrier',
-  'ladder_lines',
+  'ladder_lines', // ignored: ladders are a per-client Dev setting now
   'amr_auto',
   'root_cell_m',
   'steps_per_frame',
@@ -94,7 +94,6 @@ export const ROOM_CONFIG_DEFAULTS = Object.freeze({
   wind_speed_mps: 4.5,
   dev_mode: false,
   barrier: false,
-  ladder_lines: false,
   amr_auto: true,
   root_cell_m: 2,
   steps_per_frame: 1,
@@ -269,7 +268,6 @@ export function configFromRoomState(roomOrSettings, { scenarioIndex = 0, mapW, m
     wind_speed_mps: Number.isFinite(wind.speed) ? wind.speed : ROOM_CONFIG_DEFAULTS.wind_speed_mps,
     dev_mode: !!st.devMode,
     barrier: !!st.barrier,
-    ladder_lines: !!st.ladder,
     amr_auto: (st.amrMode || 'auto') === 'auto',
     root_cell_m: root.root_cell_m,
     steps_per_frame: root.steps_per_frame,
@@ -417,9 +415,15 @@ export function validateRoomConfig(cfg, checks = {}) {
       out.wind_speed_mps = s;
     }
     // bools
-    for (const k of ['dev_mode', 'barrier', 'ladder_lines', 'amr_auto']) {
+    for (const k of ['dev_mode', 'barrier', 'amr_auto']) {
       need(typeof cfg[k] === 'boolean', k + ' must be true or false');
       out[k] = cfg[k];
+    }
+    // ladder_lines used to be a room option; it is now a per-client Dev
+    // setting. Accept the old key so existing TOML still parses, but do
+    // not copy it into the config or emit an options.ladder command.
+    if ('ladder_lines' in cfg) {
+      need(typeof cfg.ladder_lines === 'boolean', 'ladder_lines must be true or false');
     }
     // sim resolution
     {
@@ -563,8 +567,8 @@ export function commandsFromConfig(cfg, prev = null) {
 
   const amr = cfg.refine_max_level > 0;
   const boatEnergy = cfg.sail_wake_gain > 0;
-  if (!prev || prev.refine_max_level > 0 !== amr || prev.sail_wake_gain > 0 !== boatEnergy || prev.ladder_lines !== cfg.ladder_lines) {
-    cmds.push({ type: 'options', amr, boatEnergy, ladder: !!cfg.ladder_lines });
+  if (!prev || prev.refine_max_level > 0 !== amr || prev.sail_wake_gain > 0 !== boatEnergy) {
+    cmds.push({ type: 'options', amr, boatEnergy });
   }
 
   if (changed('amr_auto')) cmds.push({ type: 'amrMode', mode: cfg.amr_auto ? 'auto' : 'fixed' });

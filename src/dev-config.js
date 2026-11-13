@@ -63,6 +63,7 @@ import {
 // setting is here (test checks the inventory).
 export const DEV_TOML_FIELDS = [
   { key: 'flow_tracers', id: 'show_field' },
+  { key: 'ladder_lines', id: 'ladder' },
   { key: 'tracer_count', id: 'tracers', zeroMeansAuto: true },
   { key: 'tracer_life_s', id: 'tracerLife' },
   { key: 'tracer_tail_s', id: 'tracerTail' },
@@ -97,6 +98,7 @@ export const PLOT_LABELS = ['Plot density', 'Plot x velocity', 'Plot y velocity'
 const HEADER = [
   '# This page only. Apply sends the autopilot gains to boats this page may control.',
   '# A tracer count of 0 is automatic. Default gains are P 2, I 0, D 0 (P only); D was about 29.9 before #200.',
+  '# ladder_lines (default true): 20 m and 40 m downwind contours from this page\'s next course mark.',
   '# rudder_max_deg: manual helm hard-over each side, 10..90 degrees (default 60). The autopilot uses the same limit; penalty turns stay at 50 or less.',
   '# rudder_max_force_n: rudder blade load limit in newtons, 0..5000 (default 200, 0 = none). Over it, the blade takes the nearest angle within the stop whose load is within it.',
   '',
@@ -302,6 +304,7 @@ export function devBoatCommand(cfg) {
 export function devClientEffects(cfg) {
   return {
     flowTracers: cfg.flow_tracers,
+    ladderLines: cfg.ladder_lines,
     tracerCount: cfg.tracer_count === 0 ? null : cfg.tracer_count,
     tracerLife: cfg.tracer_life_s,
     tracerTail: cfg.tracer_tail_s,

@@ -42,6 +42,7 @@ test('defaults match the registry and the boat PD controller', () => {
   assert.equal(DEV_CONFIG_DEFAULTS.autopilot_ki, 0);
   assert.equal(DEV_CONFIG_DEFAULTS.autopilot_kd, AUTOPILOT_KD);
   assert.equal(DEV_CONFIG_DEFAULTS.flow_tracers, true);
+  assert.equal(DEV_CONFIG_DEFAULTS.ladder_lines, true);
   assert.equal(DEV_CONFIG_DEFAULTS.tracer_count, 0);
   assert.equal(DEV_CONFIG_DEFAULTS.boat_trails, true);
   assert.equal(DEV_CONFIG_DEFAULTS.ghost_boat, false);

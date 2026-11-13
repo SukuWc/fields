@@ -94,7 +94,9 @@ export const BOAT_ACTIONS = {
 
 export class Sim {
   // map: Map (map.js) with physics_model_init() done; bm: its Boltzmann.
-  constructor(map, { amr = settingDefault('amr'), boatEnergy = settingDefault('boat_energy'), ladder = settingDefault('ladder'), sailWakeGain = SAIL_WAKE_GAIN } = {}) {
+  // options.ladder remains a sim flag (scenario 21); the visible ladder is
+  // the per-client Dev setting (default on) and no longer uses this default.
+  constructor(map, { amr = settingDefault('amr'), boatEnergy = settingDefault('boat_energy'), ladder = false, sailWakeGain = SAIL_WAKE_GAIN } = {}) {
     this.map = map;
     this.bm = map.bm;
     this.options = { amr, boatEnergy, ladder, sailWakeGain };

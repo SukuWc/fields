@@ -80,6 +80,7 @@ export const SETTINGS = [
   // (src/dev-config.js). control:false = no per-setting DOM. The ids stay
   // the URL keys (?show_field, ?boat_trails, ?sticky_autopilot, …).
   { id: 'show_field', scope: 'player', panel: 'dev', control: false, type: 'bool', default: true, subscription: 'flow' },
+  { id: 'ladder', scope: 'player', panel: 'dev', control: false, type: 'bool', default: true },
   { id: 'tracers', scope: 'player', panel: 'dev', control: false, type: 'number', default: null, nullable: true, min: 10, max: 20000 },
   { id: 'tracerLife', scope: 'player', panel: 'dev', control: false, type: 'number', default: 6, min: 0.5, max: 30 },
   { id: 'tracerTail', scope: 'player', panel: 'dev', control: false, type: 'number', default: 1.5, min: 0, max: 10 },
@@ -121,8 +122,6 @@ export const SETTINGS = [
   { id: 'amr', scope: 'room', panel: 'room', control: false, url: false, type: 'bool', default: true, command: { type: 'options', field: 'amr', key: true }, state: 'amr', devModeDisabled: true },
   { id: 'barrier', scope: 'room', panel: 'room', control: false, url: false, type: 'bool', default: false, command: { type: 'barrier', field: 'on', required: true }, state: 'barrier', devModeDisabled: true },
   { id: 'boat_energy', scope: 'room', panel: 'room', control: false, url: false, type: 'bool', default: true, command: { type: 'options', field: 'boatEnergy', key: true }, state: 'boatEnergy', devModeDisabled: true },
-  // Downwind-distance ladder lines from the first mark (ladder-lines.js).
-  { id: 'ladder', scope: 'room', panel: 'room', control: false, url: false, type: 'bool', default: false, command: { type: 'options', field: 'ladder', key: true }, state: 'ladder' },
   { id: 'simRes', scope: 'room', panel: 'room', control: false, url: false, type: 'enum', default: DEFAULT_SIM_RES, values: Object.keys(SIM_RES_MODES), markDefault: true,
     command: { type: 'simRes', field: 'mode', required: true }, state: 'simRes', invalid: (v) => 'unknown simRes ' + v },
   { id: 'amrMode', scope: 'room', panel: 'room', control: false, url: false, type: 'enum', default: 'auto', values: ['auto', 'fixed'],

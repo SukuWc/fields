@@ -100,12 +100,13 @@ budget_target = -1
 
   const edited = { ...from, wind_speed_mps: 6, ladder_lines: true, amr_auto: false, sail_wake_gain: 0, refine_max_level: 0 };
   const v = validateRoomConfig(edited, { core });
-  check('edited config validates', !v.error, v.error);
+  check('edited config validates (legacy ladder_lines key accepted)', !v.error, v.error);
+  check('validated config does not carry ignored ladder_lines', !v.error && !('ladder_lines' in v.config));
   const r = core.command({ type: 'config', config: v.config });
   check('SimCore config apply has no error', !(r && r.error), JSON.stringify(r));
   const st = core.settings;
-  check('applied: wind 6, ladder on, amrMode fixed, amr off, boatEnergy off',
-    st.wind.speed === 6 && st.ladder === true && st.amrMode === 'fixed' && st.amr === false && st.boatEnergy === false,
+  check('applied: wind 6, amrMode fixed, amr off, boatEnergy off; legacy ladder_lines ignored',
+    st.wind.speed === 6 && st.ladder === false && st.amrMode === 'fixed' && st.amr === false && st.boatEnergy === false,
     JSON.stringify(st));
 }
 
@@ -124,7 +125,7 @@ budget_target = -1
   const ev = sent.find((m) => m.type === 'event' && m.ev && m.ev.type === 'room');
   check('Room accepts config command', result && !(result.r && result.r.error), JSON.stringify(result));
   check('Room broadcasts room state after config', !!ev, JSON.stringify(sent.map((m) => m.type)));
-  check('Room state reflects config', ev && ev.ev.room.settings.wind.speed === 5 && ev.ev.room.settings.ladder === true);
+  check('Room state reflects config; legacy ladder_lines does not set settings.ladder', ev && ev.ev.room.settings.wind.speed === 5 && ev.ev.room.settings.ladder === false);
 
   sent.length = 0;
   const badCfg = { ...okCfg, map_width_m: 50, map_height_m: 100, _mapKey: '50x100' };

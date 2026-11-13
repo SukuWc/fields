@@ -57,12 +57,12 @@ function oldValidateRoomCommand(c, core) {
     }
     case 'options': {
       const out = { type: 'options' };
-      for (const k of ['amr', 'boatEnergy', 'ladder']) {
+      for (const k of ['amr', 'boatEnergy']) {
         if (!(k in c)) continue;
         if (!bool(c[k])) return { error: k + ' must be true | false' };
         out[k] = c[k];
       }
-      return Object.keys(out).length > 1 ? { c: out } : { error: 'options needs amr or boatEnergy or ladder' };
+      return Object.keys(out).length > 1 ? { c: out } : { error: 'options needs amr or boatEnergy' };
     }
     default: return { error: 'unknown command ' + c.type };
   }
