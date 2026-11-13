@@ -433,7 +433,7 @@ Flow tracers are a **separate** Dev setting (`flow_tracers`, default on,
 URL key `?show_field`). Unchecking Show field hides the colour plane but
 does **not** unsubscribe if tracers or ladder lines are on: both are
 computed on the client from the same vector stream (see below). Add
-`show_field=0` (and leave the plane off, and `ladder_lines` off) to drop
+`show_field=0` (and leave the plane off, and `?ladder=0`) to drop
 the stream as well as the per-frame tracer draw.
 
 `?hud=1` shows a small on-screen client readout (not the server `?perf=`
@@ -489,10 +489,15 @@ the existing JS `paintGrids` path (GPU paint is a follow-up).
 The client bilinear-samples the finest covering AMR grid for:
 
 - Flow tracers (`flow_tracers` / `?show_field`)
-- Ladder lines, when the room's `ladder_lines` / `settings.ladder` is
-  on, using the existing `ladder-lines.js` algorithm at the first mark
-  (`state.mk`). The server no longer computes `state.ladder` for remote
-  clients and no longer sends a `flow` message.
+- Ladder lines, when the per-client Dev setting `ladder_lines` is on
+  (default; URL `?ladder=0` turns them off). The existing
+  `ladder-lines.js` algorithm is referenced to the local player's next
+  course-target mark (the first mark after the start before the gun,
+  then the next rounding target; the same progress as the HUD "NEXT"
+  mark). Points are clipped to the map domain. Old room TOML
+  `ladder_lines` keys are ignored. The server no longer computes
+  `state.ladder` for remote clients and no longer sends a `flow`
+  message.
 
 Subscription: `{ type: 'field', on }`. The server encodes **once** per
 due tick (`field_skip`) for every subscriber. The client stays

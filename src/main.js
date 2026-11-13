@@ -78,7 +78,11 @@ import { setupMobileSheet } from './mobile-sheet.js';
 import { setupFullscreenToggle } from './fullscreen-toggle.js';
 import { setupDevView } from './dev-view.js';
 import { windCeilingMps } from './sim-modes.js';
-import { ladderState } from './ladder-lines.js';
+import {
+  ladderOriginFromState,
+  ladderState,
+  mapBoundsFromLat,
+} from './ladder-lines.js';
 import { vectorFieldWind } from './vector-field.js';
 
 import {
@@ -403,10 +407,13 @@ function startClient() {
     const mine = frame.spawned ? ownBoatIds.map((id) => frame.spawned.find((b) => b.id === id)).filter(Boolean) : [];
     followTarget = cameraTarget(mine) || (ownBoatId ? undefined : frame.boat0) || undefined;
     if (frame.fieldSteps > 0 && isPerfOverlayOn()) recordFieldStep(frame.fieldMs);
-    if (host.kind === 'remote' && frame.state && host.room && host.room.settings && host.room.settings.ladder
-        && host.lastField && host.lastField.kind === 'vec' && frame.state.mk && frame.state.mk[0] && !frame.state.ladder) {
-      const mk = frame.state.mk[0];
-      frame.state.ladder = ladderState((x, y) => vectorFieldWind(host.lastField, x, y), mk[0], mk[1]);
+    if (host.kind === 'remote' && frame.state && view.show_ladder
+        && host.lastField && host.lastField.kind === 'vec' && !frame.state.ladder) {
+      const origin = ladderOriginFromState(frame.state, frame.statics, { ownId: ownBoatId });
+      if (origin) {
+        const bounds = mapBoundsFromLat(frame.statics && frame.statics.lat);
+        frame.state.ladder = ladderState((x, y) => vectorFieldWind(host.lastField, x, y), origin.x, origin.y, bounds ? { bounds } : undefined);
+      }
     }
     if (frame.state && frame.statics) {
       // The readout shows this client's own boat in a server room.
@@ -461,9 +468,6 @@ function startClient() {
     let fieldOn = null;
     let devMode = false;
     let freezeReady = false;
-    const syncLadder = () => {
-      host.setLadder(!!(host.room && host.room.settings && host.room.settings.ladder));
-    };
     const syncField = () => {
       const st = fieldModeState(fieldMode, { boxOn: fieldBox.checked, devMode, freezeReady });
       setFieldVisible(st.visible);
@@ -481,8 +485,6 @@ function startClient() {
       if (fieldBox.checked) freezeReady = false;
       syncField();
     });
-    host.on((ev) => { if (ev.type === 'room') syncLadder(); });
-    syncLadder();
     syncField();
     return;
   }

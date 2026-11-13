@@ -1,7 +1,15 @@
 // Distance ladder lines (src/ladder-lines.js): downwind path-length level
 // sets from a mark. Uniform wind → straight lines perpendicular to the
 // wind; a local wake deflection bends the line.
-import { ladderLines, ladderState, ladderGuidesFromState, LADDER_DISTANCES_M } from '../src/ladder-lines.js';
+import {
+  ladderLines,
+  ladderState,
+  ladderGuidesFromState,
+  ladderOriginFromState,
+  ladderOriginForSim,
+  mapBoundsFromLat,
+  LADDER_DISTANCES_M,
+} from '../src/ladder-lines.js';
 import { windSample, ConstantWind } from '../src/wind.js';
 
 let failed = 0;
@@ -63,6 +71,66 @@ const near = (a, b, e = 1e-6) => Math.abs(a - b) <= e;
 {
   check('calm wind → no lines', ladderLines(() => windSample(0, 0), 0, 0, [20]).length === 0);
   check('non-finite origin → no lines', ladderLines(() => windSample(0, -0.01), NaN, 0, [20]).length === 0);
+}
+
+// Next-target origin: before the start this is the first course mark, never
+// a start-line pin; after rounding it follows courseTextState / targetIndex.
+{
+  const statics = {
+    course: {
+      n: 3,
+      anchors: [{ x: 0, y: 65 }, { x: 0, y: -45 }, { x: 0, y: 65 }],
+      gates: [null, [{ x: -8, y: -45 }, { x: 8, y: -45 }], null],
+      start: { x: 0, y: -70 },
+      fin: { x: 0, y: -70 },
+    },
+    lat: { w: 50, h: 100, res: 0.5 },
+  };
+  const courseC = [{ x: 0.2, y: 64.8 }, [{ x: -8, y: -45 }, { x: 8, y: -45 }], { x: 0.2, y: 64.8 }];
+  const waiting = ladderOriginFromState(
+    { hud: { own: { 7: { co: { w: 1 } } } }, course: { c: courseC, waiting: true } },
+    statics,
+    { ownId: 7 },
+  );
+  check('before start: origin is the first rounding mark, not the start pin',
+    waiting && Math.abs(waiting.x - 0.2) < 1e-9 && Math.abs(waiting.y - 64.8) < 1e-9,
+    JSON.stringify(waiting));
+  const gate = ladderOriginFromState(
+    { hud: { own: { 7: { co: { i: 1, gate: 1, lap: 1 } } } }, course: { c: courseC } },
+    statics,
+    { ownId: 7 },
+  );
+  check('after rounding: origin follows the next target (leeward gate mid)',
+    gate && Math.abs(gate.x - 0) < 1e-9 && Math.abs(gate.y + 45) < 1e-9,
+    JSON.stringify(gate));
+  const done = ladderOriginFromState({ hud: { co: { done: 1, fin: 1 } } }, statics);
+  check('finish next: no ladder origin (finish is a line, not a mark)', done === null);
+  const fallback = ladderOriginFromState({ hud: {} }, statics);
+  check('no progress yet: first course mark from statics anchors',
+    fallback && fallback.x === 0 && fallback.y === 65, JSON.stringify(fallback));
+  const sim = { course: { marks: [{ x: 0, y: 65 }, { gate: [{ x: -8, y: -45 }, { x: 8, y: -45 }] }], progressFor() { return { courseComplete: false, waitingForStart: true, targetIndex: 0 }; } } };
+  const fromSim = ladderOriginForSim(sim, {});
+  check('ladderOriginForSim before start uses course mark 1', fromSim && fromSim.x === 0 && fromSim.y === 65, JSON.stringify(fromSim));
+}
+
+// Bounds: a start-line origin plus the default 50 m half-width would leave
+// a 100 × 200 m map; clipped polylines stay inside.
+{
+  const cw = new ConstantWind(90, 4.5);
+  const bounds = mapBoundsFromLat({ width: 100, height: 200 });
+  check('mapBoundsFromLat from map width/height', bounds && bounds.xmin === -50 && bounds.xmax === 50 && bounds.ymin === -100 && bounds.ymax === 100);
+  const fromLat = mapBoundsFromLat({ w: 50, h: 100, res: 0.5 });
+  check('mapBoundsFromLat from lattice cells / resolution', fromLat && fromLat.xmin === -50 && fromLat.ymax === 100);
+  const st = ladderState((x, y) => cw.getWind(x, y), 16, -70, { bounds });
+  let n = 0, outside = 0;
+  for (const flat of st) {
+    for (let i = 0; i + 1 < flat.length; i += 2) {
+      n++;
+      const x = flat[i], y = flat[i + 1];
+      if (x < bounds.xmin - 1e-9 || x > bounds.xmax + 1e-9 || y < bounds.ymin - 1e-9 || y > bounds.ymax + 1e-9) outside++;
+    }
+  }
+  check('bounds: ladder from an off-centre start pin stays in the domain', n > 10 && outside === 0, `n=${n} outside=${outside}`);
 }
 
 if (failed) { console.log(`${failed} check(s) failed`); process.exit(1); }

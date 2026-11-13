@@ -31,9 +31,10 @@
 //          k: [cx, cy, radius] | 0 (disk), m: run lengths of the mask | null,
 //          c: [children] }; absent in dev mode
 //   wind   dev mode: flow direction (deg) for the wind arrow
-//   ladder downwind-distance ladder polylines from the first mark
-//          (ladder-lines.js): [[x0,y0,…], …] for 20 m and 40 m when
-//          sim.options.ladder is on and a mark exists
+//   ladder downwind-distance ladder polylines from the next course-target
+//          mark (ladder-lines.js): [[x0,y0,…], …] for 20 m and 40 m when
+//          view.show_ladder is on (player Dev setting; falls back to
+//          sim.options.ladder when the view flag is absent)
 //   gust   moving-column 1σ ellipses (gusts.js): [[x,y,σ_along,σ_cross,ax,ay], …]
 //          for each alive column; (ax,ay) = along-wind unit, cross = (−ay,ax)
 //   bt     transforms of the moving bodies, flat, in statics.bodies order
@@ -58,7 +59,11 @@ import {
 import { markTouchState } from './mark-touch.js';
 import { hudState } from './hud.js';
 import { markExact } from './host-protocol.js';
-import { ladderState } from './ladder-lines.js';
+import {
+  ladderOriginForSim,
+  ladderState,
+  mapBoundsFromLat,
+} from './ladder-lines.js';
 import { gustState } from './gusts.js';
 
 // Mask (Uint8Array, refined = 1) → run lengths, alternating starting with
@@ -180,12 +185,18 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
   s.hud = markExact(hudState(sim, rec));
   if (sim.marks.length) s.mk = sim.marks.map((m) => { const p = m.physics_model.getPosition(); return [p.x, p.y]; });
   // Ladder lines (ladder-lines.js): live field sample so sail wake warps them.
-  // Remote rooms pass view.omitLadder and let the client build the same
-  // polylines from the vector field (main.js).
-  if (sim.options.ladder && sim.marks.length && !(view && view.omitLadder)) {
-    const m = sim.marks[0];
-    const p = m.physics_model.getPosition();
-    s.ladder = ladderState((x, y) => map.get_wind(x, y), p.x, p.y);
+  // Origin is the local player's next course-target mark, not sim.marks[0]
+  // (which may be a start-line pin). Remote rooms pass view.omitLadder and
+  // let the client build the same polylines from the vector field (main.js).
+  // view.show_ladder is the per-client Dev setting; tests and scenario 21
+  // that only set sim.options.ladder still work when the view flag is absent.
+  const wantLadder = view && 'show_ladder' in view ? !!view.show_ladder : !!sim.options.ladder;
+  if (wantLadder && !(view && view.omitLadder)) {
+    const origin = ladderOriginForSim(sim, racing[0] || null);
+    if (origin) {
+      const bounds = mapBoundsFromLat(map) || mapBoundsFromLat({ w: bm.width, h: bm.height, res: bm.resolution });
+      s.ladder = ladderState((x, y) => map.get_wind(x, y), origin.x, origin.y, bounds ? { bounds } : undefined);
+    }
   }
   // Moving-column gust 1σ outlines (gusts.js): centre + σ axes + along unit.
   if (sim.gusts && sim.gusts.columns.length) {

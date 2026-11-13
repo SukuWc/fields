@@ -249,10 +249,12 @@ export function applyDevEffects(effects, { view, host, setTracerParams, setBoatT
   setStickyAutopilot(effects.stickyAutopilot);
   if (view) {
     if (view.input_show_fields) view.input_show_fields(effects.flowTracers);
+    if (view.input_show_ladder) view.input_show_ladder(effects.ladderLines);
     if (view.input_show_forces) view.input_show_forces(effects.showForces);
     if (view.input_show_refinement) view.input_show_refinement(effects.showRefinement);
   }
   if (host && host.setFlow) host.setFlow(effects.flowTracers);
+  if (host && host.setLadder) host.setLadder(effects.ladderLines);
   if (host && host.setPerf) host.setPerf(effects.perf);
   if (setPerfOverlayOn) setPerfOverlayOn(effects.perf);
   if (host && host.command) host.command({ type: 'plot', plotType: effects.plotType, contrastExp: effects.contrastExp });
