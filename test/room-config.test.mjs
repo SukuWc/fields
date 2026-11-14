@@ -8,6 +8,9 @@ import {
   commandsFromConfig, simResForRoot, rootFromSimRes, roomConfigCommit,
   defaultRoomConfig, parseMeanSd, meanSdToToml, gustSpawnerFromConfig,
   roomConfigErrorLine,
+  scenarioFromQuery,
+  standaloneStartConfig,
+  DEFAULT_CUSTOM_COURSE,
 } from '../src/room-config.js';
 import { DEFAULT_SIM_RES } from '../src/sim-modes.js';
 import { parseServerMessage } from '../src/wire-codec.js';
@@ -287,6 +290,67 @@ gust_ramp_s = 1.5
   const r3 = parseAndValidateRoomConfig(unk);
   check('error line: unknown key points at it', !!r3.error && roomConfigErrorLine(unk, r3) === 1, roomConfigErrorLine(unk, r3));
   check('error line: none for a valid config', roomConfigErrorLine(base, null) === null);
+}
+
+// Standalone webapp start: the multiplayer default (custom race course)
+// unless the URL names a scenario.
+{
+  check('scenarioFromQuery: absent → null', scenarioFromQuery('') === null && scenarioFromQuery('?map_size=100x200') === null);
+  check('scenarioFromQuery: integer and "custom"', scenarioFromQuery('?scenario_selector=21') === 21 && scenarioFromQuery('?scenario_selector=0') === 0 && scenarioFromQuery('?scenario_selector=custom') === 'custom');
+  check('scenarioFromQuery: junk → null', scenarioFromQuery('?scenario_selector=abc') === null && scenarioFromQuery('?scenario_selector=-1') === null && scenarioFromQuery('?scenario_selector=') === null);
+
+  const def = standaloneStartConfig(100, 200, null);
+  check('standalone default on the default map is the multiplayer default (custom course)',
+    def.scenario === 'custom' && JSON.stringify(def.custom) === JSON.stringify(DEFAULT_CUSTOM_COURSE)
+      && JSON.stringify({ ...def, custom: null }) === JSON.stringify({ ...ROOM_CONFIG_DEFAULTS, custom: null }),
+    JSON.stringify(def.scenario));
+  check('standalone default equals defaultRoomConfig (the multiplayer Reset preset)',
+    JSON.stringify(def) === JSON.stringify(defaultRoomConfig(100, 200)));
+  const explicit = standaloneStartConfig(100, 200, 21);
+  check('explicit ?scenario_selector=21 wins, same settings, no [custom]',
+    explicit.scenario === 21 && !('custom' in explicit) && explicit.gusts === ROOM_CONFIG_DEFAULTS.gusts && explicit.refine_max_level === ROOM_CONFIG_DEFAULTS.refine_max_level);
+  const zero = standaloneStartConfig(100, 200, 0);
+  check('explicit ?scenario_selector=0 still gives scenario 0', zero.scenario === 0 && !('custom' in zero));
+  const small = standaloneStartConfig(50, 100, null);
+  check('default on a map the course does not fit: scenario 0, page map size',
+    small.scenario === 0 && !('custom' in small) && small.map_width_m === 50 && small.map_height_m === 100);
+  check('explicit "custom" is the default course', standaloneStartConfig(100, 200, 'custom').scenario === 'custom');
+
+  const core = new SimCore({ mapW: 100, mapH: 200, simRes: '2f' });
+  const v = validateRoomConfig(def, { core });
+  check('standalone default validates', !v.error, v.error);
+  const r = core.command({ type: 'config', config: v.config });
+  check('standalone default applies on SimCore', !(r && r.error), JSON.stringify(r));
+  core.tick({ dt: 1 / 30, held: [], present: false, view: {} });
+  const rs = core.roomState();
+  check('standalone default starts the custom race course with a course and start line',
+    rs.scenario && rs.scenario.index === 'custom' && !!core.sim.course && core.sim.course.marks.length === 3 && !!core.sim.startSequence,
+    JSON.stringify(rs.scenario));
+  check('default ROOM_CONFIG_DEFAULTS untouched (frozen custom)', Object.isFrozen(ROOM_CONFIG_DEFAULTS.custom));
+  check('server-style SimCore (no soloBoat): custom course has no boat', core.sim.players.length === 0);
+
+  // Standalone page (LocalHost / worker: soloBoat) gets its own boat on the
+  // course, below the start line, bound to the keys.
+  const solo = new SimCore({ mapW: 100, mapH: 200, simRes: '2f', soloBoat: true });
+  const binds = [];
+  solo.sim.on((ev) => { if (ev.type === 'bindControls') binds.push(solo.sim.players.length); });
+  const sv = validateRoomConfig(standaloneStartConfig(100, 200, null), { core: solo });
+  solo.command({ type: 'config', config: sv.config });
+  for (let i = 0; i < 2; i++) solo.tick({ dt: 1 / 30, held: [], present: false, view: {} });
+  const b = solo.sim.players[0];
+  const by = b && b.physics_model.getPosition().y;
+  check('standalone custom course: one player boat below the start line, keys bound',
+    solo.sim.players.length === 1 && by < -70 && binds.length >= 1 && binds[0] === 1,
+    `players=${solo.sim.players.length} y=${by} binds=${JSON.stringify(binds)}`);
+  // A second restart (Commit again) gives one boat again, not two.
+  solo.command({ type: 'config', config: sv.config });
+  for (let i = 0; i < 2; i++) solo.tick({ dt: 1 / 30, held: [], present: false, view: {} });
+  check('standalone recommit: still one boat', solo.sim.players.length === 1, `players=${solo.sim.players.length}`);
+  // Explicit numbered scenario: unchanged (scenario's own boats only).
+  const solo2 = new SimCore({ mapW: 100, mapH: 200, simRes: '2f', soloBoat: true });
+  solo2.command({ type: 'config', config: validateRoomConfig(standaloneStartConfig(100, 200, 21), { core: solo2 }).config });
+  for (let i = 0; i < 2; i++) solo2.tick({ dt: 1 / 30, held: [], present: false, view: {} });
+  check('explicit scenario 21 in standalone: its own single boat, no extra', solo2.sim.scenarioIndex === 21 && solo2.sim.players.length === 1, `players=${solo2.sim.players.length}`);
 }
 
 if (failed) { console.log(failed + ' FAILED'); process.exit(1); }

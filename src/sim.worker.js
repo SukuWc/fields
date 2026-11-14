@@ -30,7 +30,7 @@ self.onmessage = (e) => {
   const m = e.data;
   switch (m.type) {
     case 'init':
-      core = new SimCore({ ...m.opts, texture: { image: { data: new Uint8Array(0) } } });
+      core = new SimCore({ ...m.opts, soloBoat: true, texture: { image: { data: new Uint8Array(0) } } });
       core.sim.on(onEvent);
       self.postMessage({ type: 'info', info: { ...core.info(), mode: 'client' } });
       break;

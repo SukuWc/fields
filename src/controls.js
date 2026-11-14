@@ -15,6 +15,7 @@ import { settingDefault } from './settings-registry.js';
 import {
   configFromRoomState, stringifyRoomConfig, parseAndValidateRoomConfig, roomConfigErrorLine,
   mapKeyFromDims, ROOM_CONFIG_DEFAULTS, ROOM_CONFIG_BASE, rootFromSimRes, defaultRoomConfig,
+  scenarioFromQuery, standaloneStartConfig,
 } from './room-config.js';
 import { windCeilingMps } from './sim-modes.js';
 import {
@@ -272,6 +273,8 @@ let _windCeiling = windCeilingMps('2f');
 let scenarioCardCollapsed = true;
 let _appliedConfig = null;
 let _dirty = false;
+// Standalone start: settings the page owns over standaloneStartConfig.
+const STANDALONE_PAGE_KEYS = ['map_width_m', 'map_height_m', 'root_cell_m', 'steps_per_frame', 'wind_angle_deg', 'wind_speed_mps', 'dev_mode'];
 let _mapW = ROOM_CONFIG_DEFAULTS.map_width_m;
 let _mapH = ROOM_CONFIG_DEFAULTS.map_height_m;
 let _onLattice = null;
@@ -600,10 +603,10 @@ export function setupControls(host, view, getCamera) {
     applyRoomState(host.room);
     autokeybind(host.bindings || 0);
   } else {
-    // Seed applied config from defaults + host wind/map, then Commit once so
-    // the sim starts on scenario 0 (and any TOML-equivalent defaults).
+    // Seed applied config from defaults + host wind/map, then Commit once.
+    // The scenario and room settings come from standaloneStartConfig below:
+    // the multiplayer default (custom race course) unless the URL names one.
     const seed = {
-      // Local solo keeps scenario 0; the custom course is the remote default.
       ...ROOM_CONFIG_BASE,
       map_width_m: _mapW,
       map_height_m: _mapH,
@@ -622,6 +625,16 @@ export function setupControls(host, view, getCamera) {
       const root = rootFromSimRes(mode);
       seed.root_cell_m = root.root_cell_m;
       seed.steps_per_frame = root.steps_per_frame;
+    }
+    // Standalone default = the multiplayer default room config (custom race
+    // course on the default map, same gusts / refinement / budget), or the
+    // explicit ?scenario_selector. Root cell, steps per frame, wind and dev
+    // mode stay the page's (map size / ?simRes, host wind, dev toggle).
+    {
+      const start = standaloneStartConfig(_mapW, _mapH, scenarioFromQuery(location.search));
+      const keep = {};
+      for (const k of STANDALONE_PAGE_KEYS) keep[k] = seed[k];
+      Object.assign(seed, start, keep);
     }
     // A TOML committed right before a map-size reload wins over the seed.
     let pending = null;
