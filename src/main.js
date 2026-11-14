@@ -79,8 +79,10 @@ import { setupFullscreenToggle } from './fullscreen-toggle.js';
 import { setupDevView } from './dev-view.js';
 import { windCeilingMps } from './sim-modes.js';
 import {
-  ladderOriginFromState,
+  ladderAnchorsFromState,
+  ladderAnchorKey,
   ladderState,
+  createLadderCache,
   mapBoundsFromLat,
 } from './ladder-lines.js';
 import { vectorFieldWind } from './vector-field.js';
@@ -179,6 +181,8 @@ function clientToken(server) {
   }
 }
 let host = null;
+// Client ladder memo (remote rooms): one build per field update / anchor move.
+const remoteLadderCache = createLadderCache();
 try {
   if (_hostChoice.kind === 'worker') {
     host = new WorkerHost(_hostOpts, dataTextureMaterial, { maxInFlight: Number.isInteger(_workerQueue) && _workerQueue >= 0 && _query.has('workerQueue') ? _workerQueue : 4 });
@@ -409,10 +413,17 @@ function startClient() {
     if (frame.fieldSteps > 0 && isPerfOverlayOn()) recordFieldStep(frame.fieldMs);
     if (host.kind === 'remote' && frame.state && view.show_ladder
         && host.lastField && host.lastField.kind === 'vec' && !frame.state.ladder) {
-      const origin = ladderOriginFromState(frame.state, frame.statics, { ownId: ownBoatId });
-      if (origin) {
+      // Rebuilt only when the field message, the map bounds or the anchors
+      // change (frames arrive faster than field updates).
+      const anchors = ladderAnchorsFromState(frame.state, frame.statics, { ownId: ownBoatId });
+      if (anchors) {
+        const field = host.lastField;
         const bounds = mapBoundsFromLat(frame.statics && frame.statics.lat);
-        frame.state.ladder = ladderState((x, y) => vectorFieldWind(host.lastField, x, y), origin.x, origin.y, bounds ? { bounds } : undefined);
+        const bkey = bounds ? [bounds.xmin, bounds.xmax, bounds.ymin, bounds.ymax] : [null, null, null, null];
+        const { origin, toward } = anchors;
+        frame.state.ladder = remoteLadderCache([field, ...bkey, ...ladderAnchorKey(anchors)], () => (
+          ladderState((x, y) => vectorFieldWind(field, x, y), origin.x, origin.y, { toward, bounds })
+        ));
       }
     }
     if (frame.state && frame.statics) {

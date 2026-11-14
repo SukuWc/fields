@@ -494,8 +494,12 @@ The client bilinear-samples the finest covering AMR grid for:
   `ladder-lines.js` algorithm is referenced to the local player's next
   course target (start-line mid before the gun, then the next mark or
   the mid of a gate, then the finish-line mid; the same progress as
-  the HUD "NEXT" / "NEXT START" logic). Points are clipped to the map
-  domain. Old room TOML
+  the HUD "NEXT" / "NEXT START" logic). The lines lie on the side of
+  the target facing the previous point of the leg (previous mark or gate
+  mid, the start on the first leg; the pre-start side before the gun),
+  one every 10 m for the leg length measured along the wind (at most 40
+  lines), and are rebuilt once per field message. Points are clipped to
+  the map domain. Old room TOML
   `ladder_lines` keys are ignored. The server no longer computes
   `state.ladder` for remote clients and no longer sends a `flow`
   message.
