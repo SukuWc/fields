@@ -63,6 +63,7 @@ import { hudState } from './hud.js';
 import { markExact } from './host-protocol.js';
 import {
   ladderAnchorsForSim,
+  ladderDrawable,
   ladderAnchorKey,
   ladderState,
   createLadderCache,
@@ -195,8 +196,8 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
   // Ladder lines (ladder-lines.js): live field sample so sail wake warps them.
   // Origin is the local player's next course target (start-line mid,
   // next mark or gate mid, finish-line mid), not sim.marks[0]
-  // (which may be a start-line pin); the lines run toward the previous
-  // point of the leg, every 10 m for the leg length. Remote rooms pass
+  // (which may be a start-line pin); nothing before the start. The lines
+  // run toward the previous point of the leg, every 10 m for the leg length. Remote rooms pass
   // view.omitLadder and let the client build the same polylines from the
   // vector field (main.js).
   // view.show_ladder is the per-client Dev setting; tests and scenario 21
@@ -206,7 +207,7 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
   const wantLadder = view && 'show_ladder' in view ? !!view.show_ladder : !!sim.options.ladder;
   if (wantLadder && !(view && view.omitLadder)) {
     const anchors = ladderAnchorsForSim(sim, racing[0] || null);
-    if (anchors) {
+    if (ladderDrawable(anchors)) {
       const bounds = mapBoundsFromLat(map) || mapBoundsFromLat({ w: bm.width, h: bm.height, res: bm.resolution });
       let cache = ladderCaches.get(sim);
       if (!cache) {

@@ -19,9 +19,10 @@
 // else upwind (the front walks against the flow).
 //
 // Before the start the target is the start line and there is no previous
-// mark: the lines go on the pre-start side, away from mark 1, for
-// LADDER_PRESTART_LENGTH_M. With no previous point at all (e.g. a mark but
-// no course, scenario 21) they go downwind for LADDER_DEFAULT_LENGTH_M.
+// mark: no ladder lines at all (the anchors carry preStart and callers
+// skip the build). They appear once the boat is racing to mark 1. With no
+// previous point at all (a mark but no course, scenario 21) they go
+// downwind for LADDER_DEFAULT_LENGTH_M.
 //
 // Count and spacing: one line every LADDER_SPACING_M (10 m) up to the leg
 // length measured along the wind (|dot(prev − target, wind unit)|), i.e.
@@ -47,7 +48,6 @@
 export const LADDER_SPACING_M = 10;
 export const LADDER_MAX_LINES = 40;
 export const LADDER_DEFAULT_LENGTH_M = 40;
-export const LADDER_PRESTART_LENGTH_M = 60;
 export const LADDER_HALF_WIDTH_M = 50;
 export const LADDER_MAX_HALF_WIDTH_M = 200;
 export const LADDER_CROSS_MARGIN_M = 30;
@@ -275,20 +275,11 @@ function finishMidFromState(statics) {
   return lineMid(fin) || xyOf(cs && cs.fin);
 }
 
-// Pre-start: a point LADDER_PRESTART_LENGTH_M from the start-line mid,
-// away from mark 1, so the lines fill the pre-start side.
-function preStartToward(startMid, firstMark) {
-  if (!startMid) return null;
-  if (!firstMark) return null;
-  const u = unit(startMid.x - firstMark.x, startMid.y - firstMark.y);
-  if (!u) return null;
-  return { x: startMid.x + u[0] * LADDER_PRESTART_LENGTH_M, y: startMid.y + u[1] * LADDER_PRESTART_LENGTH_M };
-}
-
 // Next target (origin) and the previous point of the leg (toward) from the
 // live sim (local / worker scene-state). Before the start
 // (waitingForStart, or a start sequence with no boat yet): origin is the
-// start-line mid and toward is the pre-start side. After a valid start:
+// start-line mid with preStart set and no toward; ladderDrawable() is
+// false, so no lines are drawn before the start. After a valid start:
 // origin is the current rounding target (a mark, or the mid of a gate) and
 // toward is the previous mark / gate mid, or the course start on the first
 // rounding (the last mark on later laps). When the finish is next
@@ -306,7 +297,7 @@ export function ladderAnchorsForSim(sim, boat = null) {
   if (waiting || !marks) {
     const origin = startMidForSim(sim);
     if (!origin) return null;
-    return { origin, toward: preStartToward(origin, marks && ladderMarkCentre(marks[0])) };
+    return { origin, toward: null, preStart: true };
   }
   const n = marks.length;
   if (p && p.courseComplete) {
@@ -331,7 +322,7 @@ export function ladderOriginForSim(sim, boat = null) {
 
 // Same anchors from compact frame state, for the local player's boat.
 // Reuses courseTextState (hud.own[id].co / hud.co): waiting (co.w) → start
-// mid toward the pre-start side; done → finish mid toward the last mark;
+// mid with preStart (nothing drawn); done → finish mid toward the last mark;
 // otherwise course.c[i] / anchors (gate mid when the target is a gate)
 // toward element i − 1 (the start on lap 1's first leg, the last element
 // on later laps).
@@ -351,7 +342,7 @@ export function ladderAnchorsFromState(state, statics, { ownId } = {}) {
   }
   if (!co || co.w) {
     const start = startMidFromState(statics);
-    if (start) return { origin: start, toward: preStartToward(start, n ? elem(0) : null) };
+    if (start) return { origin: start, toward: null, preStart: true };
     if (co && co.w) return null;
   }
   const i = (co && Number.isInteger(co.i)) ? co.i : 0;
@@ -362,6 +353,12 @@ export function ladderAnchorsFromState(state, statics, { ownId } = {}) {
   else if (co && co.lap >= 2 && n) toward = elem(n - 1);
   else toward = xyOf(cs && cs.start) || startMidFromState(statics);
   return { origin, toward: toward || null };
+}
+
+// Whether to draw ladder lines for these anchors: never before the start
+// (target is the start line).
+export function ladderDrawable(anchors) {
+  return !!(anchors && anchors.origin && !anchors.preStart);
 }
 
 export function ladderOriginFromState(state, statics, opts) {

@@ -10,6 +10,7 @@ import {
   ladderOriginForSim,
   ladderAnchorsFromState,
   ladderAnchorsForSim,
+  ladderDrawable,
   ladderPlan,
   ladderDistances,
   createLadderCache,
@@ -238,10 +239,12 @@ const near = (a, b, e = 1e-6) => Math.abs(a - b) <= e;
   };
   const c = [{ x: 0, y: 65 }, [{ x: -8, y: -45 }, { x: 8, y: -45 }]];
   const pre = ladderAnchorsFromState({ hud: { co: { w: 1 } }, course: { c } }, statics);
-  check('pre-start: origin start mid, toward the pre-start side (away from mark 1)',
-    pre && pre.origin.y === -70 && pre.toward && pre.toward.y < -70, JSON.stringify(pre));
+  check('pre-start: target is the start mid, but no ladder lines are drawn',
+    pre && pre.origin.y === -70 && pre.preStart && !pre.toward && !ladderDrawable(pre), JSON.stringify(pre));
+  const noCo = ladderAnchorsFromState({ hud: {}, course: { c } }, statics);
+  check('no progress yet, with a start line: nothing drawn', !ladderDrawable(noCo), JSON.stringify(noCo));
   const leg1 = ladderAnchorsFromState({ hud: { co: { i: 0, lap: 1 } }, course: { c } }, statics);
-  check('first leg: toward the start', leg1 && leg1.origin.y === 65 && leg1.toward.y === -70, JSON.stringify(leg1));
+  check('first leg: toward the start, drawn', leg1 && leg1.origin.y === 65 && leg1.toward.y === -70 && ladderDrawable(leg1), JSON.stringify(leg1));
   const gate = ladderAnchorsFromState({ hud: { co: { i: 1, lap: 1, gate: 1 } }, course: { c } }, statics);
   check('leeward gate: toward the windward mark', gate && gate.origin.y === -45 && gate.toward.y === 65, JSON.stringify(gate));
   const lap2 = ladderAnchorsFromState({ hud: { co: { i: 0, lap: 2 } }, course: { c } }, statics);
@@ -256,6 +259,10 @@ const near = (a, b, e = 1e-6) => Math.abs(a - b) <= e;
     _p: { courseComplete: false, waitingForStart: false, target: 1, targetIndex: 1 },
   };
   const sim = { course };
+  course._p = { courseComplete: false, waitingForStart: true, target: 0, targetIndex: 0 };
+  const simPre = ladderAnchorsForSim({ course, startSequence: { line: { mid: { x: 0, y: -70 } } } }, {});
+  check('sim pre-start: no ladder lines', simPre && simPre.preStart && !ladderDrawable(simPre), JSON.stringify(simPre));
+  course._p = { courseComplete: false, waitingForStart: false, target: 1, targetIndex: 1 };
   const g = ladderAnchorsForSim(sim, {});
   check('sim: gate target toward the windward mark', g && g.origin.y === -45 && g.toward.y === 65, JSON.stringify(g));
   course._p = { courseComplete: false, waitingForStart: false, target: 2, targetIndex: 0 };
@@ -265,7 +272,7 @@ const near = (a, b, e = 1e-6) => Math.abs(a - b) <= e;
   const l1 = ladderAnchorsForSim(sim, {});
   check('sim: first rounding toward the course start', l1 && l1.toward.y === -70, JSON.stringify(l1));
   const noCourse = ladderAnchorsForSim({ course: null, marks: [{ x: 0, y: 40 }] }, null);
-  check('sim without a course (scenario 21): the mark, no previous point', noCourse && noCourse.origin.y === 40 && noCourse.toward === null, JSON.stringify(noCourse));
+  check('sim without a course (scenario 21): the mark, no previous point, drawn', noCourse && noCourse.origin.y === 40 && noCourse.toward === null && ladderDrawable(noCourse), JSON.stringify(noCourse));
 }
 
 // Cache: rebuild only when the key changes.

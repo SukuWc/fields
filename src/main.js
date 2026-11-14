@@ -80,6 +80,7 @@ import { setupDevView } from './dev-view.js';
 import { windCeilingMps } from './sim-modes.js';
 import {
   ladderAnchorsFromState,
+  ladderDrawable,
   ladderAnchorKey,
   ladderState,
   createLadderCache,
@@ -416,7 +417,7 @@ function startClient() {
       // Rebuilt only when the field message, the map bounds or the anchors
       // change (frames arrive faster than field updates).
       const anchors = ladderAnchorsFromState(frame.state, frame.statics, { ownId: ownBoatId });
-      if (anchors) {
+      if (ladderDrawable(anchors)) {
         const field = host.lastField;
         const bounds = mapBoundsFromLat(frame.statics && frame.statics.lat);
         const bkey = bounds ? [bounds.xmin, bounds.xmax, bounds.ymin, bounds.ymax] : [null, null, null, null];
