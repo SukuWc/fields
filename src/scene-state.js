@@ -31,8 +31,10 @@
 //          k: [cx, cy, radius] | 0 (disk), m: run lengths of the mask | null,
 //          c: [children] }; absent in dev mode
 //   wind   dev mode: flow direction (deg) for the wind arrow
-//   ladder downwind-distance ladder polylines from the next course target
-//          (start/gate/finish mid or a mark; ladder-lines.js): [[x0,y0,…], …] for 20 m and 40 m when
+//   ladder wind-distance ladder polylines from the next course target
+//          (start/gate/finish mid or a mark; ladder-lines.js) toward the
+//          previous point of the leg: [[x0,y0,…], …], one every 10 m for
+//          the leg length (max 40), when
 //          view.show_ladder is on (player Dev setting; falls back to
 //          sim.options.ladder when the view flag is absent)
 //   gust   moving-column 1σ ellipses (gusts.js): [[x,y,σ_along,σ_cross,ax,ay], …]
@@ -60,8 +62,11 @@ import { markTouchState } from './mark-touch.js';
 import { hudState } from './hud.js';
 import { markExact } from './host-protocol.js';
 import {
-  ladderOriginForSim,
+  ladderAnchorsForSim,
+  ladderDrawable,
+  ladderAnchorKey,
   ladderState,
+  createLadderCache,
   mapBoundsFromLat,
 } from './ladder-lines.js';
 import { gustState } from './gusts.js';
@@ -161,6 +166,10 @@ export function sceneStatics(sim, ids, bodies = bodyScene(sim.map.world, ids)) {
   return st;
 }
 
+// Ladder memo per sim (scene-state ladder block).
+const ladderCaches = new WeakMap();
+const LADDER_REBUILD_S = 0.1;
+
 export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.map.world, ids)) {
   sim.activate();
   const map = sim.map, bm = sim.bm;
@@ -187,16 +196,28 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
   // Ladder lines (ladder-lines.js): live field sample so sail wake warps them.
   // Origin is the local player's next course target (start-line mid,
   // next mark or gate mid, finish-line mid), not sim.marks[0]
-  // (which may be a start-line pin). Remote rooms pass view.omitLadder and
-  // let the client build the same polylines from the vector field (main.js).
+  // (which may be a start-line pin); nothing before the start. The lines
+  // run toward the previous point of the leg, every 10 m for the leg length. Remote rooms pass
+  // view.omitLadder and let the client build the same polylines from the
+  // vector field (main.js).
   // view.show_ladder is the per-client Dev setting; tests and scenario 21
   // that only set sim.options.ladder still work when the view flag is absent.
+  // A long leg costs up to ~20k wind samples, so the build is memoised per
+  // sim (anchors rounded to 0.5 m, LADDER_REBUILD_S of sim time).
   const wantLadder = view && 'show_ladder' in view ? !!view.show_ladder : !!sim.options.ladder;
   if (wantLadder && !(view && view.omitLadder)) {
-    const origin = ladderOriginForSim(sim, racing[0] || null);
-    if (origin) {
+    const anchors = ladderAnchorsForSim(sim, racing[0] || null);
+    if (ladderDrawable(anchors)) {
       const bounds = mapBoundsFromLat(map) || mapBoundsFromLat({ w: bm.width, h: bm.height, res: bm.resolution });
-      s.ladder = ladderState((x, y) => map.get_wind(x, y), origin.x, origin.y, bounds ? { bounds } : undefined);
+      let cache = ladderCaches.get(sim);
+      if (!cache) {
+        cache = createLadderCache();
+        ladderCaches.set(sim, cache);
+      }
+      const bucket = Math.floor((sim.rulesTime || 0) / LADDER_REBUILD_S);
+      const key = [map, sim.epoch || 0, bucket, ...ladderAnchorKey(anchors)];
+      const { origin, toward } = anchors;
+      s.ladder = cache(key, () => ladderState((x, y) => map.get_wind(x, y), origin.x, origin.y, { toward, bounds }));
     }
   }
   // Moving-column gust 1σ outlines (gusts.js): centre + σ axes + along unit.

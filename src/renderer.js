@@ -82,6 +82,9 @@ const guidePool = [];
 const RULE_STROKE_M = 0.7;
 const ruleRibbonPool = [];
 const abeamPool = [];
+// Multi-point guide lines (type 'polyline', e.g. ladder lines): one fat
+// line per polyline, regrown when a polyline outgrows its capacity.
+const polylinePool = [];
 // Rule labels are canvas textures on planes. The texture is rebuilt only when
 // the words change; the Rule 15 bar is a scaled quad, so its shrink does not
 // repaint text. Contact flashes reuse one ring texture.
@@ -190,6 +193,28 @@ function abeamLine(index) {
     abeamPool.push(line);
   }
   return abeamPool[index];
+}
+
+function polylineGuide(index, nPts) {
+  let line = polylinePool[index];
+  if (line && fatCapacity(line) >= nPts) return line;
+  if (line) {
+    scene.remove(line);
+    line.geometry.dispose();
+    line.material.dispose();
+  }
+  line = fatLine(Math.max(nPts, 128), markOverlay(fatMaterial({ transparent: true })));
+  line.renderOrder = ORDER_GUIDE;
+  scene.add(line);
+  polylinePool[index] = line;
+  return line;
+}
+
+function updatePolylineGuide(line, r) {
+  setFatPoints(line, r.pts, r.pts.length / 2, r.z !== undefined ? r.z : 0);
+  line.material.color.setHex(r.color !== undefined ? r.color : 0xff0000);
+  line.material.opacity = r.opacity !== undefined ? r.opacity : 1.0;
+  line.visible = true;
 }
 
 function updateAbeamLine(line, r) {
@@ -897,6 +922,7 @@ function animation(t) {
   let poolIdx = 0;
   let ruleIdx = 0;
   let abeamIdx = 0;
+  let polyIdx = 0;
   const ruleLabels = [];
   const contactMarks = [];
 
@@ -911,6 +937,13 @@ function animation(t) {
     }
     if (r.type === 'abeam') {
       updateAbeamLine(abeamLine(abeamIdx++), r);
+      continue;
+    }
+    if (r.type === 'polyline') {
+      if (r.pts && r.pts.length >= 4) {
+        const nPts = r.pts.length / 2;
+        updatePolylineGuide(polylineGuide(polyIdx++, nPts), r);
+      }
       continue;
     }
     if (r.type === 'rule') updateRuleRibbon(ruleRibbon(ruleIdx++), r);
@@ -941,6 +974,9 @@ function animation(t) {
   }
   for (let i = abeamIdx; i < abeamPool.length; i++) {
     abeamPool[i].visible = false;
+  }
+  for (let i = polyIdx; i < polylinePool.length; i++) {
+    polylinePool[i].visible = false;
   }
   renderContacts(contactMarks);
   renderRuleLabels(ruleLabels);
