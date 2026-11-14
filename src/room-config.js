@@ -85,8 +85,8 @@ export const DEFAULT_CUSTOM_COURSE = deepFreeze({
 
 export const ROOM_CONFIG_DEFAULTS = Object.freeze({
   // Remote/server Reset preset (matches live sailzone.app europe-1, incl. the
-  // custom race course). Local solo seeds from this too but keeps scenario 0
-  // (see controls.js).
+  // custom race course). The standalone webapp starts on this too unless the
+  // URL names a scenario (standaloneStartConfig, controls.js).
   scenario: CUSTOM_SCENARIO,
   map_width_m: 100,
   map_height_m: 200,
@@ -114,7 +114,8 @@ export const ROOM_CONFIG_DEFAULTS = Object.freeze({
 });
 
 // Same settings without the race course (scenario 0, no [custom]): the
-// local solo seed and the fallback when the course does not fit the map.
+// base for an explicit standalone ?scenario_selector and the fallback when
+// the course does not fit the map.
 export const ROOM_CONFIG_BASE = Object.freeze(
   Object.fromEntries(Object.entries({ ...ROOM_CONFIG_DEFAULTS, scenario: 0 }).filter(([k]) => k !== 'custom')),
 );
@@ -345,6 +346,36 @@ export function defaultRoomConfig(mapW, mapH) {
     && (!(Number.isFinite(mapH) && mapH > 0) || mapH === ROOM_CONFIG_DEFAULTS.map_height_m);
   const cfg = fits ? { ...ROOM_CONFIG_DEFAULTS } : { ...ROOM_CONFIG_BASE };
   if (cfg.custom) cfg.custom = JSON.parse(JSON.stringify(cfg.custom));
+  if (Number.isFinite(mapW) && mapW > 0) cfg.map_width_m = mapW;
+  if (Number.isFinite(mapH) && mapH > 0) cfg.map_height_m = mapH;
+  return cfg;
+}
+
+// Explicit ?scenario_selector from a page URL: an integer ≥ 0, or "custom"
+// (the default race course). null when absent or not valid.
+export function scenarioFromQuery(search) {
+  const q = new URLSearchParams(search || '');
+  if (!q.has('scenario_selector')) return null;
+  const raw = String(q.get('scenario_selector')).trim();
+  if (raw === CUSTOM_SCENARIO) return CUSTOM_SCENARIO;
+  if (raw === '') return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+/**
+ * Start config for the single-player standalone webapp (local / worker
+ * host). Without an explicit scenario it is the multiplayer default
+ * (defaultRoomConfig: ROOM_CONFIG_DEFAULTS with the [custom] race course
+ * when the page's map is the default size, else scenario 0 with the same
+ * settings). An explicit ?scenario_selector=N starts scenario N with the
+ * same settings and no [custom]; "custom" is the default course.
+ */
+export function standaloneStartConfig(mapW, mapH, scenarioParam = null) {
+  if (scenarioParam === null || scenarioParam === undefined || scenarioParam === CUSTOM_SCENARIO) {
+    return defaultRoomConfig(mapW, mapH);
+  }
+  const cfg = { ...ROOM_CONFIG_BASE, scenario: scenarioParam };
   if (Number.isFinite(mapW) && mapW > 0) cfg.map_width_m = mapW;
   if (Number.isFinite(mapH) && mapH > 0) cfg.map_height_m = mapH;
   return cfg;

@@ -47,7 +47,12 @@ import { CUSTOM_SCENARIO, customLayoutToToml } from './custom-scenario.js';
 // the worker). texture: the painter target, a three.js DataTexture or a plain
 // { image: { data, width, height } }.
 export class SimCore {
-  constructor({ mapW, mapH, windAngle = settingDefault('windAngle'), windSpeed = settingDefault('windSpeed'), simRes = DEFAULT_SIM_RES, texture, oversampling = 8 }) {
+  // soloBoat: single-player standalone page (LocalHost, sim.worker.js). The
+  // custom race course has no boats of its own (remote players join with
+  // spawnBoat), so here the page's player gets one on every custom restart,
+  // bound to the keys. The server Room never sets it.
+  constructor({ mapW, mapH, windAngle = settingDefault('windAngle'), windSpeed = settingDefault('windSpeed'), simRes = DEFAULT_SIM_RES, texture, oversampling = 8, soloBoat = false }) {
+    this.soloBoat = !!soloBoat;
     this.plot = { plotType: 3, contrastExp: 0 };
     this.perf = false;
     this.texture = texture;
@@ -126,6 +131,7 @@ export class SimCore {
           const rc = n === CUSTOM_SCENARIO ? { type: 'restart', scenario: n, layout } : { type: 'restart', scenario: n };
           const r = this.sim.command(rc);
           this._trackSetting(rc, r);
+          this._soloBoatAfterRestart();
           last = r ? { title: r.title, description: r.description, rebuilt, lattice: this.lattice() } : { rebuilt, lattice: this.lattice() };
         } else {
           last = { rebuilt, lattice: this.lattice() };
@@ -137,9 +143,23 @@ export class SimCore {
     }
     const r = this.sim.command(c);
     this._trackSetting(c, r);
+    if (c.type === 'restart') this._soloBoatAfterRestart();
     if (c.type === 'restart') return r ? { title: r.title, description: r.description } : null;
     if (c.type === 'simRes' || c.type === 'amrMode' || c.type === 'refine') return { rebuilt: !!r, lattice: this.lattice() };
     return r;
+  }
+
+  // Standalone custom course: frame 0 builds the layout (start line first,
+  // so spawnPoint puts the boat below it), frame 1 spawns the player's boat
+  // and frame 2 binds it to the keys, like the numbered scenarios.
+  _soloBoatAfterRestart() {
+    if (!this.soloBoat || this.sim.scenarioIndex !== CUSTOM_SCENARIO) return;
+    const sim = this.sim;
+    sim.descriptor = {
+      ...sim.descriptor,
+      1: () => { if (!sim.players.length) sim.spawnBoat({ name: 'You' }); },
+      2: () => { sim.emit({ type: 'bindControls' }); },
+    };
   }
 
   // Room-wide settings record (this.settings) after a command.
@@ -260,7 +280,7 @@ export class SimCore {
 // painter writes straight into the client's DataTexture (no copy).
 export class LocalHost {
   constructor(opts) {
-    this.core = new SimCore(opts);
+    this.core = new SimCore({ ...opts, soloBoat: true });
     this._listeners = [];
     this._frameListeners = [];
     this.lastFrame = null;
