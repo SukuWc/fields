@@ -195,10 +195,7 @@
       .settings-heading { font-weight: bold; padding: 4px 0; letter-spacing: 0.05em; }
       #admin_panel .settings-heading { color: #ffd98a; }
       #admin_status { color: #ffb0a0; }
-      #spectating_note { color: #ffd98a; }
       #touch_controls.spectating .tc-btn { opacity: 0.35; }
-      #touch_controls .tc-spectating { display: none; }
-      #touch_controls.spectating .tc-spectating { display: flex; position: absolute; inset: 0; align-items: center; justify-content: center; text-align: center; padding: 8px; background: rgba(0, 0, 0, 0.55); color: #ffd98a; font: 16px var(--sz-font-ui); z-index: var(--sz-z-base); pointer-events: none; }
       #budget_controls, #budget_controls_br { display: none; }
       body:has(#perf:checked) #budget_controls { display: inline-block; }
       body:has(#perf:checked) #budget_controls_br { display: inline; }
@@ -568,7 +565,6 @@
       body.tc-overlay .tc-btn[data-key="32"] { left: calc(50% - 29px); }
       body.tc-overlay .tc-btn[data-key="88"] { left: calc(50% + 35px); }
       body.tc-overlay .tc-btn[data-key="69"] { left: calc(50% + 99px); }
-      body.tc-overlay #touch_controls.spectating .tc-spectating { top: auto; height: var(--touch-panel-h); }
       body.touch-on.tc-overlay #sim_canvas { height: 100%; }
       /* Leaderboard between the action row and the steer zones: capped, scrolls. */
       body.touch-on.tc-overlay #finish_results { max-height: 52px; box-sizing: border-box; overflow-y: auto; }
@@ -807,6 +803,18 @@
       #instrument_panel .instr-strip-label { display: flex; gap: 6px; align-items: baseline; font-size: var(--sz-fs-xs); font-variant-numeric: tabular-nums; }
       #instrument_panel .instr-strip-range { margin-left: auto; opacity: 0.55; font-size: var(--sz-fs-2xs); white-space: nowrap; }
       #instrument_panel .instr-strip-svg { display: block; width: 100%; height: 30px; }
+      /* Join tab (spectating in a server room): the join-with-boat flow. */
+      #instrument_panel .instr-mode[hidden] { display: none; }
+      #instrument_panel .instr-join { display: none; }
+      #instrument_panel[data-mode="join"] .instr-note { display: none; }
+      #instrument_panel[data-mode="join"] .instr-tiles,
+      #instrument_panel[data-mode="join"] .instr-charts { display: none !important; }
+      #instrument_panel[data-mode="join"] .instr-join { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; max-height: 100%; overflow-y: auto; }
+      #instrument_panel #join_tab_name { flex: 1 1 140px; min-width: 0; max-width: 240px; box-sizing: border-box; font: inherit; padding: 4px 8px; color: #fff; background: var(--sz-navy); border: 1px solid rgba(255,255,255,0.25); border-radius: var(--sz-r-sm); }
+      #instrument_panel .instr-join-btn { flex: none; white-space: nowrap; --sz-btn-bg: var(--sz-yellow); --sz-btn-border: var(--sz-yellow); color: var(--sz-navy); font-weight: 700; }
+      #instrument_panel .instr-join-hint { flex: 1 1 160px; font-size: var(--sz-fs-xs); color: #ffd98a; }
+      #instrument_panel .instr-join-status { flex: 1 1 100%; font-size: var(--sz-fs-xs); color: #ffb0a0; }
+      #instrument_panel .instr-join-status:empty { display: none; }
 
       /* bp-touch */
       .bp-touch #settings_toggle {
@@ -1162,7 +1170,7 @@
       .bp-touch #settings #own_boat_panel { flex-wrap: wrap; gap: 8px; padding: 6px 0; cursor: default; }
       .bp-touch #settings #own_boat_panel[hidden], .bp-touch #settings .setting-row[hidden] { display: none; }
       .bp-touch #settings #boat_name { flex: 1 1 140px; min-width: 0; min-height: var(--sz-tap); box-sizing: border-box; font-size: var(--sz-fs-xl); padding: 4px 8px; }
-      .bp-touch #settings #own_boat_join, .bp-touch #settings #own_boat_leave { flex: none; white-space: nowrap; }
+      .bp-touch #settings #own_boat_leave { flex: none; white-space: nowrap; }
       .bp-touch #settings #own_boat_status { flex: 1 1 100%; font-size: var(--sz-fs-base); opacity: 0.85; }
       .bp-touch #settings #own_boat_status:empty { display: none; }
       /* Checkbox rows are already 48 px tall labels; the box itself grows a little. */
@@ -1316,6 +1324,9 @@
       .bp-phone #instrument_panel[data-mode="chart"] .instr-charts { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
       .bp-phone #instrument_panel .instr-strip { flex: 0 0 62%; }
       .bp-phone #instrument_panel .instr-strip-svg { height: 26px; }
+      .bp-touch #instrument_panel #join_tab_name { min-height: var(--sz-tap); font-size: 16px; }
+      .bp-phone #instrument_panel .instr-join-hint { display: none; }
+      .bp-phone #instrument_panel #join_tab_name { max-width: none; }
       .bp-phone #instrument_panel .instr-tile[data-key="bs"],
       .bp-phone #instrument_panel .instr-tile[data-key="vmg"],
       .bp-phone #instrument_panel .instr-tile[data-key="twa"],
@@ -1522,6 +1533,7 @@
       <section id="instrument_panel" class="sz-panel" data-mode="readout" aria-label="Instruments">
         <div class="instr-head">
           <div class="instr-modes sz-tabs" role="group" aria-label="Instrument mode">
+            <button type="button" class="instr-mode sz-tab" data-mode="join" hidden title="Spectating: join this room with your boat">Join</button>
             <button type="button" class="instr-mode sz-tab" data-mode="readout" aria-pressed="true">Readout</button>
             <button type="button" class="instr-mode sz-tab" data-mode="chart" title="Chart mode: strip charts of the last 30 / 60 / 120 s">Chart</button>
             <button type="button" class="instr-mode sz-tab" data-mode="instrument" disabled title="Instrument mode: coming later">Instrument</button>
@@ -1531,6 +1543,12 @@
         </div>
         <div class="instr-tiles"></div>
         <div class="instr-charts"></div>
+        <div class="instr-join" role="group" aria-label="Join with your boat">
+          <input id="join_tab_name" type="text" placeholder="Your name" maxlength="24" autocomplete="off" aria-label="Your name" title="Name shown on your boat (the same as Player → name)">
+          <button type="button" id="own_boat_join" class="sz-btn instr-join-btn">Join with my boat</button>
+          <span class="instr-join-hint">You are spectating. Join to sail your own boat.</span>
+          <span id="join_tab_status" class="instr-join-status" aria-live="polite"></span>
+        </div>
       </section>
     </div>
     <div id="hud_minimap" class="hud-zone" data-zone="D">
@@ -1550,7 +1568,6 @@
     <pre id="client_perf_hud"></pre>
     <div id="fps" class="dev-only"></div>
     <div id="touch_controls" hidden aria-label="Boat 1 touch controls">
-      <div class="tc-spectating">Spectating · open ☰ and join with your boat to sail</div>
       <button type="button" class="sz-btn tc-btn tc-steer" data-key="37" aria-label="Steer left (hold)">◀<small>steer</small></button>
       <button type="button" class="sz-btn tc-btn" data-key="38" aria-label="Head up (hold)">Head up<small>↑</small></button>
       <button type="button" class="sz-btn tc-btn" data-key="40" aria-label="Bear away (hold)">Bear away<small>↓</small></button>
@@ -1586,13 +1603,11 @@
       <div class="settings-heading" title="Your own view and controls: only this page. Saved in this browser.">Player</div>
       <div id="own_boat_panel" class="setting-row" hidden>
         <input id="boat_name" type="text" placeholder="Your name" maxlength="24" autocomplete="off" size="10" title="Name shown on your boat">
-        <input id="own_boat_join" type="button" value="Join with my boat">
         <input id="own_boat_add" type="button" value="Add second player" title="A second boat on this page: player 2 steers with A / D, W / S, F, G, Q / E, X; player 1 keeps the arrows, Space, Enter, , . /. The camera follows the midpoint of the two boats; zoom with = / -." hidden>
         <input id="own_boat_remove2" type="button" value="Remove player 2" hidden>
         <input id="own_boat_leave" type="button" value="Leave" hidden>
         <div id="own_boat_status"></div>
       </div>
-      <div id="spectating_note" class="setting-row" hidden>Spectating: join with your boat to sail.</div>
       <fieldset class="pref-group"><legend>View</legend>
         <label class="setting-row" title="Opponents inside the 12 m rule gate get a 3 m circle: red = you keep clear, green = you have right of way, yellow = transitional (Rule 15, room, both keep clear). Hull colours do not change."><input id="show_row_outline" autocomplete="off" type="checkbox">Right-of-way circles</label>
         <label class="setting-row" title="Red/green line between two boats while a rule applies: green end has right of way, red end must keep clear"><input id="show_row_lines" autocomplete="off" type="checkbox">Right-of-way lines</label>

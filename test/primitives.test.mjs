@@ -11,7 +11,7 @@ test('settings, sheet and instrument tabs share .sz-tabs / .sz-tab', () => {
   assert.match(html, /class="instr-modes sz-tabs"/);
   assert.equal((html.match(/class="settings-tab sz-tab"/g) || []).length, 3);
   assert.match(html, /id="sheet_tab_board" class="sz-tab"/);
-  assert.equal((html.match(/class="instr-mode sz-tab"/g) || []).length, 3);
+  assert.equal((html.match(/class="instr-mode sz-tab"/g) || []).length, 4);
   // No component rule restyles the tab colours or font.
   for (const body of [...rules('\\.settings-tab'), ...rules('\\.sheet-tabs button')]) {
     assert.doesNotMatch(body, /font|background|border-radius/);

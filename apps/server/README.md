@@ -96,7 +96,7 @@ field messages in `src/remote-host.js` (stash latest keyframe, paint in
 
 ## Player boats
 
-In a remote room, the settings panel (the ☰ menu on phones) shows a name field and **Join with my boat**. The server spawns a boat for that connection (`spawnBoat` → `{ id, index, x, y, name }`). It goes below the start line when there is one, otherwise around boat 0, at least 9 m from every boat and mark, and starts on autopilot. That connection owns the boat:
+In a remote room, a page without a boat (spectating) shows a **Join** tab in the instrument panel, selected by default, with a name field and **Join with my boat**; the settings panel (the ☰ menu on phones) keeps the saved name, **Leave** and the second-player buttons. The server spawns a boat for that connection (`spawnBoat` → `{ id, index, x, y, name }`). It goes below the start line when there is one, otherwise around boat 0, at least 9 m from every boat and mark, and starts on autopilot. That connection owns the boat:
 - its keys, touch buttons and boat commands drive only its own boat (`{ boat: 0 }` is remapped to `{ boatId }`);
 - the camera follows it;
 - it has a name badge and a hull colour picked from the name.

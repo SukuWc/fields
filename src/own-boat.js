@@ -4,7 +4,11 @@
 // only that boat (the server sends this client's key binding, bindControls
 // with boats 1), and the camera follows it. Without a boat (before joining,
 // after Leave) the page is spectating: the server drops its boat commands,
-// it has no key binding, and the player panel and touch panel say so.
+// it has no key binding, the touch buttons dim, and the instrument panel
+// shows its Join tab (instrument-panel.js setSpectating): the name field
+// there (#join_tab_name) mirrors the saved Player name (#boat_name, the one
+// value both read) and "Join with my boat" (#own_boat_join) lives in that tab.
+// The settings drawer keeps the name, Leave and the second-player controls.
 // "Add second player" spawns a second boat owned by the same connection (the
 // server binds two players: see controls.js for the keys) and the camera
 // follows the midpoint of the two. Leave or a disconnect removes the boat(s); a room-wide restart keeps it (the
@@ -19,32 +23,49 @@ function colorFor(name) {
 }
 
 // onChange(ids): called with this client's boat ids (first = followed).
-export function setupOwnBoat(host, onChange) {
-  const panel = document.getElementById('own_boat_panel');
+// savePrefs: saves the Player prefs after a Join-tab name edit (the mirror
+// writes #boat_name programmatically, which player-prefs.js does not save).
+export function setupOwnBoat(host, onChange, { savePrefs = null } = {}, doc = document) {
+  const panel = doc.getElementById('own_boat_panel');
   if (!panel || host.kind !== 'remote') return;
   panel.hidden = false;
-  const join = document.getElementById('own_boat_join');
-  const leave = document.getElementById('own_boat_leave');
-  const add = document.getElementById('own_boat_add');
-  const remove2 = document.getElementById('own_boat_remove2');
-  const nameEl = document.getElementById('boat_name');
-  const status = document.getElementById('own_boat_status');
-  const note = document.getElementById('spectating_note');
-  const touch = document.getElementById('touch_controls');
+  const join = doc.getElementById('own_boat_join');
+  const leave = doc.getElementById('own_boat_leave');
+  const add = doc.getElementById('own_boat_add');
+  const remove2 = doc.getElementById('own_boat_remove2');
+  const nameEl = doc.getElementById('boat_name');
+  const status = doc.getElementById('own_boat_status');
+  const tabName = doc.getElementById('join_tab_name');
+  const tabStatus = doc.getElementById('join_tab_status');
+  const touch = doc.getElementById('touch_controls');
   let own = host.own || [];
   let error = '';
+  // Join-tab name <-> saved Player name: #boat_name holds the value.
+  if (tabName && nameEl) {
+    tabName.value = nameEl.value;
+    const fromSaved = () => { if (tabName.value !== nameEl.value) tabName.value = nameEl.value; };
+    nameEl.addEventListener('input', fromSaved);
+    nameEl.addEventListener('change', fromSaved);
+    tabName.addEventListener('input', () => {
+      nameEl.value = tabName.value;
+      nameEl.dispatchEvent(new Event('input', { bubbles: true }));
+      nameEl.dispatchEvent(new Event('change', { bubbles: true }));
+      if (savePrefs) savePrefs();
+    });
+    tabName.addEventListener('keydown', (e) => { if (e.key === 'Enter' && join) join.click(); });
+  }
   const render = () => {
     const spectating = own.length === 0;
-    join.hidden = !spectating;
+    if (join) join.hidden = !spectating;
     leave.hidden = spectating;
     if (add) add.hidden = spectating || own.length >= 2;
     if (remove2) remove2.hidden = own.length < 2;
     status.textContent = error || (spectating ? '' : own.length > 1
       ? 'Sailing ' + own[0].name + ' (arrows) and ' + own[1].name + ' (A / D, W / S) · zoom = / -'
       : 'Sailing ' + own.map((b) => b.name).join(', ') + ' · arrows / touch steer it');
-    if (note) note.hidden = !spectating;
+    if (tabStatus) tabStatus.textContent = spectating ? error : '';
     if (touch) touch.classList.toggle('spectating', spectating);
-    document.body.classList.toggle('spectating', spectating);
+    doc.body.classList.toggle('spectating', spectating);
   };
   host.on((ev) => {
     if (ev.type !== 'ownBoats') return;
@@ -52,13 +73,14 @@ export function setupOwnBoat(host, onChange) {
     own = ev.boats || [];
     error = '';
     if (own.length && !had) {
-      const follow = document.getElementById('camera_follow');
+      const follow = doc.getElementById('camera_follow');
       if (follow && !follow.checked) { follow.checked = true; follow.dispatchEvent(new Event('change', { bubbles: true })); }
     }
     render();
     onChange(own.map((b) => b.id));
   });
-  join.addEventListener('click', () => {
+  if (join) join.addEventListener('click', () => {
+    if (tabName) nameEl.value = tabName.value;
     const name = nameEl.value.trim();
     host.command({ type: 'spawnBoat', name, color: colorFor(name || String(Math.random())) }).then((r) => {
       if (r && r.error) { error = 'Cannot join: ' + r.error; render(); }
