@@ -318,7 +318,7 @@ function startClient() {
   setupDragLook(view);
   installUrlSettings(undefined, { ids: urlSettingIds({ remote }) });
   // After the URL: saved player prefs fill what the query string leaves unset.
-  installPlayerPrefs();
+  const playerPrefs = installPlayerPrefs();
   // Dev TOML: query wins over the saved document, then Apply (visuals + PID).
   installDevPrefs(document, {
     host,
@@ -402,7 +402,8 @@ function startClient() {
     minimap.setOwnId(ownBoatId);
     mobileStrip.setOwnId(ownBoatId);
     rankChip.setOwnId(ownBoatId);
-  });
+    instruments.setSpectating(ids.length === 0);
+  }, { savePrefs: playerPrefs && playerPrefs.save });
   host.on((ev) => { if (ev.type === 'cleared') followTarget = undefined; });
   host.onFrame((frame) => {
     lastFrame = frame;
