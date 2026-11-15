@@ -1,10 +1,11 @@
 // Instrument panel (zone C, #hud_instruments; UI overhaul PR 5): a mode
-// selector Join | Readout | Chart | Instrument. Readout (PR 5) and Chart (PR 6)
-// modes; Instrument mode is disabled ("coming later"). Join shows only while
-// spectating a server room (setSpectating, from own-boat.js): it is selected
-// whenever the page starts spectating and holds the join-with-boat controls
-// (#join_tab_name, #own_boat_join: wired by own-boat.js). Joining hides it and
-// goes back to the remembered mode (Readout by default). Join is never stored.
+// selector Player menu | Readout | Chart | Instrument. Readout (PR 5) and
+// Chart (PR 6) modes; Instrument mode is disabled ("coming later"). Player
+// menu shows in server rooms only (remote): the own-boat controls (name +
+// Join while spectating; Leave, second player and status once joined; wired
+// by own-boat.js). setSpectating (from own-boat.js) selects it whenever the
+// page starts spectating and switches to Readout once the page has joined;
+// the tab stays. Player menu is never stored as the remembered mode.
 // The mode is remembered in this browser (localStorage 'fields.instrumentMode').
 // The chart window (30 / 60 / 120 s) is remembered too ('fields.instrumentChartWindow').
 // Values: instrument-readout.js (frame state only, own boat by id); chart
@@ -16,7 +17,7 @@ import { SVG_NS } from './svg-chart.js';
 const STORE_KEY = 'fields.instrumentMode';
 const MODES = ['readout', 'chart', 'instrument'];
 const ENABLED = new Set(['readout', 'chart']);
-const JOIN = 'join';
+const PLAYER = 'player';
 const WIN_KEY = 'fields.instrumentChartWindow';
 const SW = 300, SH = 34;
 const UPDATE_MS = 200;
@@ -99,12 +100,13 @@ export function setupInstrumentPanel({ remote = false, lockstep = () => false } 
     }
   };
   let spectating = false;
-  const joinBtn = buttons.find((b) => b.dataset.mode === JOIN) || null;
+  const playerBtn = remote ? buttons.find((b) => b.dataset.mode === PLAYER) || null : null;
+  if (playerBtn) playerBtn.hidden = false;
   const select = (mode, remember) => {
-    if (mode === JOIN ? !(spectating && joinBtn) : !ENABLED.has(mode)) mode = 'readout';
+    if (mode === PLAYER ? !playerBtn : !ENABLED.has(mode)) mode = 'readout';
     root.dataset.mode = mode;
     for (const b of buttons) b.setAttribute('aria-pressed', b.dataset.mode === mode ? 'true' : 'false');
-    if (remember && mode !== JOIN) { try { localStorage.setItem(STORE_KEY, mode); } catch { /* no storage */ } }
+    if (remember && mode !== PLAYER) { try { localStorage.setItem(STORE_KEY, mode); } catch { /* no storage */ } }
     if (typeof drawCharts === 'function') drawCharts();
   };
   for (const b of buttons) b.addEventListener('click', () => { if (!b.disabled) select(b.dataset.mode, true); });
@@ -115,12 +117,12 @@ export function setupInstrumentPanel({ remote = false, lockstep = () => false } 
   };
   select(storedMode(), false);
   const setSpectating = (on) => {
-    on = !!on && !!joinBtn;
+    on = !!on && !!playerBtn;
     if (on === spectating) return;
     spectating = on;
-    if (joinBtn) joinBtn.hidden = !on;
     root.classList.toggle('spectating', on);
-    select(on ? JOIN : storedMode(), false);
+    // spectating: Player menu; just joined: Readout (the tab stays)
+    select(on ? PLAYER : 'readout', false);
   };
 
   let ownId = null;
@@ -142,7 +144,8 @@ export function setupInstrumentPanel({ remote = false, lockstep = () => false } 
   render();
   return {
     setOwnId(id) { ownId = id || null; buf.clear(); render(); drawCharts(); },
-    // true while a server-room page has no boat: show and select the Join tab
+    // true while a server-room page has no boat: select the Player menu tab;
+    // false once it has joined: select Readout
     setSpectating,
     onFrame(state) {
       lastState = state;
