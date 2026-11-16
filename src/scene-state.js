@@ -31,10 +31,14 @@
 //          k: [cx, cy, radius] | 0 (disk), m: run lengths of the mask | null,
 //          c: [children] }; absent in dev mode
 //   wind   dev mode: flow direction (deg) for the wind arrow
-//   ladder straight ladder lines (ladder-lines.js): square to the wind at
-//          the next course target (gate/finish mid or a mark), 10 m apart
-//          on both sides, each clipped to the map: [[x0,y0,x1,y1], …],
-//          none before the start, when view.show_ladder is on (player Dev setting; falls back to
+//   ladder ladder lines (ladder-lines.js): square to the wind at the next
+//          course target (gate/finish mid or a mark), 10 m apart on the
+//          approach side, each between the laylines and inside the map:
+//          [[x0,y0,x1,y1], …]; none before the start; when
+//          view.show_ladder is on
+//   layline the two laylines from that target (50° off dead downwind for
+//          an upwind mark, 20° off dead upwind for a downwind mark) to the
+//          map edge: [[x0,y0,x1,y1], …]; same conditions as ladder (player Dev setting; falls back to
 //          sim.options.ladder when the view flag is absent)
 //   gust   moving-column 1σ ellipses (gusts.js): [[x,y,σ_along,σ_cross,ax,ay], …]
 //          for each alive column; (ax,ay) = along-wind unit, cross = (−ay,ax)
@@ -63,9 +67,8 @@ import { markExact } from './host-protocol.js';
 import {
   ladderAnchorsForSim,
   ladderDrawable,
-  ladderAnchorKey,
-  ladderWindKey,
-  ladderState,
+  ladderBuildKey,
+  ladderGeometry,
   createLadderCache,
   mapBoundsFromLat,
 } from './ladder-lines.js';
@@ -192,16 +195,17 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
   if (racing.some((b) => b.awayUntil != null)) s.aw = racing.map((b) => (b.awayUntil != null ? Math.max(0, Math.ceil((b.awayUntil - nowMs) / 1000)) : null));
   s.hud = markExact(hudState(sim, rec));
   if (sim.marks.length) s.mk = sim.marks.map((m) => { const p = m.physics_model.getPosition(); return [p.x, p.y]; });
-  // Ladder lines (ladder-lines.js): straight, square to the wind sampled
-  // once at the local player's next course target (next mark or gate
-  // mid, finish-line mid), not sim.marks[0] (which may be a start-line
-  // pin); nothing before the start. Every 10 m on both sides, edge to edge
-  // of the map. Remote rooms pass view.omitLadder and let the client build
-  // the same segments from the vector field (main.js).
+  // Ladder lines and laylines (ladder-lines.js): from the wind direction
+  // sampled once at the local player's next course target (next mark or
+  // gate mid, finish-line mid), not sim.marks[0] (which may be a
+  // start-line pin); nothing before the start. Laylines at fixed angles on
+  // the approach side, ladder lines every 10 m between them. Remote rooms
+  // pass view.omitLadder and let the client build the same segments from
+  // the vector field (main.js).
   // view.show_ladder is the per-client Dev setting; tests and scenario 21
   // that only set sim.options.ladder still work when the view flag is absent.
-  // Memoised per sim: rebuilt only when the anchor moves (0.5 m) or the
-  // wind direction at it changes (1°).
+  // Memoised per sim: rebuilt only when the anchor moves (0.5 m), the wind
+  // direction at it changes (1°) or the upwind/downwind side flips.
   const wantLadder = view && 'show_ladder' in view ? !!view.show_ladder : !!sim.options.ladder;
   if (wantLadder && !(view && view.omitLadder)) {
     const anchors = ladderAnchorsForSim(sim, racing[0] || null);
@@ -213,9 +217,10 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
         ladderCaches.set(sim, cache);
       }
       const getWind = (x, y) => map.get_wind(x, y);
-      const key = [map, sim.epoch || 0, ...ladderAnchorKey(anchors), ladderWindKey(getWind, anchors)];
-      const { origin } = anchors;
-      s.ladder = cache(key, () => ladderState(getWind, origin.x, origin.y, { bounds }));
+      const key = [map, sim.epoch || 0, ...ladderBuildKey(getWind, anchors)];
+      const geo = cache(key, () => ladderGeometry(getWind, anchors, { bounds }));
+      s.ladder = geo.ladder;
+      s.layline = geo.layline;
     }
   }
   // Moving-column gust 1σ outlines (gusts.js): centre + σ axes + along unit.

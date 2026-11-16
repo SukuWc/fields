@@ -494,11 +494,14 @@ The client bilinear-samples the finest covering AMR grid for:
   them at the local player's next course target (the next mark or the
   mid of a gate, then the finish-line mid; the same progress as the HUD
   "NEXT" logic; no lines before the gun). The field is sampled once, at
-  that target, and only the wind direction is used: the lines are
-  straight, square to it, every 10 m on both sides of the target (one
-  through it), each clipped to the map so it runs edge to edge. They are
-  rebuilt only when the target moves (0.5 m) or the direction there
-  changes (1°), not on every field message. Old room TOML
+  that target, and only the wind direction is used. Two laylines run
+  from the target to the map edge on the approach side: 50° off dead
+  downwind at an upwind mark, 20° off dead upwind at a downwind mark
+  (the previous mark, or the boat, decides which). Straight lines square
+  to the wind every 10 m from the target run between the laylines,
+  clipped to the map. Everything is rebuilt only when the target moves
+  (0.5 m), the direction there changes (1°) or the side flips, not on
+  every field message. Old room TOML
   `ladder_lines` keys are ignored. The server no longer computes
   `state.ladder` for remote clients and no longer sends a `flow`
   message.

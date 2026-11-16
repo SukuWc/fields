@@ -1,9 +1,15 @@
-// Ladder lines (src/ladder-lines.js): straight lines square to the wind
-// sampled once at the next course target, 10 m apart on both sides, each
-// clipped to the map (edge to edge). None before the start.
+// Ladder lines and laylines (src/ladder-lines.js): wind sampled once at
+// the next course target; laylines at fixed best-VMG angles on the
+// approach side (upwind or downwind mark from the previous point or the
+// boat); ladder rungs every 10 m between them, clipped to the map. None
+// before the start.
 import {
-  ladderLines,
   ladderState,
+  ladderGeometry,
+  ladderSide,
+  laylineHalfAngleDeg,
+  laylineGuidesFromState,
+  ladderBuildKey,
   ladderWindDeg,
   ladderWindKey,
   ladderAnchorKey,
@@ -18,7 +24,10 @@ import {
   LADDER_SPACING_M,
   LADDER_GUIDE_COLOR,
   LADDER_GUIDE_OPACITY,
+  LAYLINE_GUIDE_COLOR,
+  LAYLINE_GUIDE_OPACITY,
 } from '../src/ladder-lines.js';
+import { BEST_VMG_DOWNWIND_DEG, BEST_VMG_UPWIND_DEG } from '../src/boat-draw.js';
 import { windSample, ConstantWind } from '../src/wind.js';
 
 let failed = 0;
@@ -36,74 +45,115 @@ const along = (x, y, ox, oy, dirDeg) => {
   return (x - ox) * Math.cos(t) + (y - oy) * Math.sin(t);
 };
 
-// Uniform wind from +Y (UI 90°): flow −Y, direction −90°. Anchor (0, 40)
-// on a 100 × 200 map: horizontal lines at y = 40 + 10k, k from −14 to 6.
+// Upwind mark: anchor (0, 40), wind from +Y (UI 90°: flow −Y, direction
+// −90°), previous point downwind at (0, −70). Laylines ±50° from dead
+// downwind to the map edge; ladder lines below the mark every 10 m, each
+// between the laylines.
 {
   const cw = new ConstantWind(90, 4.5);
   const getWind = (x, y) => cw.getWind(x, y);
+  const anchors = { origin: { x: 0, y: 40 }, toward: { x: 0, y: -70 } };
   check('wind direction at the anchor: −90° (flow toward −Y)', ladderWindDeg(getWind, 0, 40) === -90);
-  const st = ladderState(getWind, 0, 40, { bounds });
-  check('every line is a straight two-point segment', st.length > 0 && st.every((f) => f.length === 4), `n=${st.length}`);
-  check('lines are horizontal (perpendicular to a −Y wind)', st.every((f) => near(f[1], f[3], 1e-9)));
-  const ys = st.map((f) => f[1]).sort((p, q) => p - q);
-  check('spacing is 10 m', LADDER_SPACING_M === 10 && ys.every((y, i) => i === 0 || near(y - ys[i - 1], 10, 1e-9)));
-  check('both sides of the anchor, covering the whole map: y = −100 … 100 every 10 m (21 lines)',
-    st.length === 21 && near(ys[0], -100, 1e-9) && near(ys[20], 100, 1e-9), `${ys[0]} … ${ys[ys.length - 1]} n=${ys.length}`);
-  check('one line passes through the anchor (offset 0)', ys.some((y) => near(y, 40, 1e-9)));
-  check('each line spans the full map width (x = −50 … 50)', st.every((f) => near(Math.min(f[0], f[2]), -50, 1e-9) && near(Math.max(f[0], f[2]), 50, 1e-9)));
+  check('previous point downwind → upwind mark (side +1)', ladderSide(anchors, -90) === 1);
+  check('half angles reuse the boat-draw constants: 50° up, 20° down',
+    laylineHalfAngleDeg(1) === BEST_VMG_UPWIND_DEG && BEST_VMG_UPWIND_DEG === 50 && laylineHalfAngleDeg(-1) === 180 - BEST_VMG_DOWNWIND_DEG && laylineHalfAngleDeg(-1) === 20);
+  const { ladder, layline } = ladderGeometry(getWind, anchors, { bounds });
+  check('two laylines, each from the mark', layline.length === 2 && layline.every((f) => near(f[0], 0, 1e-9) && near(f[1], 40, 1e-9)));
+  const angs = layline.map((f) => Math.atan2(f[3] - f[1], f[2] - f[0]) * 180 / Math.PI);
+  // Dead downwind is −90°; ±50° → −140° and −40°.
+  check('laylines at ±50° from dead downwind, extending downwind',
+    angs.map((x) => Math.round(x * 1e6) / 1e6).sort((p, q) => p - q).join() === '-140,-40', angs.join());
+  check('laylines end on the map edge', layline.every((f) => onEdge(f[2], f[3], bounds) && inside(f[2], f[3], bounds)));
+  check('ladder lines are straight two-point segments, horizontal (⊥ wind)', ladder.length > 0 && ladder.every((f) => f.length === 4 && near(f[1], f[3], 1e-9)));
+  const ys = ladder.map((f) => f[1]);
+  check('ladder: 10 m spacing from the mark, approach side only, none at the mark (y = 30, 20, …, −100)',
+    ys.length === 14 && ys.every((y, i) => near(y, 30 - 10 * i, 1e-9)), ys.join(','));
+  // The layline at offset d below the mark is at x = ±d·tan 50°.
+  const tan = Math.tan(50 * Math.PI / 180);
+  const endsOnLaylines = ladder.every((f) => {
+    const d = 40 - f[1];
+    const w = d * tan;
+    const ends = [f[0], f[2]].sort((p, q) => p - q);
+    return (near(ends[0], -w, 1e-6) || near(ends[0], -50, 1e-9)) && (near(ends[1], w, 1e-6) || near(ends[1], 50, 1e-9));
+  });
+  check('ladder segments end on the laylines (or the map edge past where they leave the map)', endsOnLaylines);
+  check('near rungs end exactly on the laylines (y = 30: x = ±11.92)', near(ladder[0][0], -10 * tan, 1e-6) && near(ladder[0][2], 10 * tan, 1e-6), `${ladder[0][0]} ${ladder[0][2]}`);
+  check('every endpoint is inside the map', ladder.every((f) => inside(f[0], f[1], bounds) && inside(f[2], f[3], bounds)));
+  // Each rung end lies on its layline: cross product with the layline direction is 0.
+  const onLine = (x, y, f) => near((f[2] - f[0]) * (y - f[1]) - (f[3] - f[1]) * (x - f[0]), 0, 1e-6);
+  check('the rung endpoints inside the map lie on a layline', ladder.slice(0, 4).every((f) => layline.some((l) => onLine(f[0], f[1], l)) && layline.some((l) => onLine(f[2], f[3], l))));
 }
 
-// Rotated wind: 30° off. Lines perpendicular to it, 10 m apart along it,
-// clipped to the map with both ends on its edge; rotating the wind
-// rotates them.
+// Downwind mark: anchor (0, −45), previous mark upwind at (0, 65). Laylines
+// ±20° from dead upwind, extending upwind; rungs above the mark.
 {
-  const dirFor = (uiDeg) => { const cw = new ConstantWind(uiDeg, 4.5); return [(x, y) => cw.getWind(x, y), ladderWindDeg((x, y) => cw.getWind(x, y), 10, 20)]; };
-  const [w60, d60] = dirFor(60);
-  const [w90, d90] = dirFor(90);
+  const cw = new ConstantWind(90, 4.5);
+  const getWind = (x, y) => cw.getWind(x, y);
+  const anchors = { origin: { x: 0, y: -45 }, toward: { x: 0, y: 65 } };
+  check('previous point upwind → downwind mark (side −1)', ladderSide(anchors, -90) === -1);
+  const { ladder, layline } = ladderGeometry(getWind, anchors, { bounds });
+  const angs = layline.map((f) => Math.atan2(f[3] - f[1], f[2] - f[0]) * 180 / Math.PI).map((x) => Math.round(x * 1e6) / 1e6).sort((p, q) => p - q);
+  // Dead upwind is +90°; ±20° → 70° and 110°.
+  check('downwind mark: laylines at ±20° from dead upwind, extending upwind', angs.join() === '70,110', angs.join());
+  // From (0, −45) at 20° off vertical they leave the 100 m wide map at
+  // x = ±50, y = −45 + 50 / tan 20° ≈ 92.4.
+  check('downwind mark: laylines end on the map edge (sides, near the top)', layline.every((f) => near(Math.abs(f[2]), 50, 1e-9) && near(f[3], -45 + 50 / Math.tan(20 * Math.PI / 180), 1e-6)));
+  const ys = ladder.map((f) => f[1]);
+  check('downwind mark: rungs every 10 m above the mark, none at or below it (y = −35 … 95)',
+    ys.length === 14 && ys.every((y, i) => near(y, -35 + 10 * i, 1e-9)), ys.join(','));
+  const tan = Math.tan(20 * Math.PI / 180);
+  check('downwind mark: rungs end on the laylines (x = ±d·tan 20°)', ladder.every((f) => {
+    const d = f[1] + 45;
+    const w = Math.min(d * tan, 50);
+    return near(Math.min(f[0], f[2]), -w, 1e-6) && near(Math.max(f[0], f[2]), w, 1e-6);
+  }));
+  check('downwind mark: the near rung ends exactly on the laylines (y = −35: x = ±3.64)', near(Math.max(ladder[0][0], ladder[0][2]), 10 * tan, 1e-6));
+  const noToward = ladderGeometry(getWind, { origin: { x: 0, y: -45 } }, { bounds });
+  check('no previous point and no boat: counts as an upwind mark', ladderSide({ origin: { x: 0, y: -45 } }, -90) === 1 && noToward.ladder.every((f) => f[1] < -45));
+}
+
+// Rotated wind (UI 60°): laylines and rungs turn with it; rungs stay
+// square to the wind, 10 m apart, ending on the laylines.
+{
+  const mk = (ui) => { const cw = new ConstantWind(ui, 4.5); return (x, y) => cw.getWind(x, y); };
+  const w60 = mk(60), w90 = mk(90);
   const ox = 10, oy = 20;
-  const st = ladderState(w60, ox, oy, { bounds });
-  const lines = ladderLines(ox, oy, d60, bounds);
-  check('rotated wind: direction is 30° from the 90° case', near(Math.abs(d60 - d90), 30, 1e-9), `${d60} vs ${d90}`);
+  const d60 = ladderWindDeg(w60, ox, oy);
   const th = d60 * Math.PI / 180, ux = Math.cos(th), uy = Math.sin(th);
-  const perp = st.every((f) => near((f[2] - f[0]) * ux + (f[3] - f[1]) * uy, 0, 1e-6));
-  check('rotated: every line is perpendicular to the wind at the anchor', st.length > 5 && perp, `n=${st.length}`);
-  const offs = st.map((f) => along(f[0], f[1], ox, oy, d60));
-  const sameOff = st.every((f, i) => near(along(f[2], f[3], ox, oy, d60), offs[i], 1e-6));
-  check('rotated: both ends of a line at the same offset along the wind (straight, square)', sameOff);
-  check('rotated: offsets are k · 10 m, consecutive, one at 0',
-    offs.every((o, i) => near(o, 10 * Math.round(o / 10), 1e-6) && (i === 0 || near(o - offs[i - 1], 10, 1e-6))) && offs.some((o) => near(o, 0, 1e-6)));
-  check('rotated: both ends on the map edge, nothing outside', st.every((f) => onEdge(f[0], f[1], bounds) && onEdge(f[2], f[3], bounds) && inside(f[0], f[1], bounds) && inside(f[2], f[3], bounds)));
-  // Every k whose line crosses the map is there: one more step either way misses it.
-  const ks = lines.map((l) => l.k);
-  const lo = ks[0] - 1, hi = ks[ks.length - 1] + 1;
-  const crosses = (k) => {
-    const corners = [[bounds.xmin, bounds.ymin], [bounds.xmax, bounds.ymin], [bounds.xmin, bounds.ymax], [bounds.xmax, bounds.ymax]];
-    const s = corners.map(([x, y]) => along(x, y, ox, oy, d60) - 10 * k);
-    return Math.min(...s) < -1e-9 && Math.max(...s) > 1e-9;
-  };
-  check('rotated: every crossing line is drawn, none beyond', ks.every(crosses) && !crosses(lo) && !crosses(hi), `k ${ks[0]}…${ks[ks.length - 1]}`);
-  const st90 = ladderState(w90, ox, oy, { bounds });
-  const ang = (f) => Math.atan2(f[3] - f[1], f[2] - f[0]) * 180 / Math.PI;
-  const turned = ((ang(st[0]) - ang(st90[0])) % 180 + 180) % 180;
-  check('rotating the wind by 30° rotates the lines by 30°', near(Math.min(turned, 180 - turned), 30, 1e-6), `${turned}`);
+  const anchors = { origin: { x: ox, y: oy }, toward: { x: ox + 30 * ux, y: oy + 30 * uy } };
+  const g60 = ladderGeometry(w60, anchors, { bounds });
+  const g90 = ladderGeometry(w90, { origin: { x: ox, y: oy }, toward: { x: ox, y: oy - 30 } }, { bounds });
+  check('rotated: rungs perpendicular to the wind at the anchor', g60.ladder.length > 3 && g60.ladder.every((f) => near((f[2] - f[0]) * ux + (f[3] - f[1]) * uy, 0, 1e-6)));
+  const offs = g60.ladder.map((f) => along(f[0], f[1], ox, oy, d60));
+  check('rotated: offsets 10, 20, … downwind', offs.every((o, i) => near(o, 10 * (i + 1), 1e-6)), offs.slice(0, 4).join(','));
+  const lineAng = (f) => Math.atan2(f[3] - f[1], f[2] - f[0]) * 180 / Math.PI;
+  const turn = ((lineAng(g60.layline[0]) - lineAng(g90.layline[0])) % 360 + 360) % 360;
+  check('rotating the wind by 30° rotates the laylines by 30°', near(Math.min(turn, 360 - turn), 30, 1e-6), String(turn));
+  const relAng = g60.layline.map((f) => {
+    const a = Math.atan2(f[3] - f[1], f[2] - f[0]);
+    return Math.round(Math.acos(Math.cos(a) * ux + Math.sin(a) * uy) * 180 / Math.PI * 1e6) / 1e6;
+  });
+  check('rotated: both laylines 50° from dead downwind', relAng.every((x) => near(x, 50, 1e-6)), relAng.join());
+  const tan = Math.tan(50 * Math.PI / 180);
+  const first = g60.ladder[0];
+  check('rotated: first rung half-width is 10·tan 50°', near(Math.hypot(first[2] - first[0], first[3] - first[1]) / 2, 10 * tan, 1e-6));
 }
 
-// Only the wind at the anchor counts: a field that turns sharply away from
-// the anchor gives the same lines as a uniform one with the anchor's wind.
+// Only the wind at the anchor counts.
 {
-  const ox = 0, oy = 40;
-  const uniform = (x, y) => windSample(0, -0.02);
-  const elsewhere = (x, y) => (Math.hypot(x - ox, y - oy) < 1 ? windSample(0, -0.02) : windSample(0.02 * Math.sin(x), -0.01 + 0.005 * y / 100));
-  const a = ladderState(uniform, ox, oy, { bounds });
-  const b = ladderState(elsewhere, ox, oy, { bounds });
-  check('wind elsewhere in the field does not change the lines', a.length > 0 && JSON.stringify(a) === JSON.stringify(b));
+  const anchors = { origin: { x: 0, y: 40 }, toward: { x: 0, y: -70 } };
+  const uniform = () => windSample(0, -0.02);
+  const elsewhere = (x, y) => (Math.hypot(x, y - 40) < 1 ? windSample(0, -0.02) : windSample(0.02 * Math.sin(x), -0.01 + 0.005 * y / 100));
+  const a = ladderGeometry(uniform, anchors, { bounds });
+  const b = ladderGeometry(elsewhere, anchors, { bounds });
+  check('wind elsewhere in the field does not change ladder or laylines', a.ladder.length > 0 && JSON.stringify(a) === JSON.stringify(b));
   let calls = 0;
-  ladderState((x, y) => { calls++; return windSample(0, -0.02); }, ox, oy, { bounds });
+  ladderGeometry(() => { calls++; return windSample(0, -0.02); }, anchors, { bounds });
   check('the wind is sampled once, at the anchor', calls === 1, `calls=${calls}`);
-  const speed = ladderState((x, y) => windSample(0, -0.2), ox, oy, { bounds });
-  check('wind speed is irrelevant', JSON.stringify(speed) === JSON.stringify(a));
+  check('wind speed is irrelevant', JSON.stringify(ladderGeometry(() => windSample(0, -0.2), anchors, { bounds })) === JSON.stringify(a));
   check('direction is rounded to 1° (a 0.3° change keeps the same lines)',
-    JSON.stringify(ladderState(() => windSample(0.02 * Math.sin(0.3 * Math.PI / 180), -0.02 * Math.cos(0.3 * Math.PI / 180)), ox, oy, { bounds })) === JSON.stringify(a));
+    JSON.stringify(ladderGeometry(() => windSample(0.02 * Math.sin(0.3 * Math.PI / 180), -0.02 * Math.cos(0.3 * Math.PI / 180)), anchors, { bounds })) === JSON.stringify(a));
+  check('ladderState is the ladder part', JSON.stringify(ladderState(uniform, 0, 40, { bounds, toward: anchors.toward })) === JSON.stringify(a.ladder));
 }
 
 // Calm / bad input; guides.
@@ -112,11 +162,15 @@ const along = (x, y, ox, oy, dirDeg) => {
   check('no wind sample → no lines', ladderState(() => null, 0, 0, { bounds }).length === 0);
   check('non-finite anchor → no lines', ladderState(() => windSample(0, -0.01), NaN, 0, { bounds }).length === 0);
   const noBounds = ladderState(() => windSample(0, -0.01), 0, 0);
-  check('without bounds: a 400 m square around the anchor (41 lines)', noBounds.length === 41, `n=${noBounds.length}`);
-  const st = ladderState(() => windSample(0, -0.01), 0, 40, { bounds });
-  const guides = ladderGuidesFromState(st);
+  check('without bounds: a 400 m square around the anchor (20 rungs downwind)', noBounds.length === 20, `n=${noBounds.length}`);
+  const geo = ladderGeometry(() => windSample(0, -0.01), { origin: { x: 0, y: 40 }, toward: { x: 0, y: 0 } }, { bounds });
+  const guides = ladderGuidesFromState(geo.ladder);
   check('ladderGuidesFromState: one polyline guide per line, ladder colour and opacity',
-    guides.length === st.length && guides.every((g) => g.type === 'polyline' && g.pts.length === 4 && g.color === LADDER_GUIDE_COLOR && g.opacity === LADDER_GUIDE_OPACITY));
+    guides.length === geo.ladder.length && guides.every((g) => g.type === 'polyline' && g.pts.length === 4 && g.color === LADDER_GUIDE_COLOR && g.opacity === LADDER_GUIDE_OPACITY));
+  const lg = laylineGuidesFromState(geo.layline);
+  check('laylineGuidesFromState: two polyline guides in a distinct colour',
+    lg.length === 2 && lg.every((g) => g.type === 'polyline' && g.color === LAYLINE_GUIDE_COLOR && g.opacity === LAYLINE_GUIDE_OPACITY) && LAYLINE_GUIDE_COLOR !== LADDER_GUIDE_COLOR);
+  check('calm: no laylines either', ladderGeometry(() => windSample(0, 0), { origin: { x: 0, y: 0 } }, { bounds }).layline.length === 0);
   check('empty / short polylines yield no guides', ladderGuidesFromState([[], [1, 2]]).length === 0);
 }
 
@@ -218,11 +272,15 @@ const along = (x, y, ox, oy, dirDeg) => {
   const noCo = ladderAnchorsFromState({ hud: {}, course: { c } }, statics);
   check('no progress yet, with a start line: nothing drawn', !ladderDrawable(noCo), JSON.stringify(noCo));
   const leg1 = ladderAnchorsFromState({ hud: { co: { i: 0, lap: 1 } }, course: { c } }, statics);
-  check('first leg: windward mark, drawn', leg1 && leg1.origin.y === 65 && ladderDrawable(leg1), JSON.stringify(leg1));
+  check('first leg: windward mark toward the start, drawn', leg1 && leg1.origin.y === 65 && leg1.toward.y === -70 && ladderDrawable(leg1), JSON.stringify(leg1));
   const gate = ladderAnchorsFromState({ hud: { co: { i: 1, lap: 1, gate: 1 } }, course: { c } }, statics);
-  check('leeward gate: gate mid', gate && gate.origin.y === -45 && gate.origin.x === 0 && ladderDrawable(gate), JSON.stringify(gate));
+  check('leeward gate: gate mid toward the windward mark', gate && gate.origin.y === -45 && gate.origin.x === 0 && gate.toward.y === 65 && ladderDrawable(gate), JSON.stringify(gate));
+  const lap2 = ladderAnchorsFromState({ hud: { co: { i: 0, lap: 2 } }, course: { c } }, statics);
+  check('lap 2 first mark: toward the last element (gate mid)', lap2 && lap2.toward.x === 0 && lap2.toward.y === -45, JSON.stringify(lap2));
   const fin = ladderAnchorsFromState({ hud: { co: { done: 1, fin: 1 } }, course: { c } }, { ...statics, finish: { mid: { x: 0, y: -70 } } });
-  check('finish leg: finish-line mid, drawn', fin && fin.origin.y === -70 && ladderDrawable(fin), JSON.stringify(fin));
+  check('finish leg: finish-line mid toward the last mark, drawn', fin && fin.origin.y === -70 && fin.toward.y === -45 && ladderDrawable(fin), JSON.stringify(fin));
+  const solo = ladderAnchorsFromState({ hud: { co: { i: 0, lap: 1 } }, boats: [{ id: 's9', px: 3, py: -20 }], course: { c } }, { course: { anchors: [{ x: 0, y: 65 }] } }, { ownId: 's9' });
+  check('state: no previous point → toward the own boat (px, py)', solo && solo.toward && solo.toward.x === 3 && solo.toward.y === -20, JSON.stringify(solo));
 
   const course = {
     marks: [{ x: 0, y: 65 }, { gate: [{ x: -8, y: -45 }, { x: 8, y: -45 }] }],
@@ -234,12 +292,15 @@ const along = (x, y, ox, oy, dirDeg) => {
   check('sim pre-start: no ladder lines', simPre && simPre.preStart && !ladderDrawable(simPre), JSON.stringify(simPre));
   course._p = { courseComplete: false, waitingForStart: false, target: 1, targetIndex: 1 };
   const g = ladderAnchorsForSim({ course }, {});
-  check('sim: gate target is the gate mid', g && g.origin.y === -45 && g.origin.x === 0 && ladderDrawable(g), JSON.stringify(g));
+  check('sim: gate target is the gate mid, toward the windward mark', g && g.origin.y === -45 && g.origin.x === 0 && g.toward.y === 65 && ladderDrawable(g), JSON.stringify(g));
   course._p = { courseComplete: false, waitingForStart: false, target: 2, targetIndex: 0 };
   const l2 = ladderAnchorsForSim({ course }, {});
-  check('sim: lap 2 mark 1', l2 && l2.origin.y === 65, JSON.stringify(l2));
-  const noCourse = ladderAnchorsForSim({ course: null, marks: [{ x: 0, y: 40 }] }, null);
-  check('sim without a course (scenario 21): the mark, drawn', noCourse && noCourse.origin.y === 40 && ladderDrawable(noCourse), JSON.stringify(noCourse));
+  check('sim: lap 2 mark 1 toward the gate mid', l2 && l2.origin.y === 65 && l2.toward.y === -45, JSON.stringify(l2));
+  course._p = { courseComplete: false, waitingForStart: false, target: 0, targetIndex: 0 };
+  const l1 = ladderAnchorsForSim({ course }, {});
+  check('sim: first rounding toward the course start', l1 && l1.toward.y === -70, JSON.stringify(l1));
+  const noCourse = ladderAnchorsForSim({ course: null, marks: [{ x: 0, y: 40 }] }, { x: 8, y: -8 });
+  check('sim without a course (scenario 21): the mark, toward the boat, drawn', noCourse && noCourse.origin.y === 40 && noCourse.toward.x === 8 && noCourse.toward.y === -8 && ladderDrawable(noCourse), JSON.stringify(noCourse));
 }
 
 // Bounds helpers.
@@ -270,6 +331,11 @@ const along = (x, y, ox, oy, dirDeg) => {
   check('cache: wind direction at the anchor changed → rebuild', builds === 2);
   cache(key(w2, c), () => ++builds);
   check('cache: anchor moved → rebuild', builds === 3);
+  const up = { origin: { x: 0, y: 40 }, toward: { x: 1, y: -10 } };
+  const up2 = { origin: { x: 0, y: 40 }, toward: { x: 5, y: -30 } };
+  const down = { origin: { x: 0, y: 40 }, toward: { x: 0, y: 90 } };
+  check('build key: the boat moving on the same side keeps it; flipping the side changes it',
+    JSON.stringify(ladderBuildKey(w1, up)) === JSON.stringify(ladderBuildKey(w1, up2)) && JSON.stringify(ladderBuildKey(w1, up)) !== JSON.stringify(ladderBuildKey(w1, down)));
 }
 
 if (failed) { console.log(`${failed} check(s) failed`); process.exit(1); }

@@ -656,7 +656,7 @@ export function buildScenarios(sim) {
   // Ladder lines / ?ladder=1 (scenario turns it on).
   scenarios[21] = makeScenario(
     "Ladder lines: every 10 m from the mark",
-    "One windward mark and one boat. The amber lines are straight, square to the wind at the mark, and 10 m apart across the whole map; one passes through the mark. They turn with the wind at the mark and ignore the wind anywhere else, so a sail wake does not bend them. Turn on Ladder lines (or ?ladder=1); the scenario also enables them. Arrows steer, Space toggles the autopilot, Enter tacks."
+    "One windward mark and one boat. The two cyan lines are the laylines, 50° either side of dead downwind from the mark (the close-hauled courses into it). The amber lines are straight, square to the wind at the mark, every 10 m below it, and run only between the laylines. Everything turns with the wind at the mark and ignores the wind anywhere else, so a sail wake does not bend them. Turn on Ladder lines (or ?ladder=1); the scenario also enables them. Arrows steer, Space toggles the autopilot, Enter tacks."
   );
   scenarios[21].frames[0] = () => {
     sim.options.ladder = true;

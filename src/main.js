@@ -81,9 +81,8 @@ import { windCeilingMps } from './sim-modes.js';
 import {
   ladderAnchorsFromState,
   ladderDrawable,
-  ladderAnchorKey,
-  ladderWindKey,
-  ladderState,
+  ladderBuildKey,
+  ladderGeometry,
   createLadderCache,
   mapBoundsFromLat,
 } from './ladder-lines.js';
@@ -183,7 +182,7 @@ function clientToken(server) {
   }
 }
 let host = null;
-// Client ladder memo (remote rooms): rebuilt when the anchor moves or the wind direction at it changes.
+// Client ladder / layline memo (remote rooms): rebuilt when the anchor moves, the wind direction at it changes or the side flips.
 const remoteLadderCache = createLadderCache();
 try {
   if (_hostChoice.kind === 'worker') {
@@ -416,18 +415,20 @@ function startClient() {
     if (frame.fieldSteps > 0 && isPerfOverlayOn()) recordFieldStep(frame.fieldMs);
     if (host.kind === 'remote' && frame.state && view.show_ladder
         && host.lastField && host.lastField.kind === 'vec' && !frame.state.ladder) {
-      // Rebuilt only when the map bounds, the anchor (0.5 m) or the wind
-      // direction at the anchor (1°) change: one field sample per frame.
+      // Rebuilt only when the map bounds, the anchor (0.5 m), the wind
+      // direction at the anchor (1°) or the upwind/downwind side change:
+      // one field sample per frame.
       const anchors = ladderAnchorsFromState(frame.state, frame.statics, { ownId: ownBoatId });
       if (ladderDrawable(anchors)) {
         const field = host.lastField;
         const bounds = mapBoundsFromLat(frame.statics && frame.statics.lat);
         const bkey = bounds ? [bounds.xmin, bounds.xmax, bounds.ymin, bounds.ymax] : [null, null, null, null];
         const getWind = (x, y) => vectorFieldWind(field, x, y);
-        const { origin } = anchors;
-        frame.state.ladder = remoteLadderCache([...bkey, ...ladderAnchorKey(anchors), ladderWindKey(getWind, anchors)], () => (
-          ladderState(getWind, origin.x, origin.y, { bounds })
+        const geo = remoteLadderCache([...bkey, ...ladderBuildKey(getWind, anchors)], () => (
+          ladderGeometry(getWind, anchors, { bounds })
         ));
+        frame.state.ladder = geo.ladder;
+        frame.state.layline = geo.layline;
       }
     }
     if (frame.state && frame.statics) {
