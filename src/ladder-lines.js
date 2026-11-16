@@ -376,9 +376,9 @@ export function ladderBuildKey(getWind, anchors) {
 
 // Guides from state.ladder / state.layline (scene-build.js): one
 // 'polyline' guide per segment (flat [x0, y0, x1, y1]), one draw call
-// each. Ladder lines amber, laylines cyan (brighter, so the zone edge
-// reads apart from the rungs).
-export const LADDER_GUIDE_COLOR = 0xffcc33;
+// each. Ladder lines cyan, laylines amber (and slightly more opaque, so
+// the zone edge reads apart from the rungs).
+export const LADDER_GUIDE_COLOR = 0x33ddff;
 export const LADDER_GUIDE_OPACITY = 0.9;
 
 export function ladderGuidesFromState(ladder) {
@@ -396,7 +396,7 @@ export function ladderGuidesFromState(ladder) {
   return guides;
 }
 
-export const LAYLINE_GUIDE_COLOR = 0x33ddff;
+export const LAYLINE_GUIDE_COLOR = 0xffcc33;
 export const LAYLINE_GUIDE_OPACITY = 0.95;
 
 export function laylineGuidesFromState(layline) {

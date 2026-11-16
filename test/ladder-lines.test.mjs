@@ -170,6 +170,8 @@ const along = (x, y, ox, oy, dirDeg) => {
   const lg = laylineGuidesFromState(geo.layline);
   check('laylineGuidesFromState: two polyline guides in a distinct colour',
     lg.length === 2 && lg.every((g) => g.type === 'polyline' && g.color === LAYLINE_GUIDE_COLOR && g.opacity === LAYLINE_GUIDE_OPACITY) && LAYLINE_GUIDE_COLOR !== LADDER_GUIDE_COLOR);
+  check('colours: ladder lines cyan 0x33ddff, laylines amber 0xffcc33',
+    LADDER_GUIDE_COLOR === 0x33ddff && LAYLINE_GUIDE_COLOR === 0xffcc33 && guides[0].color === 0x33ddff && lg[0].color === 0xffcc33);
   check('calm: no laylines either', ladderGeometry(() => windSample(0, 0), { origin: { x: 0, y: 0 } }, { bounds }).layline.length === 0);
   check('empty / short polylines yield no guides', ladderGuidesFromState([[], [1, 2]]).length === 0);
 }
