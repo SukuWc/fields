@@ -156,6 +156,25 @@
       #settings .pref-group > .setting-row[hidden] { display: none; }
       #settings #own_boat_panel { margin: 8px 6px; }
       #settings .pref-footer { display: flex; align-items: center; gap: 8px; margin: 6px; }
+      /* Input mapping (Player tab): a compact grid, one row per device
+         (rows are display: contents radiogroups), option columns Split /
+         Boat 1 / Boat 2 under a header row, bare centred radios. */
+      #settings .input-map-grid {
+        display: grid; grid-template-columns: max-content repeat(3, minmax(0, 1fr)); column-gap: 2px;
+        align-items: center; row-gap: 2px; margin: 2px 0 2px;
+      }
+      #settings .input-map-row { display: contents; }
+      #settings #input_map_group { min-width: 0; }
+      #settings .input-map-head {
+        font: 600 10px/1.4 var(--sz-font-ui); letter-spacing: 0.02em; text-transform: uppercase;
+        text-align: center; opacity: 0.65; white-space: nowrap; padding-bottom: 2px;
+      }
+      #settings .input-map-device { white-space: nowrap; line-height: 1.2; padding: 3px 6px 3px 0; }
+      #settings .input-map-status { display: block; font-size: 10px; line-height: 1.2; opacity: 0.55; white-space: nowrap; }
+      #settings .input-map-cell { display: flex; justify-content: center; align-items: center; height: 100%; min-height: 24px; cursor: pointer; }
+      #settings .input-map-cell input { margin: 0; cursor: pointer; accent-color: var(--sz-yellow); }
+      #settings .input-map-hint { font-size: 10px; line-height: 1.3; opacity: 0.55; margin: 4px 0 0; }
+      #settings .input-map-hint[hidden] { display: none; }
       #settings .prefs-saved { font-size: var(--sz-fs-xs); opacity: 0.6; transition: color 0.3s; }
       #settings .prefs-saved.flash { color: var(--sz-yellow); opacity: 1; }
       /* Room tab TOML editor (PR 4). Errors are amber, not red (red/green = port/starboard). */
@@ -1462,7 +1481,7 @@
 
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-CW3A0XWN.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-DZPyso3X.js"></script>
   </head>
   <body>
 
@@ -1598,8 +1617,17 @@
       </fieldset>
       <fieldset class="pref-group"><legend>Controls</legend>
         <label class="setting-row"><input id="touch" autocomplete="off" type="checkbox" title="Boat 1 Overlay touch buttons over the map. On by default on phones and touch screens. Also ?touch=1 / ?touch=0">Touch controls</label>
-        <label class="setting-row"><input id="gamepad" autocomplete="off" type="checkbox" title="Use a PlayStation gamepad. Cross: autopilot (best VMG), Circle: ease sails (depower), Square: tack, L1 / R1: zoom in / out, left stick: arrow keys. Press a button once so the browser sees the pad. Also ?gamepad=1">Gamepad</label>
+        <label class="setting-row"><input id="gamepad" autocomplete="off" type="checkbox" title="Use PlayStation gamepads (up to two; Input mapping below picks each pad's boat). Cross: autopilot (best VMG), Circle: ease sails (depower), Square: tack, L1 / R1: zoom in / out, left stick: helm and heading target. Press a button once so the browser sees the pad. Also ?gamepad=1">Gamepad</label>
         <label class="setting-row"><input id="vibrate" autocomplete="off" type="checkbox" title="A short buzz when your boat tacks and a double buzz on a new penalty. Phones that support vibration only (not iPhone). On by default; saved in this browser. Also ?vibrate=0">Vibrate</label>
+      </fieldset>
+      <fieldset class="pref-group" id="input_map_group" title="Which boat each input device drives when you sail two boats (a second player). Saved in this browser."><legend>Input mapping</legend>
+        <div class="input-map-grid">
+          <span></span><span class="input-map-head">Split</span><span class="input-map-head">Boat 1</span><span class="input-map-head">Boat 2</span>
+          <div class="input-map-row" role="radiogroup" aria-label="Keyboard controls"><span class="input-map-device">Keyboard</span><label class="input-map-cell" title="Two people on one keyboard: boat 1 arrows, Space, Enter, comma / period / slash; boat 2 A / D, W / S, F, G, Q / E, X"><input type="radio" name="input_map_keyboard" value="split" autocomplete="off" aria-label="Keyboard: Split"></label><label class="input-map-cell" title="The whole keyboard (arrows, Space, Enter, Q / E, X) drives boat 1"><input type="radio" name="input_map_keyboard" value="boat1" autocomplete="off" aria-label="Keyboard: Boat 1"></label><label class="input-map-cell" title="The whole keyboard (arrows, Space, Enter, Q / E, X) drives boat 2"><input type="radio" name="input_map_keyboard" value="boat2" autocomplete="off" aria-label="Keyboard: Boat 2"></label></div>
+          <div class="input-map-row" role="radiogroup" aria-label="Gamepad 1 controls"><span class="input-map-device">Gamepad 1<span class="input-map-status" data-pad-status="0"></span></span><span></span><label class="input-map-cell"><input type="radio" name="input_map_pad1" value="boat1" autocomplete="off" aria-label="Gamepad 1: Boat 1"></label><label class="input-map-cell"><input type="radio" name="input_map_pad1" value="boat2" autocomplete="off" aria-label="Gamepad 1: Boat 2"></label></div>
+          <div class="input-map-row" role="radiogroup" aria-label="Gamepad 2 controls"><span class="input-map-device">Gamepad 2<span class="input-map-status" data-pad-status="1"></span></span><span></span><label class="input-map-cell"><input type="radio" name="input_map_pad2" value="boat1" autocomplete="off" aria-label="Gamepad 2: Boat 1"></label><label class="input-map-cell"><input type="radio" name="input_map_pad2" value="boat2" autocomplete="off" aria-label="Gamepad 2: Boat 2"></label></div>
+        </div>
+        <div class="input-map-hint" id="input_map_hint">Applies when you control two boats.</div>
       </fieldset>
       <div id="wind_info"></div>
       <div style="color:#ffc400;" id="dist_info"></div>
