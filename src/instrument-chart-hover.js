@@ -3,14 +3,16 @@
 // a dot on each line there, and a tooltip with the hovered strip's values
 // and the sample's age ("BSP 2.1 · VMG 1.4 m/s · 12.4s ago"). The tooltip is
 // placed inside the panel (above the strip, else below, clamped to the
-// panel's box). Mouse leave hides it. Touch: press and hold a strip
-// (HOLD_MS without moving) to show it, drag to scrub; a quick swipe still
-// scrolls the strips, release hides it. Values: instrument-chart.js
+// panel's box). Mouse leave hides it. Touch (touch events, not pointer
+// events): press and hold a strip (HOLD_MS within HOLD_SLOP_PX, or the
+// browser's long-press) to show it, drag to scrub; a quick swipe still
+// scrolls the strips; release hides it after LINGER_MS. Values: instrument-chart.js
 // chartHoverAt; refresh() repaints under a still pointer after a redraw.
 import { SVG_NS } from './svg-chart.js';
 
-export const HOLD_MS = 300;
-const HOLD_SLOP_PX = 8;
+export const HOLD_MS = 250;
+export const HOLD_SLOP_PX = 10;
+export const LINGER_MS = 1500;
 
 // strips: [{ st, svg, row }]; hitAt(st, x) → chartHoverAt result or null.
 // w: the strips' viewBox width.
@@ -80,34 +82,77 @@ export function bindChartHover({ root, chartsEl, strips, hitAt, w, doc = documen
     tip.style.top = pos.top + 'px';
   };
 
+  // Mouse / pen: pointer events. Touch is handled with touch events below
+  // (pointer events for touch are cancelled by the browser's own long-press /
+  // pan handling, which used to kill the hold right after it showed).
   chartsEl.addEventListener('pointermove', (e) => {
-    if (e.pointerType === 'touch') {
-      if (holding) { const k = active >= 0 ? active : stripAt(e.target); if (k >= 0) paint(k, e.clientX); return; }
-      if (holdTimer && start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > HOLD_SLOP_PX) { clearTimeout(holdTimer); holdTimer = null; }
-      return;
-    }
+    if (e.pointerType === 'touch') return;
     const k = stripAt(e.target);
     if (k < 0) hide(); else paint(k, e.clientX);
   });
   chartsEl.addEventListener('pointerleave', (e) => { if (e.pointerType !== 'touch') hide(); });
-  chartsEl.addEventListener('pointerdown', (e) => {
-    if (e.pointerType !== 'touch') return;
+
+  // Touch: hold HOLD_MS within HOLD_SLOP_PX to show, then drag to scrub
+  // (touchmove cancelled so the strips do not scroll); moving farther first
+  // is a swipe and scrolls as usual. The browser's long-press (contextmenu)
+  // is cancelled on the strips and also starts the hold if the timer has not.
+  // Release keeps the tooltip LINGER_MS (the finger hid it), then hides; a
+  // touchcancel (the browser took the gesture) does the same.
+  let touchId = null, lingerTimer = null;
+  const touchOf = (e) => {
+    const list = e.changedTouches || e.touches || [];
+    for (let n = 0; n < list.length; n++) if (touchId === null || list[n].identifier === touchId) return list[n];
+    return null;
+  };
+  const activate = () => {
+    clearTimeout(holdTimer); holdTimer = null;
+    if (!start || start.k < 0) return;
+    holding = true;
+    paint(start.k, start.x);
+  };
+  const linger = () => {
+    clearTimeout(lingerTimer);
+    lingerTimer = setTimeout(() => { lingerTimer = null; if (!holding) hide(); }, LINGER_MS);
+  };
+  const endTouch = (e) => {
+    const t = touchOf(e);
+    if (touchId !== null && !t) return;
+    touchId = null;
+    clearTimeout(holdTimer); holdTimer = null;
+    if (holding) { holding = false; linger(); }
+    start = null;
+  };
+  chartsEl.addEventListener('touchstart', (e) => {
+    if (!e.touches || e.touches.length !== 1) { endTouch(e); return; }
+    const t = e.touches[0];
     const k = stripAt(e.target);
     if (k < 0) return;
-    start = { x: e.clientX, y: e.clientY };
+    clearTimeout(lingerTimer); lingerTimer = null;
+    touchId = t.identifier;
+    start = { x: t.clientX, y: t.clientY, k };
     clearTimeout(holdTimer);
-    holdTimer = setTimeout(() => { holdTimer = null; holding = true; paint(k, start.x); }, HOLD_MS);
+    holdTimer = setTimeout(activate, HOLD_MS);
+  }, { passive: true });
+  chartsEl.addEventListener('touchmove', (e) => {
+    const t = touchOf(e);
+    if (!t || !start) return;
+    if (holding) {
+      if (e.cancelable) e.preventDefault();
+      paint(start.k, t.clientX);
+      return;
+    }
+    if (holdTimer && Math.hypot(t.clientX - start.x, t.clientY - start.y) > HOLD_SLOP_PX) {
+      clearTimeout(holdTimer); holdTimer = null; start = null; touchId = null;
+    }
+  }, { passive: false });
+  chartsEl.addEventListener('touchend', endTouch);
+  chartsEl.addEventListener('touchcancel', endTouch);
+  // Long-press: no context menu / callout on the strips; it starts the hold too.
+  chartsEl.addEventListener('contextmenu', (e) => {
+    if (stripAt(e.target) < 0) return;
+    e.preventDefault();
+    if (!holding && start && touchId !== null) activate();
   });
-  const endTouch = (e) => {
-    if (e.pointerType !== 'touch') return;
-    clearTimeout(holdTimer); holdTimer = null;
-    if (holding) { holding = false; hide(); }
-  };
-  chartsEl.addEventListener('pointerup', endTouch);
-  chartsEl.addEventListener('pointercancel', endTouch);
-  // While holding, a drag scrubs instead of scrolling the strips.
-  chartsEl.addEventListener('touchmove', (e) => { if (holding && e.cancelable) e.preventDefault(); }, { passive: false });
-  chartsEl.addEventListener('contextmenu', (e) => { if (holding) e.preventDefault(); });
 
   return {
     tip,

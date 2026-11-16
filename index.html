@@ -778,6 +778,9 @@
       #instrument_panel .instr-strip-svg { display: block; width: 100%; height: 30px; }
       /* Chart hover (instrument-chart-hover.js): crosshair + tooltip inside the panel. */
       #instrument_panel[data-mode="chart"] .instr-strip-svg { cursor: crosshair; }
+      /* No long-press callout, text selection or tap flash on the strips (the
+         hold-to-inspect gesture owns the long press). */
+      #instrument_panel .instr-charts { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
       #instrument_panel .instr-tip {
         display: none; position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none;
         padding: 2px 7px; border-radius: var(--sz-r-sm); white-space: nowrap;

@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { ChartBuffer, CHART_STRIPS, chartHoverAt, formatChartValue } from '../src/instrument-chart.js';
-import { bindChartHover, tipPosition, HOLD_MS } from '../src/instrument-chart-hover.js';
+import { bindChartHover, tipPosition, HOLD_MS, HOLD_SLOP_PX, LINGER_MS } from '../src/instrument-chart-hover.js';
 
 const strip = (k) => CHART_STRIPS.find((s) => s.key === k);
 const sample = (i) => ({ boatId: 'b', bs: i / 10, vmg: 1, tws: 4, aws: NaN, twa: -40, twd: 90.4, heading: 359.6 });
@@ -119,24 +119,72 @@ test('bindChartHover: mouse move shows the crosshair on every strip and the tool
   assert.ok(h.strips.every((s) => s.hover.g.style.display === 'none'));
 });
 
-test('bindChartHover: a touch swipe does not show it; press and hold does, release hides', async () => {
+const touch = (target, x, y = 610, id = 1) => ({ target, touches: [{ identifier: id, clientX: x, clientY: y }], changedTouches: [{ identifier: id, clientX: x, clientY: y }] });
+const lift = (target, x, id = 1) => ({ target, touches: [], changedTouches: [{ identifier: id, clientX: x, clientY: 610 }] });
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+test('touch: a swipe (moved past the slop before the hold) scrolls, no tooltip', async () => {
   const h = harness();
-  const t = { pointerType: 'touch', target: h.strips[0].svg };
-  h.chartsEl.fire('pointerdown', { ...t, clientX: 100, clientY: 610 });
-  h.chartsEl.fire('pointermove', { ...t, clientX: 140, clientY: 612 });
-  await new Promise((r) => setTimeout(r, HOLD_MS + 50));
-  assert.equal(h.hover.tip.classList.contains('on'), false, 'moved before the hold: scroll, no tooltip');
-  h.chartsEl.fire('pointerup', t);
-  h.chartsEl.fire('pointerdown', { ...t, clientX: 100, clientY: 610 });
-  await new Promise((r) => setTimeout(r, HOLD_MS + 50));
-  assert.ok(h.hover.tip.classList.contains('on'));
+  const svg = h.strips[0].svg;
+  h.chartsEl.fire('touchstart', touch(svg, 100));
   let prevented = false;
-  h.chartsEl.fire('touchmove', { preventDefault() { prevented = true; } });
-  assert.ok(prevented, 'drag scrubs instead of scrolling while held');
-  h.chartsEl.fire('pointermove', { ...t, clientX: 300, clientY: 610 });
-  assert.match(h.hover.tip.textContent, /now$/);
-  h.chartsEl.fire('pointerup', t);
+  h.chartsEl.fire('touchmove', { ...touch(svg, 100 + HOLD_SLOP_PX + 5), preventDefault() { prevented = true; } });
+  await wait(HOLD_MS + 50);
   assert.equal(h.hover.tip.classList.contains('on'), false);
+  assert.equal(prevented, false, 'the swipe is left to the browser');
+  h.chartsEl.fire('touchend', lift(svg, 115));
+});
+
+test('touch: press and hold within the slop shows it; drag scrubs (no scroll); release lingers then hides', async () => {
+  const h = harness();
+  const svg = h.strips[0].svg;
+  h.chartsEl.fire('touchstart', touch(svg, 100));
+  h.chartsEl.fire('touchmove', touch(svg, 100 + HOLD_SLOP_PX - 2)); // finger jitter
+  await wait(HOLD_MS + 50);
+  assert.ok(h.hover.tip.classList.contains('on'), 'hold shows the tooltip');
+  let prevented = false;
+  h.chartsEl.fire('touchmove', { ...touch(svg, 300), preventDefault() { prevented = true; } });
+  assert.ok(prevented, 'drag scrubs instead of scrolling while held');
+  assert.match(h.hover.tip.textContent, /now$/);
+  // the browser's own touch pointer stream may be cancelled: ignored now
+  h.chartsEl.fire('pointercancel', { pointerType: 'touch' });
+  assert.ok(h.hover.tip.classList.contains('on'), 'pointercancel does not kill the hold');
+  // long-press context menu: cancelled, the hold stays
+  let menu = false;
+  h.chartsEl.fire('contextmenu', { target: svg, preventDefault() { menu = true; } });
+  assert.ok(menu && h.hover.tip.classList.contains('on'));
+  h.chartsEl.fire('touchend', lift(svg, 300));
+  assert.ok(h.hover.tip.classList.contains('on'), 'still readable right after lifting the finger');
+  await wait(LINGER_MS + 50);
+  assert.equal(h.hover.tip.classList.contains('on'), false);
+});
+
+test('touch: the browser long-press (contextmenu) starts the hold before the timer', () => {
+  const h = harness();
+  const svg = h.strips[1].svg;
+  h.chartsEl.fire('touchstart', touch(svg, 450));
+  let menu = false;
+  h.chartsEl.fire('contextmenu', { target: svg, preventDefault() { menu = true; } });
+  assert.ok(menu, 'no native menu / callout');
+  assert.ok(h.hover.tip.classList.contains('on'));
+  assert.match(h.hover.tip.textContent, /^TWS/);
+  h.chartsEl.fire('touchcancel', lift(svg, 450));
+  assert.ok(h.hover.tip.classList.contains('on'), 'touchcancel lingers like a release');
+});
+
+test('touch: a touchcancel before the hold (browser took the gesture) shows nothing', async () => {
+  const h = harness();
+  const svg = h.strips[0].svg;
+  h.chartsEl.fire('touchstart', touch(svg, 100));
+  h.chartsEl.fire('touchcancel', lift(svg, 100));
+  await wait(HOLD_MS + 50);
+  assert.equal(h.hover.tip.classList.contains('on'), false);
+});
+
+test('touch: no long-press callout or selection on the strips (CSS)', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /#instrument_panel \.instr-charts \{ -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;/);
+  assert.ok(HOLD_MS <= 300 && HOLD_SLOP_PX >= 8);
 });
 
 test('panel wires the hover and the tooltip CSS stays inside the panel', () => {
