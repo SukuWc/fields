@@ -80,6 +80,7 @@ Last updated: 2026-11-14
 - [x] Room-config gust rate spawner: Poisson gust arrivals (`gust_rate_per_min`) with mean[,sd] knobs for gain, size, life and direction in room TOML, off by default: [#112](https://github.com/SukuWc/fields/pull/112)
 - [ ] Strategy tuning
 - [ ] Strong-wind speed cap (heel limit): close-hauled speed now levels off with wind ([#185](https://github.com/SukuWc/fields/pull/185)); a planing reach still is not modelled, so strong-wind beam reaches stay at displacement speed. Sweep data in [#83](https://github.com/SukuWc/fields/pull/83)
+- [ ] Sticky autopilot holdoff: `sticky_autopilot_holdoff_ms` (Dev TOML, default 500) replaces the `sticky_autopilot` setting; Left / Right are plain helm and heading hold engages on the then-current heading that many ms of sim time after release (0 = at once, -1 = never), per boat; Up / Down unaffected: [#216](https://github.com/SukuWc/fields/pull/216)
 
 ### 3. Multiplayer open water
 - [x] Shared world and shared wind: [#60](https://github.com/SukuWc/fields/pull/60) (server rooms + streamed wind); [#61](https://github.com/SukuWc/fields/pull/61) (Join with my boat: each client owns a named boat, steers only that boat, removed on leave or disconnect)
