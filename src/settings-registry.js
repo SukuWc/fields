@@ -72,7 +72,7 @@ export const SETTINGS = [
   { id: 'field_plane', scope: 'player', panel: 'player', type: 'bool', default: true, subscription: 'field' },
   // Default off; touch-controls.js turns it on for phones and touch screens.
   { id: 'touch', scope: 'player', panel: 'player', type: 'bool', default: false },
-  // Default off: a PlayStation pad drives player 1 through the keyboard keys (gamepad.js).
+  // Default off: PlayStation pads drive the boats chosen in Input mapping (gamepad.js, input-map.js).
   { id: 'gamepad', scope: 'player', panel: 'player', type: 'bool', default: false },
   { id: 'vibrate', scope: 'player', panel: 'player', type: 'bool', default: true },
   // touch_layout (Classic / Overlay) removed: Overlay is the only touch layout.
