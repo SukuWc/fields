@@ -61,15 +61,15 @@ export const RUDDER_MAX_DEG_LIMITS = Object.freeze({ min: 10, max: 90 });
 // RUDDER_MAX_FORCE_N / _MIN / _MAX (test/rudder-force-limit.test.mjs checks).
 export const RUDDER_MAX_FORCE_N_DEFAULT = 200;
 export const RUDDER_MAX_FORCE_N_LIMITS = Object.freeze({ min: 0, max: 5000 });
-// Sticky autopilot holdoff, milliseconds of sim time after Left / Right is
+// Autopilot holdoff, milliseconds of sim time after Left / Right is
 // released before the heading-hold autopilot engages; 0 = on the release
 // tick, negative (-1) = never (plain manual helm). Same numbers as boat.js
-// STICKY_AUTOPILOT_HOLDOFF_MS / _MIN / _MAX (test/sticky-autopilot.test.mjs checks).
-export const STICKY_AUTOPILOT_HOLDOFF_MS_DEFAULT = 500;
-export const STICKY_AUTOPILOT_HOLDOFF_MS_LIMITS = Object.freeze({ min: -1, max: 10000 });
+// AUTOPILOT_HOLDOFF_MS / _MIN / _MAX (test/autopilot-holdoff.test.mjs checks).
+export const AUTOPILOT_HOLDOFF_MS_DEFAULT = 500;
+export const AUTOPILOT_HOLDOFF_MS_LIMITS = Object.freeze({ min: -1, max: 10000 });
 
 export const SETTINGS = [
-  // Player panel. Trails, ghost and the sticky autopilot holdoff live in the Dev TOML.
+  // Player panel. Trails, ghost and the autopilot holdoff live in the Dev TOML.
   { id: 'boat_name', scope: 'player', panel: 'player', type: 'text', default: '' },
   { id: 'show_row_outline', scope: 'player', panel: 'player', type: 'bool', default: false },
   { id: 'show_row_lines', scope: 'player', panel: 'player', type: 'bool', default: true },
@@ -84,7 +84,7 @@ export const SETTINGS = [
   // touch_layout (Classic / Overlay) removed: Overlay is the only touch layout.
   // Dev tab: still this page only (scope player), one TOML document
   // (src/dev-config.js). control:false = no per-setting DOM. The ids stay
-  // the URL keys (?show_field, ?boat_trails, ?sticky_autopilot_holdoff_ms, …).
+  // the URL keys (?show_field, ?boat_trails, ?autopilot_holdoff_ms, …).
   { id: 'show_field', scope: 'player', panel: 'dev', control: false, type: 'bool', default: true, subscription: 'flow' },
   { id: 'ladder', scope: 'player', panel: 'dev', control: false, type: 'bool', default: true },
   { id: 'tracers', scope: 'player', panel: 'dev', control: false, type: 'number', default: null, nullable: true, min: 10, max: 20000 },
@@ -103,8 +103,8 @@ export const SETTINGS = [
   { id: 'trailSize', scope: 'player', panel: 'dev', control: false, type: 'number', default: 0.4, min: 0.05, max: 5 },
   { id: 'ghost', scope: 'player', panel: 'dev', control: false, type: 'bool', default: false },
   { id: 'ghostAhead', scope: 'player', panel: 'dev', control: false, type: 'number', default: 2, min: 0, max: 30 },
-  // Sticky autopilot holdoff (ms): heading hold engages this long after Left / Right is released. Sent with the PID (autopilotGains).
-  { id: 'sticky_autopilot_holdoff_ms', scope: 'player', panel: 'dev', control: false, type: 'number', default: STICKY_AUTOPILOT_HOLDOFF_MS_DEFAULT, min: STICKY_AUTOPILOT_HOLDOFF_MS_LIMITS.min, max: STICKY_AUTOPILOT_HOLDOFF_MS_LIMITS.max },
+  // Autopilot holdoff (ms): heading hold engages this long after Left / Right is released. Sent with the PID (autopilotGains).
+  { id: 'autopilot_holdoff_ms', scope: 'player', panel: 'dev', control: false, type: 'number', default: AUTOPILOT_HOLDOFF_MS_DEFAULT, min: AUTOPILOT_HOLDOFF_MS_LIMITS.min, max: AUTOPILOT_HOLDOFF_MS_LIMITS.max },
   // Autopilot PID. Defaults P 2, I 0, D 0 (P only since #200).
   { id: 'autopilotKp', scope: 'player', panel: 'dev', control: false, type: 'number', default: AUTOPILOT_KP_DEFAULT, min: 0, max: 20 },
   { id: 'autopilotKi', scope: 'player', panel: 'dev', control: false, type: 'number', default: AUTOPILOT_KI_DEFAULT, min: 0, max: 2 },

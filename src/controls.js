@@ -128,7 +128,7 @@ export function setVirtualKey(keyCode, down) {
 
 // Held boat commands for this tick, in binding order (sim.step reads them
 // after the scenario frames, where the old processKeys ran).
-// Left / Right are plain helm commands; the sticky autopilot holdoff
+// Left / Right are plain helm commands; the autopilot holdoff
 // (heading hold some ms after release) lives in the sim (boat.js
 // stepHelmHoldoff), so local, worker and server games behave the same.
 export function heldCommands() {

@@ -300,7 +300,7 @@ function startClient() {
   // Room settings (TOML) are committed from controls.js. Player URL params
   // still sync via installUrlSettings. Dev URL keys are applied by the Dev
   // TOML editor (dev-prefs.js), which also owns tracers, trails, ghost and
-  // the sticky autopilot holdoff.
+  // the autopilot holdoff.
   // Counters: live from the main-thread host, else the latest frame's.
   let lastFrame = null;
   // Remote mode (server clock) is event-driven: the overlay closes a frame per

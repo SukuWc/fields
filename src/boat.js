@@ -217,17 +217,17 @@ export const RUDDER_MAX_FORCE_N_MAX = 5000;
 
 /** Autopilot heading-target change per sim tick while Up / Down is held (was 1°). */
 export const AUTOPILOT_HEADING_STEP_DEG = 1.5;
-/** Sticky autopilot holdoff: milliseconds of sim time after the Left / Right
+/** Autopilot holdoff: milliseconds of sim time after the Left / Right
  *  helm is released (no helm command on a tick) before the heading-hold
  *  autopilot engages on the heading she then has. Helm again during the
  *  holdoff restarts it on the next release. 0 = engage on the release tick;
  *  negative (-1) = never (plain manual helm, the autopilot stays off until
  *  Space, Enter or Up / Down). Up / Down and tack already keep the autopilot
  *  on, so the holdoff does not apply to them. Per boat
- *  (Boat.sticky_autopilot_holdoff_ms), set by the autopilotGains command. */
-export const STICKY_AUTOPILOT_HOLDOFF_MS = 500;
-export const STICKY_AUTOPILOT_HOLDOFF_MS_MIN = -1;
-export const STICKY_AUTOPILOT_HOLDOFF_MS_MAX = 10000;
+ *  (Boat.autopilot_holdoff_ms), set by the autopilotGains command. */
+export const AUTOPILOT_HOLDOFF_MS = 500;
+export const AUTOPILOT_HOLDOFF_MS_MIN = -1;
+export const AUTOPILOT_HOLDOFF_MS_MAX = 10000;
 export function wrapDeg180(a){ a = ((a + 180) % 360 + 360) % 360 - 180; return a === -180 ? 180 : a; }
 
 export { BEST_VMG_DOWNWIND_DEG, BEST_VMG_UPWIND_DEG, autopilotSnapTarget } from './boat-draw.js';
@@ -318,9 +318,9 @@ export class Boat{
     this.power_direction = 0;
 
     this.autopilot_enabled = false;
-    // Sticky autopilot holdoff (stepHelmHoldoff): helm seen this tick, helm
+    // Autopilot holdoff (stepHelmHoldoff): helm seen this tick, helm
     // seen last tick, sim seconds since the release (null = no holdoff running).
-    this.sticky_autopilot_holdoff_ms = STICKY_AUTOPILOT_HOLDOFF_MS;
+    this.autopilot_holdoff_ms = AUTOPILOT_HOLDOFF_MS;
     this._helmHeld = false;
     this._helmWasHeld = false;
     this._holdoffElapsed = null;
@@ -1141,16 +1141,16 @@ export class Boat{
   }
 
   // Held Left / Right from a player (the 'helm' command): the rudder, plus
-  // the mark the sticky autopilot holdoff watches. Scripts that call
+  // the mark the autopilot holdoff watches. Scripts that call
   // input_rudder_* directly do not start a holdoff.
   input_helm(dir){
     if (dir < 0) this.input_rudder_left(); else this.input_rudder_right();
     this._helmHeld = true;
   }
 
-  setStickyAutopilotHoldoff(ms) {
-    if (typeof ms !== 'number' || !Number.isFinite(ms) || ms < STICKY_AUTOPILOT_HOLDOFF_MS_MIN || ms > STICKY_AUTOPILOT_HOLDOFF_MS_MAX) return false;
-    this.sticky_autopilot_holdoff_ms = ms;
+  setAutopilotHoldoff(ms) {
+    if (typeof ms !== 'number' || !Number.isFinite(ms) || ms < AUTOPILOT_HOLDOFF_MS_MIN || ms > AUTOPILOT_HOLDOFF_MS_MAX) return false;
+    this.autopilot_holdoff_ms = ms;
     return true;
   }
 
@@ -1166,7 +1166,7 @@ export class Boat{
     if (this._helmWasHeld) {
       // Released this tick.
       this._helmWasHeld = false;
-      if (!(this.sticky_autopilot_holdoff_ms >= 0)) return;
+      if (!(this.autopilot_holdoff_ms >= 0)) return;
       this._holdoffElapsed = 0;
     } else if (this._holdoffElapsed !== null) {
       this._holdoffElapsed += dt > 0 ? dt : 0;
@@ -1174,7 +1174,7 @@ export class Boat{
     // Something else engaged the autopilot (Space, Enter, Up / Down) or a
     // penalty circle took the helm: nothing to do.
     if (this.autopilot_enabled || this.penalty_turn) { this._holdoffElapsed = null; return; }
-    if (this._holdoffElapsed * 1000 + 1e-6 < this.sticky_autopilot_holdoff_ms) return;
+    if (this._holdoffElapsed * 1000 + 1e-6 < this.autopilot_holdoff_ms) return;
     this._holdoffElapsed = null;
     this._engageHeadingHold();
   }

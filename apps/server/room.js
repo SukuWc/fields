@@ -639,7 +639,7 @@ export class Room {
       return !!r;
     }
     // Dev-tab autopilot PID, manual rudder limit (rudderMax), rudder force
-    // limit (rudderMaxForce) and sticky autopilot holdoff (stickyHoldoffMs). Not a room
+    // limit (rudderMaxForce) and autopilot holdoff (autopilotHoldoffMs). Not a room
     // command: only this client's boats, by id. No boat yet: remember the gains and apply them on spawn.
     // A `boat` index on the message is ignored so it cannot select someone else.
     if (c.type === 'autopilotGains') {
@@ -741,17 +741,17 @@ export class Room {
 
   _rememberGains(client, g) {
     if (!this._gainByClient) this._gainByClient = new Map();
-    // A later Apply without rudderMax / rudderMaxForce / stickyHoldoffMs
+    // A later Apply without rudderMax / rudderMaxForce / autopilotHoldoffMs
     // (older client) keeps the remembered value.
     const prev = this._gainByClient.get(client);
     const rudderMax = g.rudderMax !== undefined ? g.rudderMax : prev && prev.rudderMax;
     const rudderMaxForce = g.rudderMaxForce !== undefined ? g.rudderMaxForce : prev && prev.rudderMaxForce;
-    const stickyHoldoffMs = g.stickyHoldoffMs !== undefined ? g.stickyHoldoffMs : prev && prev.stickyHoldoffMs;
+    const autopilotHoldoffMs = g.autopilotHoldoffMs !== undefined ? g.autopilotHoldoffMs : prev && prev.autopilotHoldoffMs;
     this._gainByClient.set(client, {
       kp: g.kp, ki: g.ki, kd: g.kd,
       ...(rudderMax !== undefined ? { rudderMax } : {}),
       ...(rudderMaxForce !== undefined ? { rudderMaxForce } : {}),
-      ...(stickyHoldoffMs !== undefined ? { stickyHoldoffMs } : {}),
+      ...(autopilotHoldoffMs !== undefined ? { autopilotHoldoffMs } : {}),
     });
   }
 

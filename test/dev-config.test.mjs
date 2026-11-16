@@ -47,7 +47,7 @@ test('defaults match the registry and the boat PD controller', () => {
   assert.equal(DEV_CONFIG_DEFAULTS.tracer_count, 0);
   assert.equal(DEV_CONFIG_DEFAULTS.boat_trails, true);
   assert.equal(DEV_CONFIG_DEFAULTS.ghost_boat, false);
-  assert.equal(DEV_CONFIG_DEFAULTS.sticky_autopilot_holdoff_ms, 500);
+  assert.equal(DEV_CONFIG_DEFAULTS.autopilot_holdoff_ms, 500);
   assert.equal('sticky_autopilot' in DEV_CONFIG_DEFAULTS, false);
   assert.equal(DEV_CONFIG_DEFAULTS.plot, 'speed');
   for (const field of DEV_TOML_FIELDS) {
@@ -110,11 +110,11 @@ test('legacy prefs and the query string move into the document', () => {
   assert.equal(stored.config.trail_interval_s, 2.5);
   assert.equal(stored.config.plot, 'curl');
   assert.equal(stored.config.tracer_count, 80);
-  assert.equal(stored.config.sticky_autopilot_holdoff_ms, -1, 'legacy fields.stickyAutopilot 0 = never engage');
+  assert.equal(stored.config.autopilot_holdoff_ms, -1, 'legacy fields.stickyAutopilot 0 = never engage');
   assert.equal(stored.config.flow_tracers, true);
   const over = configFromQuery(stored.config, new URLSearchParams('show_field=0&sticky_autopilot=1&autopilotKp=4'));
   assert.equal(over.flow_tracers, false);
-  assert.equal(over.sticky_autopilot_holdoff_ms, 500, 'old ?sticky_autopilot=1 = the default holdoff');
+  assert.equal(over.autopilot_holdoff_ms, 500, 'old ?sticky_autopilot=1 = the default holdoff');
   assert.equal(over.autopilot_kp, 4);
   assert.equal(over.show_forces, true);
   assert.equal(legacyUrlValue('show_field', false), '0');
@@ -125,14 +125,14 @@ test('legacy prefs and the query string move into the document', () => {
   assert.equal(kept.migrated, false);
   assert.equal(kept.config.show_forces, false);
   assert.equal(kept.config.autopilot_kp, 3);
-  assert.equal(kept.config.sticky_autopilot_holdoff_ms, 500);
-  const { sticky_autopilot_holdoff_ms: _drop, ...beforeHoldoff } = DEV_CONFIG_DEFAULTS;
+  assert.equal(kept.config.autopilot_holdoff_ms, 500);
+  const { autopilot_holdoff_ms: _drop, ...beforeHoldoff } = DEV_CONFIG_DEFAULTS;
   const oldSave = configFromStored({ ...beforeHoldoff, sticky_autopilot: false }, null, null);
-  assert.equal(oldSave.config.sticky_autopilot_holdoff_ms, -1, 'a saved sticky_autopilot = false becomes -1');
-  const both = configFromQuery(DEV_CONFIG_DEFAULTS, new URLSearchParams('sticky_autopilot=0&sticky_autopilot_holdoff_ms=250'));
-  assert.equal(both.sticky_autopilot_holdoff_ms, 250, 'the holdoff key wins over the old one');
-  assert.equal(configFromQuery(DEV_CONFIG_DEFAULTS, new URLSearchParams('sticky_autopilot_holdoff_ms=0')).sticky_autopilot_holdoff_ms, 0);
-  assert.equal(configFromQuery(DEV_CONFIG_DEFAULTS, new URLSearchParams('sticky_autopilot_holdoff_ms=-5')).sticky_autopilot_holdoff_ms, 500, 'out of range is skipped');
+  assert.equal(oldSave.config.autopilot_holdoff_ms, -1, 'a saved sticky_autopilot = false becomes -1');
+  const both = configFromQuery(DEV_CONFIG_DEFAULTS, new URLSearchParams('sticky_autopilot=0&autopilot_holdoff_ms=250'));
+  assert.equal(both.autopilot_holdoff_ms, 250, 'the holdoff key wins over the old one');
+  assert.equal(configFromQuery(DEV_CONFIG_DEFAULTS, new URLSearchParams('autopilot_holdoff_ms=0')).autopilot_holdoff_ms, 0);
+  assert.equal(configFromQuery(DEV_CONFIG_DEFAULTS, new URLSearchParams('autopilot_holdoff_ms=-5')).autopilot_holdoff_ms, 500, 'out of range is skipped');
   assert.equal(holdoffFromLegacySticky(true), 500);
   assert.equal(holdoffFromLegacySticky('off'), -1);
   assert.equal(holdoffFromLegacySticky('maybe'), undefined);
@@ -146,9 +146,9 @@ test('gain validation rejects a bad command before any boat is named', () => {
   assert.equal(fx.tracerCount, null);
   assert.equal(fx.plotType, PLOT_TOKENS.indexOf('curl'));
   assert.deepEqual(autopilotGainsOf(DEV_CONFIG_DEFAULTS), { kp: AUTOPILOT_KP, ki: 0, kd: AUTOPILOT_KD });
-  assert.deepEqual(validateAutopilotGains({ kp: 2, ki: 0, kd: 0, stickyHoldoffMs: 0 }), { kp: 2, ki: 0, kd: 0, stickyHoldoffMs: 0 });
-  assert.match(validateAutopilotGains({ kp: 2, ki: 0, kd: 0, stickyHoldoffMs: 10001 }).error, /sticky_autopilot_holdoff_ms/);
-  assert.match(validateAutopilotGains({ kp: 2, ki: 0, kd: 0, stickyHoldoffMs: '500' }).error, /sticky_autopilot_holdoff_ms/);
+  assert.deepEqual(validateAutopilotGains({ kp: 2, ki: 0, kd: 0, autopilotHoldoffMs: 0 }), { kp: 2, ki: 0, kd: 0, autopilotHoldoffMs: 0 });
+  assert.match(validateAutopilotGains({ kp: 2, ki: 0, kd: 0, autopilotHoldoffMs: 10001 }).error, /autopilot_holdoff_ms/);
+  assert.match(validateAutopilotGains({ kp: 2, ki: 0, kd: 0, autopilotHoldoffMs: '500' }).error, /autopilot_holdoff_ms/);
 });
 
 function memoryStorage(seed = {}) {
@@ -213,7 +213,7 @@ test('Apply, Revert and Reset match the room editor and invalid text does not ap
   assert.equal(commands[0].type, 'autopilotGains');
   assert.equal(commands[0].kp, AUTOPILOT_KP);
   assert.equal(commands[0].rudderMax, 60);
-  assert.equal(commands[0].stickyHoldoffMs, -1, 'the migrated holdoff rides on autopilotGains');
+  assert.equal(commands[0].autopilotHoldoffMs, -1, 'the migrated holdoff rides on autopilotGains');
   assert.equal(visuals.at(-1).showForces, true);
   assert.equal(storage.getItem(STICKY_AUTOPILOT_KEY), null);
   const prefs = JSON.parse(storage.getItem(PREFS_KEY));
@@ -222,7 +222,7 @@ test('Apply, Revert and Reset match the room editor and invalid text does not ap
   assert.match(storage.getItem(DEV_CONFIG_KEY), /show_forces/);
   const ta = doc.els.dev_config;
   assert.match(ta.value, /show_forces = true/);
-  assert.match(ta.value, /sticky_autopilot_holdoff_ms = -1/);
+  assert.match(ta.value, /autopilot_holdoff_ms = -1/);
   assert.equal(doc.els.dev_config_commit.disabled, true);
   assert.equal(doc.els.dev_config_revert.disabled, true);
 
@@ -251,7 +251,7 @@ test('Apply, Revert and Reset match the room editor and invalid text does not ap
 
   doc.els.dev_config_reset.fire('click');
   assert.match(ta.value, /show_forces = false/);
-  assert.match(ta.value, /sticky_autopilot_holdoff_ms = 500/);
+  assert.match(ta.value, /autopilot_holdoff_ms = 500/);
   assert.equal(commands.length, 1, 'Reset does not apply');
   assert.equal(visuals.at(-1).showForces, true);
   doc.els.dev_config_revert.fire('click');
