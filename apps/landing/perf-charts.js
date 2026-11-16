@@ -1,5 +1,5 @@
-// Landing room frame-time charts: SVG polylines + hover (same technique as
-// boat-stats, via shared src/svg-chart.js). Bundled by build-app.mjs into
+// Landing room frame-time charts: SVG polylines + hover (shared
+// src/svg-chart.js). Bundled by build-app.mjs into
 // dist-app/perf-charts.js as an IIFE exposing window.LandingPerfCharts.
 import {
   SVG_NS, indexToX, xToIndex, agoLabel, bindSvgChartHover,

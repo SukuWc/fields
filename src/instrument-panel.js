@@ -10,8 +10,10 @@
 // The chart window (30 / 60 / 120 s) is remembered too ('fields.instrumentChartWindow').
 // Values: instrument-readout.js (frame state only, own boat by id); chart
 // buffers: instrument-chart.js, sampled at 5 Hz of sim time (state.ts).
+// Chart hover (mouse; touch press and hold): instrument-chart-hover.js.
 import { READOUT_TILES, readoutValues, formatReadout } from './instrument-readout.js';
-import { ChartBuffer, CHART_STRIPS, CHART_WINDOWS, CHART_DEFAULT_WINDOW, stripPolylines } from './instrument-chart.js';
+import { ChartBuffer, CHART_STRIPS, CHART_WINDOWS, CHART_DEFAULT_WINDOW, stripPolylines, formatChartValue, chartHoverAt } from './instrument-chart.js';
+import { bindChartHover } from './instrument-chart-hover.js';
 import { SVG_NS } from './svg-chart.js';
 
 const STORE_KEY = 'fields.instrumentMode';
@@ -74,12 +76,15 @@ export function setupInstrumentPanel({ remote = false, lockstep = () => false } 
     svg.append(zero, g);
     row.append(lab, svg);
     chartsEl.appendChild(row);
-    strips.push({ st, g, zero, now: lab.querySelector('.instr-strip-now'), range: lab.querySelector('.instr-strip-range') });
+    strips.push({ st, g, zero, svg, row, now: lab.querySelector('.instr-strip-now'), range: lab.querySelector('.instr-strip-range') });
   }
   const buf = new ChartBuffer({ windowS: Math.max(...CHART_WINDOWS) });
-  const fmt = (st, k, v) => (Number.isFinite(v) ? (st.unit === 'm/s' ? v.toFixed(1) : String(Math.round(v))) : '–');
+  const fmt = (st, k, v) => formatChartValue(st, v);
+  const hover = chartsEl && strips.length
+    ? bindChartHover({ root, chartsEl, strips, w: SW, doc, hitAt: (st, x) => chartHoverAt(buf, st, { windowS, w: SW, h: SH, x }) })
+    : null;
   const drawCharts = () => {
-    if (root.dataset.mode !== 'chart') return;
+    if (root.dataset.mode !== 'chart') { if (hover) hover.hide(); return; }
     for (const s of strips) {
       const p = stripPolylines(buf, s.st, { windowS, w: SW, h: SH });
       const zv = s.st.min === 0 && s.st.max === 360 ? 180 : 0;
@@ -98,6 +103,7 @@ export function setupInstrumentPanel({ remote = false, lockstep = () => false } 
       s.now.innerHTML = s.st.lines.map((l) => `<span style="color:${l.color}">${fmt(s.st, l.key, buf.last(l.key))}</span>`).join(' / ') + ` <span class="instr-unit">${s.st.unit}</span>`;
       s.range.textContent = `${fmt(s.st, '', p.lo)}…${fmt(s.st, '', p.hi)} · ${windowS} s`;
     }
+    if (hover) hover.refresh();
   };
   let spectating = false;
   const playerBtn = remote ? buttons.find((b) => b.dataset.mode === PLAYER) || null : null;

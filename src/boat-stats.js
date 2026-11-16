@@ -1,21 +1,12 @@
-// Boat stats data (no DOM): per-boat rolling time series of hull heading,
-// TWA, AWA and boat speed, built only from the compact scene state the client
-// already receives (state.boats[i]: id, ha, vx, vy, awa, wd). Nothing is
-// added to the frame. TWA is the boat's own value (boat.js: wind_direction −
-// hull angle + 90, wrapped), recomputed from wd and ha.
-// Drawn by boat-stats-panel.js.
+// Boat sample + strip-chart helpers (no DOM). boatSample: hull heading, TWA,
+// AWA, boat speed and VMG from the compact scene state the client already
+// receives (state.boats[i]: id, ha, vx, vy, awa, wd); TWA is the boat's own
+// value (boat.js: wind_direction − hull angle + 90, wrapped), recomputed from
+// wd and ha. Used by instrument-readout.js; seriesRange / polylinePoints draw
+// the instrument panel's Chart mode (instrument-chart.js). The old floating
+// "Boat stats" panel that this module used to feed is gone.
 
 import { valueToY, timeToX } from './svg-chart.js';
-
-export const STATS_WINDOW_S = 60;
-export const STATS_SAMPLE_HZ = 4;
-export const STATS_SERIES = [
-  { key: 'heading', label: 'Heading (hull angle)', unit: '°', min: -180, max: 180 },
-  { key: 'twa', label: 'TWA', unit: '°', min: -180, max: 180 },
-  { key: 'awa', label: 'AWA', unit: '°', min: -180, max: 180 },
-  { key: 'bs', label: 'Boat speed', unit: 'm/s', min: 0, max: null },
-  { key: 'vmg', label: 'VMG (+ upwind)', unit: 'm/s', min: null, max: null },
-];
 
 export const wrap180 = (d) => ((((d + 180) % 360) + 360) % 360) - 180;
 
@@ -35,55 +26,7 @@ export function boatSample(b) {
   };
 }
 
-// Which boats the panel shows: a remote room (server) shows only this
-// client's own boat (by id; none while spectating); local and worker modes
-// show every boat. lockstep (?host=remote with the page's clock, one client
-// driving the room): every boat until this client owns one.
-export function boatsToShow(boats, { remote = false, ownId = null, lockstep = false } = {}) {
-  const list = (boats || []).filter((b) => b && b.id !== undefined && b.id !== null);
-  if (!remote) return list;
-  if (ownId === null || ownId === undefined) return lockstep ? list : [];
-  return list.filter((b) => b.id === ownId);
-}
-
-// Rolling buffers keyed by boat id. add() keeps samples at most
-// 1/sampleHz apart and drops those older than windowS; boats that are not
-// in the latest sample are removed.
-export class StatsBuffer {
-  constructor({ windowS = STATS_WINDOW_S, sampleHz = STATS_SAMPLE_HZ } = {}) {
-    this.windowS = windowS;
-    this.minDt = 1 / sampleHz;
-    this.series = new Map();
-    this.lastT = -Infinity;
-  }
-  clear() { this.series.clear(); this.lastT = -Infinity; }
-  // tS: time in seconds (monotonic). Returns true if a sample was taken.
-  add(tS, boats) {
-    if (!(tS - this.lastT >= this.minDt - 1e-9)) {
-      if (tS < this.lastT) this.clear(); else return false;
-    }
-    // keep a 1/sampleHz grid so the mean rate holds when frames do not divide it
-    this.lastT = tS - this.lastT < 2 * this.minDt ? this.lastT + this.minDt : tS;
-    const seen = new Set();
-    for (const b of boats) {
-      const s = boatSample(b);
-      if (!s) continue;
-      seen.add(b.id);
-      let row = this.series.get(b.id);
-      if (!row) { row = { t: [], heading: [], twa: [], awa: [], bs: [], vmg: [] }; this.series.set(b.id, row); }
-      row.t.push(tS);
-      for (const k of ['heading', 'twa', 'awa', 'bs', 'vmg']) row[k].push(s[k]);
-      let drop = 0;
-      while (drop < row.t.length && row.t[drop] < tS - this.windowS) drop++;
-      if (drop) for (const k of ['t', 'heading', 'twa', 'awa', 'bs', 'vmg']) row[k].splice(0, drop);
-    }
-    for (const id of [...this.series.keys()]) if (!seen.has(id)) this.series.delete(id);
-    return true;
-  }
-  ids() { return [...this.series.keys()]; }
-}
-
-// Y range of one chart over every shown boat's values: fixed for angles,
+// Y range of one chart over its series' values: fixed for angles,
 // 0..max for speed, symmetric ±max for VMG (rounded up to 0.5 m/s).
 export function seriesRange(ser, arrays) {
   if (ser.min !== null && ser.max !== null) return [ser.min, ser.max];
@@ -93,7 +36,7 @@ export function seriesRange(ser, arrays) {
   return ser.min === null ? [-hi, hi] : [ser.min, hi];
 }
 
-// SVG polyline "points" strings for one boat's series in a w×h chart whose x
+// SVG polyline "points" strings for one series in a w×h chart whose x
 // spans [t1 − windowS, t1]. Gaps (NaN) and ±180° wraps (wrap = true) start a
 // new polyline.
 export function polylinePoints(t, v, { t1, windowS, lo, hi, w, h, wrap = false }) {
@@ -114,18 +57,4 @@ export function polylinePoints(t, v, { t1, windowS, lo, hi, w, h, wrap = false }
   }
   if (cur.length > 1) out.push(cur.join(' '));
   return out;
-}
-
-// Text readout of one value: angles as whole degrees, speeds to 0.01 m/s.
-export function formatStatValue(ser, v) {
-  if (!Number.isFinite(v)) return '–';
-  return ser.unit === 'm/s' ? `${v.toFixed(2)} m/s` : `${Math.round(v)}°`;
-}
-
-// Latest value per boat for one series key: [{ id, v }] in the given id order.
-export function latestValues(buf, key, ids = buf.ids()) {
-  return ids.map((id) => {
-    const a = buf.series.get(id)?.[key];
-    return { id, v: a && a.length ? a[a.length - 1] : NaN };
-  });
 }

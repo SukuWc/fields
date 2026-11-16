@@ -3,8 +3,11 @@
 // state only, own boat by id), sampled on sim time (state.ts) at 5 Hz.
 // A value the frame does not carry is NaN (a gap in the line); a jump in sim
 // time (pause, reconnect) also leaves a gap; time going backwards clears.
-// Drawn with the shared boat-stats chart helpers (polylinePoints, seriesRange).
+// Drawn with the shared chart helpers (boat-stats.js polylinePoints,
+// seriesRange). chartHoverAt: the sample under the pointer for the hover
+// crosshair and tooltip (instrument-panel.js).
 import { polylinePoints, seriesRange } from './boat-stats.js';
+import { agoLabel, nearestTimeIndex, timeToX, valueToY } from './svg-chart.js';
 
 export const CHART_SAMPLE_HZ = 5;
 export const CHART_WINDOWS = [30, 60, 120];
@@ -13,11 +16,11 @@ export const CHART_KEYS = ['bs', 'vmg', 'tws', 'aws', 'twa', 'twd', 'heading'];
 // One strip per entry; lines drawn in order. Colours avoid green/red
 // (reserved for starboard / port).
 export const CHART_STRIPS = [
-  { key: 'speed', label: 'BSP / VMG', unit: 'm/s', min: null, max: null, lines: [{ key: 'bs', color: '#ffffff' }, { key: 'vmg', color: '#ffc400' }] },
-  { key: 'wind', label: 'TWS / AWS', unit: 'm/s', min: 0, max: null, lines: [{ key: 'tws', color: '#7fd3ff' }, { key: 'aws', color: '#ffc400' }] },
-  { key: 'twa', label: 'TWA', unit: '°', min: -180, max: 180, wrap: true, lines: [{ key: 'twa', color: '#ffffff' }] },
-  { key: 'twd', label: 'TWD', unit: '°', min: 0, max: 360, wrap: true, lines: [{ key: 'twd', color: '#c9b6ff' }] },
-  { key: 'heading', label: 'HDG', unit: '°', min: 0, max: 360, wrap: true, lines: [{ key: 'heading', color: '#ffffff' }] },
+  { key: 'speed', label: 'BSP / VMG', unit: 'm/s', min: null, max: null, lines: [{ key: 'bs', label: 'BSP', color: '#ffffff' }, { key: 'vmg', label: 'VMG', color: '#ffc400' }] },
+  { key: 'wind', label: 'TWS / AWS', unit: 'm/s', min: 0, max: null, lines: [{ key: 'tws', label: 'TWS', color: '#7fd3ff' }, { key: 'aws', label: 'AWS', color: '#ffc400' }] },
+  { key: 'twa', label: 'TWA', unit: '°', min: -180, max: 180, wrap: true, lines: [{ key: 'twa', label: 'TWA', color: '#ffffff' }] },
+  { key: 'twd', label: 'TWD', unit: '°', min: 0, max: 360, wrap: true, lines: [{ key: 'twd', label: 'TWD', color: '#c9b6ff' }] },
+  { key: 'heading', label: 'HDG', unit: '°', min: 0, max: 360, wrap: true, lines: [{ key: 'heading', label: 'HDG', color: '#ffffff' }] },
 ];
 
 const num = (v) => (Number.isFinite(v) ? v : NaN);
@@ -49,10 +52,43 @@ export class ChartBuffer {
   last(k) { const a = this[k]; return a.length ? a[a.length - 1] : NaN; }
 }
 
+// One value as the strip shows it: m/s to 0.1, degrees whole; dash if missing.
+export function formatChartValue(strip, v) {
+  return Number.isFinite(v) ? (strip.unit === 'm/s' ? v.toFixed(1) : String(Math.round(v))) : '–';
+}
+
+// Samples inside the shown window: { i0, t1 } (i0 = -1 when empty).
+function windowStart(buf, windowS) {
+  const t1 = buf.t.length ? buf.t[buf.t.length - 1] : 0;
+  return { i0: buf.t.findIndex((t) => t >= t1 - windowS), t1 };
+}
+
+// Hover lookup: the sample nearest to chart x (0..w, viewBox units) in the
+// shown window. null when there are no samples. Returns the sample's x, its
+// sim time t, age (s before the newest sample), and per line { key, label,
+// color, v, y } (y in 0..h, NaN for a missing value), plus the tooltip text
+// "BSP 2.1 · VMG 1.4 m/s · 12.4s ago".
+export function chartHoverAt(buf, strip, { windowS, w, h, x }) {
+  const { i0, t1 } = windowStart(buf, windowS);
+  if (i0 < 0) return null;
+  const t = buf.t.slice(i0);
+  const tq = (t1 - windowS) + (Math.max(0, Math.min(w, x)) / w) * windowS;
+  const j = nearestTimeIndex(t, tq);
+  if (j < 0) return null;
+  const i = i0 + j;
+  const [lo, hi] = seriesRange(strip, strip.lines.map((l) => buf[l.key].slice(i0)));
+  const values = strip.lines.map((l) => {
+    const v = buf[l.key][i];
+    return { key: l.key, label: l.label, color: l.color, v, y: Number.isFinite(v) ? valueToY(v, lo, hi, h) : NaN };
+  });
+  const age = Math.max(0, t1 - buf.t[i]);
+  const text = values.map((p) => `${p.label} ${formatChartValue(strip, p.v)}`).join(' · ') + ` ${strip.unit} · ${agoLabel(age)}`;
+  return { i, t: buf.t[i], age, x: timeToX(buf.t[i], t1, windowS, w), values, text };
+}
+
 // Polylines for one strip: { lo, hi, lines: [{ color, pts: [string] }] }.
 export function stripPolylines(buf, strip, { windowS, w, h }) {
-  const t1 = buf.t.length ? buf.t[buf.t.length - 1] : 0;
-  const i0 = buf.t.findIndex((t) => t >= t1 - windowS);
+  const { i0, t1 } = windowStart(buf, windowS);
   const t = i0 < 0 ? [] : buf.t.slice(i0);
   const arrs = strip.lines.map((l) => (i0 < 0 ? [] : buf[l.key].slice(i0)));
   const [lo, hi] = seriesRange(strip, arrs);

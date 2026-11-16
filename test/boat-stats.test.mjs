@@ -1,7 +1,9 @@
-// Boat stats panel data (src/boat-stats.js): samples from the compact boat
-// state, which boats a client shows, and the rolling buffer (rate, window,
-// boats added / removed by id).
-import { boatSample, boatsToShow, StatsBuffer, wrap180, seriesRange, polylinePoints, STATS_SERIES, formatStatValue, latestValues } from '../src/boat-stats.js';
+// Boat sample + chart helpers (src/boat-stats.js): samples from the compact
+// boat state, chart ranges and polylines; boat colours; svg-chart math. The
+// floating Boat stats panel (boat-stats-panel.js, #boat_stats) is removed.
+import { readFileSync, existsSync } from 'node:fs';
+import * as boatStats from '../src/boat-stats.js';
+const { boatSample, wrap180, seriesRange, polylinePoints } = boatStats;
 import { valueToY, indexToX, xToIndex, timeToX, xToTime, nearestTimeIndex, valuesPolylinePoints, agoLabel } from '../src/svg-chart.js';
 import { BOAT_COLORS, boatColor, boatColorCss, boatColorIndex } from '../src/boat-colors.js';
 import { TRAIL_COLORS } from '../src/boat-trails.js';
@@ -18,29 +20,10 @@ check('sample: AWA passes through; missing fields give NaN, no ha → null', s.a
 
 check('VMG: bs·cos(TWA) (+ upwind), tel vmg wins if present', near(s.vmg, 2.5 * Math.cos(-Math.PI / 4)) && boatSample({ ...b0, vmg: -1.2 }).vmg === -1.2 && boatSample({ ...b0, wd: 180 + 225 - 90 }).vmg < 0);
 
-const boats = [{ id: 's1', ha: 0 }, { id: 's2', ha: 0 }, { id: 's3', ha: 0 }];
-check('local / worker: every boat', boatsToShow(boats).map((b) => b.id).join() === 's1,s2,s3');
-check('server room: only the own boat, by id', boatsToShow(boats, { remote: true, ownId: 's2' }).map((b) => b.id).join() === 's2');
-check('server room, spectating: none; lockstep without own boat: all', boatsToShow(boats, { remote: true }).length === 0 && boatsToShow(boats, { remote: true, lockstep: true }).length === 3);
-
-{
-	const buf = new StatsBuffer({ windowS: 60, sampleHz: 4 });
-	let taken = 0;
-	for (let i = 0; i <= 30 * 90; i++) if (buf.add(i / 30, i < 30 * 70 ? boats : boats.slice(1))) taken++;
-	const r = buf.series.get('s2');
-	check('4 samples a second (90 s at 30 Hz offered)', taken === 361, `${taken}`);
-	check('window keeps the last 60 s only', r.t[0] >= 90 - 60 && r.t[r.t.length - 1] === 90 && r.t.length <= 241 && r.t.length >= 239, `${r.t.length} samples, ${r.t[0]}…${r.t[r.t.length - 1]}`);
-	check('a boat that leaves is dropped, the others stay (by id)', buf.ids().join() === 's2,s3');
-	buf.add(91, [...boats.slice(1), { id: 's9', ha: 0 }]);
-	check('a new boat gets its own series', buf.ids().join() === 's2,s3,s9' && buf.series.get('s9').t.length === 1);
-	buf.add(5, boats);
-	check('time going back (restart) clears the buffers', buf.ids().join() === 's1,s2,s3' && buf.series.get('s1').t.length === 1);
-}
-
 // Charts: ranges and SVG polylines.
 {
-	const ser = (k) => STATS_SERIES.find((x) => x.key === k);
-	check('ranges: angles fixed, speed 0..max, VMG ±max', seriesRange(ser('twa'), [[1]]).join() === '-180,180' && seriesRange(ser('bs'), [[1.2], [2.1]]).join() === '0,2.5' && seriesRange(ser('vmg'), [[-1.7, 0.3]]).join() === '-2,2');
+	const ang = { min: -180, max: 180 }, spd = { min: 0, max: null }, vmg = { min: null, max: null };
+	check('ranges: angles fixed, speed 0..max, VMG ±max', seriesRange(ang, [[1]]).join() === '-180,180' && seriesRange(spd, [[1.2], [2.1]]).join() === '0,2.5' && seriesRange(vmg, [[-1.7, 0.3]]).join() === '-2,2');
 	const pl = polylinePoints([0, 1, 2, 3, 4], [170, 179, -179, NaN, -170], { t1: 4, windowS: 4, lo: -180, hi: 180, w: 40, h: 36, wrap: true });
 	check('polylines break at ±180 wraps and gaps', pl.length === 1 && pl[0] === '0.0,1.0 10.0,0.1', JSON.stringify(pl));
 }
@@ -57,21 +40,6 @@ check('server room, spectating: none; lockstep without own boat: all', boatsToSh
 	const local = boatColorIndex(frame.boats), remote = boatColorIndex(JSON.parse(JSON.stringify(frame)).boats);
 	check('same boat → same colour in every mode, spawn colour ignored', [...local].every(([id, i]) => remote.get(id) === i) && boatColor(local.get('b3')) === 0xff3b30);
 }
-// numeric readout
-{
-  const byKey = Object.fromEntries(STATS_SERIES.map((s) => [s.key, s]));
-  check('format angle', formatStatValue(byKey.twa, -42.6) === '-43°');
-  check('format speed m/s', formatStatValue(byKey.bs, 1.234) === '1.23 m/s');
-  check('format vmg m/s', formatStatValue(byKey.vmg, -0.5) === '-0.50 m/s');
-  check('format missing', formatStatValue(byKey.bs, NaN) === '–');
-  const buf = new StatsBuffer();
-  buf.add(0, [b0, { ...b0, id: 's2', vx: 0, vy: 0 }]);
-  buf.add(1, [b0, { ...b0, id: 's2', vx: 3, vy: 4 }]);
-  const lv = latestValues(buf, 'bs');
-  check('latest per boat in id order', lv.length === 2 && lv[0].id === 's1' && lv[1].id === 's2');
-  check('latest is newest sample', near(lv[1].v, 5) && near(lv[0].v, 2.5), JSON.stringify(lv));
-  check('latest unknown id is NaN', Number.isNaN(latestValues(buf, 'bs', ['zz'])[0].v));
-}
 
 
 // Shared SVG chart helpers (src/svg-chart.js).
@@ -83,6 +51,16 @@ check('server room, spectating: none; lockstep without own boat: all', boatsToSh
 	const vp = valuesPolylinePoints([0, 5, NaN, 10], { lo: 0, hi: 10, w: 30, h: 20 });
 	check('valuesPolylinePoints splits on NaN (singleton dropped)', vp.length === 1 && vp[0].split(' ').length === 2, JSON.stringify(vp));
 	check('agoLabel', agoLabel(0) === 'now' && agoLabel(0.5) === '0.50s ago' && agoLabel(12.3) === '12.3s ago');
+}
+
+// Legacy Boat stats panel removed: no module, markup, CSS or wiring left.
+{
+	const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+	const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+	check('boat-stats-panel.js is gone', !existsSync(new URL('../src/boat-stats-panel.js', import.meta.url)));
+	check('no #boat_stats markup or CSS, no Boat stats button', !html.includes('boat_stats') && !/>Boat stats</.test(html));
+	check('main.js no longer wires the panel', !/boat-stats-panel|setupBoatStats|boatStats\./.test(main));
+	check('panel-only exports removed', ['StatsBuffer', 'boatsToShow', 'STATS_SERIES', 'formatStatValue', 'latestValues'].every((k) => !(k in boatStats)));
 }
 
 if (failed) { console.log(`${failed} check(s) failed`); process.exit(1); }

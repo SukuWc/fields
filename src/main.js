@@ -33,7 +33,6 @@ import { WorkerHost } from './worker-host.js';
 import { RemoteHost } from './remote-host.js';
 import { hostChoice } from './host-choice.js';
 import { setupOwnBoat } from './own-boat.js';
-import { setupBoatStats } from './boat-stats-panel.js';
 import { View, cameraTarget } from './view.js';
 import { installUrlSettings } from './url-settings.js';
 import { installPlayerPrefs } from './player-prefs.js';
@@ -383,9 +382,7 @@ function startClient() {
   let followTarget;
   let ownBoatId = null;
   let ownBoatIds = [];
-  // Boat stats panel (#boat_stats): own boat only in a server room.
-  const boatStats = setupBoatStats({ remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
-  // Instrument panel (zone C): own boat by id, like the stats panel.
+  // Instrument panel (zone C): own boat by id.
   const instruments = setupInstrumentPanel({ remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
   const minimap = setupMinimap({ view, getMapSize: () => [map_w, map_h], remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
   const rankChip = setupRankChip({ remote: host.kind === 'remote' });
@@ -396,7 +393,6 @@ function startClient() {
   setupOwnBoat(host, (ids) => {
     ownBoatIds = ids;
     ownBoatId = ids[0] || null;
-    boatStats.setOwnId(ownBoatId);
     instruments.setOwnId(ownBoatId);
     ruleToasts.setOwnId(ownBoatId);
     minimap.setOwnId(ownBoatId);
@@ -443,7 +439,6 @@ function startClient() {
       setFlowGrid(frame.flow);
     }
     if (frame.state) updateBoatTrails(frame.state, frame.statics);
-    if (frame.state) boatStats.onFrame(frame.state);
     if (frame.state) instruments.onFrame(frame.state);
     if (frame.state) ruleToasts.onFrame(frame.state);
     if (frame.state) minimap.onFrame(frame.state, frame.statics);
