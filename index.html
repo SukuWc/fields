@@ -803,18 +803,22 @@
       #instrument_panel .instr-strip-label { display: flex; gap: 6px; align-items: baseline; font-size: var(--sz-fs-xs); font-variant-numeric: tabular-nums; }
       #instrument_panel .instr-strip-range { margin-left: auto; opacity: 0.55; font-size: var(--sz-fs-2xs); white-space: nowrap; }
       #instrument_panel .instr-strip-svg { display: block; width: 100%; height: 30px; }
-      /* Join tab (spectating in a server room): the join-with-boat flow. */
+      /* Player menu tab (server rooms): join / leave / second player. */
       #instrument_panel .instr-mode[hidden] { display: none; }
-      #instrument_panel .instr-join { display: none; }
-      #instrument_panel[data-mode="join"] .instr-note { display: none; }
-      #instrument_panel[data-mode="join"] .instr-tiles,
-      #instrument_panel[data-mode="join"] .instr-charts { display: none !important; }
-      #instrument_panel[data-mode="join"] .instr-join { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; max-height: 100%; overflow-y: auto; }
-      #instrument_panel #join_tab_name { flex: 1 1 140px; min-width: 0; max-width: 240px; box-sizing: border-box; font: inherit; padding: 4px 8px; color: #fff; background: var(--sz-navy); border: 1px solid rgba(255,255,255,0.25); border-radius: var(--sz-r-sm); }
-      #instrument_panel .instr-join-btn { flex: none; white-space: nowrap; --sz-btn-bg: var(--sz-yellow); --sz-btn-border: var(--sz-yellow); color: var(--sz-navy); font-weight: 700; }
-      #instrument_panel .instr-join-hint { flex: 1 1 160px; font-size: var(--sz-fs-xs); color: #ffd98a; }
-      #instrument_panel .instr-join-status { flex: 1 1 100%; font-size: var(--sz-fs-xs); color: #ffb0a0; }
-      #instrument_panel .instr-join-status:empty { display: none; }
+      #instrument_panel .instr-player { display: none; }
+      #instrument_panel[data-mode="player"] .instr-note { display: none; }
+      #instrument_panel[data-mode="player"] .instr-tiles,
+      #instrument_panel[data-mode="player"] .instr-charts { display: none !important; }
+      #instrument_panel[data-mode="player"] .instr-player { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; max-height: 100%; overflow-y: auto; }
+      #instrument_panel .instr-player [hidden] { display: none !important; }
+      #instrument_panel:not(.spectating) .pm-spectating { display: none !important; }
+      #instrument_panel .instr-player .sz-btn { flex: none; white-space: nowrap; }
+      #instrument_panel #player_menu_name { flex: 1 1 140px; min-width: 0; max-width: 240px; box-sizing: border-box; font: inherit; padding: 4px 8px; color: #fff; background: var(--sz-navy); border: 1px solid rgba(255,255,255,0.25); border-radius: var(--sz-r-sm); }
+      #instrument_panel .pm-join { --sz-btn-bg: var(--sz-yellow); --sz-btn-border: var(--sz-yellow); color: var(--sz-navy); font-weight: 700; }
+      #instrument_panel .pm-hint { flex: 1 1 160px; font-size: var(--sz-fs-xs); color: #ffd98a; }
+      #instrument_panel .pm-status { flex: 1 1 160px; min-width: 0; font-size: var(--sz-fs-xs); opacity: 0.85; }
+      #instrument_panel.spectating .pm-status { flex-basis: 100%; color: #ffb0a0; opacity: 1; }
+      #instrument_panel .pm-status:empty { display: none; }
 
       /* bp-touch */
       .bp-touch #settings_toggle {
@@ -1166,13 +1170,10 @@
       .bp-touch #scenario_card_toggle { min-width: var(--sz-tap); min-height: var(--sz-tap); margin: -10px -6px -10px 0; font-size: var(--sz-fs-md); padding: 0 10px; }
       .bp-touch #boat_stats summary { display: flex; align-items: center; min-height: var(--sz-tap); min-width: var(--sz-tap); padding: 0 4px; font-size: var(--sz-fs-md); }
       .bp-touch #chat_toggle { min-width: 64px; min-height: var(--sz-tap); font-size: var(--sz-fs-lg); }
-      /* Player form: name field, Join / Leave on one line, status below. */
+      /* Player form: the saved name (Join / Leave live in the Player menu tab). */
       .bp-touch #settings #own_boat_panel { flex-wrap: wrap; gap: 8px; padding: 6px 0; cursor: default; }
       .bp-touch #settings #own_boat_panel[hidden], .bp-touch #settings .setting-row[hidden] { display: none; }
       .bp-touch #settings #boat_name { flex: 1 1 140px; min-width: 0; min-height: var(--sz-tap); box-sizing: border-box; font-size: var(--sz-fs-xl); padding: 4px 8px; }
-      .bp-touch #settings #own_boat_leave { flex: none; white-space: nowrap; }
-      .bp-touch #settings #own_boat_status { flex: 1 1 100%; font-size: var(--sz-fs-base); opacity: 0.85; }
-      .bp-touch #settings #own_boat_status:empty { display: none; }
       /* Checkbox rows are already 48 px tall labels; the box itself grows a little. */
       .bp-touch #settings input[type="checkbox"] { width: 28px; height: 28px; }
       .bp-touch #settings .toml-actions input[type="button"] { min-height: var(--sz-tap); padding: 0 12px; }
@@ -1324,9 +1325,12 @@
       .bp-phone #instrument_panel[data-mode="chart"] .instr-charts { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
       .bp-phone #instrument_panel .instr-strip { flex: 0 0 62%; }
       .bp-phone #instrument_panel .instr-strip-svg { height: 26px; }
-      .bp-touch #instrument_panel #join_tab_name { min-height: var(--sz-tap); font-size: 16px; }
-      .bp-phone #instrument_panel .instr-join-hint { display: none; }
-      .bp-phone #instrument_panel #join_tab_name { max-width: none; }
+      .bp-touch #instrument_panel #player_menu_name { min-height: var(--sz-tap); font-size: 16px; }
+      .bp-phone #instrument_panel .pm-hint { display: none; }
+      .bp-phone #instrument_panel #player_menu_name { max-width: none; }
+      .bp-phone #instrument_panel .instr-player .sz-btn { padding: 0 10px; }
+      /* One row on a phone: the status line truncates beside the buttons. */
+      .bp-phone #instrument_panel:not(.spectating) .pm-status { flex: 1 1 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .bp-phone #instrument_panel .instr-tile[data-key="bs"],
       .bp-phone #instrument_panel .instr-tile[data-key="vmg"],
       .bp-phone #instrument_panel .instr-tile[data-key="twa"],
@@ -1487,7 +1491,7 @@
 
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-tv_CjekW.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-DVCKnMPu.js"></script>
   </head>
   <body>
 
@@ -1534,7 +1538,7 @@
       <section id="instrument_panel" class="sz-panel" data-mode="readout" aria-label="Instruments">
         <div class="instr-head">
           <div class="instr-modes sz-tabs" role="group" aria-label="Instrument mode">
-            <button type="button" class="instr-mode sz-tab" data-mode="join" hidden title="Spectating: join this room with your boat">Join</button>
+            <button type="button" class="instr-mode sz-tab instr-mode-player" data-mode="player" hidden title="Player menu: join this room with your boat, leave, or add a second player">Player menu</button>
             <button type="button" class="instr-mode sz-tab" data-mode="readout" aria-pressed="true">Readout</button>
             <button type="button" class="instr-mode sz-tab" data-mode="chart" title="Chart mode: strip charts of the last 30 / 60 / 120 s">Chart</button>
             <button type="button" class="instr-mode sz-tab" data-mode="instrument" disabled title="Instrument mode: coming later">Instrument</button>
@@ -1544,11 +1548,14 @@
         </div>
         <div class="instr-tiles"></div>
         <div class="instr-charts"></div>
-        <div class="instr-join" role="group" aria-label="Join with your boat">
-          <input id="join_tab_name" type="text" placeholder="Your name" maxlength="24" autocomplete="off" aria-label="Your name" title="Name shown on your boat (the same as Player → name)">
-          <button type="button" id="own_boat_join" class="sz-btn instr-join-btn">Join with my boat</button>
-          <span class="instr-join-hint">You are spectating. Join to sail your own boat.</span>
-          <span id="join_tab_status" class="instr-join-status" aria-live="polite"></span>
+        <div class="instr-player" role="group" aria-label="Player menu">
+          <input id="player_menu_name" class="pm-spectating" type="text" placeholder="Your name" maxlength="24" autocomplete="off" aria-label="Your name" title="Name shown on your boat (the same as Settings → Player → name)">
+          <button type="button" id="own_boat_join" class="sz-btn pm-join">Join with my boat</button>
+          <button type="button" id="own_boat_leave" class="sz-btn" hidden>Leave</button>
+          <button type="button" id="own_boat_add" class="sz-btn" title="A second boat on this page: player 2 steers with A / D, W / S, F, G, Q / E, X; player 1 keeps the arrows, Space, Enter, , . /. The camera follows the midpoint of the two boats; zoom with = / -." hidden>Add second player</button>
+          <button type="button" id="own_boat_remove2" class="sz-btn" hidden>Remove player 2</button>
+          <span class="pm-hint pm-spectating">You are spectating. Join to sail your own boat.</span>
+          <span id="own_boat_status" class="pm-status" aria-live="polite"></span>
         </div>
       </section>
     </div>
@@ -1604,10 +1611,6 @@
       <div class="settings-heading" title="Your own view and controls: only this page. Saved in this browser.">Player</div>
       <div id="own_boat_panel" class="setting-row" hidden>
         <input id="boat_name" type="text" placeholder="Your name" maxlength="24" autocomplete="off" size="10" title="Name shown on your boat">
-        <input id="own_boat_add" type="button" value="Add second player" title="A second boat on this page: player 2 steers with A / D, W / S, F, G, Q / E, X; player 1 keeps the arrows, Space, Enter, , . /. The camera follows the midpoint of the two boats; zoom with = / -." hidden>
-        <input id="own_boat_remove2" type="button" value="Remove player 2" hidden>
-        <input id="own_boat_leave" type="button" value="Leave" hidden>
-        <div id="own_boat_status"></div>
       </div>
       <fieldset class="pref-group"><legend>View</legend>
         <label class="setting-row" title="Opponents inside the 12 m rule gate get a 3 m circle: red = you keep clear, green = you have right of way, yellow = transitional (Rule 15, room, both keep clear). Hull colours do not change."><input id="show_row_outline" autocomplete="off" type="checkbox">Right-of-way circles</label>
