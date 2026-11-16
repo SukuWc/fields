@@ -30,6 +30,7 @@ import {
 } from '../src/ladder-lines.js';
 import { BEST_VMG_DOWNWIND_DEG, BEST_VMG_UPWIND_DEG } from '../src/boat-draw.js';
 import { windSample, ConstantWind } from '../src/wind.js';
+import { FinishLine, finishLineState } from '../src/finish.js';
 
 let failed = 0;
 const check = (name, ok, detail = '') => {
@@ -505,6 +506,82 @@ const along = (x, y, ox, oy, dirDeg) => {
   // Cache key: a gate mark moving 1 m rebuilds; 0.1 m does not.
   const k = (dx) => JSON.stringify(ladderBuildKey(getWind, { ...ga, gate: [{ x: -8 + dx, y: -45 }, ga.gate[1]] }));
   check('build key: carries the gate marks (0.1 m keeps it, 1 m changes it)', k(0) === k(0.1) && k(0) !== k(1));
+}
+
+// Finish line as the target: like a gate, one outer layline from each
+// end (pin, committee) and the rungs between them. Before this fix the
+// finish anchors carried only the line mid, so both laylines started
+// there and formed a V.
+{
+  const cw = new ConstantWind(90, 4.5);
+  const getWind = (x, y) => cw.getWind(x, y);
+  const deg = (f) => Math.atan2(f[3] - f[1], f[2] - f[0]) * 180 / Math.PI;
+  const onLine = (x, y, f) => near((f[2] - f[0]) * (y - f[1]) - (f[3] - f[1]) * (x - f[0]), 0, 1e-6);
+  const offFrom = (f, refDeg) => { let a = Math.abs(deg(f) - refDeg) % 360; return a > 180 ? 360 - a : a; };
+  const endsOnLaylines = (geo, L, R) => geo.ladder.filter((f) => [f[0], f[2]].every((x) => Math.abs(x) < 50 - 1e-6)).every((f) => {
+    // Order each rung's ends by their cross-wind side via the laylines.
+    const p = [f[0], f[1]], q = [f[2], f[3]];
+    return (onLine(...p, L) && onLine(...q, R)) || (onLine(...p, R) && onLine(...q, L));
+  });
+
+  // Default course: finish through the start line, pin (−16, −70) and RC
+  // (16, −70), after the second rounding of the windward mark (0, 65): a
+  // downwind finish.
+  const pin = { x: -16, y: -70 }, rc = { x: 16, y: -70 }, w = { x: 0, y: 65 };
+  const fl = new FinishLine(rc, pin, w);
+  const course = {
+    marks: [w, { gate: [{ x: -8, y: -45 }, { x: 8, y: -45 }] }, w],
+    start: { x: 0, y: -70 },
+    finish: fl,
+    progressFor() { return { courseComplete: true, waitingForStart: false, target: 3, targetIndex: 0 }; },
+  };
+  const sa = ladderAnchorsForSim({ course }, {});
+  check('finish (sim): origin the line mid, gate = the two ends, toward the last mark',
+    sa && sa.origin.x === 0 && sa.origin.y === -70 && sa.gate && sa.gate.some((p) => p.x === -16) && sa.gate.some((p) => p.x === 16) && sa.toward.y === 65, JSON.stringify(sa));
+  const statics = {
+    course: { n: 3, anchors: [w, { x: 0, y: -45 }, w], gates: [null, [{ x: -8, y: -45 }, { x: 8, y: -45 }], null], start: { x: 0, y: -70 } },
+    start: { a: pin, b: rc, mid: { x: 0, y: -70 } },
+    finish: finishLineState(fl),
+  };
+  const fa = ladderAnchorsFromState({ hud: { co: { done: 1, fin: 1 } }, course: { c: [w, [{ x: -8, y: -45 }, { x: 8, y: -45 }], w] } }, statics);
+  check('finish (frame state): gate = the finish ends from statics.finish', fa && fa.gate && fa.gate.length === 2 && fa.origin.y === -70 && !fa.towardIsBoat, JSON.stringify(fa));
+  const geo = ladderGeometry(getWind, sa, { bounds });
+  check('finish: sim and frame-state anchors give the same geometry', JSON.stringify(ladderGeometry(getWind, fa, { bounds })) === JSON.stringify(geo));
+  const L = geo.layline.find((f) => near(f[0], -16, 1e-9) && near(f[1], -70, 1e-9));
+  const R = geo.layline.find((f) => near(f[0], 16, 1e-9) && near(f[1], -70, 1e-9));
+  check('finish: one layline from the pin, one from the RC, none from the mid (no V)',
+    geo.layline.length === 2 && L && R && !geo.layline.some((f) => near(f[0], 0, 1e-9)), JSON.stringify(geo.layline));
+  check('finish (downwind): pin layline 110°, RC layline 70° (20° off dead upwind, outer side)', near(deg(L), 110, 1e-6) && near(deg(R), 70, 1e-6), `${deg(L)} ${deg(R)}`);
+  const ys = geo.ladder.map((f) => f[1]);
+  check('finish: rungs every 10 m above the line up to the last mark (13, y = −60 … 60)',
+    ys.length === 13 && ys.every((y, i) => near(y, -60 + 10 * i, 1e-9)), ys.join(','));
+  const tan20 = Math.tan(20 * Math.PI / 180);
+  check('finish: rung ends at ±(16 + d·tan 20°), clipped to the map',
+    geo.ladder.every((f) => { const wv = Math.min(16 + (f[1] + 70) * tan20, 50); return near(Math.min(f[0], f[2]), -wv, 1e-6) && near(Math.max(f[0], f[2]), wv, 1e-6); }));
+  check('finish: rung ends inside the map lie on the laylines', endsOnLaylines(geo, L, R));
+
+  // Custom course with a downwind finish on its own skewed line: windward
+  // mark (10, 60), finish pin (−20, −55), committee (20, −65). Each layline
+  // from its own end, 20° off dead upwind on the outer side; rungs square
+  // to the wind from the mid (0, −60), capped at the windward mark (120 m).
+  const cpin = { x: -20, y: -55 }, crc = { x: 20, y: -65 }, cw2 = { x: 10, y: 60 };
+  const cfl = new FinishLine(crc, cpin, cw2);
+  const ccourse = { marks: [cw2], start: { x: 0, y: -80 }, finish: cfl, progressFor() { return { courseComplete: true, waitingForStart: false }; } };
+  const ca = ladderAnchorsForSim({ course: ccourse }, {});
+  const cg = ladderGeometry(getWind, ca, { bounds });
+  const cL = cg.layline.find((f) => near(f[0], -20, 1e-9) && near(f[1], -55, 1e-9));
+  const cR = cg.layline.find((f) => near(f[0], 20, 1e-9) && near(f[1], -65, 1e-9));
+  check('custom downwind finish: each layline through its own end', cL && cR, JSON.stringify(cg.layline));
+  check('custom downwind finish: 20° off dead upwind, outer side (pin 110°, RC 70°)', cL && cR && near(offFrom(cL, 90), 20, 1e-6) && near(deg(cL), 110, 1e-6) && near(deg(cR), 70, 1e-6));
+  const cys = cg.ladder.map((f) => f[1]);
+  check('custom downwind finish: 12 rungs square to the wind from the mid (y = −50 … 60)',
+    cg.ladder.every((f) => near(f[1], f[3], 1e-9)) && cys.length === 12 && cys.every((y, i) => near(y, -50 + 10 * i, 1e-9)), cys.join(','));
+  check('custom downwind finish: rung ends inside the map lie on the laylines', endsOnLaylines(cg, cL, cR));
+
+  // A finish with no ends known (statics without .finish, only course.fin)
+  // falls back to the single-point laylines, as before.
+  const midOnly = ladderAnchorsFromState({ hud: { co: { done: 1 } }, course: { c: [w] } }, { course: { n: 1, anchors: [w], fin: { x: 0, y: -70 } } });
+  check('finish without ends: no gate, single-point laylines', midOnly && !midOnly.gate && midOnly.origin.y === -70, JSON.stringify(midOnly));
 }
 
 if (failed) { console.log(`${failed} check(s) failed`); process.exit(1); }

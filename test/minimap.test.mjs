@@ -54,4 +54,25 @@ check('camera rect centred on the camera', near(cr[0] + cr[2] / 2, 5) && near(cr
   check('no wind and nothing carried: no laylines', minimapLaylines(gateState, statics, { ...opts, twdDeg: NaN }).length === 0);
 }
 check('xy accepts arrays and objects', xy([1, 2])[1] === 2 && xy({ x: 3, y: 4 })[0] === 3 && xy(null) === null);
+// Finish line target (downwind finish through the start line on the
+// default course): the minimap shows one layline from the pin and one
+// from the RC, identical to the main view, not a V from the line mid.
+{
+  const w = { x: 0, y: 65 };
+  const statics = {
+    course: { n: 3, anchors: [w, { x: 0, y: -45 }, w], gates: [null, [{ x: -8, y: -45 }, { x: 8, y: -45 }], null], start: { x: 0, y: -70 } },
+    start: { a: { x: -16, y: -70 }, b: { x: 16, y: -70 }, mid: { x: 0, y: -70 } },
+    finish: { a: { x: -16, y: -70 }, b: { x: 16, y: -70 }, mid: { x: 0, y: -70 } },
+  };
+  const state = { hud: { co: { done: 1, fin: 1 } }, course: { c: [w, [{ x: -8, y: -45 }, { x: 8, y: -45 }], w] } };
+  const deg = (f) => Math.atan2(f[3] - f[1], f[2] - f[0]) * 180 / Math.PI;
+  const f = minimapLaylines(state, statics, { twdDeg: 0, mapW: 100, mapH: 200 });
+  const pinL = f.find((s) => near(s[0], -16) && near(s[1], -70));
+  const rcL = f.find((s) => near(s[0], 16) && near(s[1], -70));
+  check('finish: one layline from the pin, one from the RC, none from the mid', f.length === 2 && pinL && rcL && !f.some((s) => near(s[0], 0)));
+  check('finish: 20° off dead upwind on the outer side (110°, 70°)', near(deg(pinL), 110) && near(deg(rcL), 70));
+  const main = ladderGeometry(() => ({ vx: 0, vy: -1 }), ladderAnchorsFromState(state, statics), { bounds: { xmin: -50, xmax: 50, ymin: -100, ymax: 100 } }).layline;
+  const r6 = (v) => Math.round(v * 1e6) / 1e6;
+  check('finish: identical to the main view geometry', JSON.stringify(f.map((s) => s.map(r6))) === JSON.stringify(main.map((s) => s.map(r6))));
+}
 console.log(`all ${n} minimap checks passed`);

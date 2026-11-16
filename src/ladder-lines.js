@@ -28,7 +28,9 @@
 // Laylines (fixed angles, boat-draw.js best-VMG constants): two rays on
 // the approach side, to the map edge. From a single mark both start at
 // the mark. At a gate (anchors.gate, the two mark centres; the anchor is
-// its mid) each starts at its own mark: judged across the wind, the left
+// its mid), and at the finish line (anchors.gate = its two ends, pin and
+// committee, also when the start line doubles as the finish; the anchor is
+// the line mid), each starts at its own mark: judged across the wind, the left
 // mark gets the left layline and the right mark the right one, so they
 // open outward and the zone between them holds the whole gate. The wind
 // direction and the side are still taken at the gate mid.
@@ -270,6 +272,25 @@ function finishMidForSim(sim) {
   return lineMid(sim && sim.course && sim.course.finish);
 }
 
+// The two ends of a start / finish line ({ a, b } as in FinishLine and
+// finishLineState, or { pin, committee }), or null. A finish target uses
+// them like a gate's two marks (anchors.gate): one outer layline from each
+// end and the rungs between them.
+function lineEnds(line) {
+  if (!line) return null;
+  const a = xyOf(line.a) || xyOf(line.pin);
+  const b = xyOf(line.b) || xyOf(line.committee);
+  return a && b && (a.x !== b.x || a.y !== b.y) ? [a, b] : null;
+}
+
+// Finish anchors: the line mid (wind and side sampled there) with the two
+// ends as the gate pair.
+function finishAnchors(origin, toward, ends, towardIsBoat = false) {
+  const a = towardIsBoat ? { origin, toward, towardIsBoat: true } : { origin, toward };
+  if (ends) a.gate = ends;
+  return a;
+}
+
 function startMidFromState(statics) {
   const st = statics && statics.start;
   const cs = statics && statics.course;
@@ -289,7 +310,8 @@ function finishMidFromState(statics) {
 // After a valid start: the current rounding target (a mark, or the mid of
 // a gate), toward the previous mark / gate mid, or the course start on the
 // first rounding (the last mark on later laps). When the finish is next
-// (courseComplete): the finish-line mid, toward the last mark. With no
+// (courseComplete): the finish-line mid, toward the last mark, with the
+// line's two ends as anchors.gate. With no
 // course but a mark (scenario 21): that mark, toward the boat.
 export function ladderAnchorsForSim(sim, boat = null) {
   const course = sim && sim.course;
@@ -308,7 +330,7 @@ export function ladderAnchorsForSim(sim, boat = null) {
   const n = marks.length;
   if (p && p.courseComplete) {
     const origin = finishMidForSim(sim);
-    return origin ? { origin, toward: ladderMarkCentre(marks[n - 1]) } : null;
+    return origin ? finishAnchors(origin, ladderMarkCentre(marks[n - 1]), lineEnds(sim.course.finish)) : null;
   }
   const k = p && Number.isFinite(p.target) ? p.target : (p ? p.targetIndex : 0);
   const i = ((k % n) + n) % n;
@@ -332,7 +354,7 @@ export function ladderOriginForSim(sim, boat = null) {
 // Same anchors from compact frame state, for the local player's boat.
 // Reuses courseTextState (hud.own[id].co / hud.co): waiting (co.w) → start
 // mid with preStart (nothing drawn); done → finish mid toward the last
-// mark; otherwise course.c[i] / anchors (gate mid when the target is a
+// mark, with statics.finish's ends (a, b) as anchors.gate; otherwise course.c[i] / anchors (gate mid when the target is a
 // gate) toward element i − 1 (the start on lap 1's first leg, the last
 // element on later laps). With no previous point, toward is the local
 // boat (state.boats entry with id ownId; px / py).
@@ -352,7 +374,8 @@ export function ladderAnchorsFromState(state, statics, { ownId } = {}) {
   if (co && co.done) {
     const origin = finishMidFromState(statics);
     const last = n ? elem(n - 1) : null;
-    return origin ? (last ? { origin, toward: last } : { origin, toward: boatAt, towardIsBoat: true }) : null;
+    const ends = lineEnds(statics && statics.finish);
+    return origin ? (last ? finishAnchors(origin, last, ends) : finishAnchors(origin, boatAt, ends, true)) : null;
   }
   if (!co || co.w) {
     const start = startMidFromState(statics);
