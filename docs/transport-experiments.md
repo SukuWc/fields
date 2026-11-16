@@ -505,7 +505,10 @@ The client bilinear-samples the finest covering AMR grid for:
   clipped to the map. With a course they stop at the previous point of
   the leg (previous mark, gate mid or start mid): none past the start
   line or the gate. With no course (scenario 21) they run to the map
-  edge. Everything is rebuilt only when the target moves (0.5 m), the
+  edge. The minimap draws the same laylines: it reuses `state.layline`
+  when the frame has it, otherwise it builds them with the same
+  `laylineGeometry` from the same anchors and the shown boat's true wind
+  direction. Everything is rebuilt only when the target moves (0.5 m), the
   direction there changes (1°), the side flips or the previous point's
   10 m line count changes, not on every field message. Old room TOML
   `ladder_lines` keys are ignored. The server no longer computes

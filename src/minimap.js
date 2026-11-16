@@ -4,7 +4,8 @@
 //     boundary { x, yMin, yMax }
 //   frame state: boats by id (px / py, heading_deg), mark centres
 //     (state.course.c), the next mark (state.course.view.index), wind
-//     (the shown boat's twd_deg)
+//     (the shown boat's twd_deg), the main view's laylines (state.layline,
+//     when Ladder lines is on; minimapLaylines)
 //   view (this client): the camera rectangle.
 // Click (or drag) pans the camera there and turns Camera Follow off; the
 // "Follow" button turns it back on. Redrawn at 5 Hz. No sim state is read.
@@ -12,12 +13,12 @@ import { boatColorCss, boatColorIndex } from './boat-colors.js';
 import { instrumentBoat } from './instrument-readout.js';
 
 import { PHONE_QUERY } from './layout.js';
+import { ladderAnchorsFromState, ladderDrawable, laylineGeometry, mapBoundsFromLat } from './ladder-lines.js';
 // Phones only: a tablet keeps the desktop map (plan M10).
 export const MINIMAP_COMPACT_QUERY = PHONE_QUERY;
 export const MINIMAP_W = 320;
 export const MINIMAP_H = 256;
 const UPDATE_MS = 200;
-const LAYLINE_DEG = 45; // tacking half-angle for the laylines (fixed)
 
 export const xy = (p) => {
   if (!p) return null;
@@ -47,16 +48,26 @@ export function cameraRect(view, aspect) {
   return [view.camera_position_x - hw, view.camera_position_y - hh, 2 * hw, 2 * hh];
 }
 
-// Layline end points from a windward mark: two lines running downwind at
-// ±LAYLINE_DEG either side of dead downwind. twdDeg: compass, wind from.
-export function laylines(mark, twdDeg, len) {
-  if (!mark || !Number.isFinite(twdDeg)) return [];
-  // downwind of the mark (bearing twd + 180), opened by ±LAYLINE_DEG;
-  // compass bearing → world: x = sin, y = cos
-  return [-1, 1].map((sgn) => {
-    const b = (twdDeg + 180 + sgn * LAYLINE_DEG) * Math.PI / 180;
-    return [mark[0] + Math.sin(b) * len, mark[1] + Math.cos(b) * len];
-  });
+// Laylines for the minimap: the same segments as the main view
+// (ladder-lines.js), [[x0, y0, x1, y1], …] in world metres. When the frame
+// already carries them (state.layline: built by scene-state.js or, for a
+// remote client, main.js while Ladder lines is on) those are used as they
+// are, so both views always agree. Otherwise (Ladder lines off) they are
+// built here with the same laylineGeometry from the same anchors
+// (ladderAnchorsFromState for ownId: next mark, or each gate mark on its
+// outer side; upwind/downwind from the previous point), using the shown
+// boat's true wind direction twdDeg (compass, wind from) as the wind at
+// the mark, clipped to the mapW × mapH map. Nothing before the start.
+export function minimapLaylines(state, statics, { ownId = null, twdDeg = NaN, mapW, mapH } = {}) {
+  if (state && Array.isArray(state.layline)) return state.layline;
+  if (!Number.isFinite(twdDeg)) return [];
+  const anchors = ladderAnchorsFromState(state, statics, { ownId });
+  if (!ladderDrawable(anchors)) return [];
+  // Wind from twdDeg blows toward twdDeg + 180 (compass → world: x = sin, y = cos).
+  const b = (twdDeg + 180) * Math.PI / 180;
+  const w = { vx: Math.sin(b), vy: Math.cos(b) };
+  const bounds = mapBoundsFromLat({ width: mapW, height: mapH });
+  return laylineGeometry(() => w, anchors, { bounds });
 }
 
 export function setupMinimap({ view, getMapSize, remote = false, lockstep = () => false } = {}, doc = document) {
@@ -160,15 +171,13 @@ export function setupMinimap({ view, getMapSize, remote = false, lockstep = () =
       if (cs && cs.fin && xy(cs.fin) && cs.lapsFinite) pts.push(xy(cs.fin));
       pts.forEach((p, i) => (i ? ctx.lineTo(...P(p)) : ctx.moveTo(...P(p))));
       ctx.stroke(); ctx.setLineDash([]);
-      // laylines on the next mark
+      // laylines on the next target: the main view's geometry (minimapLaylines)
       const next = s.course && s.course.view ? s.course.view.index : null;
       const me = lastState ? instrumentBoat(lastState.boats, { ownId, remote, lockstep: lockstep() }) : null;
-      const twd = me && Number.isFinite(me.twd_deg) ? me.twd_deg : (s.boats && s.boats[0] && Number.isFinite(s.boats[0].twd_deg) ? s.boats[0].twd_deg : null);
-      if (Number.isInteger(next) && marks[next]) {
-        const m = mid(marks[next]);
-        ctx.strokeStyle = 'rgba(255,196,0,0.7)'; ctx.lineWidth = 1;
-        for (const e of laylines(m, twd, Math.max(mw, mh))) { ctx.beginPath(); ctx.moveTo(...P(m)); ctx.lineTo(...P(e)); ctx.stroke(); }
-      }
+      const twd = me && Number.isFinite(me.twd_deg) ? me.twd_deg : (s.boats && s.boats[0] && Number.isFinite(s.boats[0].twd_deg) ? s.boats[0].twd_deg : NaN);
+      const segs = lastState ? minimapLaylines(lastState, st, { ownId: ownId != null ? ownId : (me ? me.id : null), twdDeg: twd, mapW: mw, mapH: mh }) : [];
+      ctx.strokeStyle = 'rgba(255,204,51,0.7)'; ctx.lineWidth = 1;
+      for (const f of segs) { ctx.beginPath(); ctx.moveTo(...P([f[0], f[1]])); ctx.lineTo(...P([f[2], f[3]])); ctx.stroke(); }
       marks.forEach((m, i) => {
         for (const p of m.pts) {
           ctx.fillStyle = i === next ? '#ffc400' : '#ff8a00';

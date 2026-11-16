@@ -399,6 +399,16 @@ export function ladderGeometry(getWind, anchors, { bounds = null } = {}) {
   };
 }
 
+// Laylines only, same geometry as ladderGeometry(...).layline (one wind
+// sample at the anchor); for the minimap when the frame carries none.
+export function laylineGeometry(getWind, anchors, { bounds = null } = {}) {
+  const o = anchors && anchors.origin;
+  const dir = o ? ladderWindDeg(getWind, o.x, o.y) : null;
+  if (dir === null) return [];
+  return laylineLines(o.x, o.y, dir, bounds, ladderSide(anchors, dir), anchors.gate)
+    .map((l) => [l.pts[0][0], l.pts[0][1], l.pts[1][0], l.pts[1][1]]);
+}
+
 // Farthest ladder offset (m along the wind from the anchor) for anchors
 // and direction dirDeg: the along-wind offset of the previous point of
 // the leg when there is one, Infinity (the map edge) when `toward` is
