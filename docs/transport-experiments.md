@@ -490,16 +490,27 @@ The client bilinear-samples the finest covering AMR grid for:
 
 - Flow tracers (`flow_tracers` / `?show_field`)
 - Ladder lines, when the per-client Dev setting `ladder_lines` is on
-  (default; URL `?ladder=0` turns them off). The existing
-  `ladder-lines.js` algorithm is referenced to the local player's next
-  course target (start-line mid before the gun, then the next mark or
-  the mid of a gate, then the finish-line mid; the same progress as
-  the HUD "NEXT" / "NEXT START" logic). The lines lie on the side of
-  the target facing the previous point of the leg (previous mark or gate
-  mid, the start on the first leg; no lines before the gun),
-  one every 10 m for the leg length measured along the wind (at most 40
-  lines), and are rebuilt once per field message. Points are clipped to
-  the map domain. Old room TOML
+  (default; URL `?ladder=0` turns them off). `ladder-lines.js` anchors
+  them at the local player's next course target (the next mark or the
+  mid of a gate, then the finish-line mid; the same progress as the HUD
+  "NEXT" logic; no lines before the gun). The field is sampled once, at
+  that target (a gate's mid), and only the wind direction is used. Two
+  laylines run to the map edge on the approach side: 50° off dead
+  downwind at an upwind mark, 20° off dead upwind at a downwind mark
+  (the previous mark, or the boat, decides which). From a single mark
+  both start at the mark; at a gate each starts at its own mark, on its
+  outer side across the wind, so the zone holds the whole gate. Straight lines square
+  to the wind every 10 m from the target (for a gate, from the line
+  through its mid square to the wind) run between the laylines,
+  clipped to the map. With a course they stop at the previous point of
+  the leg (previous mark, gate mid or start mid): none past the start
+  line or the gate. With no course (scenario 21) they run to the map
+  edge. The minimap draws the same laylines: it reuses `state.layline`
+  when the frame has it, otherwise it builds them with the same
+  `laylineGeometry` from the same anchors and the shown boat's true wind
+  direction. Everything is rebuilt only when the target moves (0.5 m), the
+  direction there changes (1°), the side flips or the previous point's
+  10 m line count changes, not on every field message. Old room TOML
   `ladder_lines` keys are ignored. The server no longer computes
   `state.ladder` for remote clients and no longer sends a `flow`
   message.

@@ -25,7 +25,7 @@ import {
 } from './rules.js';
 import { hudFromState } from './hud.js';
 import { markTouchGuidesFromState } from './mark-touch.js';
-import { ladderGuidesFromState } from './ladder-lines.js';
+import { ladderGuidesFromState, laylineGuidesFromState } from './ladder-lines.js';
 import { gustGuidesFromState } from './gusts.js';
 
 // Smooth circle per boat disk. A field island has a mask and no disk, so
@@ -193,6 +193,7 @@ export function buildGuides(state, statics, view) {
     pushRefinementGuides(guides, state.amr.d.map((d) => new DomainOutline(d)), bm);
   }
   if (state.ladder) guides.push(...ladderGuidesFromState(state.ladder));
+  if (state.layline) guides.push(...laylineGuidesFromState(state.layline));
   if (state.gust) guides.push(...gustGuidesFromState(state.gust));
   if (state.wind !== undefined && view) {
     // The arrow points downwind, along the flow.
