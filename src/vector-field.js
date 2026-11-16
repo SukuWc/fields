@@ -186,7 +186,7 @@ export function sampleVectorField(msg, x, y, out = { x: 0, y: 0 }) {
   return out;
 }
 
-// getWind-shaped sample for ladder-lines.js. Only the direction of (vx, vy)
+// getWind-shaped sample for ladder-lines.js (sampled once, at the anchor). Only the direction of (vx, vy)
 // is used (the front steps a fixed 0.5 m); magnitudes are in m/s.
 export function vectorFieldWind(msg, x, y) {
   const v = sampleVectorField(msg, x, y);
