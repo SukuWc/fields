@@ -33,8 +33,9 @@
 //   wind   dev mode: flow direction (deg) for the wind arrow
 //   ladder ladder lines (ladder-lines.js): square to the wind at the next
 //          course target (gate/finish mid or a mark), 10 m apart on the
-//          approach side, each between the laylines and inside the map:
-//          [[x0,y0,x1,y1], …]; none before the start; when
+//          approach side, each between the laylines and inside the map,
+//          no farther than the previous mark / gate / start mid (map
+//          edge with no course): [[x0,y0,x1,y1], …]; none before the start; when
 //          view.show_ladder is on
 //   layline the two laylines from that target (50° off dead downwind for
 //          an upwind mark, 20° off dead upwind for a downwind mark) to the

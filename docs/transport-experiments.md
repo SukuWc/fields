@@ -499,9 +499,12 @@ The client bilinear-samples the finest covering AMR grid for:
   downwind at an upwind mark, 20° off dead upwind at a downwind mark
   (the previous mark, or the boat, decides which). Straight lines square
   to the wind every 10 m from the target run between the laylines,
-  clipped to the map. Everything is rebuilt only when the target moves
-  (0.5 m), the direction there changes (1°) or the side flips, not on
-  every field message. Old room TOML
+  clipped to the map. With a course they stop at the previous point of
+  the leg (previous mark, gate mid or start mid): none past the start
+  line or the gate. With no course (scenario 21) they run to the map
+  edge. Everything is rebuilt only when the target moves (0.5 m), the
+  direction there changes (1°), the side flips or the previous point's
+  10 m line count changes, not on every field message. Old room TOML
   `ladder_lines` keys are ignored. The server no longer computes
   `state.ladder` for remote clients and no longer sends a `flow`
   message.
