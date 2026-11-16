@@ -499,7 +499,11 @@ The client bilinear-samples the finest covering AMR grid for:
   downwind at an upwind mark, 20° off dead upwind at a downwind mark
   (the previous mark, or the boat, decides which). From a single mark
   both start at the mark; at a gate each starts at its own mark, on its
-  outer side across the wind, so the zone holds the whole gate. Straight lines square
+  outer side across the wind, so the zone holds the whole gate. The
+  finish line (also when the start line doubles as the finish) is
+  treated the same way: one layline from the pin end and one from the
+  committee end, with the rungs between them (`statics.finish` carries
+  the ends for remote clients). Straight lines square
   to the wind every 10 m from the target (for a gate, from the line
   through its mid square to the wind) run between the laylines,
   clipped to the map. With a course they stop at the previous point of
