@@ -217,8 +217,17 @@ export const RUDDER_MAX_FORCE_N_MAX = 5000;
 
 /** Autopilot heading-target change per sim tick while Up / Down is held (was 1°). */
 export const AUTOPILOT_HEADING_STEP_DEG = 1.5;
-// Sticky helm: max degrees the target may run ahead of the boat's heading.
-export const AUTOPILOT_TURN_MAX_LEAD_DEG = 90;
+/** Sticky autopilot holdoff: milliseconds of sim time after the Left / Right
+ *  helm is released (no helm command on a tick) before the heading-hold
+ *  autopilot engages on the heading she then has. Helm again during the
+ *  holdoff restarts it on the next release. 0 = engage on the release tick;
+ *  negative (-1) = never (plain manual helm, the autopilot stays off until
+ *  Space, Enter or Up / Down). Up / Down and tack already keep the autopilot
+ *  on, so the holdoff does not apply to them. Per boat
+ *  (Boat.sticky_autopilot_holdoff_ms), set by the autopilotGains command. */
+export const STICKY_AUTOPILOT_HOLDOFF_MS = 500;
+export const STICKY_AUTOPILOT_HOLDOFF_MS_MIN = -1;
+export const STICKY_AUTOPILOT_HOLDOFF_MS_MAX = 10000;
 export function wrapDeg180(a){ a = ((a + 180) % 360 + 360) % 360 - 180; return a === -180 ? 180 : a; }
 
 export { BEST_VMG_DOWNWIND_DEG, BEST_VMG_UPWIND_DEG, autopilotSnapTarget } from './boat-draw.js';
@@ -309,6 +318,12 @@ export class Boat{
     this.power_direction = 0;
 
     this.autopilot_enabled = false;
+    // Sticky autopilot holdoff (stepHelmHoldoff): helm seen this tick, helm
+    // seen last tick, sim seconds since the release (null = no holdoff running).
+    this.sticky_autopilot_holdoff_ms = STICKY_AUTOPILOT_HOLDOFF_MS;
+    this._helmHeld = false;
+    this._helmWasHeld = false;
+    this._holdoffElapsed = null;
     this.depowered = false;
     this.depower = 0;
     this.penalty_turn = null;
@@ -1125,6 +1140,53 @@ export class Boat{
     this._cancelPenaltyTurn()
   }
 
+  // Held Left / Right from a player (the 'helm' command): the rudder, plus
+  // the mark the sticky autopilot holdoff watches. Scripts that call
+  // input_rudder_* directly do not start a holdoff.
+  input_helm(dir){
+    if (dir < 0) this.input_rudder_left(); else this.input_rudder_right();
+    this._helmHeld = true;
+  }
+
+  setStickyAutopilotHoldoff(ms) {
+    if (typeof ms !== 'number' || !Number.isFinite(ms) || ms < STICKY_AUTOPILOT_HOLDOFF_MS_MIN || ms > STICKY_AUTOPILOT_HOLDOFF_MS_MAX) return false;
+    this.sticky_autopilot_holdoff_ms = ms;
+    return true;
+  }
+
+  // Once per sim tick, after the held commands (Sim.step). dt: sim seconds of
+  // this tick (0 for an extra pass). Deterministic: sim time only.
+  stepHelmHoldoff(dt){
+    if (this._helmHeld) {
+      this._helmHeld = false;
+      this._helmWasHeld = true;
+      this._holdoffElapsed = null;
+      return;
+    }
+    if (this._helmWasHeld) {
+      // Released this tick.
+      this._helmWasHeld = false;
+      if (!(this.sticky_autopilot_holdoff_ms >= 0)) return;
+      this._holdoffElapsed = 0;
+    } else if (this._holdoffElapsed !== null) {
+      this._holdoffElapsed += dt > 0 ? dt : 0;
+    } else return;
+    // Something else engaged the autopilot (Space, Enter, Up / Down) or a
+    // penalty circle took the helm: nothing to do.
+    if (this.autopilot_enabled || this.penalty_turn) { this._holdoffElapsed = null; return; }
+    if (this._holdoffElapsed * 1000 + 1e-6 < this.sticky_autopilot_holdoff_ms) return;
+    this._holdoffElapsed = null;
+    this._engageHeadingHold();
+  }
+
+  // Heading hold on the current heading (target -TWA), no PID kick.
+  _engageHeadingHold(){
+    this.autopilot_heading_target = wrapDeg180(-this.twa);
+    this.autopilot_compensator_last_error = 0;
+    this.autopilot_compensator_sum_error = 0;
+    this.autopilot_enabled = true;
+  }
+
   input_motor_forward(){
     this.motor_input = 1
   }
@@ -1174,27 +1236,6 @@ export class Boat{
       const m = Math.min(175, Math.abs(t) + step)
       this.autopilot_heading_target = t > 0 ? m : -m
     }
-  }
-  // Sticky-autopilot helm (Left / Right with the "Sticky autopilot" setting):
-  // dir -1 (Left) turns her counter-clockwise like left rudder, +1 (Right)
-  // clockwise, by moving the heading target (-TWA, so CCW raises it). No
-  // 5..175° clamp: the target wraps through ±180 (dead downwind) and 0 (head
-  // to wind), so holding Left / Right tacks and gybes continuously. The
-  // autopilot error is wrapped to ±180 (shortest way); the target never leads
-  // the boat by more than AUTOPILOT_TURN_MAX_LEAD_DEG in the turn direction,
-  // so shortest way is always the held direction (no reversing at the wrap).
-  // Engages the autopilot. Up / Down keep their clamped behaviour.
-  input_autopilot_turn(dir, step = AUTOPILOT_HEADING_STEP_DEG){
-    this._cancelPenaltyTurn()
-    if (!this.autopilot_enabled) {
-      this.autopilot_enabled = true
-      this.autopilot_heading_target = wrapDeg180(-this.twa)
-    }
-    const sgn = dir < 0 ? 1 : -1
-    const lead = wrapDeg180(this.autopilot_heading_target - (-this.twa)) * sgn
-    const room = AUTOPILOT_TURN_MAX_LEAD_DEG - lead
-    if (room <= 0) return
-    this.autopilot_heading_target = wrapDeg180(this.autopilot_heading_target + sgn * Math.min(step, room))
   }
   input_autopilot_heading_decrease(step = AUTOPILOT_HEADING_STEP_DEG){
     this._cancelPenaltyTurn()
