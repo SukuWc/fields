@@ -59,7 +59,7 @@ export function setupInputMap(doc = document, storage = globalThis.localStorage)
     const list = nav && nav.getGamepads ? Array.from(nav.getGamepads() || []).filter((p) => p && p.connected) : [];
     for (const el of group.querySelectorAll('[data-pad-status]')) {
       const p = list[Number(el.dataset.padStatus)];
-      el.textContent = p ? '(connected)' : '(not connected)';
+      el.textContent = p ? 'connected' : 'not connected';
     }
   }
 
