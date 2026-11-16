@@ -140,13 +140,14 @@ test('markup: 44 px button beside the flag, desktop stays without it, unsupporte
   assert.match(html, /#fullscreen_toggle \{ display: none; \}/);
   assert.doesNotMatch(html, /\.bp-desktop #fullscreen_toggle/);
   assert.match(html, /\.bp-touch:has\(#fullscreen_toggle:not\(\[hidden\]\)\) #sheet_toggle \{ right: calc\(96px \+ env\(safe-area-inset-right\)\)/);
-  assert.match(html, /100vw - 44px - 44px - 44px - 116px/);
-  // 360 px portrait: chip ends before Boat stats once the button is shown.
-  const chip = 360 - 44 - 44 - 44 - 116;
-  const boatLeft = (360 - 144) - 90;
-  assert.ok(chip + 8 < boatLeft, `chip ${chip} overlaps boat stats at ${boatLeft}`);
+  assert.match(html, /100vw - 44px - 44px - 44px - 20px/);
+  // 360 px portrait: chip ends before the flag once the button is shown
+  // (Boat stats is gone, so the chip takes its room).
+  const chip = 360 - 44 - 44 - 44 - 20;
+  const flagLeft = 360 - 144;
+  assert.ok(chip + 8 <= flagLeft, `chip ${chip} overlaps the flag at ${flagLeft}`);
   // 568 px landscape: strip keeps about the pre-button width (right inset +48, chip −48).
-  const before = 568 - 230 - 208;
-  const after = 568 - 182 - 256;
+  const before = 568 - 230 - 96;
+  const after = 568 - 182 - 144;
   assert.ok(after >= before - 4, `strip ${after} vs ${before}`);
 });

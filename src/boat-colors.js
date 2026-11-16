@@ -1,8 +1,8 @@
 // Boat colours (no DOM, no three.js): one fixed palette, picked by the boat's
 // index in the frame's boat list (state.boats, the sim's player order). The
 // host builds that list, so local, worker and ?host=remote clients give the
-// same boat the same colour. Used for the hull fill, trail dots, ghost hull
-// and Boat stats chart lines. Mandatory for now: a spawnBoat color (state.bc)
+// same boat the same colour. Used for the hull fill, trail dots, ghost hull,
+// minimap and leaderboard. Mandatory for now: a spawnBoat color (state.bc)
 // no longer changes it.
 export const BOAT_COLORS = [
   0x2f80ff, // 0 blue

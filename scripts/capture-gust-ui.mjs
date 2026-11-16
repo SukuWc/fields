@@ -68,8 +68,6 @@ await page.evaluate(() => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   }
-  const bs = document.getElementById('boat_stats_toggle') || document.querySelector('[id*="boat_stats"]');
-  if (bs) bs.style.display = 'none';
 });
 
 await page.screenshot({ path: out, type: 'png' });

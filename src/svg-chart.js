@@ -1,4 +1,4 @@
-// Shared SVG line-chart helpers (landing frame-time graphs + boat-stats panel).
+// Shared SVG line-chart helpers (landing frame-time graphs, instrument Chart mode).
 // DOM-free math lives here; bindSvgChartHover attaches pointer readout.
 export const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -20,7 +20,7 @@ export function xToIndex(x, n, w) {
   return Math.max(0, Math.min(n - 1, Math.round((x / w) * (n - 1))));
 }
 
-// Time window [t1 − windowS, t1] across width w (boat-stats).
+// Time window [t1 − windowS, t1] across width w (instrument Chart mode).
 export function timeToX(t, t1, windowS, w) {
   return ((t - (t1 - windowS)) / windowS) * w;
 }
@@ -66,7 +66,7 @@ export function agoLabel(ageS) {
 }
 
 // tipEl: tip HTMLElement (or null). Tip is position:fixed so overflow:auto
-// ancestors (e.g. #boat_stats) do not clip it.
+// ancestors do not clip it (landing perf charts).
 // getHit(svgX) → null | { x, y, text[, color] } in SVG user units + tip string.
 // Call refresh() after redrawing the chart so the overlay tracks under a
 // still pointer as the series scrolls/updates.
