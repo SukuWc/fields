@@ -70,6 +70,7 @@ import {
 import { setupMobileMenu } from './mobile-menu.js';
 import { setupTouchControls } from './touch-controls.js';
 import { setupGamepad } from './gamepad.js';
+import { setupInputMap } from './input-map.js';
 import { setupPinchZoom } from './pinch-zoom.js';
 import { setupWheelZoom } from './wheel-zoom.js';
 import { setupChat } from './chat-panel.js';
@@ -309,6 +310,8 @@ function startClient() {
   // Before installUrlSettings: the device default must be the checkbox default.
   setupTouchControls();
   setupGamepad();
+  // Player tab → Input mapping: which boat the keyboard and each pad drive.
+  setupInputMap();
   // After the WebGL canvas exists (#sim_canvas): two-finger pinch zooms the client camera.
   setupPinchZoom(view);
   // Mouse wheel / trackpad scroll over the race view zooms; panels still scroll.

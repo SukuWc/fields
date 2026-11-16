@@ -94,7 +94,8 @@ function checkKeyPress(e) {
   // Letter keys (Q, E) also sit on the settings panel. Ignore them, and the
   // helm keys, while a control has focus so typing does not steer the boat.
   if (typingInControl(e)) return;
-  const zoom = e.ctrlKey || e.metaKey || e.altKey ? 0 : zoomKeyStep(e.keyCode, _boundBoats);
+  // W / S zoom unless the split layout gives them to player 2.
+  const zoom = e.ctrlKey || e.metaKey || e.altKey ? 0 : zoomKeyStep(e.keyCode, splitKeyboard() ? 2 : 1);
   if (zoom && _view) { _view.input_camera_zoom_relative(zoom); return; }
   const was = key_state[e.keyCode];
   key_state[e.keyCode] = true;
@@ -108,10 +109,8 @@ function checkKeyRelease(e) {
   heldChanged();
 }
 
-// Gamepad (gamepad.js): camera zoom step, and the key that toggles depower
-// for the current binding (X with one boat, / with two).
+// Gamepad (gamepad.js): camera zoom step.
 export function zoomCamera(step) { if (_view) _view.input_camera_zoom_relative(step); }
-export function depowerKeyCode() { return _boundBoats > 1 ? 191 : 88; }
 
 // Touch controls press the same keys. Held keys (helm, heading) are read by
 // heldCommands each tick; KEYDOWN bindings fire once on press, as a real key.
@@ -143,66 +142,202 @@ export function helmCommand(command, sticky) {
 
 export function heldCommands() {
   const out = [];
+  const seen = new Set();
+  const push = (command) => {
+    const c = helmCommand(command, _stickyAutopilot);
+    const k = c.type + '|' + c.boat + '|' + c.dir;
+    if (seen.has(k)) return; // keyboard and a pad on the same boat: once
+    seen.add(k);
+    out.push(c);
+  };
   key_bind_list.forEach(bind => {
     if (bind.type === "PRESSED" && key_state[bind.activation_key] === true && (key_state[bind.prohibition_key] === false || key_state[bind.prohibition_key] === undefined)) {
-      out.push(helmCommand(bind.command, _stickyAutopilot));
+      push(bind.command);
+    }
+  });
+  for (const c of padHeldCommands(_padHeld, _inputMap.pads, _boundBoats)) push(c);
+  return out;
+}
+
+// Input mapping (Settings → Player → Input mapping, src/input-map.js): which
+// boat each input device drives when two boats are bound (a second local
+// player, or a second own boat in a server room). Boat indices are the
+// binding's (0 = player 1, 1 = player 2; the server maps them to the
+// client's own boats), so local, worker and server rooms route the same way.
+//   keyboard: 'split' (P1 arrows / Space / Enter / , . /, P2 A D W S F G Q E X,
+//             the default) or 'boat1' / 'boat2' (the full one-boat layout,
+//             arrows / Space / Enter / Q E / X, for that boat; W / S zoom)
+//   pads[i]:  'boat1' / 'boat2' for gamepad i + 1 (defaults: pad 1 → boat 1,
+//             pad 2 → boat 2)
+// With one boat bound, every device drives it; with none (spectating), none.
+export const KEYBOARD_TARGETS = ['split', 'boat1', 'boat2'];
+export const PAD_TARGETS = ['boat1', 'boat2'];
+export const MAX_PADS = 2;
+export const DEFAULT_INPUT_MAP = Object.freeze({ keyboard: 'split', pads: Object.freeze(['boat1', 'boat2']) });
+
+export function normalizeInputMap(m) {
+  const src = m && typeof m === 'object' ? m : {};
+  const keyboard = KEYBOARD_TARGETS.includes(src.keyboard) ? src.keyboard : DEFAULT_INPUT_MAP.keyboard;
+  const pads = DEFAULT_INPUT_MAP.pads.map((d, i) => (Array.isArray(src.pads) && PAD_TARGETS.includes(src.pads[i]) ? src.pads[i] : d));
+  return { keyboard, pads };
+}
+
+// The binding's boat index a device target drives, or -1 for none.
+export function targetBoat(target, boats) {
+  if (!(boats >= 1)) return -1;
+  if (boats === 1) return 0;
+  return target === 'boat2' ? 1 : 0;
+}
+
+let _inputMap = normalizeInputMap(DEFAULT_INPUT_MAP);
+let _onBinding = [];
+export function inputMap() { return { keyboard: _inputMap.keyboard, pads: _inputMap.pads.slice() }; }
+export function setInputMap(m) {
+  const next = normalizeInputMap(m);
+  if (next.keyboard !== _inputMap.keyboard) {
+    // Keys held under the old layout would stay down under the new one.
+    key_state = [];
+  }
+  _inputMap = next;
+  autokeybind(_boundBoats);
+}
+export function boundBoats() { return _boundBoats; }
+// fn(boats): called whenever the key binding changes (bindControls, cleared, input map).
+export function onBindingChange(fn) { _onBinding.push(fn); }
+function splitKeyboard() { return _boundBoats > 1 && _inputMap.keyboard === 'split'; }
+
+// Gamepads (gamepad.js) do not press keyboard keys: each pad sends its own
+// actions, routed by pad index to its mapped boat.
+//   held:     left / right (helm), up / down (heading target), read each tick
+//   one-shot: autopilot, tack, depower, penaltyCcw, penaltyCw, sent on press
+export const PAD_HELD = Object.freeze({
+  left: { type: 'helm', dir: -1, not: 'right' },
+  right: { type: 'helm', dir: +1, not: 'left' },
+  up: { type: 'headingTarget', dir: -1, not: 'down' },
+  down: { type: 'headingTarget', dir: +1, not: 'up' },
+});
+export const PAD_ONESHOT = Object.freeze({
+  autopilot: { type: 'autopilot' },
+  tack: { type: 'tack' },
+  depower: { type: 'depower' },
+  penaltyCcw: { type: 'penaltyTurn', dir: 'ccw' },
+  penaltyCw: { type: 'penaltyTurn', dir: 'cw' },
+});
+const _padHeld = Array.from({ length: MAX_PADS }, () => new Set());
+
+// Held commands of the pads (padHeld[i]: Set of PAD_HELD actions), before the
+// sticky-autopilot mapping. Pure, for tests.
+export function padHeldCommands(padHeld, pads, boats) {
+  const out = [];
+  padHeld.forEach((held, i) => {
+    const boat = targetBoat(pads[i], boats);
+    if (boat < 0 || !held || !held.size) return;
+    for (const [action, c] of Object.entries(PAD_HELD)) {
+      if (held.has(action) && !held.has(c.not)) out.push({ type: c.type, boat, dir: c.dir });
     }
   });
   return out;
 }
+// The command a pad's one-shot action sends, or null (no boat, unknown action).
+export function padCommand(pad, action, pads = _inputMap.pads, boats = _boundBoats) {
+  const c = PAD_ONESHOT[action];
+  const boat = targetBoat(pads[pad], boats);
+  if (!c || boat < 0) return null;
+  const out = { type: c.type, boat };
+  if (c.dir !== undefined) out.dir = c.dir;
+  return out;
+}
+export function setPadAction(pad, action, down) {
+  if (!(pad >= 0 && pad < MAX_PADS)) return;
+  if (PAD_HELD[action]) {
+    const held = _padHeld[pad];
+    if (held.has(action) === !!down) return;
+    if (down) held.add(action); else held.delete(action);
+    heldChanged();
+    return;
+  }
+  if (!down) return;
+  const cmd = padCommand(pad, action);
+  if (cmd && _host) _host.command(cmd);
+}
+// Tests (and anything without the full settings DOM): the host commands go to.
+export function setInputHost(host) { _host = host; }
 
 // One boat: arrows steer / heading target, Space autopilot, Enter tack, Q / E
 // penalty circles, X depower; W / S / = / - zoom. Two boats (a second local
-// player, or a client's second boat in a server room): player 1 keeps the
-// arrows, Space, Enter and takes , . / for penalty circles and depower;
-// player 2 has A / D helm, W / S heading target, F autopilot, G tack, Q / E
-// penalty circles, X depower; zoom is = / - only. boats: from the
-// bindControls event: the scenario's player count (local, worker), or in a
-// server room this client's own boats (0 when spectating: no keys at all);
-// "boat 0" is then the client's first own boat (the server maps it) and
-// "boat 1" its second.
+// player, or a client's second boat in a server room) with the keyboard on
+// Split (Input mapping, the default): player 1 keeps the arrows, Space,
+// Enter and takes , . / for penalty circles and depower; player 2 has A / D
+// helm, W / S heading target, F autopilot, G tack, Q / E penalty circles,
+// X depower; zoom is = / - only. Keyboard on Boat 1 / Boat 2: the one-boat
+// layout for that boat (W / S zoom again). boats: from the bindControls
+// event: the scenario's player count (local, worker), or in a server room
+// this client's own boats (0 when spectating: no keys at all); "boat 0" is
+// then the client's first own boat (the server maps it) and "boat 1" its
+// second.
 
 let _boundBoats = 0;
+// The key binding list for `boats` bound boats and a keyboard target (see
+// KEYBOARD_TARGETS). Pure, for tests.
+export function keyBindings(boats, keyboard = 'split') {
+  const list = [];
+  const P = (key, not, command) => list.push({ type: "PRESSED", activation_key: key, prohibition_key: not, command });
+  const K = (key, not, command) => list.push({ type: "KEYDOWN", activation_key: key, prohibition_key: not, command });
+  if (!(boats > 0)) return list;
+  const split = boats > 1 && keyboard === 'split';
+  if (!split) {
+    // One full layout for one boat: arrows, Space, Enter, Q / E, X.
+    const b = targetBoat(keyboard, boats);
+    P(37, 39, { type: "helm", boat: b, dir: -1 });
+    P(39, 37, { type: "helm", boat: b, dir: +1 });
+    P(40, 38, { type: "headingTarget", boat: b, dir: +1 });
+    P(38, 40, { type: "headingTarget", boat: b, dir: -1 });
+    K(32, -1, { type: "autopilot", boat: b });
+    K(13, -1, { type: "tack", boat: b });
+    // Penalty circles: Q counter-clockwise, E clockwise. Separate keys:
+    // holding one does not flip the other, and a repeat of the same key does
+    // not restart the turn. Depower toggle: X.
+    K(81, 69, { type: "penaltyTurn", boat: b, dir: "ccw" });
+    K(69, 81, { type: "penaltyTurn", boat: b, dir: "cw" });
+    K(88, -1, { type: "depower", boat: b });
+    return list;
+  }
+  // Split: two people on one keyboard.
+  P(37, 39, { type: "helm", boat: 0, dir: -1 });
+  P(39, 37, { type: "helm", boat: 0, dir: +1 });
+  P(40, 38, { type: "headingTarget", boat: 0, dir: +1 });
+  P(38, 40, { type: "headingTarget", boat: 0, dir: -1 });
+  K(32, -1, { type: "autopilot", boat: 0 });
+  K(13, -1, { type: "tack", boat: 0 });
+  K(188, 190, { type: "penaltyTurn", boat: 0, dir: "ccw" });
+  K(190, 188, { type: "penaltyTurn", boat: 0, dir: "cw" });
+  K(191, -1, { type: "depower", boat: 0 });
+  P(65, 68, { type: "helm", boat: 1, dir: -1 });
+  P(68, 65, { type: "helm", boat: 1, dir: +1 });
+  P(83, 87, { type: "headingTarget", boat: 1, dir: +1 });
+  P(87, 83, { type: "headingTarget", boat: 1, dir: -1 });
+  K(70, -1, { type: "autopilot", boat: 1 });
+  K(71, -1, { type: "tack", boat: 1 });
+  K(81, 69, { type: "penaltyTurn", boat: 1, dir: "ccw" });
+  K(69, 81, { type: "penaltyTurn", boat: 1, dir: "cw" });
+  K(88, -1, { type: "depower", boat: 1 });
+  return list;
+}
+
 function autokeybind(boats) {
   _boundBoats = boats || 0;
-  key_bind_list = [];
-  const P = (key, not, command) => key_bind_list.push({ type: "PRESSED", activation_key: key, prohibition_key: not, command });
-  const K = (key, not, command) => key_bind_list.push({ type: "KEYDOWN", activation_key: key, prohibition_key: not, command });
-  if (boats > 0) {
-    P(37, 39, { type: "helm", boat: 0, dir: -1 });
-    P(39, 37, { type: "helm", boat: 0, dir: +1 });
-    P(40, 38, { type: "headingTarget", boat: 0, dir: +1 });
-    P(38, 40, { type: "headingTarget", boat: 0, dir: -1 });
-    K(32, -1, { type: "autopilot", boat: 0 });
-    K(13, -1, { type: "tack", boat: 0 });
-    // Penalty circles: Q counter-clockwise, E clockwise (one boat), or
-    // , / . (two boats; Q / E are player 2's). Separate keys: holding one
-    // does not flip the other, and a repeat of the same key does not restart
-    // the turn. Depower toggle: X (one boat), / (two boats).
-    const two = boats > 1;
-    K(two ? 188 : 81, two ? 190 : 69, { type: "penaltyTurn", boat: 0, dir: "ccw" });
-    K(two ? 190 : 69, two ? 188 : 81, { type: "penaltyTurn", boat: 0, dir: "cw" });
-    K(two ? 191 : 88, -1, { type: "depower", boat: 0 });
-  }
-  if (boats > 1) {
-    P(65, 68, { type: "helm", boat: 1, dir: -1 });
-    P(68, 65, { type: "helm", boat: 1, dir: +1 });
-    P(83, 87, { type: "headingTarget", boat: 1, dir: +1 });
-    P(87, 83, { type: "headingTarget", boat: 1, dir: -1 });
-    K(70, -1, { type: "autopilot", boat: 1 });
-    K(71, -1, { type: "tack", boat: 1 });
-    K(81, 69, { type: "penaltyTurn", boat: 1, dir: "ccw" });
-    K(69, 81, { type: "penaltyTurn", boat: 1, dir: "cw" });
-    K(88, -1, { type: "depower", boat: 1 });
-  }
+  key_bind_list = keyBindings(_boundBoats, _inputMap.keyboard);
   heldChanged();
+  for (const fn of _onBinding) fn(_boundBoats);
 }
+// Bind keys as a bindControls event would (tests).
+export function bindKeys(boats) { autokeybind(boats); }
 
 // Sim events: key bindings and scenario camera hints, applied synchronously
 // during the step that emits them (as the old in-script DOM calls were).
 function onSimEvent(ev) {
   if (ev.type === "bindControls") autokeybind(ev.boats);
-  else if (ev.type === "cleared") { key_bind_list = []; _boundBoats = 0; heldChanged(); }
+  else if (ev.type === "cleared") autokeybind(0);
   else if (ev.type === "view") {
     if (ev.follow) {
       const follow = document.getElementById('camera_follow');

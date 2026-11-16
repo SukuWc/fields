@@ -1,18 +1,24 @@
 // Gamepad input (PlayStation pad, standard mapping), behind the "Gamepad"
-// checkbox (?gamepad=1, default off). The pad presses the same keys the
-// keyboard does, through setVirtualKey, so the boat behaves exactly as with
-// the keyboard (player 1: the arrows side of the layout in controls.js).
+// checkbox (?gamepad=1, default off). Each pad drives the boat chosen for it
+// in Settings → Player → Input mapping (controls.js setPadAction / the input
+// map: pad 1 → boat 1, pad 2 → boat 2 by default; with one boat bound both
+// drive it). Pads send boat actions, not keyboard keys, so a pad keeps its
+// boat whatever the keyboard is mapped to.
 //
-//   button 0 (Cross)    autopilot, snapping to the best-VMG heading (Space)
-//   button 1 (Circle)   sails ease: depower toggle (X, or / with two players)
-//   button 2 (Square)   tack (Enter)
+//   button 0 (Cross)    autopilot, snapping to the best-VMG heading
+//   button 1 (Circle)   sails ease: depower toggle
+//   button 2 (Square)   tack
 //   button 4 (L1)       zoom in         button 5 (R1)  zoom out
-//   left stick          arrow keys: left / right helm, up / down heading target
+//   left stick          left / right helm, up / down heading target
+//
+// "Gamepad 1" / "Gamepad 2" are the first and second connected pads in the
+// browser's pad order (navigator.getGamepads()); further pads are ignored.
 //
 // createGamepadPoller is pure (the pad and the actions are passed in) so a
-// test can drive it; setupGamepad wires it to the DOM and navigator.
+// test can drive it; setupGamepad wires one poller per pad slot to the DOM
+// and navigator.
 
-import { setVirtualKey, zoomCamera, depowerKeyCode } from './controls.js';
+import { setPadAction, zoomCamera, MAX_PADS } from './controls.js';
 
 export const PAD_AUTOPILOT = 0;
 export const PAD_EASE = 1;
@@ -22,22 +28,24 @@ export const PAD_ZOOM_OUT = 5;
 export const STICK_DEADZONE = 0.45;
 export const ZOOM_REPEAT_DELAY_MS = 400;
 export const ZOOM_REPEAT_MS = 120;
-const KEY_LEFT = 37, KEY_UP = 38, KEY_RIGHT = 39, KEY_DOWN = 40, KEY_SPACE = 32, KEY_ENTER = 13;
+// Pad button index -> boat action (controls.js PAD_ONESHOT).
+export const PAD_BUTTON_ACTIONS = Object.freeze({ [PAD_AUTOPILOT]: 'autopilot', [PAD_EASE]: 'depower', [PAD_TACK]: 'tack' });
 
-// actions: { setKey(code, down), zoom(step), depowerKey() }.
+// actions: { press(action, down), zoom(step) }. action: 'autopilot', 'tack',
+// 'depower' (one-shot on press) or 'left' / 'right' / 'up' / 'down' (held).
 export function createGamepadPoller(actions) {
-  const pressedKeys = new Map(); // pad button index -> key code it holds down
-  const stick = { [KEY_LEFT]: false, [KEY_RIGHT]: false, [KEY_UP]: false, [KEY_DOWN]: false };
+  const pressed = new Set(); // pad button indices held down
+  const stick = { left: false, right: false, up: false, down: false };
   const zoomHeld = { [PAD_ZOOM_IN]: null, [PAD_ZOOM_OUT]: null }; // button -> next repeat time
   const down = (pad, i) => !!(pad.buttons[i] && pad.buttons[i].pressed);
 
-  function button(pad, i, keyFor) {
-    const held = pressedKeys.get(i);
+  function button(pad, i) {
+    const action = PAD_BUTTON_ACTIONS[i];
     if (down(pad, i)) {
-      if (held === undefined) { const key = keyFor(); pressedKeys.set(i, key); actions.setKey(key, true); }
-    } else if (held !== undefined) {
-      pressedKeys.delete(i);
-      actions.setKey(held, false);
+      if (!pressed.has(i)) { pressed.add(i); actions.press(action, true); }
+    } else if (pressed.has(i)) {
+      pressed.delete(i);
+      actions.press(action, false);
     }
   }
 
@@ -47,10 +55,10 @@ export function createGamepadPoller(actions) {
     if (now >= zoomHeld[i]) { actions.zoom(step); zoomHeld[i] = now + ZOOM_REPEAT_MS; }
   }
 
-  function setStick(key, on) {
-    if (stick[key] === on) return;
-    stick[key] = on;
-    actions.setKey(key, on);
+  function setStick(action, on) {
+    if (stick[action] === on) return;
+    stick[action] = on;
+    actions.press(action, on);
   }
 
   return {
@@ -58,40 +66,50 @@ export function createGamepadPoller(actions) {
     // everything this poller holds is released).
     update(pad, now = 0) {
       if (!pad) {
-        for (const [, key] of pressedKeys) actions.setKey(key, false);
-        pressedKeys.clear();
-        for (const key of Object.keys(stick)) setStick(Number(key), false);
+        for (const i of pressed) actions.press(PAD_BUTTON_ACTIONS[i], false);
+        pressed.clear();
+        for (const a of Object.keys(stick)) setStick(a, false);
         zoomHeld[PAD_ZOOM_IN] = zoomHeld[PAD_ZOOM_OUT] = null;
         return;
       }
-      button(pad, PAD_AUTOPILOT, () => KEY_SPACE);
-      button(pad, PAD_EASE, () => actions.depowerKey());
-      button(pad, PAD_TACK, () => KEY_ENTER);
+      for (const i of Object.keys(PAD_BUTTON_ACTIONS)) button(pad, Number(i));
       zoom(pad, PAD_ZOOM_IN, -2, now);
       zoom(pad, PAD_ZOOM_OUT, +2, now);
       const x = pad.axes[0] || 0, y = pad.axes[1] || 0;
-      setStick(KEY_LEFT, x < -STICK_DEADZONE);
-      setStick(KEY_RIGHT, x > STICK_DEADZONE);
-      setStick(KEY_UP, y < -STICK_DEADZONE);
-      setStick(KEY_DOWN, y > STICK_DEADZONE);
+      setStick('left', x < -STICK_DEADZONE);
+      setStick('right', x > STICK_DEADZONE);
+      setStick('up', y < -STICK_DEADZONE);
+      setStick('down', y > STICK_DEADZONE);
     },
   };
+}
+
+// The connected pads in browser order, at most MAX_PADS (slot i = Gamepad i + 1).
+export function connectedPads(list, max = MAX_PADS) {
+  const out = [];
+  for (const p of list || []) if (p && p.connected && out.length < max) out.push(p);
+  return out;
 }
 
 export function setupGamepad() {
   const box = document.getElementById('gamepad');
   if (!box || !navigator.getGamepads) return;
-  const poller = createGamepadPoller({ setKey: setVirtualKey, zoom: zoomCamera, depowerKey: depowerKeyCode });
+  const pollers = Array.from({ length: MAX_PADS }, (_, slot) => createGamepadPoller({
+    press: (action, down) => setPadAction(slot, action, down),
+    zoom: zoomCamera,
+  }));
   let timer = null;
-  const firstPad = () => {
-    for (const p of navigator.getGamepads()) if (p && p.connected) return p;
-    return null;
+  const poll = () => {
+    const pads = connectedPads(navigator.getGamepads());
+    pollers.forEach((p, i) => p.update(pads[i] || null, performance.now()));
   };
+  const releaseAll = () => pollers.forEach((p) => p.update(null));
   const apply = () => {
-    if (box.checked && timer === null) timer = setInterval(() => poller.update(firstPad(), performance.now()), 1000 / 60);
-    if (!box.checked && timer !== null) { clearInterval(timer); timer = null; poller.update(null); }
+    if (box.checked && timer === null) timer = setInterval(poll, 1000 / 60);
+    if (!box.checked && timer !== null) { clearInterval(timer); timer = null; releaseAll(); }
   };
   box.addEventListener('change', apply);
-  window.addEventListener('gamepaddisconnected', () => poller.update(null));
+  // Slots shift when a pad goes: release everything, the next poll re-presses.
+  window.addEventListener('gamepaddisconnected', releaseAll);
   apply();
 }
