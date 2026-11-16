@@ -6,8 +6,9 @@
 // Saved with the other player prefs ('fields.playerPrefs', key input_map,
 // only when it differs from the default); Reset settings returns to the
 // defaults (Split, pad 1 → boat 1, pad 2 → boat 2 = the behaviour before the
-// mapping existed). The radios are disabled while fewer than two boats are
-// bound: with one boat every device drives it.
+// mapping existed). The radios are always editable: with one boat bound every
+// device still drives it (a hint says the mapping applies with two boats),
+// and the saved choice takes effect once a second boat is bound.
 //
 // The radios have no ids on purpose: they are not registry controls
 // (settings-registry.js), so url-settings.js and the registry checks skip them.
@@ -30,7 +31,6 @@ export function setupInputMap(doc = document, storage = globalThis.localStorage)
   const group = doc.getElementById('input_map_group');
   if (!group) return null;
   const radios = (name) => Array.from(group.querySelectorAll('input[type="radio"][name="' + name + '"]'));
-  const all = () => Array.from(group.querySelectorAll('input[type="radio"]'));
 
   function show(m) {
     for (const r of radios(NAMES.keyboard)) r.checked = r.value === m.keyboard;
@@ -45,10 +45,12 @@ export function setupInputMap(doc = document, storage = globalThis.localStorage)
     show(inputMap());
     if (save) writePlayerPref(INPUT_MAP_PREF, inputMapPref(inputMap()), storage);
   }
-  function syncEnabled(boats) {
+  // The radios stay editable with any number of boats; with fewer than two
+  // the choice is saved but every device drives the one boat, so a hint says
+  // when it applies.
+  function syncHint(boats) {
     const single = !(boats > 1);
     group.classList.toggle('single', single);
-    for (const r of all()) r.disabled = single;
     const hint = doc.getElementById('input_map_hint');
     if (hint) hint.hidden = !single;
   }
@@ -67,8 +69,8 @@ export function setupInputMap(doc = document, storage = globalThis.localStorage)
   });
   const reset = doc.getElementById('reset_settings');
   if (reset) reset.addEventListener('click', () => apply(DEFAULT_INPUT_MAP, false));
-  onBindingChange(syncEnabled);
-  syncEnabled(boundBoats());
+  onBindingChange(syncHint);
+  syncHint(boundBoats());
   syncPads();
   if (globalThis.addEventListener) {
     globalThis.addEventListener('gamepadconnected', syncPads);

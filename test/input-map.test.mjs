@@ -4,7 +4,7 @@
 // commands reaching the right boat in a local game and a server room.
 import './dom-stub.mjs';
 const C = await import('../src/controls.js');
-const { inputMapPref } = await import('../src/input-map.js');
+const { inputMapPref, setupInputMap } = await import('../src/input-map.js');
 const { readPlayerPref, writePlayerPref, PREFS_KEY, EXTRA_PREF_KEYS } = await import('../src/player-prefs.js');
 const { LocalHost } = await import('../src/host.js');
 const { WebSocket } = await import('ws');
@@ -84,7 +84,7 @@ const ONE_BOAT_KEYS = '13,32,37,38,39,40,69,81,88';
   let seen = null;
   C.onBindingChange((n) => { seen = n; });
   C.bindKeys(2);
-  check('binding changes are reported (the radios enable with two boats)', seen === 2 && C.boundBoats() === 2);
+  check('binding changes are reported (the hint hides with two boats)', seen === 2 && C.boundBoats() === 2);
   C.setInputMap(C.DEFAULT_INPUT_MAP);
   C.setStickyAutopilot(true);
 }
@@ -104,12 +104,51 @@ const ONE_BOAT_KEYS = '13,32,37,38,39,40,69,81,88';
   check('back to the default removes the key', storage.getItem(PREFS_KEY) === '{"vibrate":false}', storage.getItem(PREFS_KEY));
 }
 
+// 4. The radios (stand-in DOM): editable with one boat, the choice is saved
+// and only takes effect once a second boat is bound.
+{
+  const mem = new Map();
+  const storage = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) };
+  const mk = (name, value) => ({ type: 'radio', name, value, checked: false, disabled: false });
+  const radios = [mk('input_map_keyboard', 'split'), mk('input_map_keyboard', 'boat1'), mk('input_map_keyboard', 'boat2'),
+    mk('input_map_pad1', 'boat1'), mk('input_map_pad1', 'boat2'), mk('input_map_pad2', 'boat1'), mk('input_map_pad2', 'boat2')];
+  const classes = new Set();
+  let onChange = null;
+  const group = {
+    classList: { toggle: (c, on) => (on ? classes.add(c) : classes.delete(c)) },
+    querySelectorAll: (sel) => { const m = sel.match(/name="([^"]+)"/); return m ? radios.filter((r) => r.name === m[1]) : []; },
+    addEventListener: (t, fn) => { if (t === 'change') onChange = fn; },
+  };
+  const hint = { hidden: false };
+  const doc = { getElementById: (id) => (id === 'input_map_group' ? group : id === 'input_map_hint' ? hint : null) };
+  const sent = [];
+  C.setInputHost({ command: (c) => { sent.push(c); return Promise.resolve(true); } });
+  C.setInputMap(C.DEFAULT_INPUT_MAP);
+  C.bindKeys(1);
+  setupInputMap(doc, storage);
+  const pick = (name, value) => { for (const r of radios.filter((x) => x.name === name)) r.checked = r.value === value; onChange({ target: radios.find((r) => r.name === name && r.value === value) }); };
+  check('one boat: the radios stay editable, the hint says when the mapping applies', radios.every((r) => !r.disabled) && hint.hidden === false && classes.has('single'));
+  pick('input_map_keyboard', 'boat2');
+  pick('input_map_pad1', 'boat2');
+  check('one boat: a changed choice is saved', JSON.stringify(JSON.parse(storage.getItem(PREFS_KEY)).input_map) === '{"keyboard":"boat2","pads":["boat2","boat2"]}', storage.getItem(PREFS_KEY));
+  C.setVirtualKey(13, true); C.setVirtualKey(13, false);
+  C.setPadAction(0, 'tack', true); C.setPadAction(0, 'tack', false);
+  check('one boat: keyboard and pad 1 still drive the one boat', JSON.stringify(sent) === '[{"type":"tack","boat":0},{"type":"tack","boat":0}]', JSON.stringify(sent));
+  sent.length = 0;
+  C.bindKeys(2);
+  C.setVirtualKey(13, true); C.setVirtualKey(13, false);
+  C.setPadAction(0, 'tack', true); C.setPadAction(0, 'tack', false);
+  check('second boat bound: the saved mapping applies (keyboard and pad 1 → boat 2), hint hidden', JSON.stringify(sent) === '[{"type":"tack","boat":1},{"type":"tack","boat":1}]' && hint.hidden === true && !classes.has('single'), JSON.stringify(sent));
+  C.bindKeys(0);
+  C.setInputMap(C.DEFAULT_INPUT_MAP);
+}
+
 const opts = { mapW: 100, mapH: 200, simRes: '4f' };
 const view = { camera_position_x: 0, camera_position_y: 0, show_forces: false, show_fields: false };
 const tex = () => ({ image: { data: new Uint8Array(0) } });
 console.log = () => {};
 
-// 4. Local game with two boats: keyboard → boat 2 reaches only the second boat.
+// 5. Local game with two boats: keyboard → boat 2 reaches only the second boat.
 {
   const h = new LocalHost({ ...opts, texture: tex() });
   h.commandSync({ type: 'restart', scenario: 0 });
@@ -139,7 +178,7 @@ console.log = () => {};
   C.bindKeys(0);
 }
 
-// 5. Server room: a client with two own boats; keyboard → boat 2 and pad 2
+// 6. Server room: a client with two own boats; keyboard → boat 2 and pad 2
 // reach only its second boat (the server maps binding boat 1 to it).
 {
   const srv = await startServer({ port: 0, adminGate: false, fieldHz: 0 });

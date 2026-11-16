@@ -162,7 +162,6 @@
       #settings .input-map-row > label { display: inline-flex; align-items: center; gap: 3px; }
       #settings .input-map-row .input-map-status { font-size: var(--sz-fs-xs); opacity: 0.6; }
       #settings .input-map-hint { font-size: var(--sz-fs-xs); opacity: 0.7; margin: 2px 0 4px; }
-      #settings #input_map_group.single .input-map-row { opacity: 0.5; }
       #settings .prefs-saved { font-size: var(--sz-fs-xs); opacity: 0.6; transition: color 0.3s; }
       #settings .prefs-saved.flash { color: var(--sz-yellow); opacity: 1; }
       /* Room tab TOML editor (PR 4). Errors are amber, not red (red/green = port/starboard). */
@@ -1638,7 +1637,7 @@
         <label class="setting-row"><input id="vibrate" autocomplete="off" type="checkbox" title="A short buzz when your boat tacks and a double buzz on a new penalty. Phones that support vibration only (not iPhone). On by default; saved in this browser. Also ?vibrate=0">Vibrate</label>
       </fieldset>
       <fieldset class="pref-group" id="input_map_group" title="Which boat each input device drives when you sail two boats (a second player). Saved in this browser."><legend>Input mapping</legend>
-        <div class="input-map-hint" id="input_map_hint">Add a second player to choose a boat per device. With one boat, every device drives it.</div>
+        <div class="input-map-hint" id="input_map_hint">Applies when you control two boats. With one boat, every device drives it.</div>
         <div class="input-map-row" role="radiogroup" aria-label="Keyboard controls"><span class="input-map-device">Keyboard</span>
           <label title="Two people on one keyboard: boat 1 arrows, Space, Enter, comma / period / slash; boat 2 A / D, W / S, F, G, Q / E, X"><input type="radio" name="input_map_keyboard" value="split" autocomplete="off">Split</label>
           <label title="The whole keyboard (arrows, Space, Enter, Q / E, X) drives boat 1"><input type="radio" name="input_map_keyboard" value="boat1" autocomplete="off">Boat 1</label>
