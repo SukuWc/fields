@@ -494,11 +494,14 @@ The client bilinear-samples the finest covering AMR grid for:
   them at the local player's next course target (the next mark or the
   mid of a gate, then the finish-line mid; the same progress as the HUD
   "NEXT" logic; no lines before the gun). The field is sampled once, at
-  that target, and only the wind direction is used. Two laylines run
-  from the target to the map edge on the approach side: 50° off dead
+  that target (a gate's mid), and only the wind direction is used. Two
+  laylines run to the map edge on the approach side: 50° off dead
   downwind at an upwind mark, 20° off dead upwind at a downwind mark
-  (the previous mark, or the boat, decides which). Straight lines square
-  to the wind every 10 m from the target run between the laylines,
+  (the previous mark, or the boat, decides which). From a single mark
+  both start at the mark; at a gate each starts at its own mark, on its
+  outer side across the wind, so the zone holds the whole gate. Straight lines square
+  to the wind every 10 m from the target (for a gate, from the line
+  through its mid square to the wind) run between the laylines,
   clipped to the map. With a course they stop at the previous point of
   the leg (previous mark, gate mid or start mid): none past the start
   line or the gate. With no course (scenario 21) they run to the map

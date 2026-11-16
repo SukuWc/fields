@@ -37,7 +37,8 @@
 //          no farther than the previous mark / gate / start mid (map
 //          edge with no course): [[x0,y0,x1,y1], …]; none before the start; when
 //          view.show_ladder is on
-//   layline the two laylines from that target (50° off dead downwind for
+//   layline the two laylines from that target (from each gate mark, on its
+//          outer side, for a gate; 50° off dead downwind for
 //          an upwind mark, 20° off dead upwind for a downwind mark) to the
 //          map edge: [[x0,y0,x1,y1], …]; same conditions as ladder (player Dev setting; falls back to
 //          sim.options.ladder when the view flag is absent)

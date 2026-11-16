@@ -389,5 +389,123 @@ const along = (x, y, ox, oy, dirDeg) => {
     && ladderMaxOffset(up, -90) === Infinity && ladderMaxOffset({ origin: { x: 0, y: 40 } }, -90) === Infinity);
 }
 
+// Gates: one layline from each gate mark, on its outer side; rungs from
+// the gate line through the mid, ending on those laylines.
+{
+  const cw = new ConstantWind(90, 4.5);
+  const getWind = (x, y) => cw.getWind(x, y);
+  const deg = (f) => Math.atan2(f[3] - f[1], f[2] - f[0]) * 180 / Math.PI;
+  const onLine = (x, y, f) => near((f[2] - f[0]) * (y - f[1]) - (f[3] - f[1]) * (x - f[0]), 0, 1e-6);
+  // Angle of a layline from a reference direction (deg), unsigned.
+  const offFrom = (f, refDeg) => { let a = Math.abs(deg(f) - refDeg) % 360; return a > 180 ? 360 - a : a; };
+
+  // Default course leeward gate, from frame state: marks (±8, −45), the
+  // target on the run from the windward mark (0, 65).
+  const statics = {
+    course: { n: 2, anchors: [{ x: 0, y: 65 }, { x: 0, y: -45 }], gates: [null, [{ x: -8, y: -45 }, { x: 8, y: -45 }]], start: { x: 0, y: -70 } },
+    start: { a: { x: -16, y: -70 }, b: { x: 16, y: -70 }, mid: { x: 0, y: -70 } },
+  };
+  const c = [{ x: 0, y: 65 }, [{ x: -8, y: -45 }, { x: 8, y: -45 }]];
+  const ga = ladderAnchorsFromState({ hud: { co: { i: 1, lap: 1, gate: 1 } }, course: { c } }, statics);
+  check('gate anchors: origin the gate mid, gate = both mark centres, toward the windward mark',
+    ga && ga.origin.x === 0 && ga.origin.y === -45 && ga.gate && ga.gate[0].x === -8 && ga.gate[1].x === 8 && ga.toward.y === 65, JSON.stringify(ga));
+  const gaStatics = ladderAnchorsFromState({ hud: { co: { i: 1, lap: 1, gate: 1 } }, course: {} }, statics);
+  check('gate anchors from statics.course.gates when the frame has no centres', gaStatics && gaStatics.gate && gaStatics.gate[1].x === 8, JSON.stringify(gaStatics));
+  const geo = ladderGeometry(getWind, ga, { bounds });
+  check('gate: two laylines', geo.layline.length === 2);
+  const fromL = geo.layline.find((f) => near(f[0], -8, 1e-9) && near(f[1], -45, 1e-9));
+  const fromR = geo.layline.find((f) => near(f[0], 8, 1e-9) && near(f[1], -45, 1e-9));
+  check('gate: one layline starts at each gate mark (none from the mid)', fromL && fromR && fromL !== fromR, JSON.stringify(geo.layline));
+  // Downwind gate: 20° off dead upwind (+90°), each on its outer side:
+  // the west mark's runs up and west (110°), the east mark's up and east (70°).
+  check('gate: west mark layline at 110° (20° off dead upwind, outer side)', fromL && near(deg(fromL), 110, 1e-6), fromL && String(deg(fromL)));
+  check('gate: east mark layline at 70° (20° off dead upwind, outer side)', fromR && near(deg(fromR), 70, 1e-6), fromR && String(deg(fromR)));
+  check('gate: laylines end on the map edge', geo.layline.every((f) => onEdge(f[2], f[3], bounds)));
+  const ys = geo.ladder.map((f) => f[1]);
+  check('default course gate run: 11 rungs from the gate line, y = −35 … 65 (capped at the windward mark)',
+    ys.length === 11 && ys.every((y, i) => near(y, -35 + 10 * i, 1e-9)), ys.join(','));
+  const tan20 = Math.tan(20 * Math.PI / 180);
+  check('gate: rung ends at ±(8 + d·tan 20°), clipped to the map',
+    geo.ladder.every((f) => { const w = Math.min(8 + (f[1] + 45) * tan20, 50); return near(Math.min(f[0], f[2]), -w, 1e-6) && near(Math.max(f[0], f[2]), w, 1e-6); }));
+  check('gate: rung ends inside the map lie on the laylines (west end on the west one, east on the east)',
+    geo.ladder.filter((f) => Math.max(Math.abs(f[0]), Math.abs(f[2])) < 50 - 1e-6).every((f) => {
+      const w = f[0] < f[2] ? [f[0], f[1]] : [f[2], f[3]], e = f[0] < f[2] ? [f[2], f[3]] : [f[0], f[1]];
+      return onLine(w[0], w[1], fromL) && onLine(e[0], e[1], fromR);
+    }));
+  check('gate: the whole gate is inside the zone (first rung wider than the gate)', Math.abs(geo.ladder[0][2] - geo.ladder[0][0]) > 16);
+
+  // Sim path: a Gate-like { gate: [a, b] } target carries the pair; a
+  // single-mark target carries none.
+  const course = {
+    marks: [{ x: 0, y: 65 }, { gate: [{ x: -8, y: -45 }, { x: 8, y: -45 }] }],
+    start: { x: 0, y: -70 },
+    progressFor() { return this._p; },
+    _p: { courseComplete: false, waitingForStart: false, target: 1, targetIndex: 1 },
+  };
+  const sg = ladderAnchorsForSim({ course }, {});
+  check('sim gate target: gate pair on the anchors', sg && sg.gate && sg.gate[0].x === -8 && sg.gate[1].x === 8 && sg.origin.y === -45, JSON.stringify(sg));
+  check('sim gate target: same geometry as from frame state', JSON.stringify(ladderGeometry(getWind, sg, { bounds })) === JSON.stringify(geo));
+  course._p = { courseComplete: false, waitingForStart: false, target: 0, targetIndex: 0 };
+  const sm = ladderAnchorsForSim({ course }, {});
+  check('single-mark target: no gate on the anchors', sm && !('gate' in sm), JSON.stringify(sm));
+
+  // Single marks unchanged: an explicit gate: null or a malformed pair gives
+  // exactly the single-mark result, both laylines from the mark.
+  const single = { origin: { x: 0, y: 65 }, toward: { x: 0, y: -70 } };
+  const g0 = ladderGeometry(getWind, single, { bounds });
+  check('single mark: gate null / malformed → identical geometry',
+    JSON.stringify(ladderGeometry(getWind, { ...single, gate: null }, { bounds })) === JSON.stringify(g0)
+    && JSON.stringify(ladderGeometry(getWind, { ...single, gate: [{ x: 1 }] }, { bounds })) === JSON.stringify(g0));
+  check('single mark: both laylines from the mark', g0.layline.length === 2 && g0.layline.every((f) => near(f[0], 0, 1e-9) && near(f[1], 65, 1e-9)));
+  const beat = g0.ladder.map((f) => f[1]);
+  check('default course first beat still 13 rungs, the last inside the start line', beat.length === 13 && near(beat[12], -65, 1e-9));
+
+  // Skewed gate (line 30° off square to the wind): marks (−8, −49.6) and
+  // (8, −40.4) about the mid (0, −45). Each layline still starts at its own
+  // mark, 20° off dead upwind on its outer side; rungs stay square to the
+  // wind every 10 m from the mid and end on the laylines.
+  const skew = { origin: { x: 0, y: -45 }, toward: { x: 0, y: 65 }, gate: [{ x: -8, y: -45 - 8 * Math.tan(Math.PI / 6) }, { x: 8, y: -45 + 8 * Math.tan(Math.PI / 6) }] };
+  const gs = ladderGeometry(getWind, skew, { bounds });
+  const sL = gs.layline.find((f) => near(f[0], skew.gate[0].x, 1e-9) && near(f[1], skew.gate[0].y, 1e-9));
+  const sR = gs.layline.find((f) => near(f[0], skew.gate[1].x, 1e-9) && near(f[1], skew.gate[1].y, 1e-9));
+  check('skewed gate: each layline from its own mark, outer side, 20° off dead upwind',
+    sL && sR && near(deg(sL), 110, 1e-6) && near(deg(sR), 70, 1e-6), JSON.stringify(gs.layline));
+  const sys = gs.ladder.map((f) => f[1]);
+  check('skewed gate: rungs square to the wind, every 10 m from the mid (11, y = −35 … 65)',
+    gs.ladder.every((f) => near(f[1], f[3], 1e-9)) && sys.length === 11 && sys.every((y, i) => near(y, -35 + 10 * i, 1e-9)), sys.join(','));
+  check('skewed gate: rung ends inside the map lie on the laylines',
+    gs.ladder.filter((f) => Math.max(Math.abs(f[0]), Math.abs(f[2])) < 50 - 1e-6).every((f) => {
+      const w = f[0] < f[2] ? [f[0], f[1]] : [f[2], f[3]], e = f[0] < f[2] ? [f[2], f[3]] : [f[0], f[1]];
+      return onLine(w[0], w[1], sL) && onLine(e[0], e[1], sR);
+    }));
+
+  // Upwind gate in a rotated wind (UI 60°), marks listed east first: the
+  // outer-side choice follows the wind, not the element order. Each
+  // layline is 50° off dead downwind and opens away from the other mark.
+  const cw60 = new ConstantWind(60, 4.5);
+  const w60 = (x, y) => cw60.getWind(x, y);
+  const d60 = ladderWindDeg(w60, 0, 20);
+  const ux = Math.cos(d60 * Math.PI / 180), uy = Math.sin(d60 * Math.PI / 180);
+  const nx = -uy, ny = ux; // cross-wind
+  const half = 6;
+  const up = { origin: { x: 0, y: 20 }, toward: { x: 60 * ux, y: 20 + 60 * uy }, gate: [{ x: half * nx, y: 20 + half * ny }, { x: -half * nx, y: 20 - half * ny }] };
+  const gu = ladderGeometry(w60, up, { bounds });
+  const outer = gu.layline.every((f) => {
+    const own = up.gate.find((p) => near(p.x, f[0], 1e-9) && near(p.y, f[1], 1e-9));
+    const other = up.gate.find((p) => p !== own);
+    if (!own) return false;
+    const dx = f[2] - f[0], dy = f[3] - f[1];
+    const crossDir = dx * nx + dy * ny, crossOwn = (own.x - other.x) * nx + (own.y - other.y) * ny;
+    return Math.sign(crossDir) === Math.sign(crossOwn) && near(offFrom(f, d60), 50, 1e-6);
+  });
+  check('upwind gate, rotated wind, east mark listed first: each layline from its own mark, outer side, 50° off downwind', gu.layline.length === 2 && outer, JSON.stringify(gu.layline));
+  check('upwind gate: first rung spans the gate plus 10·tan 50° each side',
+    near(Math.hypot(gu.ladder[0][2] - gu.ladder[0][0], gu.ladder[0][3] - gu.ladder[0][1]), 2 * half + 2 * 10 * Math.tan(50 * Math.PI / 180), 1e-6));
+
+  // Cache key: a gate mark moving 1 m rebuilds; 0.1 m does not.
+  const k = (dx) => JSON.stringify(ladderBuildKey(getWind, { ...ga, gate: [{ x: -8 + dx, y: -45 }, ga.gate[1]] }));
+  check('build key: carries the gate marks (0.1 m keeps it, 1 m changes it)', k(0) === k(0.1) && k(0) !== k(1));
+}
+
 if (failed) { console.log(`${failed} check(s) failed`); process.exit(1); }
 console.log('all ladder-lines checks passed');
