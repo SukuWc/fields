@@ -128,23 +128,14 @@ export function setVirtualKey(keyCode, down) {
 
 // Held boat commands for this tick, in binding order (sim.step reads them
 // after the scenario frames, where the old processKeys ran).
-// "Sticky autopilot" (player setting, localStorage): Left / Right (and A / D)
-// move the autopilot heading target instead of the rudder, so the helm keys
-// never switch the autopilot off. Mapped here, so local, worker and server
-// games all get the same autopilotTurn command.
-export const STICKY_AUTOPILOT_KEY = 'fields.stickyAutopilot';
-let _stickyAutopilot = true; // on by default
-export function setStickyAutopilot(on) { _stickyAutopilot = !!on; heldChanged(); }
-export function stickyAutopilot() { return _stickyAutopilot; }
-export function helmCommand(command, sticky) {
-  return sticky && command.type === 'helm' ? { ...command, type: 'autopilotTurn' } : command;
-}
-
+// Left / Right are plain helm commands; the autopilot holdoff
+// (heading hold some ms after release) lives in the sim (boat.js
+// stepHelmHoldoff), so local, worker and server games behave the same.
 export function heldCommands() {
   const out = [];
   const seen = new Set();
   const push = (command) => {
-    const c = helmCommand(command, _stickyAutopilot);
+    const c = command;
     const k = c.type + '|' + c.boat + '|' + c.dir;
     if (seen.has(k)) return; // keyboard and a pad on the same boat: once
     seen.add(k);
@@ -225,8 +216,7 @@ export const PAD_ONESHOT = Object.freeze({
 });
 const _padHeld = Array.from({ length: MAX_PADS }, () => new Set());
 
-// Held commands of the pads (padHeld[i]: Set of PAD_HELD actions), before the
-// sticky-autopilot mapping. Pure, for tests.
+// Held commands of the pads (padHeld[i]: Set of PAD_HELD actions). Pure, for tests.
 export function padHeldCommands(padHeld, pads, boats) {
   const out = [];
   padHeld.forEach((held, i) => {

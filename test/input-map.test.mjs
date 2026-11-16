@@ -41,7 +41,6 @@ const ONE_BOAT_KEYS = '13,32,37,38,39,40,69,81,88';
 {
   const sent = [];
   C.setInputHost({ command: (c) => { sent.push(c); return Promise.resolve(true); } });
-  C.setStickyAutopilot(false);
   C.bindKeys(2);
   C.setInputMap({ keyboard: 'boat2' });
   C.setVirtualKey(32, true); C.setVirtualKey(32, false);
@@ -86,7 +85,6 @@ const ONE_BOAT_KEYS = '13,32,37,38,39,40,69,81,88';
   C.bindKeys(2);
   check('binding changes are reported (the hint hides with two boats)', seen === 2 && C.boundBoats() === 2);
   C.setInputMap(C.DEFAULT_INPUT_MAP);
-  C.setStickyAutopilot(true);
 }
 
 // 3. Persistence: saved with the player prefs, only when not the default.

@@ -6,8 +6,8 @@
 //
 // Scope. Every key is this page only (settings-registry panel 'dev').
 // Visual keys (flow tracers, forces, refinement border, perf overlay, plot,
-// contrast, boat trails, ghost boat) and sticky autopilot change this
-// client. They are not room commands and do not change another client's view.
+// contrast, boat trails, ghost boat) change this client; the
+// autopilot holdoff rides on the boat command below. They are not room commands and do not change another client's view.
 //
 // Autopilot PID (autopilot_kp / autopilot_ki / autopilot_kd). The sim owns
 // the gains on each boat (boat.js). Defaults are AUTOPILOT_KP (2), integral
@@ -43,10 +43,22 @@
 // It rides on autopilotGains as optional `rudderMaxForce`, by the same rules
 // as rudderMax; a command without it leaves each boat's limit alone.
 //
+// Autopilot holdoff (autopilot_holdoff_ms, default 500,
+// -1..10000). After Left / Right is released, the boat waits this many
+// milliseconds of sim time (no helm meanwhile) and then engages the
+// heading-hold autopilot on the heading she has then. 0 engages on the
+// release tick; a negative value (-1) never engages (plain manual helm, the
+// old sticky_autopilot = false). Up / Down and tack never disengage the
+// autopilot, so it does not apply to them. It rides on autopilotGains as
+// optional `autopilotHoldoffMs`, per boat, by the same rules as rudderMax.
+// Replaces sticky_autopilot (true / false): a saved or legacy false becomes
+// -1, true the default.
+//
 // Persistence. Applied config is localStorage 'fields.devConfig'. Older
 // saves (fields.playerPrefs keys for these settings, and
 // fields.stickyAutopilot) are copied in once and then removed. A query
-// key (?show_field, ?boat_trails, ?sticky_autopilot, ?autopilotKp, …)
+// key (?show_field, ?boat_trails, ?autopilot_holdoff_ms, ?autopilotKp, …;
+// the old ?sticky_autopilot=0 / 1 maps to -1 / the default)
 // still wins over the saved value for that load. Invalid TOML is not
 // written and does not change the applied config.
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
@@ -56,6 +68,7 @@ import {
   AUTOPILOT_KP_DEFAULT,
   RUDDER_MAX_DEG_DEFAULT,
   RUDDER_MAX_FORCE_N_DEFAULT,
+  AUTOPILOT_HOLDOFF_MS_DEFAULT,
   setting,
 } from './settings-registry.js';
 
@@ -78,7 +91,7 @@ export const DEV_TOML_FIELDS = [
   { key: 'trail_size_m', id: 'trailSize' },
   { key: 'ghost_boat', id: 'ghost' },
   { key: 'ghost_ahead_s', id: 'ghostAhead' },
-  { key: 'sticky_autopilot', id: 'sticky_autopilot' },
+  { key: 'autopilot_holdoff_ms', id: 'autopilot_holdoff_ms' },
   { key: 'autopilot_kp', id: 'autopilotKp' },
   { key: 'autopilot_ki', id: 'autopilotKi' },
   { key: 'autopilot_kd', id: 'autopilotKd' },
@@ -101,6 +114,7 @@ const HEADER = [
   '# ladder_lines (default true): laylines at the next course mark (one from each mark of a gate; 50° off downwind at an upwind mark, 20° off upwind at a downwind one) and lines square to the wind every 10 m between them, back to the previous mark or the start line; none before the start.',
   '# rudder_max_deg: manual helm hard-over each side, 10..90 degrees (default 60). The autopilot uses the same limit; penalty turns stay at 50 or less.',
   '# rudder_max_force_n: rudder blade load limit in newtons, 0..5000 (default 200, 0 = none). Over it, the blade takes the nearest angle within the stop whose load is within it.',
+  '# autopilot_holdoff_ms: after Left / Right is released, heading hold engages on the then-current heading after this many ms (default 500; 0 = at once, -1 = never). Up / Down never disengage the autopilot.',
   '',
 ].join('\n');
 
@@ -273,6 +287,7 @@ export function validateAutopilotGains(c) {
   if (!c || typeof c !== 'object') return { error: 'autopilotGains needs kp, ki, kd' };
   const hasRudder = c.rudderMax !== undefined;
   const hasForce = c.rudderMaxForce !== undefined;
+  const hasHoldoff = c.autopilotHoldoffMs !== undefined;
   const v = validateDevConfig({
     ...DEV_CONFIG_DEFAULTS,
     autopilot_kp: c.kp,
@@ -280,14 +295,16 @@ export function validateAutopilotGains(c) {
     autopilot_kd: c.kd,
     ...(hasRudder ? { rudder_max_deg: c.rudderMax } : {}),
     ...(hasForce ? { rudder_max_force_n: c.rudderMaxForce } : {}),
+    ...(hasHoldoff ? { autopilot_holdoff_ms: c.autopilotHoldoffMs } : {}),
   });
   if (v.error) {
-    if (/autopilot_k[pid]|rudder_max_deg|rudder_max_force_n/.test(v.error)) return { error: v.error };
+    if (/autopilot_k[pid]|rudder_max_deg|rudder_max_force_n|autopilot_holdoff_ms/.test(v.error)) return { error: v.error };
     return { error: 'autopilotGains needs kp, ki, kd' };
   }
   const g = { kp: v.config.autopilot_kp, ki: v.config.autopilot_ki, kd: v.config.autopilot_kd };
   if (hasRudder) g.rudderMax = v.config.rudder_max_deg;
   if (hasForce) g.rudderMaxForce = v.config.rudder_max_force_n;
+  if (hasHoldoff) g.autopilotHoldoffMs = v.config.autopilot_holdoff_ms;
   return g;
 }
 
@@ -295,9 +312,9 @@ export function autopilotGainsOf(cfg) {
   return { kp: cfg.autopilot_kp, ki: cfg.autopilot_ki, kd: cfg.autopilot_kd };
 }
 
-/** The boat command a dev Apply sends: the PID plus the manual rudder limit. */
+/** The boat command a dev Apply sends: the PID, the rudder limits and the autopilot holdoff. */
 export function devBoatCommand(cfg) {
-  return { type: 'autopilotGains', ...autopilotGainsOf(cfg), rudderMax: cfg.rudder_max_deg, rudderMaxForce: cfg.rudder_max_force_n };
+  return { type: 'autopilotGains', ...autopilotGainsOf(cfg), rudderMax: cfg.rudder_max_deg, rudderMaxForce: cfg.rudder_max_force_n, autopilotHoldoffMs: cfg.autopilot_holdoff_ms };
 }
 
 /** What the client applies locally from a validated config. PID is separate (the sim command). */
@@ -319,7 +336,6 @@ export function devClientEffects(cfg) {
     trailSize: cfg.trail_size_m,
     ghost: cfg.ghost_boat,
     ghostAhead: cfg.ghost_ahead_s,
-    stickyAutopilot: cfg.sticky_autopilot,
   };
 }
 
@@ -350,6 +366,11 @@ export function devConfigErrorLine(text, err) {
 export function configFromQuery(cfg, params) {
   const next = { ...cfg };
   let any = false;
+  // Old link key: ?sticky_autopilot=0 / 1 (the holdoff key wins when both are there).
+  if (params && params.has(LEGACY_STICKY_KEY) && !params.has('autopilot_holdoff_ms')) {
+    const v = holdoffFromLegacySticky(params.get(LEGACY_STICKY_KEY));
+    if (v !== undefined) { next.autopilot_holdoff_ms = v; any = true; }
+  }
   for (const field of DEV_TOML_FIELDS) {
     if (!params || !params.has(field.id)) continue;
     const v = coerceLegacy(field.id, params.get(field.id));
@@ -372,6 +393,11 @@ export function configFromStored(saved, legacyPrefs, stickyRaw) {
   if (saved && typeof saved === 'object') {
     const known = {};
     for (const key of DEV_CONFIG_KEYS) if (key in saved) known[key] = saved[key];
+    // A save from before the holdoff: sticky_autopilot false = never engage.
+    if (!('autopilot_holdoff_ms' in saved) && LEGACY_STICKY_KEY in saved) {
+      const v = holdoffFromLegacySticky(saved[LEGACY_STICKY_KEY]);
+      if (v !== undefined) known.autopilot_holdoff_ms = v;
+    }
     const v = validateDevConfig({ ...DEV_CONFIG_DEFAULTS, ...known });
     if (!v.error) return { config: v.config, migrated: false };
   }
@@ -387,15 +413,36 @@ export function configFromStored(saved, legacyPrefs, stickyRaw) {
       migrated = true;
     }
   }
+  if (legacyPrefs && typeof legacyPrefs === 'object' && LEGACY_STICKY_KEY in legacyPrefs) {
+    const v = holdoffFromLegacySticky(legacyPrefs[LEGACY_STICKY_KEY]);
+    if (v !== undefined) { next.autopilot_holdoff_ms = v; migrated = true; }
+  }
   if (stickyRaw != null && stickyRaw !== '') {
-    const v = coerceLegacy('sticky_autopilot', stickyRaw);
-    if (v !== undefined && v !== setting('sticky_autopilot').default) {
-      next.sticky_autopilot = v;
+    const v = holdoffFromLegacySticky(stickyRaw);
+    if (v !== undefined) {
+      next.autopilot_holdoff_ms = v;
       migrated = true;
-    } else if (v !== undefined) migrated = true;
+    }
   }
   const out = validateDevConfig(next);
   return { config: out.error ? { ...DEV_CONFIG_DEFAULTS } : out.config, migrated };
+}
+
+// The boolean sticky_autopilot this holdoff replaced (TOML key, URL key and
+// old player-prefs id), and its own localStorage key before the Dev TOML.
+export const LEGACY_STICKY_KEY = 'sticky_autopilot';
+export const LEGACY_STICKY_STORAGE_KEY = 'fields.stickyAutopilot';
+// Old true / false → holdoff ms: false = -1 (never), true = the default; else undefined.
+export function holdoffFromLegacySticky(raw) {
+  let on;
+  if (typeof raw === 'boolean') on = raw;
+  else {
+    const t = String(raw ?? '').trim().toLowerCase();
+    if (CHECKED.has(t)) on = true;
+    else if (UNCHECKED.has(t)) on = false;
+    else return undefined;
+  }
+  return on ? AUTOPILOT_HOLDOFF_MS_DEFAULT : -1;
 }
 
 export function devConfigIds() {

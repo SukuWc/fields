@@ -5,13 +5,12 @@
 // applied config, the URL, or the sim.
 //
 // Apply writes this page's visuals immediately and sends autopilotGains
-// (the PID, rudder_max_deg as rudderMax and rudder_max_force_n as
-// rudderMaxForce).
+// (the PID, rudder_max_deg as rudderMax, rudder_max_force_n as
+// rudderMaxForce and autopilot_holdoff_ms as autopilotHoldoffMs).
 // The command is sent first. If the sim or the server rejects it, the
 // visuals stay as they were. See src/dev-config.js for which boats get
 // the gains in local, worker and remote modes.
 import { PREFS_KEY } from './player-prefs.js';
-import { STICKY_AUTOPILOT_KEY, setStickyAutopilot } from './controls.js';
 import {
   DEV_CONFIG_DEFAULTS,
   DEV_CONFIG_KEY,
@@ -24,6 +23,8 @@ import {
   devConfigErrorLine,
   devConfigIds,
   legacyUrlValue,
+  LEGACY_STICKY_KEY,
+  LEGACY_STICKY_STORAGE_KEY,
   parseAndValidateDevConfig,
   stringifyDevConfig,
 } from './dev-config.js';
@@ -53,10 +54,10 @@ function stripLegacy(storage) {
   const prefs = readJson(storage, PREFS_KEY);
   if (prefs) {
     let changed = false;
-    for (const id of devConfigIds()) if (id in prefs) { delete prefs[id]; changed = true; }
+    for (const id of [...devConfigIds(), LEGACY_STICKY_KEY]) if (id in prefs) { delete prefs[id]; changed = true; }
     if (changed) writeJson(storage, PREFS_KEY, Object.keys(prefs).length ? prefs : null);
   }
-  try { storage.removeItem(STICKY_AUTOPILOT_KEY); } catch { /* no storage */ }
+  try { storage.removeItem(LEGACY_STICKY_STORAGE_KEY); } catch { /* no storage */ }
 }
 
 function searchParams() {
@@ -82,7 +83,8 @@ function syncDevUrl(cfg) {
   const current = searchParams();
   const ids = new Set(devConfigIds());
   const next = new URLSearchParams();
-  for (const [key, value] of current.entries()) if (!ids.has(key)) next.append(key, value);
+  // The old ?sticky_autopilot link key goes too (the holdoff key replaces it).
+  for (const [key, value] of current.entries()) if (!ids.has(key) && key !== LEGACY_STICKY_KEY) next.append(key, value);
   for (const id of devConfigIds()) {
     const value = legacyUrlValue(id, cfg[idToKey(id)]);
     if (value != null) next.append(id, value);
@@ -97,7 +99,7 @@ function isDefaultConfig(cfg) {
 /**
  * Install the Dev TOML editor.
  * applyLocal(effects) updates this page (view, tracers, trails, ghost,
- * sticky autopilot, perf, plot). It must not touch another client's boat.
+ * perf, plot). It must not touch another client's boat.
  * Returns { ready } — the startup apply (saved + query).
  */
 export function installDevPrefs(doc, { host, applyLocal, storage } = {}) {
@@ -109,7 +111,7 @@ export function installDevPrefs(doc, { host, applyLocal, storage } = {}) {
   const saved = readJson(store, DEV_CONFIG_KEY);
   const legacy = readJson(store, PREFS_KEY);
   let stickyRaw = null;
-  try { stickyRaw = store ? store.getItem(STICKY_AUTOPILOT_KEY) : null; } catch { stickyRaw = null; }
+  try { stickyRaw = store ? store.getItem(LEGACY_STICKY_STORAGE_KEY) : null; } catch { stickyRaw = null; }
   const stored = configFromStored(saved, legacy, stickyRaw);
   if (stored.migrated && !isDefaultConfig(stored.config)) writeJson(store, DEV_CONFIG_KEY, stored.config);
   if (stored.migrated || legacy || stickyRaw != null) stripLegacy(store);
@@ -246,7 +248,6 @@ export function applyDevEffects(effects, { view, host, setTracerParams, setBoatT
   if (setBoatTrailsOn) setBoatTrailsOn(effects.boatTrails);
   if (setTrailParams) setTrailParams({ interval: effects.trailInterval, duration: effects.trailDuration, size: effects.trailSize });
   if (setGhostParams) setGhostParams({ on: effects.ghost, ahead: effects.ghostAhead });
-  setStickyAutopilot(effects.stickyAutopilot);
   if (view) {
     if (view.input_show_fields) view.input_show_fields(effects.flowTracers);
     if (view.input_show_ladder) view.input_show_ladder(effects.ladderLines);

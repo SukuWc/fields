@@ -11,7 +11,7 @@ import { devViewFromQuery, setupDevView } from '../src/dev-view.js';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
-const DEV_IDS = ['show_field', 'ladder', 'tracers', 'tracerLife', 'tracerTail', 'show_forces', 'show_refinement', 'perf', 'plotSelect', 'contrastSlider', 'boat_trails', 'trailInterval', 'trailDuration', 'trailSize', 'ghost', 'ghostAhead', 'sticky_autopilot', 'autopilotKp', 'autopilotKi', 'autopilotKd'];
+const DEV_IDS = ['show_field', 'ladder', 'tracers', 'tracerLife', 'tracerTail', 'show_forces', 'show_refinement', 'perf', 'plotSelect', 'contrastSlider', 'boat_trails', 'trailInterval', 'trailDuration', 'trailSize', 'ghost', 'ghostAhead', 'autopilot_holdoff_ms', 'autopilotKp', 'autopilotKi', 'autopilotKd'];
 
 function slice(id) {
   const start = html.indexOf(`id="${id}"`);
@@ -109,7 +109,7 @@ test('Dev tab is a TOML editor and the old controls are not duplicated', () => {
   assert.equal(settingDefault('plotSelect'), 'Plot speed');
   assert.equal(settingDefault('contrastSlider'), 0);
   assert.equal(settingDefault('boat_trails'), true);
-  assert.equal(settingDefault('sticky_autopilot'), true);
+  assert.equal(settingDefault('autopilot_holdoff_ms'), 500);
   const prefs = playerPrefIds();
   for (const id of DEV_IDS) assert.ok(!prefs.includes(id), id);
   assert.ok(prefs.includes('vibrate'));

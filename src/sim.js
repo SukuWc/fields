@@ -48,7 +48,6 @@ export { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps };
 // step() (held: rudder and heading-target keys, applied once per tick).
 //   { type: 'helm', boat, dir: -1 (left) | +1 (right) }        held
 //   { type: 'headingTarget', boat, dir: +1 (increase) | -1 }    held
-//   { type: 'autopilotTurn', boat, dir: -1 (left, CCW) | +1 }   held: sticky-autopilot helm
 //   { type: 'autopilot', boat }        toggle
 //   { type: 'tack', boat }             autopilot tack toggle
 //   { type: 'penaltyTurn', boat, dir: 'ccw' | 'cw' }
@@ -76,15 +75,14 @@ export { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps };
 //   { type: 'cellBudget', tune, target? }  refinement budget: tune false = off (no
 //                                      budget, scale 1); target a positive number, else
 //                                      the grid default (domainTrack defaultCellUpdateTarget)
-//   { type: 'autopilotGains', kp, ki, kd, rudderMax?, rudderMaxForce?, boatId? }
+//   { type: 'autopilotGains', kp, ki, kd, rudderMax?, rudderMaxForce?, autopilotHoldoffMs?, boatId? }
 //                                      PID (and, if given, the manual rudder limit in
 //                                      degrees) on one boat by id, or (no boatId) the sim
 //                                      default written onto every boat by id. A `boat`
 //                                      index is rejected. dev-config.js describes which
 //                                      host may send the no-id form.
 export const BOAT_ACTIONS = {
-  helm: (b, c) => (c.dir < 0 ? b.input_rudder_left() : b.input_rudder_right()),
-  autopilotTurn: (b, c) => b.input_autopilot_turn(c.dir),
+  helm: (b, c) => b.input_helm(c.dir),
   headingTarget: (b, c) => (c.dir > 0 ? b.input_autopilot_heading_increase() : b.input_autopilot_heading_decrease()),
   autopilot: (b) => b.input_autopilot_enabled_toggle(),
   tack: (b) => b.input_autopilot_tack_toggle(),
@@ -335,6 +333,7 @@ export class Sim {
     boat.autopilot_kd = g.kd;
     if (g.rudderMax !== undefined && boat.rudder_angle_max !== g.rudderMax) boat.setRudderMax(g.rudderMax);
     if (g.rudderMaxForce !== undefined && boat.rudder_max_force_n !== g.rudderMaxForce) boat.setRudderMaxForce(g.rudderMaxForce);
+    if (g.autopilotHoldoffMs !== undefined) boat.setAutopilotHoldoff(g.autopilotHoldoffMs);
   }
 
   // PID by boat id. No boatId: sim-wide default (local / worker). A numeric
@@ -350,7 +349,7 @@ export class Sim {
       this._writeAutopilotGains(boat, g);
       return { ok: true, boats: [boat.boatId] };
     }
-    this.autopilotGains = { kp: g.kp, ki: g.ki, kd: g.kd, ...(g.rudderMax !== undefined ? { rudderMax: g.rudderMax } : {}), ...(g.rudderMaxForce !== undefined ? { rudderMaxForce: g.rudderMaxForce } : {}) };
+    this.autopilotGains = { kp: g.kp, ki: g.ki, kd: g.kd, ...(g.rudderMax !== undefined ? { rudderMax: g.rudderMax } : {}), ...(g.rudderMaxForce !== undefined ? { rudderMaxForce: g.rudderMaxForce } : {}), ...(g.autopilotHoldoffMs !== undefined ? { autopilotHoldoffMs: g.autopilotHoldoffMs } : {}) };
     const ids = [];
     for (const b of this.players) { this._writeAutopilotGains(b, g); ids.push(b.boatId); }
     return { ok: true, boats: ids };
@@ -422,6 +421,9 @@ export class Sim {
     if (inputs) for (const c of inputs) this._boatCommand(c);
 
     const players = this.players;
+    // Autopilot holdoff: heading hold after Left / Right is released
+    // (boat.js stepHelmHoldoff), on sim time.
+    for (const b of players) b.stepHelmHoldoff(stepped ? simDt : 0);
     // Local/worker dev PID: boats created by the scenario frames above pick
     // up the page's gains. Remote leaves this null and writes by boat id.
     if (this.autopilotGains) {
