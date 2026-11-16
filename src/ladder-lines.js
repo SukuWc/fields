@@ -1,211 +1,90 @@
-// Distance-based ladder lines: level sets of path length along the local
-// wind from the next course target, laid out toward the previous mark of
-// the leg. No DOM. scene-state.js (local / worker) and main.js (remote
-// clients, from the vector field) build compact polylines; scene-build.js
-// turns them into guides.
+// Ladder lines: straight lines square to the wind at the next course
+// target, 10 m apart, across the whole map. No DOM. scene-state.js (local
+// / worker) and main.js (remote clients, from the vector field) build the
+// compact segments; scene-build.js turns them into guides.
 //
-// Origin: the local player's next course target (ladderAnchorsFromState /
-// ladderAnchorsForSim): start-line mid before the gun, then the next mark
-// or the mid of a gate, then the finish-line mid. Never sim.marks[0] when
-// there is a course (that may be a start pin).
+// Anchor: the local player's next course target (ladderAnchorsForSim /
+// ladderAnchorsFromState): the next mark or the mid of a gate, then the
+// finish-line mid. Never sim.marks[0] when there is a course (that may be
+// a start pin). Before the start the target is the start line and there
+// are no lines at all (the anchors carry preStart; ladderDrawable is
+// false). With a mark but no course (scenario 21) the mark is the anchor.
 //
-// Side: the lines go on the side of the target that faces the previous
-// point of the leg (the previous mark or gate mid; the start-line mid on
-// the first leg of lap 1; the last mark on later laps and on the finish
-// leg). So on a run they sit windward of the leeward gate, on a beat
-// leeward of the windward mark. The front still follows the local wind
-// (sail wake bends it); ladderPlan picks the sign: downwind when the
-// previous point is downwind of the target (dot(prev − target, wind) ≥ 0),
-// else upwind (the front walks against the flow).
+// Direction: the wind is sampled once, at the anchor, and only its
+// direction is used (rounded to LADDER_DIR_STEP_DEG so the lines do not
+// shimmer with every field update; speed does not matter). Wind anywhere
+// else in the field, sail wakes included, has no effect.
 //
-// Before the start the target is the start line and there is no previous
-// mark: no ladder lines at all (the anchors carry preStart and callers
-// skip the build). They appear once the boat is racing to mark 1. With no
-// previous point at all (a mark but no course, scenario 21) they go
-// downwind for LADDER_DEFAULT_LENGTH_M.
+// Lines: every line perpendicular to that direction at signed offsets
+// k · LADDER_SPACING_M (10 m) from the anchor along the wind, k = …, −1, 0,
+// 1, …, on both sides, for every k whose line crosses the map. Offset 0
+// passes through the anchor itself (the mark's own line, the one a boat
+// is on when she is level with the mark). Each line is clipped to the map
+// rectangle, so it is one two-point segment from edge to edge.
 //
-// Count and spacing: one line every LADDER_SPACING_M (10 m) up to the leg
-// length measured along the wind (|dot(prev − target, wind unit)|), i.e.
-// ceil(length / 10) lines, at least one and at most LADDER_MAX_LINES (40,
-// 400 m). The front width grows with the cross-wind offset of the previous
-// point (LADDER_HALF_WIDTH_M … LADDER_MAX_HALF_WIDTH_M) and the front point
-// spacing and advection step grow with the leg so one build costs at most
-// about LADDER_FRONT_POINTS × LADDER_MAX_STEPS wind samples.
-//
-// Optional bounds clip the seed front and advection to the map so no
-// point leaves the domain.
-//
-// Definition: a point lies on the X-metre ladder when the integrated
-// distance along the streamline (with or against the wind) from the target
-// reaches X. With uniform wind that is a straight line through
-// (target ± X·û_downwind), perpendicular to the wind.
-//
-// Algorithm: seed a cross-wind front through the target, advect each point
-// along ±wind by a fixed step while accumulating arc length, and snapshot
-// the front when the mean distance of the points still moving crosses each
-// target distance.
+// Rebuild: the result depends only on the anchor, the rounded direction
+// and the map bounds, so callers memoise on those (createLadderCache with
+// ladderAnchorKey + ladderWindKey), not on field updates.
 
 export const LADDER_SPACING_M = 10;
-export const LADDER_MAX_LINES = 40;
-export const LADDER_DEFAULT_LENGTH_M = 40;
-export const LADDER_HALF_WIDTH_M = 50;
-export const LADDER_MAX_HALF_WIDTH_M = 200;
-export const LADDER_CROSS_MARGIN_M = 30;
-export const LADDER_FRONT_SPACING_M = 2;
-export const LADDER_FRONT_POINTS = 100;
-export const LADDER_STEP_M = 0.5;
-export const LADDER_MAX_STEPS = 200;
+// Direction rounding for the build and the cache key, degrees.
+export const LADDER_DIR_STEP_DEG = 1;
+// Without map bounds (tests, odd callers): a square this far from the anchor.
+export const LADDER_DEFAULT_HALF_EXTENT_M = 200;
 
-function unit(vx, vy) {
-  const m = Math.hypot(vx, vy);
-  if (!(m > 1e-12)) return null;
-  return [vx / m, vy / m];
-}
-
-function insideBounds(b, x, y) {
-  return x >= b.xmin && x <= b.xmax && y >= b.ymin && y <= b.ymax;
-}
-
-function clampToBounds(b, x, y) {
-  return [
-    Math.min(b.xmax, Math.max(b.xmin, x)),
-    Math.min(b.ymax, Math.max(b.ymin, y)),
-  ];
-}
-
-// Distances 10, 20, … covering legLength (at least one, at most the cap).
-export function ladderDistances(legLength, spacing = LADDER_SPACING_M, maxLines = LADDER_MAX_LINES) {
-  const len = Number.isFinite(legLength) && legLength > 0 ? legLength : 0;
-  const n = Math.min(maxLines, Math.max(1, Math.ceil(len / spacing - 1e-9)));
-  const out = new Array(n);
-  for (let i = 0; i < n; i++) out[i] = spacing * (i + 1);
-  return out;
-}
-
-// How to build the ladder from (ox, oy) toward the previous point `toward`
-// ({ x, y } or null): direction (+1 downwind, −1 upwind), distances, and
-// front sizing. null when there is no wind at the origin.
-export function ladderPlan(getWind, ox, oy, toward = null) {
+// Wind direction at the anchor, degrees (math angle of the downwind flow,
+// atan2(vy, vx)), rounded to LADDER_DIR_STEP_DEG; null in calm or with no
+// sample.
+export function ladderWindDeg(getWind, ox, oy) {
   if (!Number.isFinite(ox) || !Number.isFinite(oy)) return null;
-  const w0 = getWind(ox, oy);
-  const u0 = w0 && unit(w0.vx, w0.vy);
-  if (!u0) return null;
-  let direction = 1;
-  let length = LADDER_DEFAULT_LENGTH_M;
-  let cross = 0;
-  if (toward && Number.isFinite(toward.x) && Number.isFinite(toward.y)) {
-    const dx = toward.x - ox;
-    const dy = toward.y - oy;
-    const along = dx * u0[0] + dy * u0[1];
-    direction = along < 0 ? -1 : 1;
-    length = Math.abs(along);
-    cross = Math.abs(-dx * u0[1] + dy * u0[0]);
-  }
-  const distances = ladderDistances(length);
-  const halfWidth = Math.min(LADDER_MAX_HALF_WIDTH_M, Math.max(LADDER_HALF_WIDTH_M, cross + LADDER_CROSS_MARGIN_M));
-  const spacing = Math.max(LADDER_FRONT_SPACING_M, (2 * halfWidth) / LADDER_FRONT_POINTS);
-  const step = Math.max(LADDER_STEP_M, distances[distances.length - 1] / LADDER_MAX_STEPS);
-  return { direction, distances, halfWidth, spacing, step, length };
+  const w = getWind(ox, oy);
+  if (!w || !Number.isFinite(w.vx) || !Number.isFinite(w.vy) || !(Math.hypot(w.vx, w.vy) > 1e-12)) return null;
+  const deg = Math.atan2(w.vy, w.vx) * 180 / Math.PI;
+  let r = Math.round(deg / LADDER_DIR_STEP_DEG) * LADDER_DIR_STEP_DEG;
+  if (r <= -180) r += 360;
+  if (r > 180) r -= 360;
+  return r;
 }
 
-// getWind(x, y) → { vx, vy } (downwind lattice flow). origin is the target.
-// distances: metres of path length. direction: +1 with the wind, −1
-// against it. Returns [{ d, pts: [[x, y], ...] }, ...] in ascending d,
-// skipping any distance the front never reaches.
-export function ladderLines(getWind, ox, oy, distances = [LADDER_SPACING_M], {
-  halfWidth = LADDER_HALF_WIDTH_M,
-  spacing = LADDER_FRONT_SPACING_M,
-  step = LADDER_STEP_M,
-  bounds = null,
-  direction = 1,
-} = {}) {
-  const targets = [...distances].filter((d) => Number.isFinite(d) && d > 0).sort((a, b) => a - b);
-  if (!targets.length || !Number.isFinite(ox) || !Number.isFinite(oy)) return [];
-  const sgn = direction < 0 ? -1 : 1;
-  const w0 = getWind(ox, oy);
-  if (!w0) return [];
-  const u0 = unit(w0.vx, w0.vy);
-  if (!u0) return [];
-  const [cx, cy] = [-u0[1], u0[0]];
-
-  const n = Math.max(1, Math.round((2 * halfWidth) / spacing));
-  const pts = new Array(n + 1);
-  const dist = new Float64Array(n + 1);
-  const stuck = new Uint8Array(n + 1);
-  let live = 0;
-  for (let i = 0; i <= n; i++) {
-    const s = -halfWidth + (2 * halfWidth) * (i / n);
-    const x = ox + cx * s;
-    const y = oy + cy * s;
-    if (bounds && !insideBounds(bounds, x, y)) {
-      pts[i] = null;
-      stuck[i] = 1;
-      continue;
-    }
-    pts[i] = [x, y];
-    live++;
+// Clip the line p + t·d to the rectangle (Liang–Barsky). [t0, t1] or null.
+function clipLine(px, py, dx, dy, b) {
+  let t0 = -Infinity, t1 = Infinity;
+  const edges = [[-dx, px - b.xmin], [dx, b.xmax - px], [-dy, py - b.ymin], [dy, b.ymax - py]];
+  for (const [pp, q] of edges) {
+    if (Math.abs(pp) < 1e-12) { if (q < 0) return null; continue; }
+    const t = q / pp;
+    if (pp < 0) { if (t > t0) t0 = t; } else if (t < t1) t1 = t;
   }
-  if (!live) return [];
+  return t1 - t0 > 1e-9 ? [t0, t1] : null;
+}
 
-  const snaps = new Map();
-  let next = 0;
-  const maxDist = targets[targets.length - 1];
-  const maxSteps = Math.ceil(maxDist / step) + 3;
-
-  for (let k = 0; k < maxSteps && next < targets.length; k++) {
-    for (let i = 0; i <= n; i++) {
-      const p = pts[i];
-      if (!p || stuck[i]) continue;
-      const w = getWind(p[0], p[1]);
-      if (!w) continue;
-      const u = unit(w.vx, w.vy);
-      if (!u) continue;
-      p[0] += sgn * u[0] * step;
-      p[1] += sgn * u[1] * step;
-      dist[i] += step;
-      if (bounds && !insideBounds(bounds, p[0], p[1])) {
-        const c = clampToBounds(bounds, p[0], p[1]);
-        p[0] = c[0];
-        p[1] = c[1];
-        stuck[i] = 1;
-      }
-    }
-    // Mean over the points still moving: ends that hit a wall stop
-    // counting, so a long leg still reaches its far lines.
-    let mean = 0;
-    let count = 0;
-    for (let i = 0; i <= n; i++) {
-      if (!pts[i] || stuck[i]) continue;
-      mean += dist[i];
-      count++;
-    }
-    if (!count) break;
-    mean /= count;
-    while (next < targets.length && mean + 1e-9 >= targets[next]) {
-      const t = targets[next];
-      const snap = [];
-      for (let i = 0; i <= n; i++) {
-        const p = pts[i];
-        if (!p) continue;
-        const over = dist[i] - t;
-        let q;
-        if (!(over > 0) || over > step + 1e-9 || stuck[i]) {
-          q = [p[0], p[1]];
-        } else {
-          const w = getWind(p[0], p[1]);
-          const u = w && unit(w.vx, w.vy);
-          q = u ? [p[0] - sgn * u[0] * over, p[1] - sgn * u[1] * over] : [p[0], p[1]];
-        }
-        if (bounds) {
-          if (!insideBounds(bounds, q[0], q[1])) q = clampToBounds(bounds, q[0], q[1]);
-        }
-        snap.push(q);
-      }
-      snaps.set(t, snap);
-      next++;
-    }
+// Lines for anchor (ox, oy) and downwind direction dirDeg (math degrees):
+// [{ k, d, pts: [[x0, y0], [x1, y1]] }, …] in ascending k, d = k · spacing
+// metres downwind of the anchor (negative upwind).
+export function ladderLines(ox, oy, dirDeg, bounds = null, spacing = LADDER_SPACING_M) {
+  if (!Number.isFinite(ox) || !Number.isFinite(oy) || !Number.isFinite(dirDeg) || !(spacing > 0)) return [];
+  const b = bounds || {
+    xmin: ox - LADDER_DEFAULT_HALF_EXTENT_M, xmax: ox + LADDER_DEFAULT_HALF_EXTENT_M,
+    ymin: oy - LADDER_DEFAULT_HALF_EXTENT_M, ymax: oy + LADDER_DEFAULT_HALF_EXTENT_M,
+  };
+  const th = dirDeg * Math.PI / 180;
+  const ux = Math.cos(th), uy = Math.sin(th);
+  const nx = -uy, ny = ux;
+  let smin = Infinity, smax = -Infinity;
+  for (const [x, y] of [[b.xmin, b.ymin], [b.xmax, b.ymin], [b.xmin, b.ymax], [b.xmax, b.ymax]]) {
+    const sv = (x - ox) * ux + (y - oy) * uy;
+    if (sv < smin) smin = sv;
+    if (sv > smax) smax = sv;
   }
-  return targets.filter((d) => snaps.has(d)).map((d) => ({ d, pts: snaps.get(d) }));
+  const out = [];
+  for (let k = Math.ceil(smin / spacing - 1e-9); k <= Math.floor(smax / spacing + 1e-9); k++) {
+    const d = k * spacing;
+    const px = ox + ux * d, py = oy + uy * d;
+    const t = clipLine(px, py, nx, ny, b);
+    if (!t) continue;
+    out.push({ k, d, pts: [[px + nx * t[0], py + ny * t[0]], [px + nx * t[1], py + ny * t[1]]] });
+  }
+  return out;
 }
 
 // World-metre axis-aligned bounds of a lattice ({ w, h, res } from
@@ -275,21 +154,18 @@ function finishMidFromState(statics) {
   return lineMid(fin) || xyOf(cs && cs.fin);
 }
 
-// Next target (origin) and the previous point of the leg (toward) from the
-// live sim (local / worker scene-state). Before the start
-// (waitingForStart, or a start sequence with no boat yet): origin is the
-// start-line mid with preStart set and no toward; ladderDrawable() is
-// false, so no lines are drawn before the start. After a valid start:
-// origin is the current rounding target (a mark, or the mid of a gate) and
-// toward is the previous mark / gate mid, or the course start on the first
-// rounding (the last mark on later laps). When the finish is next
-// (courseComplete): the finish-line mid, toward the last mark. With no
-// course but a mark (scenario 21): that mark, toward null (downwind).
+// Next target from the live sim (local / worker scene-state). Before the
+// start (waitingForStart, or a start sequence with no boat yet): the
+// start-line mid with preStart set; ladderDrawable() is false, so no lines
+// are drawn before the start. After a valid start: the current rounding
+// target (a mark, or the mid of a gate). When the finish is next
+// (courseComplete): the finish-line mid. With no course but a mark
+// (scenario 21): that mark.
 export function ladderAnchorsForSim(sim, boat = null) {
   const course = sim && sim.course;
   if (!course && sim && sim.marks && sim.marks.length && !sim.startSequence) {
     const origin = ladderMarkCentre(sim.marks[0]);
-    return origin ? { origin, toward: null } : null;
+    return origin ? { origin } : null;
   }
   const p = boat && course ? course.progressFor(boat) : null;
   const marks = course && course.marks && course.marks.length ? course.marks : null;
@@ -297,22 +173,17 @@ export function ladderAnchorsForSim(sim, boat = null) {
   if (waiting || !marks) {
     const origin = startMidForSim(sim);
     if (!origin) return null;
-    return { origin, toward: null, preStart: true };
+    return { origin, preStart: true };
   }
   const n = marks.length;
   if (p && p.courseComplete) {
     const origin = finishMidForSim(sim);
-    return origin ? { origin, toward: ladderMarkCentre(marks[n - 1]) } : null;
+    return origin ? { origin } : null;
   }
   const k = p && Number.isFinite(p.target) ? p.target : (p ? p.targetIndex : 0);
   const i = ((k % n) + n) % n;
   const origin = ladderMarkCentre(marks[i]);
-  if (!origin) return null;
-  let toward;
-  if (i > 0) toward = ladderMarkCentre(marks[i - 1]);
-  else if (k >= n) toward = ladderMarkCentre(marks[n - 1]);
-  else toward = xyOf(course.start) || startMidForSim(sim);
-  return { origin, toward: toward || null };
+  return origin ? { origin } : null;
 }
 
 export function ladderOriginForSim(sim, boat = null) {
@@ -320,12 +191,10 @@ export function ladderOriginForSim(sim, boat = null) {
   return a ? a.origin : null;
 }
 
-// Same anchors from compact frame state, for the local player's boat.
+// Same anchor from compact frame state, for the local player's boat.
 // Reuses courseTextState (hud.own[id].co / hud.co): waiting (co.w) → start
-// mid with preStart (nothing drawn); done → finish mid toward the last mark;
-// otherwise course.c[i] / anchors (gate mid when the target is a gate)
-// toward element i − 1 (the start on lap 1's first leg, the last element
-// on later laps).
+// mid with preStart (nothing drawn); done → finish mid; otherwise
+// course.c[i] / anchors (gate mid when the target is a gate).
 export function ladderAnchorsFromState(state, statics, { ownId } = {}) {
   const h = state && state.hud;
   const mine = ownId != null && h && h.own && h.own[ownId];
@@ -335,24 +204,18 @@ export function ladderAnchorsFromState(state, statics, { ownId } = {}) {
   const elem = (j) => ladderMarkCentre(cg && cg.c && cg.c[j])
     || ladderMarkCentre(cs && cs.anchors && cs.anchors[j])
     || ladderMarkCentre(cs && cs.gates && cs.gates[j]);
-  const n = (cg && cg.c && cg.c.length) || (cs && cs.anchors && cs.anchors.length) || (cs && Number.isInteger(cs.n) ? cs.n : 0);
   if (co && co.done) {
     const origin = finishMidFromState(statics);
-    return origin ? { origin, toward: n ? elem(n - 1) : null } : null;
+    return origin ? { origin } : null;
   }
   if (!co || co.w) {
     const start = startMidFromState(statics);
-    if (start) return { origin: start, toward: null, preStart: true };
+    if (start) return { origin: start, preStart: true };
     if (co && co.w) return null;
   }
   const i = (co && Number.isInteger(co.i)) ? co.i : 0;
   const origin = elem(i);
-  if (!origin) return null;
-  let toward = null;
-  if (i > 0) toward = elem(i - 1);
-  else if (co && co.lap >= 2 && n) toward = elem(n - 1);
-  else toward = xyOf(cs && cs.start) || startMidFromState(statics);
-  return { origin, toward: toward || null };
+  return origin ? { origin } : null;
 }
 
 // Whether to draw ladder lines for these anchors: never before the start
@@ -366,37 +229,18 @@ export function ladderOriginFromState(state, statics, opts) {
   return a ? a.origin : null;
 }
 
-// Compact frame payload: one flat [x0,y0,x1,y1,…] polyline per ladder line
-// (10 m, 20 m, … in order; lines the front never reached are dropped).
-// opts.toward is the previous point of the leg (ladderPlan); opts.bounds
-// clips to the map.
-export function ladderState(getWind, ox, oy, { toward = null, bounds = null } = {}) {
-  const plan = ladderPlan(getWind, ox, oy, toward);
-  if (!plan) return [];
-  const lines = ladderLines(getWind, ox, oy, plan.distances, {
-    halfWidth: plan.halfWidth,
-    spacing: plan.spacing,
-    step: plan.step,
-    direction: plan.direction,
-    bounds,
-  });
-  const out = [];
-  for (const l of lines) {
-    const pts = l.pts;
-    if (!pts || pts.length < 2) continue;
-    const flat = new Array(pts.length * 2);
-    for (let i = 0; i < pts.length; i++) {
-      flat[i * 2] = pts[i][0];
-      flat[i * 2 + 1] = pts[i][1];
-    }
-    out.push(flat);
-  }
-  return out;
+// Compact frame payload: one flat [x0, y0, x1, y1] segment per ladder
+// line, in ascending offset (upwind-most first). Wind sampled once at the
+// anchor; opts.bounds is the map rectangle (mapBoundsFromLat).
+export function ladderState(getWind, ox, oy, { bounds = null } = {}) {
+  const dir = ladderWindDeg(getWind, ox, oy);
+  if (dir === null) return [];
+  return ladderLines(ox, oy, dir, bounds).map((l) => [l.pts[0][0], l.pts[0][1], l.pts[1][0], l.pts[1][1]]);
 }
 
-// One-entry memo for ladderState: callers pass a key array (field
-// identity, rounded anchors, time bucket…) and only rebuild when an entry
-// changes, so a per-frame caller costs one build per field update.
+// One-entry memo for ladderState: callers pass a key array (rounded
+// anchor, rounded wind direction, bounds…) and only rebuild when an entry
+// changes.
 export function createLadderCache() {
   let key = null;
   let value = null;
@@ -411,16 +255,20 @@ export function createLadderCache() {
 // Anchor coordinates rounded to 0.5 m for cache keys (a drifting buoy or
 // rounding noise should not force a rebuild every frame).
 export function ladderAnchorKey(anchors) {
-  if (!anchors || !anchors.origin) return [null, null, null, null];
+  if (!anchors || !anchors.origin) return [null, null];
   const r = (v) => (Number.isFinite(v) ? Math.round(v * 2) : null);
-  const t = anchors.toward;
-  return [r(anchors.origin.x), r(anchors.origin.y), t ? r(t.x) : null, t ? r(t.y) : null];
+  return [r(anchors.origin.x), r(anchors.origin.y)];
+}
+
+// Cache-key entry for the wind at the anchor: the rounded direction the
+// build uses (ladderWindDeg), or null in calm.
+export function ladderWindKey(getWind, anchors) {
+  if (!anchors || !anchors.origin) return null;
+  return ladderWindDeg(getWind, anchors.origin.x, anchors.origin.y);
 }
 
 // Guides from state.ladder (scene-build.js): one 'polyline' guide per
-// ladder line (flat pts), so the renderer draws each line as a single fat
-// line (one draw call) instead of one per segment — a long leg can have
-// up to LADDER_MAX_LINES lines of ~100 points.
+// ladder line (flat [x0, y0, x1, y1]), one draw call each.
 export const LADDER_GUIDE_COLOR = 0xffcc33;
 export const LADDER_GUIDE_OPACITY = 0.9;
 

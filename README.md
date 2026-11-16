@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-11-14
+Last updated: 2026-11-16
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -111,6 +111,7 @@ Last updated: 2026-11-14
 - [x] Remote vector field wire: two bytes per AMR cell (uint8 speed + uint8 direction), one shared keyframe stream; remote clients paint speed and compute tracers and ladder lines locally, dropping the 117 KB flow grid (`docs/transport-experiments.md`): [#204](https://github.com/SukuWc/fields/pull/204)
 - [x] Client ladder lines: origin is the local player's next course target (start-line mid, next mark or gate mid, finish-line mid — not `sim.marks[0]`); polylines stay inside the map; `ladder_lines` moves to per-client Dev settings and is on by default: [#206](https://github.com/SukuWc/fields/pull/206)
 - [x] Ladder lines on the side of the next target facing the previous mark (windward of the leeward gate, leeward of the windward mark; none before the start), every 10 m for the leg length (max 40 lines), memoised per field update and drawn one polyline per line: [#208](https://github.com/SukuWc/fields/pull/208)
+- [ ] Simple ladder lines: straight lines square to the wind sampled once at the next course target, 10 m apart on both sides (one through the target) and clipped to the map edge to edge; the wind elsewhere, the leg length and the previous mark no longer matter, and they rebuild only when the target moves or the wind direction there changes by 1°
 - [x] Standalone webapp starts on the multiplayer default room config (custom race course, live europe-1 preset) with the player's own boat; explicit `?scenario_selector=N` still picks a scenario: [#209](https://github.com/SukuWc/fields/pull/209)
 
 ### 4. Core race loop

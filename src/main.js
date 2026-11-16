@@ -82,6 +82,7 @@ import {
   ladderAnchorsFromState,
   ladderDrawable,
   ladderAnchorKey,
+  ladderWindKey,
   ladderState,
   createLadderCache,
   mapBoundsFromLat,
@@ -182,7 +183,7 @@ function clientToken(server) {
   }
 }
 let host = null;
-// Client ladder memo (remote rooms): one build per field update / anchor move.
+// Client ladder memo (remote rooms): rebuilt when the anchor moves or the wind direction at it changes.
 const remoteLadderCache = createLadderCache();
 try {
   if (_hostChoice.kind === 'worker') {
@@ -415,16 +416,17 @@ function startClient() {
     if (frame.fieldSteps > 0 && isPerfOverlayOn()) recordFieldStep(frame.fieldMs);
     if (host.kind === 'remote' && frame.state && view.show_ladder
         && host.lastField && host.lastField.kind === 'vec' && !frame.state.ladder) {
-      // Rebuilt only when the field message, the map bounds or the anchors
-      // change (frames arrive faster than field updates).
+      // Rebuilt only when the map bounds, the anchor (0.5 m) or the wind
+      // direction at the anchor (1°) change: one field sample per frame.
       const anchors = ladderAnchorsFromState(frame.state, frame.statics, { ownId: ownBoatId });
       if (ladderDrawable(anchors)) {
         const field = host.lastField;
         const bounds = mapBoundsFromLat(frame.statics && frame.statics.lat);
         const bkey = bounds ? [bounds.xmin, bounds.xmax, bounds.ymin, bounds.ymax] : [null, null, null, null];
-        const { origin, toward } = anchors;
-        frame.state.ladder = remoteLadderCache([field, ...bkey, ...ladderAnchorKey(anchors)], () => (
-          ladderState((x, y) => vectorFieldWind(field, x, y), origin.x, origin.y, { toward, bounds })
+        const getWind = (x, y) => vectorFieldWind(field, x, y);
+        const { origin } = anchors;
+        frame.state.ladder = remoteLadderCache([...bkey, ...ladderAnchorKey(anchors), ladderWindKey(getWind, anchors)], () => (
+          ladderState(getWind, origin.x, origin.y, { bounds })
         ));
       }
     }
