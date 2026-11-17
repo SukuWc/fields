@@ -4,9 +4,10 @@ import { setupSettingsEdge } from './settings-edge.js';
 // in index.html) #settings becomes a slide-in sheet behind the ☰ button.
 // The same DOM controls are shown, so URL sync, Reset settings and every
 // listener keep working. On desktop (the inverse media query) the same
-// button opens and closes #settings as a right-edge overlay drawer; it is
-// open by default there and the choice is kept in this browser
-// (localStorage 'fields.settingsOpen'). The touch-sheet event isolation
+// button opens and closes #settings as a right-edge drawer that slides over
+// the HUD's right column (the desktop three-column grid never moves for
+// it). It starts closed on every load, and Escape closes it on every size
+// (focus goes back to the ☰ button). The touch-sheet event isolation
 // below applies only to the mobile sheet, so desktop keyboard steering
 // still works after clicking a checkbox in the drawer.
 
@@ -20,24 +21,24 @@ export function setupMobileMenu() {
   backdrop.hidden = false; // shown and hidden by CSS from here on
 
   const desktop = typeof window.matchMedia === 'function' ? window.matchMedia(DESKTOP_QUERY) : { matches: false };
-  const STORE_KEY = 'fields.settingsOpen';
-  const stored = () => { try { return localStorage.getItem(STORE_KEY); } catch { return null; } };
   const isOpen = () => document.body.classList.contains('settings-open');
   const sheetOpen = () => isOpen() && !desktop.matches;
-  function setOpen(open, remember = true) {
-    if (remember && desktop.matches) { try { localStorage.setItem(STORE_KEY, open ? '1' : '0'); } catch { /* private mode */ } }
+  function setOpen(open) {
     document.body.classList.toggle('settings-open', open);
     button.setAttribute('aria-expanded', open ? 'true' : 'false');
     button.textContent = open ? '✕' : '☰';
     button.setAttribute('aria-label', open ? 'Close settings' : 'Settings');
   }
 
-  // Desktop: open by default (the drawer holds Join and Room settings).
-  setOpen(desktop.matches && stored() !== '0', false);
+  // Closed on load everywhere (Join lives in the instrument panel's Player menu).
+  setOpen(false);
   button.addEventListener('click', () => setOpen(!isOpen()));
   backdrop.addEventListener('click', () => setOpen(false));
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && sheetOpen()) setOpen(false);
+    if (e.key !== 'Escape' || !isOpen()) return;
+    const inside = panel.contains(document.activeElement);
+    setOpen(false);
+    if (inside && typeof button.focus === 'function') button.focus();
   });
 
   // Keep menu touches away from document-level game/camera listeners.

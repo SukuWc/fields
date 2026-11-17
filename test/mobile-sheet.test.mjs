@@ -2,9 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SHEET_QUERY, QUICK_MESSAGES, setupMobileSheet } from '../src/mobile-sheet.js';
 import { TOUCH_DEFAULT_QUERY } from '../src/touch-controls.js';
+import { TOUCH_UI_QUERY } from '../src/layout.js';
 
 test('sheet uses the same phone query as the mobile layout', () => {
-  assert.equal(SHEET_QUERY, TOUCH_DEFAULT_QUERY);
+  assert.equal(SHEET_QUERY, TOUCH_UI_QUERY);
+  // Touch controls default on for real touch devices only (not narrow desktop windows).
+  assert.ok(SHEET_QUERY.startsWith(TOUCH_DEFAULT_QUERY));
 });
 
 test('quick messages are short and unique', () => {

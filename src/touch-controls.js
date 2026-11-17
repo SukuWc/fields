@@ -19,9 +19,9 @@
 import { setVirtualKey } from './controls.js';
 import { PREFS_KEY } from './player-prefs.js';
 
-import { TOUCH_UI_QUERY, TABLET_QUERY, PHONE_QUERY } from './layout.js';
+import { TOUCH_DEVICE_QUERY, TABLET_QUERY, PHONE_QUERY } from './layout.js';
 export { TABLET_QUERY, PHONE_QUERY };
-export const TOUCH_DEFAULT_QUERY = TOUCH_UI_QUERY;
+export const TOUCH_DEFAULT_QUERY = TOUCH_DEVICE_QUERY;
 // Plan M10: a touch tablet (at least 769 x 600) gets the desktop zones and
 // always the overlay controls; anything smaller is a phone.
 
