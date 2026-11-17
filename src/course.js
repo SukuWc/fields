@@ -99,6 +99,7 @@
 // finish itself. progress.seed(k) puts a boat straight at rounding k (all
 // earlier ones done) for scenarios that start partway round.
 
+import { LAYER_COURSE } from './draw-order.js';
 import { BOAT_LENGTH_M } from './rules.js';
 
 // Zone in which a mark's counter starts: three boat lengths (12 m), the same
@@ -502,13 +503,17 @@ export const COURSE_ROUNDED_COLOR = 0x8a96a3;
 export const COURSE_MID_COLOR = 0xffd27a;
 export const COURSE_ZONE_COLOR = 0x7dff5a;
 
-function circleSegments(cx, cy, r, color, opacity, steps = 48, dashed = false) {
+// layer: draw-order.js layer (LAYER_COURSE for the zone circles, which go
+// under the flow tracers); omitted: a normal guide.
+function circleSegments(cx, cy, r, color, opacity, steps = 48, dashed = false, layer) {
   const out = [];
   for (let i = 0; i < steps; i++) {
     if (dashed && i % 2) continue;
     const a0 = (i / steps) * 2 * Math.PI;
     const a1 = ((i + 1) / steps) * 2 * Math.PI;
-    out.push({ type: 'guide', color, opacity, x1: cx + r * Math.cos(a0), y1: cy + r * Math.sin(a0), x2: cx + r * Math.cos(a1), y2: cy + r * Math.sin(a1) });
+    const g = { type: 'guide', color, opacity, x1: cx + r * Math.cos(a0), y1: cy + r * Math.sin(a0), x2: cx + r * Math.cos(a1), y2: cy + r * Math.sin(a1) };
+    if (layer) g.layer = layer;
+    out.push(g);
   }
   return out;
 }
@@ -601,7 +606,7 @@ export function courseGuidesFromState(cs, s, nowMs = 0) {
       const side = cs.sides[i] === PORT ? 'port' : 'stbd';
       const pulse = 0.5 + 0.5 * Math.sin(nowMs / 250);
       g.push(...circleSegments(c.x, c.y, 1.1 + 0.6 * pulse, COURSE_NEXT_COLOR, 0.6 + 0.4 * pulse, 32));
-      g.push(...circleSegments(c.x, c.y, COURSE_ACTIVATION_RADIUS_M, COURSE_ZONE_COLOR, 0.25, 72, true));
+      g.push(...circleSegments(c.x, c.y, COURSE_ACTIVATION_RADIUS_M, COURSE_ZONE_COLOR, 0.25, 72, true, LAYER_COURSE));
       const from = ray(c, view.midDeg, 2);
       g.push(...dashedLine(from, ray(c, view.midDeg, COURSE_ACTIVATION_RADIUS_M), COURSE_MID_COLOR, 0.9, 1.2, 0.8));
       const text = view.rounded ? '✓ ' + (i + 1) : 'NEXT ' + (i + 1) + ' · ' + side;
@@ -636,7 +641,7 @@ function gateGuides(ends, centres, i, view, passed, nowMs) {
     g.push(...dashedLine(a, b, COURSE_MID_COLOR, 0.9, 1.2, 0.8));
     for (const c of [ca, cb]) {
       g.push(...circleSegments(c.x, c.y, 1.1 + 0.6 * pulse, COURSE_NEXT_COLOR, 0.6 + 0.4 * pulse, 32));
-      g.push(...circleSegments(c.x, c.y, COURSE_ACTIVATION_RADIUS_M, COURSE_ZONE_COLOR, 0.18, 72, true));
+      g.push(...circleSegments(c.x, c.y, COURSE_ACTIVATION_RADIUS_M, COURSE_ZONE_COLOR, 0.18, 72, true, LAYER_COURSE));
     }
     text = view.rounded ? '✓ ' + no : 'NEXT GATE ' + no;
     role = 'next';
