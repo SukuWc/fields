@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LAYOUT_CLASSES, layoutClasses, TOUCH_UI_QUERY, TABLET_QUERY, PHONE_QUERY, DESKTOP_QUERY, WIDE_QUERY } from '../src/layout.js';
+import { LAYOUT_CLASSES, layoutClasses, TOUCH_DEVICE_QUERY, TOUCH_UI_QUERY, TABLET_QUERY, PHONE_QUERY, DESKTOP_QUERY, WIDE_QUERY } from '../src/layout.js';
 import { TOUCH_DEFAULT_QUERY, TABLET_QUERY as TQ, PHONE_QUERY as PQ } from '../src/touch-controls.js';
 import { SHEET_QUERY } from '../src/mobile-sheet.js';
 import { readFileSync } from 'node:fs';
 
 test('modules share the layout queries', () => {
-  assert.equal(TOUCH_DEFAULT_QUERY, TOUCH_UI_QUERY);
+  assert.equal(TOUCH_DEFAULT_QUERY, TOUCH_DEVICE_QUERY);
   assert.equal(SHEET_QUERY, TOUCH_UI_QUERY);
   assert.equal(TQ, TABLET_QUERY);
   assert.equal(PQ, PHONE_QUERY);

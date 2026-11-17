@@ -68,6 +68,7 @@ import {
   setupPerfOverlay,
 } from './perf-overlay.js';
 import { setupMobileMenu } from './mobile-menu.js';
+import { setupDesktopHud } from './desktop-hud.js';
 import { setupTouchControls } from './touch-controls.js';
 import { setupGamepad } from './gamepad.js';
 import { setupInputMap } from './input-map.js';
@@ -332,6 +333,7 @@ function startClient() {
   setWindCeiling(windCeilingMps(_simResKey));
   if (mapSizeClamped) console.info(`map_size ${_askedMapSize} is too small for scenario ${_scenarioParam}; using ${mapSizeKey}`);
   setupMobileMenu();
+  setupDesktopHud();
 
   let currentGuides = [];
   let devMode = false;

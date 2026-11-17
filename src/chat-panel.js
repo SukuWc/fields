@@ -1,3 +1,4 @@
+import { DESKTOP_QUERY } from './layout.js';
 // Chat panel (remote / server mode only): a small collapsible box, apart
 // from the Player and Room settings panels. Messages come from the server
 // (apps/server/room.js: welcome history, then 'chat' events) and are shown
@@ -5,19 +6,29 @@
 // name, boat number and boat colour. Typing here never steers: the helm
 // keys ignore focused inputs (controls.js typingInControl), and pointer /
 // touch / wheel events stay inside the panel. Local and worker modes have no
-// chat (there is nobody to talk to): the panel stays hidden.
+// chat (there is nobody to talk to): the panel stays hidden and, on the
+// desktop three-column HUD, #chat_placeholder (a disabled chat box) holds the
+// chat slot instead so the layout is the same in every mode. On desktop the
+// chat opens by default (it has its own column); elsewhere it starts closed.
 const STOP_EVENTS = ['pointerdown', 'pointermove', 'pointerup', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'mousemove', 'mouseup', 'wheel', 'click', 'keydown', 'keyup'];
 const MAX_LINES = 50;
 // Quick messages (one tap sends): part of the chat shell on every size
 // (standardization PR 7), so desktop, tablet and the phone sheet share them.
 export const QUICK_MESSAGES = ['👍 Nice', '⚠ Starboard!', 'Room please', 'GG'];
 
+function isDesktop() {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(DESKTOP_QUERY).matches;
+}
+
 function hex(c) { return Number.isInteger(c) && c >= 0 && c <= 0xffffff ? '#' + c.toString(16).padStart(6, '0') : null; }
 
-export function setupChat(host, doc = document) {
+export function setupChat(host, doc = document, { desktop = isDesktop() } = {}) {
   const panel = doc.getElementById('chat_panel');
+  const placeholder = doc.getElementById('chat_placeholder');
   if (!panel) return null;
-  if (host.kind !== 'remote' || typeof host.sendChat !== 'function') { panel.hidden = true; return null; }
+  const remote = host.kind === 'remote' && typeof host.sendChat === 'function';
+  if (placeholder) placeholder.hidden = remote;
+  if (!remote) { panel.hidden = true; return null; }
   panel.hidden = false;
   const toggle = doc.getElementById('chat_toggle');
   const body = doc.getElementById('chat_body');
@@ -91,6 +102,6 @@ export function setupChat(host, doc = document) {
     if (r && r.ok) input.value = '';
     else status.textContent = (r && r.error) || 'not sent';
   });
-  setOpen(false);
+  setOpen(!!desktop);
   return { setOpen, add };
 }

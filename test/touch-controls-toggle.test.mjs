@@ -59,7 +59,7 @@ test('overlay CSS hides the panel when Touch controls is off', () => {
   const hidden = html.indexOf('body.tc-overlay #touch_controls[hidden]');
   assert.ok(overlay > 0 && hidden > overlay);
   assert.match(html, /body\.tc-overlay #touch_controls\[hidden\] \{ display: none; \}/);
-  assert.match(html, /\.bp-desktop body\.touch-on\.tc-overlay \.tc-btn\[data-short\] \{ bottom: 180px; \}/);
+  assert.match(html, /\.bp-desktop body\.touch-on\.tc-overlay \.tc-btn\[data-short\] \{ bottom: calc\(var\(--d-pad\) \+ var\(--ip-live, 170px\) \+ 14px\); \}/);
   assert.match(html, /\.bp-wide body\.touch-on #chat_panel \{ bottom: 276px; \}/);
   assert.ok(!html.includes('id="touch_layout"'));
 });

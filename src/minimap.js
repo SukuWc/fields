@@ -187,7 +187,10 @@ export function setupMinimap({ view, getMapSize, remote = false, lockstep = () =
       });
     }
     // camera rectangle
-    const cr = cameraRect(view, window.innerWidth / Math.max(1, window.innerHeight));
+    // Aspect of the race view (#sim_canvas, below the top bar), not the window.
+    const sim = document.getElementById('sim_canvas');
+    const aw = (sim && sim.clientWidth) || window.innerWidth, ah = (sim && sim.clientHeight) || window.innerHeight;
+    const cr = cameraRect(view, aw / Math.max(1, ah));
     const [x0, y0] = P([cr[0], cr[1] + cr[3]]);
     ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1;
     ctx.strokeRect(x0, y0, cr[2] * t.s, cr[3] * t.s);

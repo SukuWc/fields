@@ -77,7 +77,8 @@ export function setupMobileSheet(doc = document) {
     sheet.dataset.tab = tab;
     if (tabBoard) tabBoard.setAttribute('aria-selected', String(tab === 'board'));
     if (tabChat) tabChat.setAttribute('aria-selected', String(tab === 'chat'));
-    setChat(open && tab === 'chat');
+    // Only the sheet layout drives the chat; the desktop chat column keeps its own state.
+    if (q && q.matches) setChat(open && tab === 'chat');
     syncBadge();
   }
   function setOpen(v) { open = v; render(); }
