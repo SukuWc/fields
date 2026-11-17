@@ -388,13 +388,19 @@
         transform-origin: left center;
       }
 
+      /* The race view fills the window below the top bar. --race-top is the
+         bar's height plus its 1 px border (desktop and touch layouts set it,
+         0 when there is no bar), so the opaque bar never sits over the WebGL
+         canvas. Chrome culls the canvas rows hidden under a full-width opaque
+         layer, but from the wrong end of the y-flipped GL image: with the bar
+         over the canvas, a bar-high band at the bottom edge went blank. */
       #sim_canvas {
         display: block;
         position: fixed;
-        top: 0;
+        top: var(--race-top, 0px);
         left: 0;
         width: 100%;
-        height: 100%;
+        height: calc(100% - var(--race-top, 0px));
         /* Own the two-finger pinch (pinch-zoom.js); do not let the browser
            page-zoom or pan the document over the sim. Single-finger still
            reaches #touch_controls / mouse listeners as before. */
@@ -557,7 +563,7 @@
       body.tc-overlay .tc-btn[data-key="32"] { left: calc(50% - 29px); }
       body.tc-overlay .tc-btn[data-key="88"] { left: calc(50% + 35px); }
       body.tc-overlay .tc-btn[data-key="69"] { left: calc(50% + 99px); }
-      body.touch-on.tc-overlay #sim_canvas { height: 100%; }
+      body.touch-on.tc-overlay #sim_canvas { height: calc(100% - var(--race-top, 0px)); }
       /* Leaderboard between the action row and the steer zones: capped, scrolls. */
       body.touch-on.tc-overlay #finish_results { max-height: 52px; box-sizing: border-box; overflow-y: auto; }
       /* Chat open: the sheet needs the room, the steer zones step aside until it closes. */
@@ -601,7 +607,7 @@
 
       /* Everything anchored to the bottom moves up into the canvas area. */
       body.touch-on #sim_canvas {
-        height: calc(100% - var(--touch-panel-h));
+        height: calc(100% - var(--race-top, 0px) - var(--touch-panel-h));
       }
       body.touch-on #finish_results {
         bottom: calc(var(--touch-panel-h) + 10px);
@@ -628,13 +634,10 @@
       /* Phones and small windows, or a touch-only device of any size. */
 
       /* ---- HUD zones (UI overhaul PR 2) ------------------------------------
-         Desktop only (the media query matches the inverse of the mobile one
-         below). Zone A (top bar: dev/connection banners, start timer) is
-         centred in the space between the scenario card on the left and
-         zone B on the right; zone B (leaderboard, boat stats) sits top right,
-         left of the settings button, and moves left of the settings drawer
-         when it is open, so the drawer never covers it. --hud-right is the
-         space kept free on the right for the button / drawer. */
+         The zone wrappers (#hud_grid, #hud_top, #hud_rcol, ...) are
+         display: contents everywhere except the desktop three-column grid
+         (see "Desktop three-column HUD" below), so on phones and tablets
+         their children keep their own positions. */
       .hud-zone { display: contents; }
       .hud-placeholder { display: none; }
       /* Zone D: minimap (minimap.js), desktop only like the instruments. */
@@ -678,12 +681,29 @@
       .rule-toast .tack-chip.port { background: var(--sz-port); }
       .rule-toast .tack-chip.stbd { background: var(--sz-stbd); }
       @keyframes rt-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+      /* ---- Desktop three-column HUD (bp-desktop, at least 1000 px wide) ----
+         #hud_grid is one fixed CSS grid under the top bar, over the full-screen
+         race view. Three columns that never overlap:
+           left   --col-l  minimap (shrinks 320 -> 160 px so the instrument
+                           panel keeps its full width; bp-desktop-compact
+                           collapses it to the Map button, desktop-hud.js)
+           middle 1fr      start HUD at the top, instrument panel at the bottom;
+                           the rows between are the open race view
+           right  --col-r  leaderboard at the top, rule toasts, chat at the
+                           bottom (#hud_rcol, one flex column)
+         The ☰ drawer slides over the right column (same width) without
+         moving anything. Narrower desktop windows use the tablet layout
+         (layout.js). --mid-c is the middle column's centre line, --ip-live
+         the instrument zone height (desktop-hud.js), both for the touch
+         controls overlay. */
       /* bp-desktop */
-      /* right side, above the instrument panel's height, left of the drawer */
-      .bp-desktop .rule-toasts { top: auto; left: auto; transform: none; right: var(--hud-right); bottom: 170px; width: 320px; flex-direction: column-reverse; }
-
-      /* bp-desktop */
-      .bp-desktop body { --hud-right: 10px; --drawer-w: 280px; --d-bar: 44px; }
+      .bp-desktop body {
+        --d-bar: 44px; --race-top: calc(var(--d-bar) + 1px); --d-pad: 10px; --d-gap: 10px; --col-r: 280px; --drawer-w: var(--col-r); --hud-right: var(--d-pad);
+        --col-l: clamp(160px, calc(100vw - 998px), 320px);
+        --mid-c: calc(var(--d-pad) + var(--col-l) + var(--d-gap) + (100vw - 2 * var(--d-pad) - 2 * var(--d-gap) - var(--col-l) - var(--col-r)) / 2);
+      }
+      .bp-desktop-compact body { --col-l: 48px; }
+      .bp-desktop-compact body.mm-expanded { --col-l: 160px; }
       /* Desktop top bar (standardization PR 8): the phone idea on a wide
          screen. One 44 px navy row: scenario chip left (the card collapsed
          into the bar; Show drops it down), rank chip and ☰ right. The drawer
@@ -710,27 +730,66 @@
         font: 800 var(--sz-fs-lg)/1 var(--sz-font-ui); font-variant-numeric: tabular-nums; color: var(--sz-navy); background: var(--sz-yellow); border-radius: 14px;
       }
       .bp-desktop #bar_rank[hidden] { display: none; }
-      .bp-desktop body.settings-open { --hud-right: calc(var(--drawer-w) + 20px); }
-      .bp-desktop #hud_top, .bp-desktop #hud_right {
-        display: flex; flex-direction: column; gap: 6px;
-        position: fixed; top: calc(var(--d-bar) + 10px); z-index: calc(var(--sz-z-hud) + 10);
-        pointer-events: none;
+      .bp-desktop #hud_grid {
+        display: grid; position: fixed; z-index: calc(var(--sz-z-hud) + 10); pointer-events: none;
+        top: calc(var(--d-bar) + var(--d-pad)); left: var(--d-pad); right: var(--d-pad); bottom: var(--d-pad);
+        grid-template-columns: var(--col-l) minmax(0, 1fr) var(--col-r);
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        gap: var(--d-gap);
       }
-      .bp-desktop #hud_top > *, .bp-desktop #hud_right > * { pointer-events: auto; }
-      .bp-desktop #hud_top {
-        left: 360px; right: calc(var(--hud-right) + 270px);
-        align-items: center;
-      }
-      .bp-desktop #hud_right {
-        right: var(--hud-right); width: 260px;
-        align-items: flex-end;
-        max-height: calc(100% - var(--d-bar) - 20px); overflow-y: auto;
-      }
+      .bp-desktop #hud_grid .hud-zone { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; pointer-events: none; }
+      .bp-desktop #hud_grid .hud-zone > * { pointer-events: auto; }
+      .bp-desktop #hud_grid #hud_top { grid-column: 2; grid-row: 1; align-items: center; }
+      .bp-desktop #hud_grid #hud_instruments { grid-column: 2; grid-row: 3; align-self: end; align-items: center; }
+      .bp-desktop #hud_grid #hud_minimap { grid-column: 1; grid-row: 3; align-self: end; align-items: flex-start; }
+      .bp-desktop #hud_grid #hud_rcol { grid-column: 3; grid-row: 1 / -1; gap: var(--d-gap); }
+      .bp-desktop #hud_grid #hud_right { flex: 0 1 auto; align-items: stretch; }
+      .bp-desktop #hud_grid #hud_toasts { flex: 1 1 0; justify-content: flex-end; overflow: hidden; }
+      .bp-desktop #hud_grid #hud_chat { flex: 0 1 auto; justify-content: flex-end; }
+      .bp-desktop #hud_grid #hud_right:not(:has(> :not([hidden]):not(#sheet_toggle):not(#fullscreen_toggle):not(#mobile_sheet))) { display: none; }
       .bp-desktop #hud_top > #devmode_banner, .bp-desktop #hud_top > #conn_banner, .bp-desktop #hud_top > #start_hud, .bp-desktop #hud_right > #finish_results {
         position: static; transform: none; top: auto; left: auto; right: auto; bottom: auto;
-        max-width: 100%;
+        max-width: 100%; box-sizing: border-box;
       }
-      .bp-desktop #hud_right > #finish_results { align-self: stretch; }
+      .bp-desktop #hud_right > #finish_results { align-self: stretch; min-height: 0; }
+      /* Zone E on desktop: rule toasts sit in the right column above the chat. */
+      .bp-desktop .rule-toasts { position: static; top: auto; left: auto; transform: none; width: auto; flex-direction: column-reverse; }
+      /* Zone D on desktop: the minimap fills the left column (5:4). */
+      .bp-desktop #hud_grid #minimap { position: relative; left: auto; bottom: auto; width: 100%; height: auto; box-sizing: border-box; }
+      .bp-desktop #hud_grid #minimap canvas { width: 100%; height: auto; aspect-ratio: 5 / 4; }
+      #mm_toggle { display: none; }
+      .bp-desktop-compact #hud_grid #mm_toggle {
+        display: block; width: 48px; min-height: 36px; padding: 0; cursor: pointer; font-size: var(--sz-fs-sm);
+        --sz-btn-bg: var(--sz-navy-90); --sz-btn-border: var(--sz-yellow-35);
+      }
+      .bp-desktop-compact body.mm-expanded #hud_grid #mm_toggle { width: auto; min-height: 28px; padding: 0 10px; }
+      .bp-desktop-compact body:not(.mm-expanded) #hud_grid #minimap { display: none; }
+      /* Zone C on desktop: the panel fills the middle column up to 660 px of content. */
+      .bp-desktop #hud_grid #instrument_panel {
+        position: relative; left: auto; bottom: auto; transform: none; z-index: auto;
+        width: 100%; max-width: 678px; box-sizing: border-box;
+      }
+      .bp-desktop #hud_grid #instrument_panel .instr-tiles { grid-template-columns: repeat(auto-fit, minmax(60px, 1fr)); }
+      .bp-desktop #hud_grid #instrument_panel[data-mode="chart"] .instr-charts { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+      /* Zone F on desktop: the chat window (remote rooms) or its placeholder. */
+      .bp-desktop #hud_grid #chat_panel {
+        position: static; left: auto; bottom: auto; max-width: none; display: flex; flex-direction: column; gap: 4px; min-height: 0;
+      }
+      .bp-desktop #hud_grid #chat_panel[hidden] { display: none; }
+      .bp-desktop #hud_grid #chat_toggle { align-self: flex-start; }
+      .bp-desktop #hud_grid #chat_body { width: auto; margin-top: 0; display: flex; flex-direction: column; min-height: 0; }
+      .bp-desktop #hud_grid #chat_body[hidden] { display: none; }
+      .bp-desktop #hud_grid #chat_log { flex: 0 1 auto; min-height: 36px; max-height: min(30vh, 240px); }
+      #chat_placeholder { display: none; }
+      .bp-desktop #hud_grid #chat_placeholder:not([hidden]) {
+        display: block; padding: 6px 8px; font: var(--sz-fs-md)/1.35 var(--sz-font-ui); opacity: 0.8;
+      }
+      #chat_placeholder .chat-ph-head { font-weight: 700; }
+      #chat_placeholder .chat-ph-text { margin: 4px 0 6px; font-size: var(--sz-fs-sm); color: #c9d1da; }
+      #chat_placeholder input { width: 100%; box-sizing: border-box; font: inherit; padding: 3px 5px; cursor: not-allowed; }
+      /* Open chat hides the touch steer zones on phones; on desktop they sit
+         in the race view, clear of the chat column. */
+      .bp-desktop body.tc-overlay:has(#chat_body:not([hidden])) .tc-steer { visibility: visible; }
       /* Settings: a right-edge overlay drawer behind the gear button. */
       .bp-desktop #settings_toggle {
         display: flex; align-items: center; justify-content: center;
@@ -742,28 +801,36 @@
       .bp-desktop body.settings-open #settings_toggle { background: rgba(255, 196, 0, 0.25); }
       .bp-desktop #settings_backdrop { display: none !important; }
       .bp-desktop #settings {
-        top: calc(var(--d-bar) + 6px); right: 10px; bottom: auto; width: var(--drawer-w);
+        top: calc(var(--d-bar) + 6px); right: var(--d-pad); bottom: auto; width: var(--drawer-w); box-sizing: border-box;
         max-height: calc(100% - var(--d-bar) - 16px); z-index: calc(var(--sz-z-drawer) + 40);
-        display: none;
-        background: var(--sz-navy-90); border: 1px solid var(--sz-yellow-35); border-radius: var(--sz-r-lg);
+        display: block; transform: translateX(calc(100% + 2 * var(--d-pad))); visibility: hidden;
+        transition: transform 0.18s ease, visibility 0s linear 0.18s;
+        background: var(--sz-navy-97); border: 1px solid var(--sz-yellow-35); border-radius: var(--sz-r-lg);
+        box-shadow: -4px 0 14px rgba(0, 0, 0, 0.4);
         font-family: var(--sz-font-ui); font-size: var(--sz-fs-md);
       }
-      .bp-desktop body.settings-open #settings { display: block; }
-      /* Desktop with Touch controls on: keep the overlay buttons off the
-         instrument panel (bottom centre), the minimap (bottom left) and chat
-         (above the minimap). Phone and tablet rules are unchanged. Chat stays
-         at its wide-layout spot; body.touch-on would otherwise lift it into
-         the minimap. */
+      .bp-desktop body.settings-open #settings { transform: none; visibility: visible; transition: transform 0.18s ease; }
+      /* Desktop with Touch controls on: the steer zones sit at the edges of the
+         middle column (never in the minimap / chat columns or under the
+         drawer), the Head up / Bear away pills and the round buttons above
+         the instrument panel, centred on the middle column. */
       .bp-wide body.touch-on #chat_panel { bottom: 276px; }
       .bp-desktop body.touch-on.tc-overlay .tc-steer,
       .bp-desktop body.touch-on.tc-overlay .tc-steer.tc-right {
-        top: 120px; bottom: auto; height: min(28vh, 220px); width: 88px;
+        top: calc(50% + var(--d-bar) / 2); bottom: auto; transform: translateY(-50%); height: min(28vh, 220px); width: 88px;
       }
-      .bp-desktop body.touch-on.tc-overlay .tc-steer { left: 16px; right: auto; }
-      .bp-desktop body.touch-on.tc-overlay .tc-steer.tc-right { left: auto; right: 16px; }
+      .bp-desktop body.touch-on.tc-overlay .tc-steer { left: calc(var(--d-pad) + var(--col-l) + var(--d-gap) + 6px); right: auto; }
+      .bp-desktop body.touch-on.tc-overlay .tc-steer.tc-right { left: auto; right: calc(var(--d-pad) + var(--col-r) + var(--d-gap) + 6px); }
       .bp-desktop body.touch-on.tc-overlay .tc-btn[data-key="38"],
-      .bp-desktop body.touch-on.tc-overlay .tc-btn[data-key="40"] { bottom: 250px; }
-      .bp-desktop body.touch-on.tc-overlay .tc-btn[data-short] { bottom: 180px; }
+      .bp-desktop body.touch-on.tc-overlay .tc-btn[data-key="40"] { bottom: calc(var(--d-pad) + var(--ip-live, 170px) + 82px); }
+      .bp-desktop body.touch-on.tc-overlay .tc-btn[data-short] { bottom: calc(var(--d-pad) + var(--ip-live, 170px) + 14px); }
+      .bp-desktop body.touch-on.tc-overlay .tc-btn[data-key="38"] { left: calc(var(--mid-c) - 122px); }
+      .bp-desktop body.touch-on.tc-overlay .tc-btn[data-key="40"] { left: calc(var(--mid-c) + 6px); }
+      .bp-desktop body.touch-on.tc-overlay .tc-btn[data-key="81"] { left: calc(var(--mid-c) - 157px); }
+      .bp-desktop body.touch-on.tc-overlay .tc-btn[data-key="13"] { left: calc(var(--mid-c) - 93px); }
+      .bp-desktop body.touch-on.tc-overlay .tc-btn[data-key="32"] { left: calc(var(--mid-c) - 29px); }
+      .bp-desktop body.touch-on.tc-overlay .tc-btn[data-key="88"] { left: calc(var(--mid-c) + 35px); }
+      .bp-desktop body.touch-on.tc-overlay .tc-btn[data-key="69"] { left: calc(var(--mid-c) + 99px); }
 
       /* bp-wide */
       .bp-wide #instrument_panel {
@@ -1102,7 +1169,7 @@
          (landscape), and the start timer below that, so none of them overlap. */
       #mobile_bar, #bar_rank { display: none; }
       /* bp-touch */
-      .bp-touch body { --m-bar: calc(44px + env(safe-area-inset-top)); --m-top: calc(var(--m-bar) + 46px); }
+      .bp-touch body { --m-bar: calc(44px + env(safe-area-inset-top)); --m-top: calc(var(--m-bar) + 46px); --race-top: calc(var(--m-bar) + 1px); }
       .bp-touch #mobile_bar {
         display: block; position: fixed; left: 0; right: 0; top: 0; height: var(--m-bar); z-index: calc(var(--sz-z-bar) + 4);
         background: var(--sz-navy); border-bottom: 1px solid var(--sz-yellow-50); pointer-events: none;
@@ -1478,10 +1545,20 @@
       .bp-tablet body.tc-overlay .tc-btn[data-key="38"] { bottom: calc(var(--tz-h) + 80px + env(safe-area-inset-bottom)); }
       .bp-tablet body.tc-overlay .tc-btn[data-short] { bottom: calc(var(--ip-h) + 30px + env(safe-area-inset-bottom)); }
       .bp-tablet #sheet_toggle[hidden] { display: none; }
+      /* Narrow desktop windows (769–999 px, mouse) use this tablet layout
+         (layout.js) with Touch controls off by default: keep the leaderboard
+         top right and the start timer at the top, centred between the
+         minimap and the leaderboard, instead of their touch-on spots. Touch
+         tablets (bp-coarse) are unchanged. */
+      .bp-tablet:not(.bp-coarse) #finish_results {
+        top: calc(var(--m-top) + 10px); bottom: auto; right: calc(10px + env(safe-area-inset-right)); left: auto;
+        max-height: 40vh; font-size: var(--sz-fs-lg); line-height: 1.5; padding: 8px 12px; visibility: visible;
+      }
+      .bp-tablet:not(.bp-coarse) #start_hud { top: calc(var(--m-top) + 10px); left: calc(50% + 20px); }
 
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-b3bpVbtB.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-x-gacMaj.js"></script>
   </head>
   <body>
 
@@ -1495,15 +1572,17 @@
     </div>
     <div id="info" class="dev-only"></div>
     <div id="rule_labels"></div>
-    <!-- HUD zones (UI overhaul, see the "HUD zones" CSS block). On desktop
-         each zone is a fixed flex box so its children stack and never
-         overlap; elsewhere the zones are display: contents and the children
-         keep their own (mobile / touch) positions. -->
+    <!-- Desktop (bp-desktop) three-column HUD grid: left = minimap, middle =
+         start HUD (top) + instrument panel (bottom), right = leaderboard
+         (top), rule toasts, chat (bottom). Elsewhere every wrapper here is
+         display: contents and the children keep their own positions. -->
+    <div id="hud_grid" class="hud-zone">
     <div id="hud_top" class="hud-zone" data-zone="A">
     <div id="devmode_banner" title="The angle is where the wind comes from. The arrow points downwind, the way it blows.">DEV MODE · fluid off · wind <span id="dev_wind_label"></span><span id="dev_wind_arrow">➤</span></div>
     <div id="conn_banner" role="status" aria-live="polite" hidden></div>
     <div id="start_hud" hidden></div>
     </div>
+    <div id="hud_rcol" class="hud-zone">
     <div id="hud_right" class="hud-zone" data-zone="B">
     <div id="finish_results" class="sz-panel" hidden></div>
     <!-- Phones (plan M9, mobile-sheet.js): leaderboard + chat sheet, opened from the top bar. -->
@@ -1522,7 +1601,31 @@
       <div id="sheet_chat" class="sheet-pane"></div>
     </section>
     </div>
-    <!-- Zones: C instrument panel, D minimap (minimap.js), E rule-call toasts (rule-toasts.js). -->
+    <!-- Zone E: rule-call toasts (rule-toasts.js). -->
+    <div id="hud_toasts" class="hud-zone" data-zone="E" aria-live="polite"></div>
+    <!-- Zone F: chat (chat-panel.js). Local / worker games have no chat; on
+         desktop the placeholder holds the slot instead. -->
+    <div id="hud_chat" class="hud-zone" data-zone="F">
+      <div id="chat_panel" hidden>
+        <button id="chat_toggle" class="sz-btn" type="button" aria-controls="chat_body" aria-expanded="false">Chat<span id="chat_unread" class="sz-badge" hidden>0</span></button>
+        <div id="chat_body" class="sz-panel" hidden>
+          <div id="chat_log" role="log" aria-live="polite"></div>
+          <div id="chat_quick" class="chat-quick" aria-label="Quick messages"></div>
+          <form id="chat_form" autocomplete="off">
+            <input id="chat_input" type="text" maxlength="200" placeholder="Message the room" enterkeyhint="send" aria-label="Chat message">
+            <button id="chat_send" class="sz-btn" type="submit">Send</button>
+          </form>
+          <div id="chat_status" aria-live="polite"></div>
+        </div>
+      </div>
+      <div id="chat_placeholder" class="sz-panel" hidden aria-label="Chat">
+        <div class="chat-ph-head">Chat</div>
+        <p class="chat-ph-text">Chat is available in multiplayer rooms.</p>
+        <input type="text" disabled placeholder="Chat is available in multiplayer rooms" aria-label="Chat (multiplayer rooms only)">
+      </div>
+    </div>
+    </div>
+    <!-- Zones: C instrument panel, D minimap (minimap.js). -->
     <div id="hud_instruments" class="hud-zone" data-zone="C">
       <section id="instrument_panel" class="sz-panel" data-mode="readout" aria-label="Instruments">
         <div class="instr-head">
@@ -1554,8 +1657,9 @@
         <button type="button" class="mm-follow" aria-pressed="false" title="Camera follows your boat">Follow</button>
         <button type="button" class="mm-close" aria-label="Close map" title="Close map">×</button>
       </section>
+      <button type="button" id="mm_toggle" class="sz-btn" aria-controls="minimap" aria-expanded="false" title="Show the minimap">Map</button>
     </div>
-    <div id="hud_toasts" class="hud-zone" data-zone="E" aria-live="polite"></div>
+    </div>
     <!-- Mobile readout strip (plan M3, mobile-strip.js): phones / touch only. -->
     <div id="mobile_strip" aria-label="Instruments"></div>
     <!-- Mobile top bar backdrop (plan M4): scenario chip, 🏁 / fullscreen and the menu sit on it. -->
@@ -1574,18 +1678,6 @@
       <button type="button" class="sz-btn tc-btn tc-tap" data-key="81" data-short="⟲ 360" aria-label="Penalty turn counter-clockwise">⟲ 360<small>Q</small></button>
       <button type="button" class="sz-btn tc-btn tc-tap" data-key="69" data-short="360 ⟳" aria-label="Penalty turn clockwise">360 ⟳<small>E</small></button>
       <button type="button" class="sz-btn tc-btn tc-tap tc-wide" data-key="88" data-short="Depwr" aria-label="Depower toggle">Depower<small>X</small></button>
-    </div>
-    <div id="chat_panel" hidden>
-      <button id="chat_toggle" class="sz-btn" type="button" aria-controls="chat_body" aria-expanded="false">Chat<span id="chat_unread" class="sz-badge" hidden>0</span></button>
-      <div id="chat_body" class="sz-panel" hidden>
-        <div id="chat_log" role="log" aria-live="polite"></div>
-        <div id="chat_quick" class="chat-quick" aria-label="Quick messages"></div>
-        <form id="chat_form" autocomplete="off">
-          <input id="chat_input" type="text" maxlength="200" placeholder="Message the room" enterkeyhint="send" aria-label="Chat message">
-          <button id="chat_send" class="sz-btn" type="submit">Send</button>
-        </form>
-        <div id="chat_status" aria-live="polite"></div>
-      </div>
     </div>
     <div id="settings_edge" aria-hidden="true"></div>
     <button id="settings_toggle" type="button" aria-controls="settings" aria-expanded="false" aria-label="Settings">☰</button>
