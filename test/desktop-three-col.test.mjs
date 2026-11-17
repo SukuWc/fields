@@ -178,3 +178,22 @@ test('settings drawer: closed on load, Escape closes it on desktop', async () =>
     Object.assign(globalThis, saved);
   }
 });
+
+// A fully opaque full-width top bar over the WebGL canvas makes Chrome cull
+// the occluded canvas rows at the wrong end, leaving a blank (white) band of
+// the bar's height along the bottom edge. The race canvas fills the whole
+// window and the desktop bar stays just short of opaque.
+test('race view reaches the bottom edge: full-window canvas, top bar not an occluder', () => {
+  const canvas = html.match(/#sim_canvas \{([^}]*)\}/)[1];
+  assert.match(canvas, /position: fixed;/);
+  assert.match(canvas, /top: 0;/);
+  assert.match(canvas, /height: 100%;/);
+  for (const bp of ['bp-desktop', 'bp-touch']) {
+    const bar = html.match(new RegExp(`\\.${bp} #mobile_bar \\{([^}]*)\\}`))[1];
+    const bg = bar.match(/background:\s*([^;]+);/)[1].trim();
+    const rgba = bg.match(/^rgba\(\s*\d+,\s*\d+,\s*\d+,\s*([\d.]+)\s*\)$/);
+    assert.ok(rgba, `${bp} bar background must be rgba(), got ${bg}`);
+    const a = parseFloat(rgba[1]);
+    assert.ok(a >= 0.98 && a < 1, `${bp} bar alpha ${a} must be just under 1`);
+  }
+});
