@@ -701,10 +701,16 @@
       /* Desktop top bar (standardization PR 8): the phone idea on a wide
          screen. One 44 px navy row: scenario chip left (the card collapsed
          into the bar; Show drops it down), rank chip and ☰ right. The drawer
-         and the HUD columns start under it. */
+         and the HUD columns start under it.
+         The bar is 99 % opaque on purpose. A fully opaque full-width bar over
+         the WebGL canvas makes Chrome's compositor cull the occluded canvas
+         rows, and it culls them at the wrong end (apparently the y-flipped GL buffer):
+         the top 45 px stay drawn under the bar and a 45 px band at the bottom
+         edge goes blank (white page background). A not-quite-opaque bar is
+         never treated as an occluder, so the race view reaches the bottom. */
       .bp-desktop #mobile_bar {
         display: block; position: fixed; left: 0; right: 0; top: 0; height: var(--d-bar); z-index: calc(var(--sz-z-bar) + 4);
-        background: var(--sz-navy); border-bottom: 1px solid var(--sz-yellow-50); pointer-events: none;
+        background: rgba(11, 23, 71, 0.99); border-bottom: 1px solid var(--sz-yellow-50); pointer-events: none;
       }
       .bp-desktop #scenario_card {
         top: 0; left: 0; z-index: var(--sz-z-chrome); width: min(520px, calc(100vw - 200px)); box-sizing: border-box;
@@ -1164,9 +1170,11 @@
       #mobile_bar, #bar_rank { display: none; }
       /* bp-touch */
       .bp-touch body { --m-bar: calc(44px + env(safe-area-inset-top)); --m-top: calc(var(--m-bar) + 46px); }
+      /* 99 % opaque like the desktop bar, so the canvas keeps its bottom rows
+         (see "Desktop top bar"). */
       .bp-touch #mobile_bar {
         display: block; position: fixed; left: 0; right: 0; top: 0; height: var(--m-bar); z-index: calc(var(--sz-z-bar) + 4);
-        background: var(--sz-navy); border-bottom: 1px solid var(--sz-yellow-50); pointer-events: none;
+        background: rgba(11, 23, 71, 0.99); border-bottom: 1px solid var(--sz-yellow-50); pointer-events: none;
       }
       .bp-touch #mobile_strip { top: var(--m-bar); height: 46px; padding-top: 0; }
       .bp-touch #scenario_card, .bp-touch body.touch-on #scenario_card {
