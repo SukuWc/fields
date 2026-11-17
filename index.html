@@ -388,13 +388,19 @@
         transform-origin: left center;
       }
 
+      /* The race view fills the window below the top bar. --race-top is the
+         bar's height plus its 1 px border (desktop and touch layouts set it,
+         0 when there is no bar), so the opaque bar never sits over the WebGL
+         canvas. Chrome culls the canvas rows hidden under a full-width opaque
+         layer, but from the wrong end of the y-flipped GL image: with the bar
+         over the canvas, a bar-high band at the bottom edge went blank. */
       #sim_canvas {
         display: block;
         position: fixed;
-        top: 0;
+        top: var(--race-top, 0px);
         left: 0;
         width: 100%;
-        height: 100%;
+        height: calc(100% - var(--race-top, 0px));
         /* Own the two-finger pinch (pinch-zoom.js); do not let the browser
            page-zoom or pan the document over the sim. Single-finger still
            reaches #touch_controls / mouse listeners as before. */
@@ -557,7 +563,7 @@
       body.tc-overlay .tc-btn[data-key="32"] { left: calc(50% - 29px); }
       body.tc-overlay .tc-btn[data-key="88"] { left: calc(50% + 35px); }
       body.tc-overlay .tc-btn[data-key="69"] { left: calc(50% + 99px); }
-      body.touch-on.tc-overlay #sim_canvas { height: 100%; }
+      body.touch-on.tc-overlay #sim_canvas { height: calc(100% - var(--race-top, 0px)); }
       /* Leaderboard between the action row and the steer zones: capped, scrolls. */
       body.touch-on.tc-overlay #finish_results { max-height: 52px; box-sizing: border-box; overflow-y: auto; }
       /* Chat open: the sheet needs the room, the steer zones step aside until it closes. */
@@ -601,7 +607,7 @@
 
       /* Everything anchored to the bottom moves up into the canvas area. */
       body.touch-on #sim_canvas {
-        height: calc(100% - var(--touch-panel-h));
+        height: calc(100% - var(--race-top, 0px) - var(--touch-panel-h));
       }
       body.touch-on #finish_results {
         bottom: calc(var(--touch-panel-h) + 10px);
@@ -692,7 +698,7 @@
          controls overlay. */
       /* bp-desktop */
       .bp-desktop body {
-        --d-bar: 44px; --d-pad: 10px; --d-gap: 10px; --col-r: 280px; --drawer-w: var(--col-r); --hud-right: var(--d-pad);
+        --d-bar: 44px; --race-top: calc(var(--d-bar) + 1px); --d-pad: 10px; --d-gap: 10px; --col-r: 280px; --drawer-w: var(--col-r); --hud-right: var(--d-pad);
         --col-l: clamp(160px, calc(100vw - 998px), 320px);
         --mid-c: calc(var(--d-pad) + var(--col-l) + var(--d-gap) + (100vw - 2 * var(--d-pad) - 2 * var(--d-gap) - var(--col-l) - var(--col-r)) / 2);
       }
@@ -701,16 +707,10 @@
       /* Desktop top bar (standardization PR 8): the phone idea on a wide
          screen. One 44 px navy row: scenario chip left (the card collapsed
          into the bar; Show drops it down), rank chip and ☰ right. The drawer
-         and the HUD columns start under it.
-         The bar is 99 % opaque on purpose. A fully opaque full-width bar over
-         the WebGL canvas makes Chrome's compositor cull the occluded canvas
-         rows, and it culls them at the wrong end (apparently the y-flipped GL buffer):
-         the top 45 px stay drawn under the bar and a 45 px band at the bottom
-         edge goes blank (white page background). A not-quite-opaque bar is
-         never treated as an occluder, so the race view reaches the bottom. */
+         and the HUD columns start under it. */
       .bp-desktop #mobile_bar {
         display: block; position: fixed; left: 0; right: 0; top: 0; height: var(--d-bar); z-index: calc(var(--sz-z-bar) + 4);
-        background: rgba(11, 23, 71, 0.99); border-bottom: 1px solid var(--sz-yellow-50); pointer-events: none;
+        background: var(--sz-navy); border-bottom: 1px solid var(--sz-yellow-50); pointer-events: none;
       }
       .bp-desktop #scenario_card {
         top: 0; left: 0; z-index: var(--sz-z-chrome); width: min(520px, calc(100vw - 200px)); box-sizing: border-box;
@@ -1169,12 +1169,10 @@
          (landscape), and the start timer below that, so none of them overlap. */
       #mobile_bar, #bar_rank { display: none; }
       /* bp-touch */
-      .bp-touch body { --m-bar: calc(44px + env(safe-area-inset-top)); --m-top: calc(var(--m-bar) + 46px); }
-      /* 99 % opaque like the desktop bar, so the canvas keeps its bottom rows
-         (see "Desktop top bar"). */
+      .bp-touch body { --m-bar: calc(44px + env(safe-area-inset-top)); --m-top: calc(var(--m-bar) + 46px); --race-top: calc(var(--m-bar) + 1px); }
       .bp-touch #mobile_bar {
         display: block; position: fixed; left: 0; right: 0; top: 0; height: var(--m-bar); z-index: calc(var(--sz-z-bar) + 4);
-        background: rgba(11, 23, 71, 0.99); border-bottom: 1px solid var(--sz-yellow-50); pointer-events: none;
+        background: var(--sz-navy); border-bottom: 1px solid var(--sz-yellow-50); pointer-events: none;
       }
       .bp-touch #mobile_strip { top: var(--m-bar); height: 46px; padding-top: 0; }
       .bp-touch #scenario_card, .bp-touch body.touch-on #scenario_card {

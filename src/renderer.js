@@ -557,7 +557,8 @@ export function initRenderer(size, planeMat, view) {
   renderer = new THREE.WebGLRenderer({ antialias: true });
   const canvas = renderer.domElement;
   // Position and size come from #sim_canvas in index.html (display: block,
-  // fixed, full window or the top half with touch controls). Inline canvases
+  // fixed, the window below the top bar, minus the touch-controls panel
+  // when it is docked). Inline canvases
   // sit on the text baseline and leave a gap that opens scrollbars.
   canvas.id = 'sim_canvas';
   document.body.appendChild(renderer.domElement);
