@@ -25,7 +25,7 @@ import { buildScenarios } from './scenarios.js';
 import { CUSTOM_SCENARIO, customScenario } from './custom-scenario.js';
 import { GustField } from './gusts.js';
 import {
-  validateWindSchedule, windSchedulePhases, windScheduleOffset, windSlew,
+  validateWindSchedule, realiseWindSchedule, windScheduleOffset, windSlew,
   WIND_MAX_DEG_PER_S, WIND_SLEW_SPEED_MPS_PER_S, DEFAULT_WIND_SCHEDULE,
 } from './wind-schedule.js';
 import { Boat } from './boat.js';
@@ -66,6 +66,7 @@ export { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps };
 //   { type: 'wind', angle?, speed? }   base wind (from-angle °, true wind m/s); instant
 //                                      unless the schedule or wind ramp is on (then slewed)
 //   { type: 'windSchedule', enabled, seed, dirOsc, dirTrend, speedOsc, speedTrend, ramp }
+//                                      (components { amp_deg | amp_pct, period_s: [mean, sd] })
 //                                      base-wind oscillation (wind-schedule.js); returns
 //                                      { error } for invalid settings or a rate over the limit
 //   { type: 'devMode', on }            uniform wind, lattice frozen
@@ -129,7 +130,8 @@ export class Sim {
     // Room-wide like the lattice: kept across scenario loads.
     this.windBase = { angle: map.wind_direction, speed: map.wind_speed };
     this.windSchedule = validateWindSchedule(DEFAULT_WIND_SCHEDULE).schedule;
-    this._windPhases = windSchedulePhases(this.windSchedule);
+    // Amplitudes / periods drawn once from the spec's [mean, sd] and the seed, plus phases.
+    this.windRealised = realiseWindSchedule(this.windSchedule);
     // Seconds of sim time since the schedule was (re)configured.
     this.windClock = 0;
     // Applied wind still slewing toward the target after the schedule / ramp went off.
@@ -162,7 +164,7 @@ export class Sim {
   windTarget() {
     const b = this.windBase, s = this.windSchedule;
     if (!s.enabled) return { angle: b.angle, speed: b.speed };
-    const o = windScheduleOffset(s, this.windClock, this._windPhases);
+    const o = windScheduleOffset(this.windRealised.terms, this.windClock, this.windRealised.phases);
     return {
       angle: (((b.angle + o.dirDeg) % 360) + 360) % 360,
       speed: this._windCeiling(b.speed * o.speedFactor),
@@ -285,7 +287,7 @@ export class Sim {
         // Same oscillation terms and seed (e.g. only wind_ramp changed): keep the clock.
         const sameTerms = JSON.stringify({ ...prev, ramp: 0 }) === JSON.stringify({ ...v.schedule, ramp: 0 });
         this.windSchedule = v.schedule;
-        this._windPhases = windSchedulePhases(v.schedule);
+        this.windRealised = realiseWindSchedule(v.schedule);
         if (!sameTerms) this.windClock = 0;
         // Switching off: slew back to the base instead of jumping.
         if ((prev.enabled || prev.ramp) && !v.schedule.enabled && !v.schedule.ramp) this._windSettling = true;

@@ -11,10 +11,11 @@
 //   gusts = false         → rate spawner off (no inject / outlines from spawner)
 //   gust_* = number | [mean, sd]  → per-column sample knobs (sd optional, default 0)
 //   wind_schedule = true  → base-wind oscillation (wind-schedule.js) around
-//                           wind_angle_deg / wind_speed_mps; wind_dir_osc /
-//                           wind_speed_osc = [[amplitude, period_s], ...],
-//                           wind_*_trend = [amplitude, period_s] (one slow sine);
-//                           direction amplitudes in °, speed as a fraction of base
+//                           wind_angle_deg / wind_speed_mps, starting on the base;
+//                           [[wind_dir_osc]] / [[wind_speed_osc]] (one table per
+//                           sine) and [wind_dir_trend] / [wind_speed_trend] (one
+//                           slow sine), each { amp_deg | amp_pct, period_s } as
+//                           [mean, sd] like gust_*; drawn once per wind_schedule_seed
 //   wind_ramp = true      → manual wind changes slew at 0.5°/s, 0.1 m/s per s
 //   scenario = "custom" + [custom] → marks / start / course / finish /
 //                           boundary from the TOML (custom-scenario.js)
@@ -739,7 +740,7 @@ export function roomConfigErrorLine(text, err) {
     return i < 0 ? null : i + 1;
   };
   const findTable = (t) => {
-    const re = new RegExp('^\\s*\\[\\s*' + esc(t) + '\\s*\\]');
+    const re = new RegExp('^\\s*\\[\\[?\\s*' + esc(t) + '\\s*\\]');
     const i = lines.findIndex((l) => re.test(l));
     return i < 0 ? null : i + 1;
   };
@@ -755,7 +756,7 @@ export function roomConfigErrorLine(text, err) {
   }
   if (/\[custom\]/.test(msg)) { const t = findTable('custom'); if (t) return t; }
   const keys = [...ROOM_CONFIG_KEYS].sort((a, b) => b.length - a.length);
-  for (const k of keys) if (new RegExp('\\b' + esc(k) + '\\b').test(msg)) { const l = findKey(k); if (l) return l; }
+  for (const k of keys) if (new RegExp('\\b' + esc(k) + '\\b').test(msg)) { const l = findKey(k) || findTable(k); if (l) return l; }
   return null;
 }
 
