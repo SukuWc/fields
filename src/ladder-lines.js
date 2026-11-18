@@ -65,6 +65,7 @@
 // those (createLadderCache with ladderBuildKey), not on field updates or
 // the boat's every move.
 
+import { LAYER_COURSE } from './draw-order.js';
 import { BEST_VMG_DOWNWIND_DEG, BEST_VMG_UPWIND_DEG } from './boat-draw.js';
 
 export const LADDER_SPACING_M = 10;
@@ -493,7 +494,8 @@ export function ladderBuildKey(getWind, anchors) {
   return [...ladderAnchorKey(anchors), dir, ladderSide(anchors, dir), Number.isFinite(cap) ? Math.floor(cap / LADDER_SPACING_M + 1e-9) : null];
 }
 
-// Guides from state.ladder / state.layline (scene-build.js): one
+// Guides from state.ladder / state.layline (scene-build.js), drawn under
+// the flow tracers (layer 'course', draw-order.js): one
 // 'polyline' guide per segment (flat [x0, y0, x1, y1]), one draw call
 // each. Ladder lines cyan, laylines amber (and slightly more opaque, so
 // the zone edge reads apart from the rungs).
@@ -509,6 +511,7 @@ export function ladderGuidesFromState(ladder) {
       color: LADDER_GUIDE_COLOR,
       opacity: LADDER_GUIDE_OPACITY,
       type: 'polyline',
+      layer: LAYER_COURSE,
       pts: flat,
     });
   }
@@ -523,7 +526,7 @@ export function laylineGuidesFromState(layline) {
   if (!layline || !layline.length) return guides;
   for (const flat of layline) {
     if (!flat || flat.length < 4) continue;
-    guides.push({ color: LAYLINE_GUIDE_COLOR, opacity: LAYLINE_GUIDE_OPACITY, type: 'polyline', pts: flat });
+    guides.push({ color: LAYLINE_GUIDE_COLOR, opacity: LAYLINE_GUIDE_OPACITY, type: 'polyline', layer: LAYER_COURSE, pts: flat });
   }
   return guides;
 }

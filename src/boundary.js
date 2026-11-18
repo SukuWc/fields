@@ -16,6 +16,7 @@
 // other: tack + gybe or the Q/E circle). It re-arms once the whole hull is
 // back inside.
 
+import { LAYER_COURSE } from './draw-order.js';
 import { chargePendingPenalty, hullVerticesWorld } from './rules.js';
 import { WALL_INSET_M } from './map-size.js';
 import {
@@ -107,7 +108,8 @@ export class Boundary {
   boundaryState() { return { x: this.x, zone: this.zone, yMin: this.yMin, yMax: this.yMax }; }
 }
 
-// Boundary overlay from its state ({ x, zone, yMin, yMax }; scene-build.js).
+// Boundary overlay from its state ({ x, zone, yMin, yMax }; scene-build.js),
+// drawn under the flow tracers (layer 'course', draw-order.js).
 export function boundaryGuides(b) {
   const g = [];
   const y0 = b.yMin, y1 = b.yMax;
@@ -115,14 +117,14 @@ export function boundaryGuides(b) {
     const x = s * b.x;
     let k = 0;
     for (let y = y0; y < y1; y += 2, k++) {
-      g.push({ type: 'guide', color: k % 2 ? 0xffffff : BOUNDARY_LINE_COLOR, opacity: 0.85, x1: x, y1: y, x2: x, y2: Math.min(y1, y + 2) });
+      g.push({ type: 'guide', layer: LAYER_COURSE, color: k % 2 ? 0xffffff : BOUNDARY_LINE_COLOR, opacity: 0.85, x1: x, y1: y, x2: x, y2: Math.min(y1, y + 2) });
     }
     const xi = s * (b.x - b.zone);
     for (let y = y0; y < y1; y += 4) {
-      g.push({ type: 'guide', color: BOUNDARY_ZONE_COLOR, opacity: 0.35, x1: xi, y1: y, x2: xi, y2: Math.min(y1, y + 1.5) });
+      g.push({ type: 'guide', layer: LAYER_COURSE, color: BOUNDARY_ZONE_COLOR, opacity: 0.35, x1: xi, y1: y, x2: xi, y2: Math.min(y1, y + 1.5) });
     }
     for (let y = y0; y < y1 - b.zone * 0.5; y += 6) {
-      g.push({ type: 'guide', color: BOUNDARY_ZONE_COLOR, opacity: 0.12, x1: xi, y1: y, x2: x, y2: y + b.zone * 0.5 });
+      g.push({ type: 'guide', layer: LAYER_COURSE, color: BOUNDARY_ZONE_COLOR, opacity: 0.12, x1: xi, y1: y, x2: x, y2: y + b.zone * 0.5 });
     }
   }
   return g;

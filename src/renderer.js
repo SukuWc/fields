@@ -10,6 +10,10 @@ import {
 } from './ghost-boat.js';
 import { boatColor } from './boat-colors.js';
 import {
+  ORDER_FIELD, ORDER_TRACERS, ORDER_TRAILS, ORDER_HULL, ORDER_HULL_FILL, ORDER_ROW_CIRCLE,
+  ORDER_GUIDE, ORDER_RIBBON, ORDER_ABEAM, ORDER_CONTACT, ORDER_LABEL, ORDER_LABEL_FILL, guideOrder,
+} from './draw-order.js';
+import {
   BoatTrails,
   colorRgb,
   TRAIL_COLORS,
@@ -101,17 +105,8 @@ const labelGroupPool = [];
 // Pooled and moving lines also set frustumCulled = false: three.js computes a
 // geometry's bounding sphere once, from the first positions, so a segment that
 // moves later is culled by its stale sphere and vanishes in whole arcs.
-const ORDER_TRACERS = 0.5; // flow tracers: over the field, under the hulls
-const ORDER_TRAILS = 0.6; // boat trail dots: over the tracers, under the hulls
-const ORDER_HULL = 1;
-const ORDER_HULL_FILL = 0.9; // boat colour fill: under the hull outline
+// The order itself (renderOrder per overlay kind) is in draw-order.js.
 const HULL_FILL_OPACITY = 0.6;
-const ORDER_GUIDE = 2;
-const ORDER_RIBBON = 3;
-const ORDER_ABEAM = 4;
-const ORDER_CONTACT = 5;
-const ORDER_LABEL = 6;
-const ORDER_LABEL_FILL = 7;
 
 function markOverlay(material) {
   material.transparent = true;
@@ -211,6 +206,7 @@ function polylineGuide(index, nPts) {
 }
 
 function updatePolylineGuide(line, r) {
+  line.renderOrder = guideOrder(r);
   setFatPoints(line, r.pts, r.pts.length / 2, r.z !== undefined ? r.z : 0);
   line.material.color.setHex(r.color !== undefined ? r.color : 0xff0000);
   line.material.opacity = r.opacity !== undefined ? r.opacity : 1.0;
@@ -551,7 +547,7 @@ export function initRenderer(size, planeMat, view) {
   fluidPlane = new THREE.Mesh(new THREE.PlaneGeometry(size.width, size.height), planeMat);
   _planeBase = { w: size.width, h: size.height };
   fluidPlane.position.z = -0.01;
-  fluidPlane.renderOrder = 0;
+  fluidPlane.renderOrder = ORDER_FIELD;
   scene.add(fluidPlane);
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -772,7 +768,7 @@ function renderRowCircles(circles) {
     if (!line || fatCapacity(line) < n) {
       if (line) { scene.remove(line); line.geometry.dispose(); line.material.dispose(); }
       line = fatLine(Math.max(n, 64), markOverlay(fatMaterial({ color: c.color })));
-      line.renderOrder = ORDER_HULL + 0.15;
+      line.renderOrder = ORDER_ROW_CIRCLE;
       scene.add(line);
       rowCirclePool[k] = line;
     }
@@ -961,6 +957,8 @@ function animation(t) {
     const line = guidePool[poolIdx];
     _seg[0] = r.x1; _seg[1] = r.y1; _seg[2] = r.x2; _seg[3] = r.y2;
     setFatPoints(line, _seg, 2, r.z !== undefined ? r.z : 0);
+    // Pooled lines are reused by any guide, so the order follows the guide.
+    line.renderOrder = guideOrder(r);
     line.material.color.setHex(r.color !== undefined ? r.color : 0xff0000);
     line.material.opacity = r.opacity !== undefined ? r.opacity : 1.0;
     line.visible = true;
