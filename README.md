@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-11-16
+Last updated: 2026-11-18
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -78,6 +78,7 @@ Last updated: 2026-11-16
 - [x] Moving-column gusts: elliptical momentum columns injected into the lattice (long axis across the wind, carried downwind at free-stream speed, 10 s life), scenario 22: [#111](https://github.com/SukuWc/fields/pull/111)
 - [x] Large gusts (σ about 10–15 m, as on `europe-1`) sampled at every root cell, removing the checkerboard artifact on the wind field with no gain rescale, scenario 23: [#117](https://github.com/SukuWc/fields/pull/117)
 - [x] Room-config gust rate spawner: Poisson gust arrivals (`gust_rate_per_min`) with mean[,sd] knobs for gain, size, life and direction in room TOML, off by default: [#112](https://github.com/SukuWc/fields/pull/112)
+- [ ] Base-wind schedule (`wind_schedule`, off by default): the boundary wind oscillates around the base as θ0 + Σ A (sin(2πf t + φ) − sin φ), speed U0·(1 + Σ B (sin(…) − sin φ)), no noise. Two room TOML tables, `[wind_dir]` and `[wind_speed]`, hold keys `term0`, `term1`, …, each `[amp, amp_sd, freq, freq_sd]`: amplitude in degrees (direction) or % of the base speed (speed), frequency in cycles per hour, each pair a mean and sd drawn once per `wind_schedule_seed` like the gust knobs (amplitude clamped at 0; a frequency draw clamped to 0.1..360 cph, so it never turns constant or negative). Frequency 0 means no change: a constant term, which sets the base instead (degrees / m/s; constant terms add up, and their amp_sd draws a random base per seed). A table with no constant term keeps `wind_angle_deg` / `wind_speed_mps` as its base. Phases are random from the seed. Defaults: direction 6° at 10 cph, 3° at 6.316, 2° at 4.286 and a 10° trend at 1 cph (up to ~1°/min within a race); speed 7 % at 8.571, 4 % at 5.217 and a 4 % trend at 1.333 cph; spreads 30 % of each amplitude and 20 % of each frequency. Each oscillating term has its t = 0 value subtracted, so the wind starts exactly on the base for every seed (a term can then reach 2A to one side). The means must keep Σ 2πA·f ≤ 0.5°/s and Σ 2πB·f ≤ 0.5 %/s (else the TOML is refused, pointing at the largest term); a draw over a limit has that table's amplitudes scaled onto it (about 2 seeds in 10 000 with the defaults). The applied wind slews toward the target, so switching off or re-seeding never steps the field, and `wind_ramp = true` also ramps manual wind changes (0.5°/s, 0.1 m/s per s). The room keeps the base wind in its settings and TOML: [#220](https://github.com/SukuWc/fields/pull/220)
 - [ ] Strategy tuning
 - [ ] Strong-wind speed cap (heel limit): close-hauled speed now levels off with wind ([#185](https://github.com/SukuWc/fields/pull/185)); a planing reach still is not modelled, so strong-wind beam reaches stay at displacement speed. Sweep data in [#83](https://github.com/SukuWc/fields/pull/83)
 - [x] Autopilot holdoff: `autopilot_holdoff_ms` (Dev TOML, default 500) replaces the `sticky_autopilot` setting; Left / Right are plain helm and heading hold engages on the then-current heading that many ms of sim time after release (0 = at once, -1 = never), per boat; Up / Down unaffected: [#216](https://github.com/SukuWc/fields/pull/216)
