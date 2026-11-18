@@ -65,8 +65,9 @@ export { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps };
 //   { type: 'restart', scenario }      clear and load scenario N
 //   { type: 'wind', angle?, speed? }   base wind (from-angle °, true wind m/s); instant
 //                                      unless the schedule or wind ramp is on (then slewed)
-//   { type: 'windSchedule', enabled, seed, dirOsc, dirTrend, speedOsc, speedTrend, ramp }
-//                                      (components { amp_deg | amp_pct, period_s: [mean, sd] })
+//   { type: 'windSchedule', enabled, seed, osc, ramp }
+//                                      (osc: [{ target: 'direction' | 'speed', amp, period_s,
+//                                      phase_deg? }], values [mean, sd], room config [[wind_osc]])
 //                                      base-wind oscillation (wind-schedule.js); returns
 //                                      { error } for invalid settings or a rate over the limit
 //   { type: 'devMode', on }            uniform wind, lattice frozen
