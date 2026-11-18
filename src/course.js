@@ -518,6 +518,9 @@ function circleSegments(cx, cy, r, color, opacity, steps = 48, dashed = false, l
   return out;
 }
 
+// Dashed course geometry: the course line toward the next mark, the
+// rounding ray (mark centre to the zone edge, where a rounding counts) and
+// the gate lines. All of it draws under the flow tracers (LAYER_COURSE).
 function dashedLine(a, b, color, opacity, dash = 2, gap = 2) {
   const out = [];
   const len = Math.hypot(b.x - a.x, b.y - a.y);
@@ -526,7 +529,7 @@ function dashedLine(a, b, color, opacity, dash = 2, gap = 2) {
   const uy = (b.y - a.y) / len;
   for (let s = 0; s < len; s += dash + gap) {
     const e = Math.min(len, s + dash);
-    out.push({ type: 'guide', color, opacity, x1: a.x + ux * s, y1: a.y + uy * s, x2: a.x + ux * e, y2: a.y + uy * e });
+    out.push({ type: 'guide', layer: LAYER_COURSE, color, opacity, x1: a.x + ux * s, y1: a.y + uy * s, x2: a.x + ux * e, y2: a.y + uy * e });
   }
   return out;
 }

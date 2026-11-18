@@ -41,6 +41,7 @@
 // after the signal. A boat that has not started after the gun shows as not
 // started. Once started she stays started (no general recall yet).
 
+import { LAYER_COURSE } from './draw-order.js';
 import { BOAT_LENGTH_M, hullVerticesWorld } from './rules.js';
 
 export const RRS_START_TIMINGS = Object.freeze({ warning: 300, prep: 240, oneMinute: 60, xFlag: 240 });
@@ -340,12 +341,13 @@ function dashed(a, b, color, opacity, dash = 1.2, gap = 0.8) {
   const uy = (b.y - a.y) / len;
   for (let s = 0; s < len; s += dash + gap) {
     const e = Math.min(len, s + dash);
-    out.push({ type: 'guide', color, opacity, x1: a.x + ux * s, y1: a.y + uy * s, x2: a.x + ux * e, y2: a.y + uy * e });
+    out.push({ type: 'guide', layer: LAYER_COURSE, color, opacity, x1: a.x + ux * s, y1: a.y + uy * s, x2: a.x + ux * e, y2: a.y + uy * e });
   }
   return out;
 }
 
-// Start line overlay for one boat: dashed line between the anchors, short
+// Start line overlay for one boat (the line and its side ticks draw under
+// the flow tracers, LAYER_COURSE): dashed line between the anchors, short
 // faint ticks on the pre-start side, small RC / PIN end labels, one line
 // label, and a label on the boat while OCS (red) or just started (green).
 // Line colour: amber before the gun, pulsing green while it is the boat's
@@ -397,7 +399,7 @@ export function startGuidesFromState(L, s, boat, nowMs = 0) {
   for (let k = 1; k < L.len; k += 2) {
     const x = a.x + L.tx * k;
     const y = a.y + L.ty * k;
-    g.push({ type: 'guide', color, opacity: 0.45, x1: x, y1: y, x2: x - L.nx * 1, y2: y - L.ny * 1 });
+    g.push({ type: 'guide', layer: LAYER_COURSE, color, opacity: 0.45, x1: x, y1: y, x2: x - L.nx * 1, y2: y - L.ny * 1 });
   }
   const mid = L.mid;
   g.push({ type: 'label', badge: true, x: mid.x - L.nx * 3.6, y: mid.y - L.ny * 3.6, lines: [{ text, role, id: 'start' }] });

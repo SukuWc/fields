@@ -2,14 +2,16 @@
 // depth-tested (renderOrder 0, drawn first in three.js's opaque pass);
 // overlays are transparent with the depth test off, so they always paint
 // over the field, in this renderOrder (lowest first):
-//   course    0.3  laylines, ladder lines, mark zone circles, boundary
+//   course    0.3  laylines, ladder lines, mark zone circles, boundary,
+//                  course line to the next mark, rounding ray, start /
+//                  finish / gate lines and the start line side ticks
 //   tracers   0.5  flow tracers
 //   trails    0.6  boat trail dots
 //   hull fill 0.9, hulls / marks 1 (body outlines), row circles 1.15
-//   guides    2    forces, rule guides, mark anchors, course lines, …
+//   guides    2    forces, rule guides, mark anchors, rounding rings, …
 //   ribbons 3, abeam 4, contact 5, labels 6 / 7
 // Course geometry sits under the tracers so the flow stays readable where it
-// crosses a layline, a rung, a zone or the boundary.
+// crosses it.
 export const ORDER_FIELD = 0;
 export const ORDER_COURSE = 0.3;
 export const ORDER_TRACERS = 0.5; // flow tracers: over the field, under the hulls
@@ -25,7 +27,8 @@ export const ORDER_LABEL = 6;
 export const ORDER_LABEL_FILL = 7;
 
 // Guides ({ type: 'guide' | 'polyline', layer? }) tagged layer: 'course'
-// (ladder-lines.js, course.js zone circles, boundary.js) draw under the
+// (ladder-lines.js; course.js zone circles, course / gate lines and the
+// rounding ray; start.js and finish.js lines; boundary.js) draw under the
 // tracers; every other guide keeps ORDER_GUIDE.
 export const LAYER_COURSE = 'course';
 export function guideOrder(r) {

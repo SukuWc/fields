@@ -37,6 +37,7 @@
 //   Simplification: RRS says she stops racing once clear of the line and
 //   marks; here it is the moment she finishes.
 
+import { LAYER_COURSE } from './draw-order.js';
 import { boatStartGeometry } from './start.js';
 import { finishBoatPenalties, penaltyCode } from './rules.js';
 import { penaltyNameText, unservedCodes } from './rule-text.js';
@@ -244,6 +245,7 @@ export function finishGuideState(course, progress, results, boats, clock) {
   return { next, labels };
 }
 
+// The dashed finish line draws under the flow tracers (LAYER_COURSE).
 export function finishGuidesFromState(line, s, nowMs = 0) {
   const g = [];
   const next = s.next;
@@ -253,7 +255,7 @@ export function finishGuidesFromState(line, s, nowMs = 0) {
   const color = next ? FINISH_NEXT_COLOR : FINISH_LINE_COLOR;
   for (let k = 0; k < len; k += 2) {
     const e = Math.min(len, k + 1.2);
-    g.push({ type: 'guide', color, opacity: next ? 0.6 + 0.4 * pulse : 0.55, x1: a.x + line.tx * k, y1: a.y + line.ty * k, x2: a.x + line.tx * e, y2: a.y + line.ty * e });
+    g.push({ type: 'guide', layer: LAYER_COURSE, color, opacity: next ? 0.6 + 0.4 * pulse : 0.55, x1: a.x + line.tx * k, y1: a.y + line.ty * k, x2: a.x + line.tx * e, y2: a.y + line.ty * e });
   }
   const m = line.mid;
   g.push({ type: 'label', badge: true, x: m.x, y: m.y + 1.6, lines: [{ text: next ? 'NEXT FINISH' : 'FINISH', role: next ? 'next' : 'markno', id: 'finish' }] });
