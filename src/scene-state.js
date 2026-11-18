@@ -31,6 +31,10 @@
 //          k: [cx, cy, radius] | 0 (disk), m: run lengths of the mask | null,
 //          c: [children] }; absent in dev mode
 //   wind   dev mode: flow direction (deg) for the wind arrow
+//   rw     room wind: [from (compass °, 0 = from north), speed (m/s)], the
+//          applied boundary / forcing wind (map.wind_direction / wind_speed:
+//          the base wind, or the wind schedule when it is on), not a local
+//          field sample; the minimap's wind indicator (minimap.js)
 //   ladder ladder lines (ladder-lines.js): square to the wind at the next
 //          course target (gate/finish mid or a mark), 10 m apart on the
 //          approach side, each between the laylines and inside the map,
@@ -259,6 +263,9 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
   else {
     const wind = map.get_wind(0, 0);
     s.wind = Math.atan2(wind.vy, wind.vx) * 180 / Math.PI;
+  }
+  if (Number.isFinite(map.wind_direction) && Number.isFinite(map.wind_speed)) {
+    s.rw = [(((90 - map.wind_direction) % 360) + 360) % 360, map.wind_speed];
   }
   s.bt = bodies.bt;
   return s;

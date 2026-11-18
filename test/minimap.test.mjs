@@ -1,5 +1,5 @@
 // Minimap math (src/minimap.js).
-import { minimapTransform, cameraRect, minimapLaylines, xy } from '../src/minimap.js';
+import { minimapTransform, cameraRect, minimapLaylines, roomWindReadout, xy } from '../src/minimap.js';
 import { ladderAnchorsFromState, ladderGeometry } from '../src/ladder-lines.js';
 let n = 0;
 const near = (a, b, e = 1e-6) => Math.abs(a - b) < e;
@@ -74,5 +74,14 @@ check('xy accepts arrays and objects', xy([1, 2])[1] === 2 && xy({ x: 3, y: 4 })
   const main = ladderGeometry(() => ({ vx: 0, vy: -1 }), ladderAnchorsFromState(state, statics), { bounds: { xmin: -50, xmax: 50, ymin: -100, ymax: 100 } }).layline;
   const r6 = (v) => Math.round(v * 1e6) / 1e6;
   check('finish: identical to the main view geometry', JSON.stringify(f.map((s) => s.map(r6))) === JSON.stringify(main.map((s) => s.map(r6))));
+}
+// Room wind indicator (state.rw = [from compass °, m/s]).
+{
+  const w = roomWindReadout({ rw: [5.4, 4.46] });
+  check('room wind: bearing 005°, arrow toward 185.4° (downwind), speed 4.5 m/s like the HUD TWS', w.bearing === '005°' && near(w.towardDeg, 185.4)
+    && w.speed === '4.5' && w.unit === 'm/s' && w.label === 'Room wind from 005° at 4.5 m/s');
+  check('room wind: 359.7° rounds to 000°, wraps toward 179.7°', roomWindReadout({ rw: [359.7, 3] }).bearing === '000°' && near(roomWindReadout({ rw: [359.7, 3] }).towardDeg, 179.7));
+  check('room wind: from west (270°) points east (90°)', near(roomWindReadout({ rw: [270, 6] }).towardDeg, 90));
+  check('room wind: hidden without state.rw', roomWindReadout({}) === null && roomWindReadout(null) === null && roomWindReadout({ rw: [null, 4] }) === null);
 }
 console.log(`all ${n} minimap checks passed`);
