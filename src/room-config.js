@@ -16,7 +16,10 @@
 //                           freq_sd], amp ° / % of base, freq cycles per hour,
 //                           drawn once per wind_schedule_seed like gust_*.
 //                           freq 0 = constant term: the base (° / m/s, terms add),
-//                           which then replaces wind_angle_deg / wind_speed_mps
+//                           which then replaces wind_angle_deg / wind_speed_mps.
+//                           On by default; wind_schedule_seed = [mean, sd]
+//                           (default [1, 100]) is drawn per applied config
+//                           (_windSeed), sd 0 = that exact seed
 //   wind_ramp = true      → manual wind changes slew at 0.5°/s, 0.1 m/s per s
 //   scenario = "custom" + [custom] → marks / start / course / finish /
 //                           boundary from the TOML (custom-scenario.js)
@@ -44,6 +47,7 @@ import {
   DEFAULT_WIND_SCHEDULE,
   validateWindSchedule,
   windScheduleBase,
+  drawWindSeed,
 } from './wind-schedule.js';
 import {
   CUSTOM_SCENARIO,
@@ -130,7 +134,7 @@ export const ROOM_CONFIG_DEFAULTS = Object.freeze({
   gust_ramp_s: 1.5,
   // Off by default: existing rooms, scenarios and tests keep a steady wind.
   wind_schedule: DEFAULT_WIND_SCHEDULE.enabled,
-  wind_schedule_seed: DEFAULT_WIND_SCHEDULE.seed,
+  wind_schedule_seed: DEFAULT_WIND_SCHEDULE.seedSpec,
   wind_dir: DEFAULT_WIND_SCHEDULE.dir,
   wind_speed: DEFAULT_WIND_SCHEDULE.speed,
   wind_ramp: DEFAULT_WIND_SCHEDULE.ramp,
@@ -190,12 +194,18 @@ export function gustSpawnerFromConfig(cfg) {
   };
 }
 
-/** windSchedule command fields from a validated room config. */
+/**
+ * windSchedule command fields from a validated room config: seedSpec is
+ * wind_schedule_seed ([mean, sd]), seed the game's drawn seed (_windSeed,
+ * set by validateRoomConfig; absent on a raw config).
+ */
 export function windScheduleFromConfig(cfg) {
-  return {
-    enabled: cfg.wind_schedule, seed: cfg.wind_schedule_seed, ramp: cfg.wind_ramp,
+  const o = {
+    enabled: cfg.wind_schedule, seedSpec: cfg.wind_schedule_seed, ramp: cfg.wind_ramp,
     dir: cfg.wind_dir, speed: cfg.wind_speed,
   };
+  if (cfg._windSeed !== undefined) o.seed = cfg._windSeed;
+  return o;
 }
 
 /** Room-config wind_schedule* keys from SimCore.settings.windSchedule. */
@@ -204,7 +214,7 @@ export function windScheduleConfigFromSettings(w) {
   const s = v.schedule || validateWindSchedule({}).schedule;
   return {
     wind_schedule: s.enabled,
-    wind_schedule_seed: s.seed,
+    wind_schedule_seed: s.seedSpec,
     wind_dir: s.dir,
     wind_speed: s.speed,
     wind_ramp: s.ramp,
@@ -457,7 +467,8 @@ export function parseRoomConfigToml(text) {
 
 /**
  * Validate and normalise a config object.
- * checks: { core } for scenario fit, or { mapW, mapH, scenarios }.
+ * checks: { core } for scenario fit, or { mapW, mapH, scenarios }; random
+ * (default Math.random) draws the wind schedule seed (_windSeed).
  * Returns { config } or { error }.
  */
 export function validateRoomConfig(cfg, checks = {}) {
@@ -572,11 +583,18 @@ export function validateRoomConfig(cfg, checks = {}) {
 
     // base-wind schedule (wind-schedule.js: term shapes, rate limits)
     {
-      const v = validateWindSchedule(windScheduleFromConfig(cfg));
+      const raw = windScheduleFromConfig(cfg);
+      delete raw.seed; // a client's drawn seed is not trusted: drawn again here
+      const v = validateWindSchedule(raw);
       need(!v.error, v.error);
       const w = v.schedule;
+      // This game's seed: N(mean, sd²) with real randomness (drawWindSeed),
+      // drawn on every validated config, so each room start, Reset and Apply
+      // is a new game; sd 0 → exactly the mean (replay a game).
+      w.seed = drawWindSeed(w.seedSpec, checks.random);
       out.wind_schedule = w.enabled;
-      out.wind_schedule_seed = w.seed;
+      out.wind_schedule_seed = w.seedSpec;
+      out._windSeed = w.seed;
       out.wind_dir = w.dir;
       out.wind_speed = w.speed;
       // Constant (freq 0) terms are the base: they replace wind_angle_deg /
@@ -663,7 +681,7 @@ export function commandsFromConfig(cfg, prev = null) {
   }
 
   // Base-wind schedule after the base wind it modulates.
-  const windKeys = ['wind_schedule', 'wind_schedule_seed', 'wind_dir', 'wind_speed', 'wind_ramp'];
+  const windKeys = ['wind_schedule', 'wind_schedule_seed', '_windSeed', 'wind_dir', 'wind_speed', 'wind_ramp'];
   if (!prev || windKeys.some((k) => JSON.stringify(prev[k]) !== JSON.stringify(cfg[k]))) {
     cmds.push({ type: 'windSchedule', ...windScheduleFromConfig(cfg) });
   }

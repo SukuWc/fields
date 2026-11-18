@@ -55,6 +55,17 @@
 // (windSlew) at the limits, which ramps the return to the base when the
 // schedule is switched off (or re-seeded mid-run) and, with wind_ramp, manual
 // changes.
+// Seed: room config wind_schedule_seed = [mean, sd] (or a plain integer, sd
+// 0). The room config draws the seed for a game from N(mean, sd²) with real
+// randomness (drawWindSeed, Math.random: not a seeded stream), rounded to
+// an integer and folded to ≥ 0, every time a config is applied (room start,
+// Reset, Apply); sd 0 gives exactly the mean, so a game can be replayed by
+// setting wind_schedule_seed = [<drawn seed>, 0]. The spec keeps both: `seed`
+// is the drawn seed every stream above uses, `seedSpec` the configured
+// [mean, sd] (round-trip, room settings).
+// Defaults: the room config default (DEFAULT_WIND_SCHEDULE) is on with seed
+// [1, 100]; a bare Sim with no room config (scenario checks, unit tests)
+// starts with the schedule off (SIM_WIND_SCHEDULE), a steady wind.
 // No DOM: runs in the Sim on the server, worker and tests.
 import { mulberry32, sampleNormal } from './gusts.js';
 
@@ -93,12 +104,51 @@ const TABLES = Object.freeze({ dir: 'wind_dir', speed: 'wind_speed' });
 const r3 = (x) => +x.toFixed(3);
 const t4 = (a, f) => Object.freeze([a, r3(0.3 * a), f, r3(0.2 * f)]);
 export const DEFAULT_WIND_SCHEDULE = Object.freeze({
-  enabled: false,
+  enabled: true,
   seed: 1,
+  seedSpec: Object.freeze([1, 100]),
   dir: Object.freeze({ term0: t4(6, 10), term1: t4(3, 6.316), term2: t4(2, 4.286), term3: t4(10, 1) }),
   speed: Object.freeze({ term0: t4(7, 8.571), term1: t4(4, 5.217), term2: t4(4, 1.333) }),
   ramp: false,
 });
+
+// A Sim with no room config: schedule off, fixed seed (steady wind, deterministic).
+export const SIM_WIND_SCHEDULE = Object.freeze({ ...DEFAULT_WIND_SCHEDULE, enabled: false, seedSpec: Object.freeze([1, 0]) });
+
+const MAX_SEED = 0xFFFFFFFF;
+const SEED_MSG = 'wind_schedule_seed must be an integer 0..' + MAX_SEED + ' or [mean, sd]';
+
+/**
+ * wind_schedule_seed → [mean, sd]: an integer (sd 0), [mean] or [mean, sd];
+ * mean an integer 0..4294967295, sd a number ≥ 0. Throws a message naming
+ * the setting.
+ */
+export function parseWindSeed(raw) {
+  const intOk = (v) => Number.isInteger(v) && v >= 0 && v <= MAX_SEED;
+  if (typeof raw === 'number') {
+    if (!intOk(raw)) throw SEED_MSG;
+    return [raw, 0];
+  }
+  if (Array.isArray(raw) && (raw.length === 1 || raw.length === 2)) {
+    const [m, sd = 0] = raw;
+    if (!intOk(m)) throw 'wind_schedule_seed mean must be an integer 0..' + MAX_SEED;
+    if (typeof sd !== 'number' || !Number.isFinite(sd) || sd < 0) throw 'wind_schedule_seed sd must be a number ≥ 0';
+    return [m, sd];
+  }
+  throw SEED_MSG;
+}
+
+/**
+ * Seed for one game from [mean, sd]: N(mean, sd²) from `rand` (default
+ * Math.random, real randomness, not a seeded stream), rounded, folded to
+ * ≥ 0 (|n|) and capped at 4294967295. sd 0: exactly the mean.
+ */
+export function drawWindSeed([mean, sd], rand = Math.random) {
+  if (!(sd > 0)) return mean;
+  const u = 1 - rand(), v = rand(); // u in (0, 1]
+  const z = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  return Math.min(MAX_SEED, Math.abs(Math.round(mean + sd * z)));
+}
 
 const TAU = 2 * Math.PI;
 const fmtFreq = (hz) => r3(hz / WIND_FREQ_PER_S);
@@ -176,9 +226,12 @@ export function validateWindSchedule(raw = {}) {
     if (typeof enabled !== 'boolean') throw 'wind_schedule must be true or false';
     const ramp = pick('ramp');
     if (typeof ramp !== 'boolean') throw 'wind_ramp must be true or false';
-    const seed = pick('seed');
-    if (!Number.isInteger(seed) || seed < 0 || seed > 0xFFFFFFFF) throw 'wind_schedule_seed must be an integer 0..4294967295';
-    const s = { enabled, seed, ramp, dir: checkTable(pick('dir'), 'dir'), speed: checkTable(pick('speed'), 'speed') };
+    // seedSpec: the configured [mean, sd]; seed: the drawn seed (default the mean).
+    const hasSeed = raw && raw.seed !== undefined, hasSpec = raw && raw.seedSpec !== undefined;
+    const seedSpec = parseWindSeed(hasSpec ? raw.seedSpec : hasSeed ? raw.seed : d.seedSpec);
+    const seed = hasSeed ? raw.seed : hasSpec ? seedSpec[0] : d.seed;
+    if (!Number.isInteger(seed) || seed < 0 || seed > MAX_SEED) throw 'wind schedule seed must be an integer 0..' + MAX_SEED;
+    const s = { enabled, seed, seedSpec, ramp, dir: checkTable(pick('dir'), 'dir'), speed: checkTable(pick('speed'), 'speed') };
     let ampSum = 0, big = null;
     for (const k of oscKeys(s.speed)) { ampSum += s.speed[k][0] / 100; if (!big || s.speed[k][0] > s.speed[big][0]) big = k; }
     if (ampSum > WIND_MAX_SPEED_AMP_SUM + 1e-12) throw 'wind_speed.' + big + ': oscillating amp means must sum to ≤ ' + 100 * WIND_MAX_SPEED_AMP_SUM + ' % (largest term)';
@@ -317,7 +370,7 @@ const copyTable = (t) => Object.fromEntries(Object.entries(t).map(([k, v]) => [k
 
 /** Plain-data copy of a validated spec (SimCore.settings.windSchedule, TOML shape per table). */
 export function windScheduleSettings(s) {
-  return { enabled: s.enabled, seed: s.seed, ramp: s.ramp, dir: copyTable(s.dir), speed: copyTable(s.speed) };
+  return { enabled: s.enabled, seed: s.seed, seedSpec: [...s.seedSpec], ramp: s.ramp, dir: copyTable(s.dir), speed: copyTable(s.speed) };
 }
 
 export function defaultWindScheduleSettings() {

@@ -5,7 +5,7 @@
 // lattice following the scheduled wind.
 import './dom-stub.mjs';
 const {
-  DEFAULT_WIND_SCHEDULE, validateWindSchedule, realiseWindSchedule, sampleWindSchedule, windScheduleOffset,
+  DEFAULT_WIND_SCHEDULE, SIM_WIND_SCHEDULE, parseWindSeed, drawWindSeed, validateWindSchedule, realiseWindSchedule, sampleWindSchedule, windScheduleOffset,
   windScheduleRates, windScheduleBase, windSlew, angleDiffDeg, WIND_MAX_DEG_PER_S, WIND_MAX_SPEED_FRAC_PER_S,
   WIND_MAX_SPEED_AMP_SUM, WIND_MIN_FREQ_HZ, WIND_MAX_FREQ_HZ, WIND_FREQ_PER_S,
 } = await import('../src/wind-schedule.js');
@@ -13,7 +13,9 @@ const { SimCore } = await import('../src/host.js');
 const {
   ROOM_CONFIG_BASE, ROOM_CONFIG_DEFAULTS, validateRoomConfig, parseAndValidateRoomConfig,
   stringifyRoomConfig, configFromRoomState, commandsFromConfig, roomConfigErrorLine,
+  defaultRoomConfig, standaloneStartConfig,
 } = await import('../src/room-config.js');
+const { Room } = await import('../apps/server/room.js');
 
 let failed = 0;
 const check = (name, ok, detail = '') => {
@@ -221,7 +223,7 @@ term1 = [4, 1.2, 1.333, 0.267]
   check('applied wind moved off the base', Math.abs(angleDiffDeg(80, core.map.wind_direction)) > 0.5, core.map.wind_direction.toFixed(2));
   check('settings.wind is the base', core.settings.wind.angle === 80 && core.settings.wind.speed === 4.5, JSON.stringify(core.settings.wind));
   const room = configFromRoomState(core.roomState(), { mapW: 100, mapH: 200 });
-  check('configFromRoomState: base wind and every component', room.wind_angle_deg === 80 && room.wind_speed_mps === 4.5 && room.wind_schedule_seed === 42
+  check('configFromRoomState: base wind and every component', room.wind_angle_deg === 80 && room.wind_speed_mps === 4.5 && JSON.stringify(room.wind_schedule_seed) === '[42,0]'
     && JSON.stringify(room.wind_dir) === JSON.stringify(v.config.wind_dir) && JSON.stringify(room.wind_speed) === JSON.stringify(v.config.wind_speed));
   const p = parseAndValidateRoomConfig(stringifyRoomConfig(room));
   check('room TOML round-trip keeps schedule and base', !p.error && p.config.wind_angle_deg === 80
@@ -236,16 +238,17 @@ term1 = [4, 1.2, 1.333, 0.267]
   mute(() => core.tick({ dt: 1 / 30, held: [] }));
   check('then slews ≤ 0.5°/s', Math.abs(angleDiffDeg(before, core.map.wind_direction)) <= 0.5 / 30 + 1e-9);
   const def = parseAndValidateRoomConfig(stringifyRoomConfig(ROOM_CONFIG_DEFAULTS));
-  check('defaults: schedule off, components round-trip', !def.error && def.config.wind_schedule === false
+  check('defaults: schedule on, seed [1, 100], components round-trip', !def.error && def.config.wind_schedule === true
+    && JSON.stringify(def.config.wind_schedule_seed) === '[1,100]'
     && JSON.stringify(def.config.wind_dir) === JSON.stringify(ROOM_CONFIG_DEFAULTS.wind_dir) && JSON.stringify(def.config.wind_speed) === JSON.stringify(ROOM_CONFIG_DEFAULTS.wind_speed));
   const plain = new SimCore({ mapW: 100, mapH: 200, simRes: '2f' });
   plain.command({ type: 'wind', angle: 45, speed: 5 });
   check('schedule off: wind command is instant (unchanged behaviour)', plain.map.wind_direction === 45 && plain.map.wind_speed === 5 && plain.bm.direction === 225);
-  plain.command({ type: 'windSchedule', ...DEFAULT_WIND_SCHEDULE, ramp: true });
+  plain.command({ type: 'windSchedule', ...DEFAULT_WIND_SCHEDULE, enabled: false, ramp: true });
   plain.command({ type: 'wind', angle: 75 });
   for (let i = 0; i < 30; i++) mute(() => plain.tick({ dt: 1 / 30, held: [] }));
   check('wind_ramp: 30° change after 1 s has turned 0.5°', Math.abs(plain.map.wind_direction - 45.5) < 1e-6, plain.map.wind_direction.toFixed(4));
-  plain.command({ type: 'windSchedule', ...DEFAULT_WIND_SCHEDULE, ramp: false });
+  plain.command({ type: 'windSchedule', ...DEFAULT_WIND_SCHEDULE, enabled: false, ramp: false });
   for (let i = 0; i < 30 * 70; i++) mute(() => plain.tick({ dt: 1 / 30, held: [] }));
   check('ramp off: settles on the base and stops slewing', Math.abs(plain.map.wind_direction - 75) < 1e-6 && plain.sim._windSettling === false);
   const over = validateRoomConfig({ ...ROOM_CONFIG_BASE, wind_schedule: true, wind_dir: tbl([20, 0, 60, 0]) });
@@ -311,6 +314,69 @@ term1 = [7, 2.1, 8.571, 1.714]
   check('applied wind on the schedule throughout', maxApplied < 1e-6, maxApplied.toFixed(6));
   check('field direction at the centre within 1.5° of the schedule from the start', maxDirErr <= 1.5, maxDirErr.toFixed(3) + '°');
   check('field speed at the centre within 3 % of the schedule', maxSpdErr <= 0.03, (100 * maxSpdErr).toFixed(2) + ' %');
+}
+
+// 6. wind_schedule_seed = [mean, sd]: a seed drawn per applied config.
+{
+  check('room defaults: schedule on, seed [1, 100]; wind_ramp unchanged (off)', ROOM_CONFIG_DEFAULTS.wind_schedule === true
+    && JSON.stringify(ROOM_CONFIG_DEFAULTS.wind_schedule_seed) === '[1,100]' && ROOM_CONFIG_DEFAULTS.wind_ramp === false
+    && ROOM_CONFIG_BASE.wind_schedule === true);
+  check('single player start (default, scenario N): schedule on, [1, 100]',
+    [defaultRoomConfig(100, 200), defaultRoomConfig(300, 300), standaloneStartConfig(100, 200, 3)].every((c) => c.wind_schedule === true
+      && JSON.stringify(c.wind_schedule_seed) === '[1,100]'));
+  check('bare Sim (no room config): schedule off', new SimCore({ mapW: 100, mapH: 200, simRes: '2f' }).sim.windSchedule.enabled === false
+    && SIM_WIND_SCHEDULE.enabled === false);
+  check('parseWindSeed: integer = [n, 0], [m] = [m, 0], [m, sd]', JSON.stringify([parseWindSeed(42), parseWindSeed([7]), parseWindSeed([7, 2.5])]) === '[[42,0],[7,0],[7,2.5]]');
+  for (const [bad, re] of [[-1, /wind_schedule_seed/], [1.5, /wind_schedule_seed/], [[1, -1], /wind_schedule_seed sd/], [[1.5, 1], /wind_schedule_seed mean/],
+    ['x', /wind_schedule_seed/], [[1, 2, 3], /wind_schedule_seed/], [[1, NaN], /wind_schedule_seed sd/]]) {
+    let msg = '';
+    try { parseWindSeed(bad); } catch (e) { msg = String(e); }
+    check(`parseWindSeed refuses ${JSON.stringify(bad)} naming the setting`, re.test(msg), msg);
+  }
+  const badToml = parseAndValidateRoomConfig('wind_schedule_seed = [1, -5]\n');
+  check('room TOML: bad sd refused, error names wind_schedule_seed and its line', !!badToml.error && /wind_schedule_seed/.test(badToml.error)
+    && roomConfigErrorLine('wind_schedule_seed = [1, -5]\n', badToml) === 1, badToml.error);
+  const seq = (vals) => { let i = 0; return () => vals[i++ % vals.length]; };
+  check('drawWindSeed: sd 0 = exactly the mean (rand unused)', drawWindSeed([42, 0], () => { throw new Error('used'); }) === 42);
+  const r1 = drawWindSeed([1, 100], seq([0.3, 0.7])), r2 = drawWindSeed([1, 100], seq([0.3, 0.7]));
+  check('drawWindSeed: same rand → same seed, an integer ≥ 0', r1 === r2 && Number.isInteger(r1) && r1 >= 0, String(r1));
+  const draws = Array.from({ length: 2000 }, () => drawWindSeed([1000, 100]));
+  const mean = draws.reduce((a, b) => a + b, 0) / draws.length;
+  const sd = Math.sqrt(draws.reduce((a, b) => a + (b - mean) ** 2, 0) / draws.length);
+  check('drawWindSeed: N(1000, 100²) over 2000 draws', draws.every(Number.isInteger) && Math.abs(mean - 1000) < 10 && Math.abs(sd - 100) < 10,
+    `${mean.toFixed(1)} ± ${sd.toFixed(1)}`);
+  check('drawWindSeed: N(1, 100²) folds to ≥ 0', Array.from({ length: 500 }, () => drawWindSeed([1, 100])).every((x) => Number.isInteger(x) && x >= 0));
+  const seeds = new Set(Array.from({ length: 20 }, () => validateRoomConfig({ ...ROOM_CONFIG_BASE }).config._windSeed));
+  check('each validated default config draws its own seed', seeds.size > 10, [...seeds].join(','));
+  const pinned = parseAndValidateRoomConfig('wind_schedule_seed = [77, 0]\n');
+  const plainInt = parseAndValidateRoomConfig('wind_schedule_seed = 77\n');
+  check('[77, 0] and plain 77: drawn seed exactly 77, spec kept', pinned.config._windSeed === 77 && plainInt.config._windSeed === 77
+    && JSON.stringify(pinned.config.wind_schedule_seed) === '[77,0]' && JSON.stringify(plainInt.config.wind_schedule_seed) === '[77,0]');
+  const txt = stringifyRoomConfig(validateRoomConfig({ ...ROOM_CONFIG_BASE }).config);
+  check('TOML writes wind_schedule_seed = [1, 100], not the drawn seed', /\nwind_schedule_seed = \[ 1, 100 \]\n/.test(txt) && !/_windSeed/.test(txt),
+    (txt.match(/wind_schedule_seed.*\n/) || [''])[0]);
+  const forged = validateRoomConfig({ ...ROOM_CONFIG_BASE, wind_schedule_seed: [5, 0], _windSeed: 999 });
+  check('a client\'s _windSeed is ignored: drawn again from the spec', forged.config._windSeed === 5);
+
+  // Room: every config apply draws; the drawn seed is in room settings, windSeed() and the log hook.
+  const room = new Room('seed', { lockstep: true, graceMs: 0 });
+  const client = { send() {} };
+  room.join(client);
+  room.message(client, { type: 'init', opts: { mapW: 100, mapH: 200, simRes: '2f', scenario: 0 } });
+  const logged = [];
+  room.onWindSeed = (r, w) => logged.push(w);
+  const apply = (t) => mute(() => room.applyTomlConfig(t));
+  apply('wind_schedule_seed = [123, 0]\ngusts = false\n');
+  const st = room.core.roomState().settings.windSchedule;
+  check('Room: [123, 0] → seed 123 in sim, room settings, windSeed() and the log hook', room.core.sim.windSchedule.seed === 123
+    && st.seed === 123 && JSON.stringify(st.seedSpec) === '[123,0]' && JSON.stringify(room.windSeed()) === '{"enabled":true,"seed":123,"spec":[123,0]}'
+    && logged.length === 1 && logged[0].seed === 123, JSON.stringify([room.windSeed(), logged]));
+  const got = new Set();
+  for (let i = 0; i < 8; i++) { apply('wind_schedule_seed = [1, 100]\ngusts = false\n'); got.add(room.core.sim.windSchedule.seed); }
+  check('Room: re-applying [1, 100] redraws each time', got.size > 3 && logged.length === 9, [...got].join(','));
+  const back = configFromRoomState(room.core.roomState(), { mapW: 100, mapH: 200 });
+  check('Room state → TOML keeps [1, 100]', JSON.stringify(back.wind_schedule_seed) === '[1,100]');
+  room.leave(client);
 }
 
 if (failed) { console.log(`${failed} check(s) failed`); process.exit(1); }
