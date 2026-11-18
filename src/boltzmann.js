@@ -2403,6 +2403,29 @@ export class Boltzmann {
 		}
 	}
 
+	// Refill every fluid cell, root and every refinement level, with the
+	// equilibrium at the current inlet wind (direction, speed), keeping the
+	// grids, masks and barriers. Wakes, curl and gust flow are wiped. Used when
+	// the base-wind schedule starts (Sim windSchedule) so the field starts at
+	// the scheduled wind. Fine levels share the lattice velocity units.
+	refillUniform() {
+		const hspeed = Math.cos(this.direction / 180 * Math.PI) * this.speed;
+		const vspeed = Math.sin(this.direction / 180 * Math.PI) * this.speed;
+		const fill = (cells) => {
+			for (let k = 0; k < cells.length; k++) {
+				const c = cells[k];
+				if (!c || c.barrier) continue;
+				c.setEquil(hspeed, vspeed, 1);
+				c.setCurl(0.0);
+			}
+		};
+		const walk = (doms) => {
+			for (const d of doms || []) { fill(d.cells); walk(d.domains); }
+		};
+		fill(this.cells);
+		walk(this.domains);
+	}
+
 	// Function to start or pause the simulation:
 	startStop() {
 		this.running = !this.running;

@@ -146,20 +146,24 @@ const tbl = (...terms) => Object.fromEntries(terms.map((t, i) => ['term' + i, t]
   check('slew steps 0.5° the short way through 0°', Math.abs(angleDiffDeg(359, st.angle) - 0.5) < 1e-9 && Math.abs(st.speed - 4.1) < 1e-9 && !st.done);
 }
 
-// 3. Starts exactly on the base at t = 0 for every seed and draw.
+// 3. At t = 0 the direction is exactly the base and the speed factor is
+// exactly 1 + Σ B sin φ (speed terms have no −sin φ offset), every seed and draw.
+const speedStart = (s) => { const r = realiseWindSchedule(s); let f = 1; r.terms.forEach((t, i) => { if (t.target === 'speed') f += t.amp * Math.sin(r.phases[i]); }); return f; };
 {
-  let bad = 0, moved = 0;
+  let bad = 0, moved = 0, offBase = 0;
   const custom = { dir: tbl([90, 20, 0, 0], [5, 2, 36, 10], [1, 0, 10.8, 0]), speed: tbl([10, 3, 9, 1.8]) };
   for (let seed = 0; seed < 500; seed++) {
     for (const extra of [{}, custom]) {
       const s = spec({ seed, ...extra });
       const o = offsetAt(s, 0);
-      if (o.dirDeg !== 0 || o.speedFactor !== 1) bad++;
+      if (o.dirDeg !== 0 || o.speedFactor !== speedStart(s)) bad++;
+      if (Math.abs(o.speedFactor - 1) > 1e-3) offBase++;
       const o1 = offsetAt(s, 60);
       if (Math.abs(o1.dirDeg) > 1e-6 && Math.abs(o1.speedFactor - 1) > 1e-6) moved++;
     }
   }
-  check('t = 0: offset exactly 0° and factor exactly 1 for 500 seeds × 2 specs', bad === 0, `${bad} off`);
+  check('t = 0: direction offset exactly 0°, speed factor exactly 1 + Σ B sin φ, 500 seeds × 2 specs', bad === 0, `${bad} off`);
+  check('t = 0: the starting speed varies with the seed (|factor − 1| > 0.1 % for most)', offBase > 900, `${offBase}/1000`);
   check('and every one has moved off the base after 60 s', moved === 1000, `${moved}/1000`);
   const core = new SimCore({ mapW: 100, mapH: 200, simRes: '2f' });
   core.command({ type: 'windSchedule', ...DEFAULT_WIND_SCHEDULE, enabled: true, seed: 5 });
@@ -277,8 +281,9 @@ term1 = [7, 2.1, 8.571, 1.714]
   check('constant terms validate and set the base', !v.error && v.config.wind_angle_deg === 90 && v.config.wind_speed_mps === 5, v.error || JSON.stringify([v.config.wind_angle_deg, v.config.wind_speed_mps]));
   const core = new SimCore({ mapW: 100, mapH: 200, simRes: '2f' });
   mute(() => core.command({ type: 'config', config: v.config }));
-  check('room starts on the constant-term base', core.sim.windBase.angle === 90 && core.map.wind_direction === 90 && core.map.wind_speed === 5,
-    JSON.stringify(core.sim.windBase));
+  check('room starts on the constant-term base: direction 90°, speed base·(1 + Σ B sin φ)', core.sim.windBase.angle === 90 && core.sim.windBase.speed === 5
+    && core.map.wind_direction === 90 && core.map.wind_speed === 5 * speedStart(core.sim.windSchedule),
+    JSON.stringify([core.sim.windBase, core.map.wind_speed]));
   check('the Sim oscillates only the freq > 0 terms', core.sim.windRealised.terms.length === 2);
   const back = parseAndValidateRoomConfig(stringifyRoomConfig(configFromRoomState(core.roomState(), { mapW: 100, mapH: 200 })));
   check('round-trip through room state keeps base and terms', !back.error && back.config.wind_angle_deg === 90 && back.config.wind_speed_mps === 5
@@ -296,6 +301,57 @@ term1 = [7, 2.1, 8.571, 1.714]
   mute(() => core.command({ type: 'config', config: moved.config }));
   check('changing only a constant term: wind command, clock kept, base slews', cmds.some((c) => c.type === 'wind' && c.angle === 80)
     && core.sim.windClock > clock && core.sim.windBase.angle === 80 && Math.abs(angleDiffDeg(90, core.map.wind_direction)) < 2);
+}
+
+// 3b. Schedule start: applied wind jumps to the scheduled start and the whole
+// flow field (root and refinement levels) is refilled at it.
+{
+  const fieldAt = (core) => {
+    const bm = core.bm, h = Math.cos(bm.direction / 180 * Math.PI) * bm.speed, v = Math.sin(bm.direction / 180 * Math.PI) * bm.speed;
+    let n = 0, off = 0, max = 0;
+    const visit = (cells) => { for (const c of cells || []) { if (!c || c.barrier) continue; n++; const e = Math.hypot(c.ux - h, c.uy - v); if (e > 1e-12) off++; max = Math.max(max, e); } };
+    const walk = (doms) => { for (const d of doms || []) { visit(d.cells); walk(d.domains); } };
+    visit(bm.cells); walk(bm.domains);
+    return { n, off, max };
+  };
+  const perturb = (core) => { for (const c of core.bm.cells) if (!c.barrier) c.setEquil(0, 0, 1); };
+  const toml = (seed) => `scenario = 0\nwind_angle_deg = 90\nwind_speed_mps = 4.5\ngusts = false\nwind_schedule = true\nwind_schedule_seed = [${seed}, 0]\n`;
+  const core = new SimCore({ mapW: 100, mapH: 200, simRes: '2f' });
+  perturb(core);
+  const c1 = parseAndValidateRoomConfig(toml(5)).config;
+  mute(() => core.command({ type: 'config', config: c1 }));
+  const f5 = speedStart(core.sim.windSchedule);
+  check('start: speed = base·(1 + Σ B sin φ), direction = base', core.map.wind_speed === 4.5 * f5 && core.map.wind_direction === 90
+    && Math.abs(f5 - 1) > 1e-3 && core.sim.windBase.speed === 4.5 && core.sim.windBase.angle === 90 && core.sim.windClock === 0,
+    `${core.map.wind_speed.toFixed(4)} m/s (${(100 * (f5 - 1)).toFixed(2)} %), ${core.map.wind_direction}°`);
+  check('start: lattice inlet at the start speed', Math.abs(core.bm.speed - core.bm._latticeU(4.5 * f5)) < 1e-15 && core.bm.direction === 270);
+  const a = fieldAt(core);
+  check('start: every fluid cell filled at the start wind', a.n > 1000 && a.off === 0, JSON.stringify(a));
+  for (let i = 0; i < 30 * 5; i++) mute(() => core.tick({ dt: 1 / 30, held: [] }));
+  perturb(core);
+  const c2 = parseAndValidateRoomConfig(toml(9)).config;
+  mute(() => core.command({ type: 'config', config: c2 }));
+  const f9 = speedStart(core.sim.windSchedule);
+  const b = fieldAt(core);
+  check('Reset / Apply with a new seed: clock 0, applied wind and field at its start', core.sim.windClock === 0 && core.map.wind_speed === 4.5 * f9
+    && core.map.wind_direction === 90 && b.off === 0 && b.n > 1000, JSON.stringify(b));
+  // With boats: refinement levels refilled too, barriers kept.
+  const rc = new SimCore({ mapW: 100, mapH: 200, simRes: '2f' });
+  mute(() => rc.command({ type: 'config', config: c1 }));
+  mute(() => rc.sim.spawnBoat({ name: 'b' }));
+  for (let i = 0; i < 30 * 3; i++) mute(() => rc.tick({ dt: 1 / 30, held: [] }));
+  const levels = (rc.bm.domains || []).length;
+  const barriers = rc.bm.cells.filter((c) => c.barrier).length;
+  mute(() => rc.command({ type: 'config', config: c2 }));
+  const d = fieldAt(rc);
+  check('with a boat: refinement levels refilled at the start wind, barriers kept', levels > 0 && d.off === 0
+    && rc.bm.cells.filter((c) => c.barrier).length === barriers, `${levels} domains, ${JSON.stringify(d)}`);
+  // Same terms and seed (sd 0 re-commit): clock and field kept.
+  for (let i = 0; i < 30; i++) mute(() => core.tick({ dt: 1 / 30, held: [] }));
+  const clock = core.sim.windClock;
+  perturb(core);
+  mute(() => core.command({ type: 'config', config: parseAndValidateRoomConfig(toml(9)).config }));
+  check('same seed re-applied: clock and field kept (no refill)', core.sim.windClock === clock && fieldAt(core).off > 0);
 }
 
 // 5. The field follows the scheduled boundary wind (headless, 2f, no boats, gusts off).
