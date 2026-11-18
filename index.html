@@ -782,7 +782,8 @@
       }
       .bp-desktop #hud_grid #instrument_panel .instr-tiles { grid-template-columns: repeat(auto-fit, minmax(60px, 1fr)); }
       .bp-desktop #hud_grid #instrument_panel[data-mode="chart"] .instr-charts { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
-      /* Zone F on desktop: the chat window (remote rooms) or its placeholder. */
+      /* Zone F on desktop: the chat window (a rule-call log in solo games; the
+         placeholder only shows if the chat panel is missing). */
       .bp-desktop #hud_grid #chat_panel {
         position: static; left: auto; bottom: auto; max-width: none; display: flex; flex-direction: column; gap: 4px; min-height: 0;
       }
@@ -1128,7 +1129,7 @@
         margin-top: 16px;
       }
 
-      /* Chat (remote mode only, src/chat-panel.js). */
+      /* Chat (src/chat-panel.js): room chat, plus a rule-call log in solo games. */
       #chat_panel { position: fixed; left: 110px; bottom: 6px; z-index: var(--sz-z-controls); max-width: min(360px, calc(100vw - 16px)); font: var(--sz-fs-md)/1.35 var(--sz-font-ui); color: #fff; }
       #chat_toggle { padding: 4px 10px; font-size: inherit; cursor: pointer; --sz-btn-bg: var(--sz-navy-90); --sz-btn-border: var(--sz-yellow-35); }
       #chat_unread { margin-left: 4px; }
@@ -1141,6 +1142,15 @@
       #chat_unread[hidden], #chat_body[hidden], #chat_panel[hidden] { display: none; }
       .chat-line { padding: 1px 0; }
       .chat-sys { color: #9ab; font-style: italic; }
+      /* Time first on every line: race time (+2:13 / −0:45) or local HH:MM. */
+      .chat-time { display: inline-block; min-width: 3.4em; margin-right: 5px; color: #8fa0b3; font-size: var(--sz-fs-sm); font-style: normal; font-variant-numeric: tabular-nums; }
+      /* Rule calls (penalties, cleared penalties): system lines with a tinted bar. */
+      .chat-rule { font-style: normal; font-weight: 600; margin: 2px 0; padding: 2px 5px; border-left: 3px solid; border-radius: 2px; }
+      .chat-rule.chat-penalty { color: #ffd2c2; border-color: #ff6b4a; background: rgba(255, 107, 74, 0.14); }
+      .chat-rule.chat-cleared { color: #c9f5d3; border-color: #3ccf6e; background: rgba(60, 207, 110, 0.12); }
+      .chat-note { margin: 0 0 4px; font-size: var(--sz-fs-sm); color: #c9d1da; }
+      #chat_note[hidden], #chat_quick[hidden] { display: none; }
+      #chat_input:disabled, #chat_send:disabled { cursor: not-allowed; opacity: 0.6; }
       .chat-who { font-weight: bold; }
       .chat-dot { display: inline-block; width: 8px; height: 8px; border-radius: var(--sz-r-round); margin-right: 4px; vertical-align: middle; }
       #chat_form { display: flex; gap: 4px; }
@@ -1579,7 +1589,7 @@
 
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-CO3bF7uZ.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-D0S5P_T1.js"></script>
   </head>
   <body>
 
@@ -1630,6 +1640,7 @@
       <div id="chat_panel" hidden>
         <button id="chat_toggle" class="sz-btn" type="button" aria-controls="chat_body" aria-expanded="false">Chat<span id="chat_unread" class="sz-badge" hidden>0</span></button>
         <div id="chat_body" class="sz-panel" hidden>
+          <p id="chat_note" class="chat-note" hidden>Solo game: penalties and clears are logged here. Chat is available in multiplayer rooms.</p>
           <div id="chat_log" role="log" aria-live="polite"></div>
           <div id="chat_quick" class="chat-quick" aria-label="Quick messages"></div>
           <form id="chat_form" autocomplete="off">
