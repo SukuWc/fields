@@ -292,7 +292,19 @@ export class Sim {
         const sameTerms = osc(prev) === osc(v.schedule);
         this.windSchedule = v.schedule;
         this.windRealised = realiseWindSchedule(v.schedule);
-        if (!sameTerms) this.windClock = 0;
+        if (!sameTerms) {
+          this.windClock = 0;
+          // Schedule (re)started: the speed terms start off the base
+          // (U0·(1 + Σ B sin φ)), so jump the applied wind to the start and
+          // refill the flow field at it rather than slewing from the base.
+          // Wipes wakes and gust flow (accepted: room start, Reset, Apply).
+          if (v.schedule.enabled) {
+            const t0 = this.windTarget();
+            this._windSettling = false;
+            this._applyWind(t0.angle, t0.speed);
+            if (bm.refillUniform) bm.refillUniform();
+          }
+        }
         // Switching off: slew back to the base instead of jumping.
         if ((prev.enabled || prev.ramp) && !v.schedule.enabled && !v.schedule.ramp) this._windSettling = true;
         return undefined;

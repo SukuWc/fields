@@ -2,7 +2,7 @@
 // boundary wind (Boltzmann setBoundaries) and of ConstantWind in dev mode.
 //
 //   θ(t) = θ0 + Σ_{wind_dir terms} A_i (sin(2π f_i t + φ_i) − sin φ_i)
-//   U(t) = U0 · (1 + Σ_{wind_speed terms} B_j (sin(2π f_j t + φ_j) − sin φ_j))
+//   U(t) = U0 · (1 + Σ_{wind_speed terms} B_j sin(2π f_j t + φ_j))
 //
 // Room config: two tables, [wind_dir] and [wind_speed], each with keys
 // term0, term1, … (sampled in index order). Every term is
@@ -21,8 +21,8 @@
 // rewrites wind_angle_deg / wind_speed_mps to the sampled base), so the base
 // stays one value (`wind` command, settings.wind) and the Sim only runs the
 // oscillating terms. A constant term's amp_sd draws a random base per seed,
-// which moves the start direction / speed itself; the oscillation still
-// starts on that base. A constant term's freq_sd must be 0.
+// which moves the start direction / speed itself; the direction still
+// starts on that base, the speed at base·(1 + Σ B sin φ). A constant term's freq_sd must be 0.
 //
 // Oscillating terms (freq mean > 0): amplitude clamped at 0 as gusts clamp
 // their knobs; a freq draw is clamped to [WIND_MIN_FREQ_HZ, WIND_MAX_FREQ_HZ]
@@ -38,12 +38,18 @@
 // mulberry32(seed ^ BASE_SALT). Adding or editing a constant term therefore
 // never changes the oscillation draws.
 //
-// Every oscillating term has its value at t = 0 subtracted, so the wind
-// starts exactly on the base (offset 0°, factor 1) for any seed and switching
-// the schedule on needs no catch-up. The phase still sets each term's starting
-// slope and its derivative (so the rate limit) is unchanged. The cost: term
-// i's mean moves by −A_i sin φ_i, so it ranges over [−A_i(1 + sin φ_i),
-// A_i(1 − sin φ_i)], up to 2·A_i to one side.
+// Direction terms have their value at t = 0 subtracted, so the direction
+// starts exactly on the base (offset 0°) for any seed. The phase still sets
+// each term's starting slope and its derivative (so the rate limit) is
+// unchanged. The cost: term i's mean moves by −A_i sin φ_i, so it ranges over
+// [−A_i(1 + sin φ_i), A_i(1 − sin φ_i)], up to 2·A_i to one side.
+// Speed terms are plain B_j sin(2π f_j t + φ_j), centred on the base: the
+// starting speed is U0·(1 + Σ B_j sin φ_j), which varies with the seed
+// (within ±WIND_MAX_SPEED_AMP_SUM, so never ≤ 0). When the Sim's schedule
+// clock starts at 0 (room start, Reset, Apply with new terms or seed) it sets
+// the applied wind straight to that start and refills the whole flow field
+// at it (Boltzmann.refillUniform), wiping wakes and gust flow, instead of
+// slewing from the base.
 //
 // The field cannot follow an instant change cleanly: a step rings for 30-60 s
 // (fixed-equilibrium edges, vortex sheets advected out at wind speed). So the
@@ -319,17 +325,19 @@ export function windSchedulePhases(s) {
   return [...oscKeys(s.dir), ...oscKeys(s.speed)].map(() => TAU * rng());
 }
 
-// One term A (sin(2π f t + φ) − sin φ): exactly 0 at t = 0.
-const term = (a, f, ph, t) => a * (Math.sin(TAU * f * t + ph) - Math.sin(ph));
+// Direction term A (sin(2π f t + φ) − sin φ): exactly 0 at t = 0.
+const dirTerm = (a, f, ph, t) => a * (Math.sin(TAU * f * t + ph) - Math.sin(ph));
+// Speed term B sin(2π f t + φ): B sin φ at t = 0.
+const speedTerm = (a, f, ph, t) => a * Math.sin(TAU * f * t + ph);
 
 // Offset of realised terms (sampleWindSchedule(s).osc) at time t (s): { dirDeg,
 // speedFactor }. dirDeg adds to the base angle, speedFactor multiplies the
-// base speed. At t = 0: dirDeg 0, speedFactor 1, for every seed.
+// base speed. At t = 0: dirDeg 0 for every seed, speedFactor 1 + Σ B sin φ.
 export function windScheduleOffset(terms, t, phases) {
   let dir = 0, f = 1;
   terms.forEach((c, i) => {
-    const v = term(c.amp, c.freq_hz, phases[i], t);
-    if (c.target === 'speed') f += v; else dir += v;
+    if (c.target === 'speed') f += speedTerm(c.amp, c.freq_hz, phases[i], t);
+    else dir += dirTerm(c.amp, c.freq_hz, phases[i], t);
   });
   return { dirDeg: dir, speedFactor: f };
 }
