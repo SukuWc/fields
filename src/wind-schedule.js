@@ -58,7 +58,8 @@
 // Seed: room config wind_schedule_seed = [mean, sd] (or a plain integer, sd
 // 0). The room config draws the seed for a game from N(mean, sd²) with real
 // randomness (drawWindSeed, Math.random: not a seeded stream), rounded to
-// an integer and folded to ≥ 0, every time a config is applied (room start,
+// an integer, absolute value (|n|, not clamped at 0, so N(1, 100²) spreads
+// over 0..~300 without piling up at 0), every time a config is applied (room start,
 // Reset, Apply); sd 0 gives exactly the mean, so a game can be replayed by
 // setting wind_schedule_seed = [<drawn seed>, 0]. The spec keeps both: `seed`
 // is the drawn seed every stream above uses, `seedSpec` the configured
@@ -140,8 +141,8 @@ export function parseWindSeed(raw) {
 
 /**
  * Seed for one game from [mean, sd]: N(mean, sd²) from `rand` (default
- * Math.random, real randomness, not a seeded stream), rounded, folded to
- * ≥ 0 (|n|) and capped at 4294967295. sd 0: exactly the mean.
+ * Math.random, real randomness, not a seeded stream): Math.abs(Math.round(draw)),
+ * the absolute value, not a clamp at 0 (no pile-up at 0), capped at 4294967295. sd 0: exactly the mean.
  */
 export function drawWindSeed([mean, sd], rand = Math.random) {
   if (!(sd > 0)) return mean;

@@ -345,7 +345,17 @@ term1 = [7, 2.1, 8.571, 1.714]
   const sd = Math.sqrt(draws.reduce((a, b) => a + (b - mean) ** 2, 0) / draws.length);
   check('drawWindSeed: N(1000, 100²) over 2000 draws', draws.every(Number.isInteger) && Math.abs(mean - 1000) < 10 && Math.abs(sd - 100) < 10,
     `${mean.toFixed(1)} ± ${sd.toFixed(1)}`);
-  check('drawWindSeed: N(1, 100²) folds to ≥ 0', Array.from({ length: 500 }, () => drawWindSeed([1, 100])).every((x) => Number.isInteger(x) && x >= 0));
+  check('drawWindSeed: N(1, 100²) is |round(draw)|: integers, no negatives', Array.from({ length: 500 }, () => drawWindSeed([1, 100])).every((x) => Number.isInteger(x) && x >= 0));
+  check('drawWindSeed: |n| not a clamp, -37.4 → 37 and -0.4 → 0', drawWindSeed([0, 10], seq([1 - Math.exp(-(3.74 ** 2) / 2), 0.5])) === 37
+    && drawWindSeed([0, 1], seq([1 - Math.exp(-(0.4 ** 2) / 2), 0.5])) === 0);
+  {
+    const N = 100000, xs = Array.from({ length: N }, () => drawWindSeed([1, 100]));
+    const zeros = xs.filter((x) => x === 0).length, neg = xs.filter((x) => x < 0).length;
+    const sorted = [...xs].sort((a, b) => a - b), p99 = sorted[Math.floor(0.99 * N)];
+    // |round(N(1, 100²))| = 0 only for draws in (-0.5, 0.5): ~0.4 %; a clamp at 0 would be ~50 %.
+    check('drawWindSeed [1, 100]: share of 0 under 2 %, no negatives, spread to ~300', zeros / N < 0.02 && neg === 0 && p99 > 200 && p99 < 320,
+      `zeros ${(100 * zeros / N).toFixed(2)} %, p99 ${p99}`);
+  }
   const seeds = new Set(Array.from({ length: 20 }, () => validateRoomConfig({ ...ROOM_CONFIG_BASE }).config._windSeed));
   check('each validated default config draws its own seed', seeds.size > 10, [...seeds].join(','));
   const pinned = parseAndValidateRoomConfig('wind_schedule_seed = [77, 0]\n');
