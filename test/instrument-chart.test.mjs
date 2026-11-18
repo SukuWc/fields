@@ -27,4 +27,4 @@ c.add(201, { boatId: 'a', bs: 1, vmg: 1, twa: NaN, tws: 5, aws: 6, twd: 350, hea
 console.log(`all ${n} instrument-chart checks passed`);
 const hd = CHART_STRIPS.find((s) => s.key === 'heading');
 check('heading strip is a 0–360 bearing', hd.min === 0 && hd.max === 360 && hd.wrap);
-check('TWS / AWS strip', CHART_STRIPS.find((s) => s.key === 'wind').lines.map((l) => l.key).join() === 'tws,aws,rws' && c.last('aws') === 6);
+check('TWS / AWS strip', CHART_STRIPS.find((s) => s.key === 'wind').lines.map((l) => l.key).join() === 'tws,aws' && c.last('aws') === 6);

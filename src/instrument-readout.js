@@ -27,7 +27,9 @@
 //         wind_speed_mps plus the wind schedule's oscillation), the same for
 //         every boat and every client. TWD / TWS above are the wind at the
 //         boat (gusts, field effects, other boats' shadows). Shown with or
-//         without a boat (a spectator sees it too).
+//         without a boat (a spectator sees it too). ROOM WD is a signed
+//         angle in (−180, 180] (signedDeg: 359° reads −1°) with its compass
+//         point.
 import { boatSample, wrap180 } from './boat-stats.js';
 
 export const READOUT_TILES = [
@@ -51,6 +53,17 @@ export const READOUT_TILES = [
 
 const fin = (v) => (Number.isFinite(v) ? v : null);
 const wrap360 = (d) => ((d % 360) + 360) % 360;
+
+// A bearing as a signed whole angle in (−180, 180]: 359 → −1, 181 → −179,
+// 180 → 180, 359.6 → 0 (rounded first, then wrapped; never −0). The room wind
+// direction is shown this way (readout, chart, minimap). NaN when not finite.
+export function signedDeg(deg) {
+  if (!Number.isFinite(deg)) return NaN;
+  let r = Math.round(deg) % 360;
+  if (r <= -180) r += 360;
+  else if (r > 180) r -= 360;
+  return r === 0 ? 0 : r;
+}
 
 const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
 // 16-point compass name of a bearing ("NNE"), or '' when not finite.
@@ -137,5 +150,6 @@ export function formatReadout(key, v) {
   if (key === 'bs' || key === 'vmg' || key === 'tws' || key === 'aws' || key === 'rws') return v.toFixed(1);
   if (key === 'next' || key === 'fin' || key === 'hike' || key === 'heel' || key === 'sail' || key === 'rudder') return String(Math.round(v));
   if (key === 'twa' || key === 'awa') return String(Math.round(wrap180(v)));
+  if (key === 'rwd') return String(signedDeg(v));
   return String(Math.round(wrap360(v)) % 360);
 }

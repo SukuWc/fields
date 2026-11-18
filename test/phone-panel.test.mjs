@@ -40,3 +40,29 @@ test('phone Readout hides exactly the tiles the top strip already shows', () => 
 test('Instrument mode stays disabled', () => {
   assert.match(html, /data-mode="instrument" disabled/);
 });
+
+// Two rows on phones and tablets (pt130u): the head row plus two rows of
+// tiles or chart strips fit --ph-h; extra columns scroll sideways as one block.
+test('phone Readout and Chart lay out as two rows, column first, scrolling sideways together', () => {
+  assert.match(html, /\.bp-phone body \{\s*\/\*[^*]*\*\/\s*--ph-h: 162px;/);
+  assert.match(html, /\.bp-phone-landscape body \{\s*--ph-h: 162px;/);
+  const tiles = html.match(/\.bp-phone #instrument_panel:not\(\[data-mode="chart"\]\) \.instr-tiles \{([^}]*)\}/)[1];
+  for (const d of ['display: grid', 'grid-template-columns: none', 'grid-template-rows: repeat(2, auto)', 'grid-auto-flow: column', 'grid-auto-columns: minmax(52px, 1fr)', 'overflow-x: auto']) assert.ok(tiles.includes(d), d);
+  const charts = html.match(/\.bp-phone #instrument_panel\[data-mode="chart"\] \.instr-charts \{([^}]*)\}/)[1];
+  for (const d of ['display: grid', 'grid-template-columns: none', 'grid-template-rows: repeat(2, auto)', 'grid-auto-flow: column', 'grid-auto-columns: calc(50% - 3px)', 'overflow-x: auto']) assert.ok(charts.includes(d), d);
+  assert.ok(html.includes('.bp-phone-landscape #instrument_panel[data-mode="chart"] .instr-charts { grid-auto-columns: 100%; }'));
+  assert.ok(html.includes('.bp-phone #instrument_panel .instr-tile .instr-label { white-space: nowrap;'), 'one-line tile labels');
+  // phones show 12 tiles (4 are in the top strip): 6 columns of two
+  assert.equal(READOUT_TILES.length - STRIP_CELLS.length, 12);
+});
+
+test('tablet: tiles 8 per row and strips 4 per row (two rows each); desktop strips 4 per row from 150 px', () => {
+  assert.ok(html.includes('.bp-tablet #instrument_panel .instr-tiles { grid-template-columns: repeat(8, 1fr); }'));
+  assert.ok(html.includes('.bp-tablet #instrument_panel[data-mode="chart"] .instr-charts { grid-template-columns: repeat(4, minmax(0, 1fr)); }'));
+  assert.ok(html.includes('.bp-desktop #hud_grid #instrument_panel[data-mode="chart"] .instr-charts { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }'));
+});
+
+test('narrow landscape: tighter mode tabs so tabs plus the window selector fit', () => {
+  assert.ok(html.includes('.bp-phone-landscape #instrument_panel .instr-mode { padding: 0 4px; }'));
+  assert.ok(html.includes('.bp-phone-landscape #instrument_panel .instr-window { padding: 0 2px; }'));
+});

@@ -7,14 +7,16 @@
 // seriesRange). chartHoverAt: the sample under the pointer for the hover
 // crosshair and tooltip (instrument-panel.js).
 //
-// Room wind (state.rw, instrument-readout.js roomWindValues) is overlaid as a
-// dashed line on the local wind strips: ROOM WS on TWS / AWS, ROOM WD on TWD,
-// so the gap between the wind at the boat and the room's wind reads directly.
-// The TWD strip is circular: values are unwrapped around the circular mean of
-// the shown window (each to mean ± 180°), the range fits them (at least
-// CIRC_MIN_SPAN wide, in 5° steps) and the labels wrap back to 0–360, so a few
-// degrees of shift is visible and a wind around north does not jump 0↔360.
+// Room wind (state.rw, instrument-readout.js roomWindValues) has two strips
+// of its own, one line each: ROOM WD and ROOM WS (charted without a boat too).
+// TWD and ROOM WD are circular strips: values are unwrapped around the
+// circular mean of the shown window (each to mean ± 180°), the range fits them
+// (at least CIRC_MIN_SPAN wide, in 5° steps), so a few degrees of shift is
+// visible and a wind around north does not jump 0↔360. Labels wrap back to
+// 0–359 (TWD) or, for ROOM WD (signed: true), to a signed angle in
+// (−180, 180]: 359° reads −1° (instrument-readout.js signedDeg).
 import { polylinePoints, seriesRange } from './boat-stats.js';
+import { signedDeg } from './instrument-readout.js';
 import { agoLabel, nearestTimeIndex, timeToX, valueToY } from './svg-chart.js';
 
 export const CHART_SAMPLE_HZ = 5;
@@ -22,14 +24,17 @@ export const CHART_WINDOWS = [30, 60, 120];
 export const CHART_DEFAULT_WINDOW = 60;
 export const CHART_KEYS = ['bs', 'vmg', 'tws', 'aws', 'twa', 'twd', 'heading', 'rwd', 'rws'];
 export const CIRC_MIN_SPAN = 20;
-const ROOM_DASH = '4 3';
 // One strip per entry; lines drawn in order. Colours avoid green/red
-// (reserved for starboard / port).
+// (reserved for starboard / port). The order pairs strips in the phone's
+// two-row, column-first grid: BSP over TWA, TWS / AWS over ROOM WS, TWD over
+// ROOM WD, then HDG.
 export const CHART_STRIPS = [
   { key: 'speed', label: 'BSP / VMG', unit: 'm/s', min: null, max: null, lines: [{ key: 'bs', label: 'BSP', color: '#ffffff' }, { key: 'vmg', label: 'VMG', color: '#ffc400' }] },
-  { key: 'wind', label: 'TWS / AWS / ROOM', unit: 'm/s', min: 0, max: null, lines: [{ key: 'tws', label: 'TWS', color: '#7fd3ff' }, { key: 'aws', label: 'AWS', color: '#ffc400' }, { key: 'rws', label: 'ROOM WS', color: '#ff9de2', dash: ROOM_DASH }] },
   { key: 'twa', label: 'TWA', unit: '°', min: -180, max: 180, wrap: true, lines: [{ key: 'twa', label: 'TWA', color: '#ffffff' }] },
-  { key: 'twd', label: 'TWD / ROOM', unit: '°', min: 0, max: 360, wrap: true, circular: true, lines: [{ key: 'twd', label: 'TWD', color: '#c9b6ff' }, { key: 'rwd', label: 'ROOM WD', color: '#ff9de2', dash: ROOM_DASH }] },
+  { key: 'wind', label: 'TWS / AWS', unit: 'm/s', min: 0, max: null, lines: [{ key: 'tws', label: 'TWS', color: '#7fd3ff' }, { key: 'aws', label: 'AWS', color: '#ffc400' }] },
+  { key: 'rws', label: 'ROOM WS', unit: 'm/s', min: 0, max: null, room: true, lines: [{ key: 'rws', label: 'ROOM WS', color: '#ff9de2' }] },
+  { key: 'twd', label: 'TWD', unit: '°', min: 0, max: 360, wrap: true, circular: true, lines: [{ key: 'twd', label: 'TWD', color: '#c9b6ff' }] },
+  { key: 'rwd', label: 'ROOM WD', unit: '°', min: -180, max: 180, wrap: true, circular: true, signed: true, room: true, lines: [{ key: 'rwd', label: 'ROOM WD', color: '#ff9de2' }] },
   { key: 'heading', label: 'HDG', unit: '°', min: 0, max: 360, wrap: true, lines: [{ key: 'heading', label: 'HDG', color: '#ffffff' }] },
 ];
 
@@ -63,10 +68,11 @@ export class ChartBuffer {
 }
 
 // One value as the strip shows it: m/s to 0.1, degrees whole (0–359 on a
-// circular strip); dash if missing.
+// circular strip, −179…180 on a signed one); dash if missing.
 export function formatChartValue(strip, v) {
   if (!Number.isFinite(v)) return '–';
   if (strip.unit === 'm/s') return v.toFixed(1);
+  if (strip.signed) return String(signedDeg(v));
   return String(strip.circular ? Math.round(wrap360(v)) % 360 : Math.round(v));
 }
 
