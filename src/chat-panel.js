@@ -1,15 +1,22 @@
 import { DESKTOP_QUERY } from './layout.js';
-// Chat panel (remote / server mode only): a small collapsible box, apart
-// from the Player and Room settings panels. Messages come from the server
+import { chatTimeOf } from './chat-log.js';
+// Chat panel: a small collapsible box, apart from the Player and Room
+// settings panels. In a server room messages come from the server
 // (apps/server/room.js: welcome history, then 'chat' events) and are shown
 // as plain text (textContent only, never HTML). The sender shows as their
 // name, boat number and boat colour. Typing here never steers: the helm
 // keys ignore focused inputs (controls.js typingInControl), and pointer /
-// touch / wheel events stay inside the panel. Local and worker modes have no
-// chat (there is nobody to talk to): the panel stays hidden and, on the
-// desktop three-column HUD, #chat_placeholder (a disabled chat box) holds the
-// chat slot instead so the layout is the same in every mode. On desktop the
-// chat opens by default (it has its own column); elsewhere it starts closed.
+// touch / wheel events stay inside the panel. On desktop the chat opens by
+// default (it has its own column); elsewhere it starts closed.
+//
+// Every line starts with its time (chat-log.js chatTimeOf): race time from
+// the start ("+2:13", "−0:45") when the message has one, else local HH:MM.
+//
+// Rule calls (penalties and cleared penalties, rule-toasts.js) are added on
+// this client with addRule() as system lines (.chat-sys.chat-rule), in every
+// mode. Local and worker games have no one to talk to: the panel still shows
+// as a log of those rule lines, with the input disabled, the quick messages
+// hidden and a short note (#chat_note); #chat_placeholder stays hidden.
 const STOP_EVENTS = ['pointerdown', 'pointermove', 'pointerup', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'mousemove', 'mouseup', 'wheel', 'click', 'keydown', 'keyup'];
 const MAX_LINES = 50;
 // Quick messages (one tap sends): part of the chat shell on every size
@@ -27,18 +34,27 @@ export function setupChat(host, doc = document, { desktop = isDesktop() } = {}) 
   const placeholder = doc.getElementById('chat_placeholder');
   if (!panel) return null;
   const remote = host.kind === 'remote' && typeof host.sendChat === 'function';
-  if (placeholder) placeholder.hidden = remote;
-  if (!remote) { panel.hidden = true; return null; }
+  if (placeholder) placeholder.hidden = true;
   panel.hidden = false;
+  panel.classList.toggle('chat-solo', !remote);
   const toggle = doc.getElementById('chat_toggle');
   const body = doc.getElementById('chat_body');
   const log = doc.getElementById('chat_log');
   const form = doc.getElementById('chat_form');
   const input = doc.getElementById('chat_input');
+  const send = doc.getElementById('chat_send');
   const status = doc.getElementById('chat_status');
   const badge = doc.getElementById('chat_unread');
   const quick = doc.getElementById('chat_quick');
-  if (quick && !quick.childElementCount) {
+  const note = doc.getElementById('chat_note');
+  if (note) note.hidden = remote;
+  if (!remote) {
+    input.disabled = true;
+    input.placeholder = 'Chat is available in multiplayer rooms';
+    if (send) send.disabled = true;
+    if (quick) quick.hidden = true;
+  }
+  if (remote && quick && !quick.childElementCount) {
     for (const text of QUICK_MESSAGES) {
       const b = doc.createElement('button');
       b.type = 'button'; b.className = 'sz-btn chat-quick-btn'; b.textContent = text;
@@ -65,7 +81,13 @@ export function setupChat(host, doc = document, { desktop = isDesktop() } = {}) 
 
   const line = (msg) => {
     const row = doc.createElement('div');
-    row.className = msg.sys ? 'chat-line chat-sys' : 'chat-line';
+    row.className = 'chat-line' + (msg.sys ? ' chat-sys' : '') + (msg.rule ? ' chat-rule chat-' + msg.rule : '');
+    const tm = chatTimeOf(msg);
+    const time = doc.createElement('span');
+    time.className = 'chat-time';
+    time.textContent = tm.text;
+    if (tm.title) time.title = tm.title;
+    row.appendChild(time);
     if (!msg.sys && msg.from) {
       const who = doc.createElement('span');
       who.className = 'chat-who';
@@ -87,21 +109,59 @@ export function setupChat(host, doc = document, { desktop = isDesktop() } = {}) 
     if (stick || !open) log.scrollTop = log.scrollHeight;
     if (count && !open && !msg.sys) { unread++; badge.hidden = false; badge.textContent = String(unread); }
   };
-  const replace = (list) => { log.textContent = ''; for (const m of list || []) add(m, false); };
+  // Server lines and this client's rule lines, in order: a rule line sits
+  // after the server line (seq) that was last when it came, so a history
+  // replace (welcome on reconnect) keeps it in place.
+  let server = [];
+  const rules = [];
+  let lastSeq = 0;
+  const keys = new Set();
+  const render = () => {
+    while (log.firstChild) log.removeChild(log.firstChild);
+    let r = 0;
+    for (const m of server) {
+      while (r < rules.length && rules[r].after < (m.seq || 0)) add(rules[r++].msg, false);
+      add(m, false);
+    }
+    while (r < rules.length) add(rules[r++].msg, false);
+  };
+  const replace = (list) => {
+    server = (list || []).slice(-MAX_LINES);
+    lastSeq = server.reduce((a, m) => Math.max(a, m.seq || 0), lastSeq);
+    render();
+  };
   replace(host.chat);
-  host.on((ev) => {
-    if (ev.type === 'chat' && ev.msg) add(ev.msg);
-    else if (ev.type === 'chatHistory') replace(ev.chat);
-  });
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const text = input.value;
-    if (!text.trim()) return;
-    status.textContent = '';
-    const r = await host.sendChat(text);
-    if (r && r.ok) input.value = '';
-    else status.textContent = (r && r.error) || 'not sent';
-  });
+  if (typeof host.on === 'function') {
+    host.on((ev) => {
+      if (ev.type === 'chat' && ev.msg) {
+        server.push(ev.msg);
+        if (server.length > MAX_LINES) server.shift();
+        if (Number.isFinite(ev.msg.seq)) lastSeq = Math.max(lastSeq, ev.msg.seq);
+        add(ev.msg);
+      } else if (ev.type === 'chatHistory') replace(ev.chat);
+    });
+  }
+  // Rule lines (chat-log.js RuleChatFeed messages); a key seen before is dropped.
+  const addRule = (msg) => {
+    if (!msg || (msg.key && keys.has(msg.key))) return;
+    if (msg.key) keys.add(msg.key);
+    rules.push({ after: lastSeq, msg });
+    if (rules.length > MAX_LINES) rules.shift();
+    add(msg);
+  };
+  if (remote) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const text = input.value;
+      if (!text.trim()) return;
+      status.textContent = '';
+      const r = await host.sendChat(text);
+      if (r && r.ok) input.value = '';
+      else status.textContent = (r && r.error) || 'not sent';
+    });
+  } else {
+    form.addEventListener('submit', (e) => e.preventDefault());
+  }
   setOpen(!!desktop);
-  return { setOpen, add };
+  return { setOpen, add, addRule, remote };
 }

@@ -75,6 +75,7 @@ import { setupInputMap } from './input-map.js';
 import { setupPinchZoom } from './pinch-zoom.js';
 import { setupWheelZoom } from './wheel-zoom.js';
 import { setupChat } from './chat-panel.js';
+import { RuleChatFeed } from './chat-log.js';
 import { setupMobileSheet } from './mobile-sheet.js';
 import { setupFullscreenToggle } from './fullscreen-toggle.js';
 import { setupDevView } from './dev-view.js';
@@ -294,7 +295,9 @@ function startClient() {
     });
   }
   setupControls(host, view, getCamera);
-  setupChat(host);
+  const chat = setupChat(host);
+  // Penalties and cleared penalties also go into the chat stream (every mode).
+  const ruleChat = new RuleChatFeed();
   setupMobileSheet();
   setupFullscreenToggle();
   setupDevView();
@@ -394,7 +397,10 @@ function startClient() {
   const mobileStrip = setupMobileStrip({ remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
   const vibrateBox = document.getElementById('vibrate');
   const haptics = createHaptics({ enabled: () => !vibrateBox || vibrateBox.checked });
-  const ruleToasts = setupRuleToasts({ remote: host.kind === 'remote', lockstep: () => host.mode === 'client', onOwnPenalty: () => haptics.onOwnPenalty() });
+  const ruleToasts = setupRuleToasts({
+    remote: host.kind === 'remote', lockstep: () => host.mode === 'client', onOwnPenalty: () => haptics.onOwnPenalty(),
+    onCalls: (calls, state, statics) => { if (chat) for (const m of ruleChat.messages(calls, state, statics)) chat.addRule(m); },
+  });
   setupOwnBoat(host, (ids) => {
     ownBoatIds = ids;
     ownBoatId = ids[0] || null;
@@ -448,7 +454,7 @@ function startClient() {
     }
     if (frame.state) updateBoatTrails(frame.state, frame.statics);
     if (frame.state) instruments.onFrame(frame.state);
-    if (frame.state) ruleToasts.onFrame(frame.state);
+    if (frame.state) ruleToasts.onFrame(frame.state, frame.statics);
     if (frame.state) minimap.onFrame(frame.state, frame.statics);
     if (frame.state) mobileStrip.onFrame(frame.state);
     if (frame.state) rankChip.onFrame(frame.state);

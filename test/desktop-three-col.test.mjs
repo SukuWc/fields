@@ -110,15 +110,27 @@ function fakeDoc(ids) {
 }
 const CHAT_IDS = ['chat_panel', 'chat_placeholder', 'chat_toggle', 'chat_body', 'chat_log', 'chat_form', 'chat_input', 'chat_status', 'chat_unread', 'chat_quick'];
 
-test('local / worker games: chat hidden, the placeholder holds the slot', () => {
+test('local / worker games: the chat panel is a rule-call log, input disabled, placeholder hidden', () => {
   for (const kind of ['local', 'worker']) {
-    const doc = fakeDoc(CHAT_IDS);
-    doc.els.chat_placeholder.hidden = true;
-    assert.equal(setupChat({ kind }, doc, { desktop: true }), null);
-    assert.equal(doc.els.chat_panel.hidden, true);
-    assert.equal(doc.els.chat_placeholder.hidden, false);
+    const doc = fakeDoc([...CHAT_IDS, 'chat_note', 'chat_send']);
+    const api = setupChat({ kind }, doc, { desktop: true });
+    assert.ok(api && typeof api.addRule === 'function');
+    assert.equal(doc.els.chat_panel.hidden, false);
+    assert.equal(doc.els.chat_placeholder.hidden, true);
+    assert.equal(doc.els.chat_input.disabled, true);
+    assert.equal(doc.els.chat_send.disabled, true);
+    assert.equal(doc.els.chat_quick.hidden, true);
+    assert.equal(doc.els.chat_note.hidden, false);
+    assert.equal(doc.els.chat_quick.childElementCount, 0);
+    api.addRule({ sys: true, local: true, rule: 'penalty', key: 'k1', text: '⚑ Boat 1 · RRS 10', rc: 12 });
+    api.addRule({ sys: true, local: true, rule: 'penalty', key: 'k1', text: '⚑ Boat 1 · RRS 10', rc: 12 });
+    assert.equal(doc.els.chat_log.childNodes.length, 1, 'same key once');
+    const row = doc.els.chat_log.childNodes[0];
+    assert.match(row.className, /chat-sys chat-rule chat-penalty/);
+    assert.equal(row.childNodes[0].className, 'chat-time');
+    assert.equal(row.childNodes[0].textContent, '+0:12');
   }
-  assert.match(html, /<div id="chat_placeholder"[^>]*hidden[\s\S]*?Chat is available in multiplayer rooms[\s\S]*?<input type="text" disabled/);
+  assert.match(html, /<p id="chat_note" class="chat-note" hidden>Solo game: penalties and clears are logged here/);
   assert.match(html, /#chat_placeholder \{ display: none; \}/); // never on phone / tablet
 });
 
@@ -134,6 +146,27 @@ test('server rooms: chat shown, placeholder hidden, open by default on desktop o
   setupChat(host(), m, { desktop: false });
   assert.equal(m.els.chat_body.hidden, true);
   assert.ok(DESKTOP_QUERY.includes('1000px'));
+});
+
+test('server rooms: every line has a timestamp; rule lines keep their place on a history replace', () => {
+  let fire = null;
+  const chat = [
+    { seq: 1, at: Date.UTC(2026, 10, 18, 13, 5), sys: true, text: 'Ann joined (boat 0)' },
+    { seq: 2, at: Date.UTC(2026, 10, 18, 13, 6), rc: 133, from: { name: 'Ann', n: 0, color: 0xff0000 }, text: 'hi' },
+  ];
+  const d = fakeDoc(CHAT_IDS);
+  const api = setupChat({ kind: 'remote', sendChat: async () => ({ ok: true }), chat, on(fn) { fire = fn; } }, d, { desktop: true });
+  const times = () => d.els.chat_log.childNodes.map((r) => r.childNodes[0].textContent);
+  const texts = () => d.els.chat_log.childNodes.map((r) => r.childNodes.at(-1).textContent);
+  const wall = new Date(chat[0].at);
+  assert.deepEqual(times(), [String(wall.getHours()).padStart(2, '0') + ':' + String(wall.getMinutes()).padStart(2, '0'), '+2:13']);
+  api.addRule({ sys: true, local: true, rule: 'cleared', key: 'c1', text: '✓ Ann #0 cleared', rc: -45 });
+  fire({ type: 'chat', msg: { seq: 3, at: chat[1].at, rc: 140, from: { name: 'Bo', n: 1 }, text: 'gg' } });
+  assert.deepEqual(texts(), ['Ann joined (boat 0)', 'hi', '✓ Ann #0 cleared', 'gg']);
+  assert.equal(times()[2], '−0:45');
+  fire({ type: 'chatHistory', chat: [...chat, { seq: 3, at: chat[1].at, rc: 140, from: { name: 'Bo', n: 1 }, text: 'gg' }] });
+  assert.deepEqual(texts(), ['Ann joined (boat 0)', 'hi', '✓ Ann #0 cleared', 'gg']);
+  assert.match(d.els.chat_log.childNodes[1].className, /^chat-line$/);
 });
 
 test('compact desktop: the Map button expands / collapses the minimap column and is remembered', () => {

@@ -7,7 +7,8 @@
 // opens / closes the chat through its own toggle, so the unread count keeps
 // working, and the button mirrors that count. Quick messages fill the chat
 // input and send it through the chat form. Local and worker modes have no
-// chat: only the Leaderboard tab shows.
+// room chat, but the Chat tab still shows the rule-call log (penalties and
+// clears, timestamped like room messages) with the input disabled.
 
 import { TABLET_QUERY, TOUCH_UI_QUERY } from './layout.js';
 import { setupSheetSwipe } from './sheet-swipe.js';
