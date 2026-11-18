@@ -673,6 +673,20 @@ export class Room {
     return { error: 'unknown command ' + c.type };
   }
 
+  // The drawn wind schedule seed (room settings), for /api/rooms and the
+  // server log (onWindSeed, set by apps/server/index.js), so a game can be
+  // replayed with wind_schedule_seed = [seed, 0].
+  windSeed() {
+    const w = this.core && this.core.sim.windSchedule;
+    return w ? { enabled: w.enabled, seed: w.seed, spec: [...w.seedSpec] } : null;
+  }
+
+  // After a config apply (every one draws a seed; room-config.js).
+  _noteWindSeed() {
+    const w = this.windSeed();
+    if (w && this.onWindSeed) this.onWindSeed(this, w);
+  }
+
   _roomCommand(c) {
     if (c.type === 'restart') return this._restart(c.scenario);
     if (c.type === 'config') {
@@ -696,6 +710,7 @@ export class Room {
           : (hasScenario(this.core.sim) ? this.core.sim.scenarioIndex : c.config.scenario);
         last = this._restart(n, n === CUSTOM_SCENARIO ? layout : undefined);
       }
+      this._noteWindSeed();
       return last;
     }
     const r = this.core.command(c);

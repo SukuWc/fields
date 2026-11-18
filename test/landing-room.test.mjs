@@ -37,6 +37,9 @@ check('fixed room starts on the remote default field_skip = 1', /\nfield_skip = 
 check('/api/rooms includes current room TOML config',
   typeof room0.config === 'string' && room0.config.includes('scenario =') && room0.config.includes('root_cell_m') && room0.config.includes('budget_target'),
   String(room0 && room0.config).slice(0, 120));
+check('/api/rooms: europe-1 starts with the wind schedule on and its drawn seed',
+  room0.windSeed && room0.windSeed.enabled === true && Number.isInteger(room0.windSeed.seed) && JSON.stringify(room0.windSeed.spec) === '[1,100]'
+  && /\nwind_schedule = true\n/.test(room0.config) && /\nwind_schedule_seed = \[ 1, 100 \]\n/.test(room0.config), JSON.stringify(room0.windSeed));
 const room = srv.rooms.get('europe-1');
 check('europe-1 has its sim from startup, clock running', room && room.persistent && room.core && !!room.timer);
 await sleep(200);

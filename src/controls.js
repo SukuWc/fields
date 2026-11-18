@@ -563,6 +563,7 @@ function commitRoomConfig(cfg) {
     delete _appliedConfig._mapKey;
     delete _appliedConfig._simRes;
     delete _appliedConfig._custom;
+    delete _appliedConfig._windSeed;
     _wind.angle = cfg.wind_angle_deg;
     _wind.speed = cfg.wind_speed_mps;
     _devMode = !!cfg.dev_mode;

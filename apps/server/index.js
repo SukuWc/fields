@@ -12,7 +12,8 @@
 // opens a room that is dropped graceMs after it empties.
 //
 // HTTP on the same port:
-//   GET /api/rooms   [{ id, players, config, admin, adminOpen }]  config = room TOML;
+//   GET /api/rooms   [{ id, players, config, admin, adminOpen, windSeed }]  config = room TOML;
+//                    windSeed = { enabled, seed (this game's drawn seed), spec ([mean, sd]) };
 //                    admin = writes possible; adminOpen = no ADMIN_SECRET set, so
 //                    anyone may write without a token (CORS *)
 //   PUT|POST /api/rooms/:id/config   apply room TOML (Authorization: Bearer <ADMIN_SECRET>
@@ -135,8 +136,12 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
   const secret = normalizeAdminSecret(adminSecret);
   const adminEnabled = !!secret;
   const rooms = new Map();
+  // Each applied room config draws a wind schedule seed (room-config.js); log
+  // it so a game can be replayed with wind_schedule_seed = [seed, 0].
+  const logWindSeed = (room, w) => console.info(`room ${room.name}: wind schedule ${w.enabled ? 'on' : 'off'}, seed ${w.seed} (wind_schedule_seed = [${w.spec.join(', ')}])`);
   for (const name of fixedRooms) {
     const room = new Room(name, { lockstep, fieldHz, fieldTol, graceMs, persistent: true, adminGate, adminSecret: secret });
+    room.onWindSeed = logWindSeed;
     // The sim exists and ticks from startup (even with no clients).
     if (!lockstep) room._create({});
     // Fixed remote rooms start on the shared Reset preset (live europe-1 baseline).
@@ -201,6 +206,8 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
     if (url.pathname === '/api/rooms') {
       return json(res, 200, [...rooms.values()].map((r) => ({
         id: r.name, players: r.clients.size, config: r.tomlConfig(), admin: true, adminOpen: !adminEnabled,
+        // This game's drawn wind schedule seed: replay with wind_schedule_seed = [seed, 0].
+        windSeed: r.windSeed(),
       })));
     }
     if (url.pathname === '/api/perf') {
@@ -253,6 +260,7 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
     if (!room && fixedRooms.length) { ws.close(1008, 'no such room'); return; }
     if (!room) {
       room = new Room(name, { lockstep, fieldHz, fieldTol, graceMs, adminGate, adminSecret: secret });
+      room.onWindSeed = logWindSeed;
       room.onDispose = (r) => { if (rooms.get(name) === r) rooms.delete(name); };
       rooms.set(name, room);
     }
