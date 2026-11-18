@@ -24,6 +24,10 @@ import { markRoomTarget } from './course.js';
 import { buildScenarios } from './scenarios.js';
 import { CUSTOM_SCENARIO, customScenario } from './custom-scenario.js';
 import { GustField } from './gusts.js';
+import {
+  validateWindSchedule, windSchedulePhases, windScheduleOffset, windSlew,
+  WIND_MAX_DEG_PER_S, WIND_SLEW_SPEED_MPS_PER_S, DEFAULT_WIND_SCHEDULE,
+} from './wind-schedule.js';
 import { Boat } from './boat.js';
 import { settingDefault } from './settings-registry.js';
 import { validateAutopilotGains } from './dev-config.js';
@@ -59,7 +63,11 @@ export { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps };
 //   { type: 'removeBoat', id }         remove a spawned boat; returns true if found
 // Admin commands (sim.command()):
 //   { type: 'restart', scenario }      clear and load scenario N
-//   { type: 'wind', angle?, speed? }   UI wind (from-angle °, true wind m/s)
+//   { type: 'wind', angle?, speed? }   base wind (from-angle °, true wind m/s); instant
+//                                      unless the schedule or wind ramp is on (then slewed)
+//   { type: 'windSchedule', enabled, seed, dirOsc, dirTrend, speedOsc, speedTrend, ramp }
+//                                      base-wind oscillation (wind-schedule.js); returns
+//                                      { error } for invalid settings or a rate over the limit
 //   { type: 'devMode', on }            uniform wind, lattice frozen
 //   { type: 'barrier', on }
 //   { type: 'options', amr?, boatEnergy?, ladder? }
@@ -115,7 +123,63 @@ export class Sim {
     // Null: each boat keeps the gains it was given (remote, per owned boat).
     // Set: local/worker dev Apply, copied onto every boat after scenario frames.
     this.autopilotGains = null;
+    // Base wind (room config / `wind` command) vs the applied wind on
+    // map.wind_direction / wind_speed, bm.direction and ConstantWind. They
+    // differ while the schedule runs or a ramped change is in progress.
+    // Room-wide like the lattice: kept across scenario loads.
+    this.windBase = { angle: map.wind_direction, speed: map.wind_speed };
+    this.windSchedule = validateWindSchedule(DEFAULT_WIND_SCHEDULE).schedule;
+    this._windPhases = windSchedulePhases(this.windSchedule);
+    // Seconds of sim time since the schedule was (re)configured.
+    this.windClock = 0;
+    // Applied wind still slewing toward the target after the schedule / ramp went off.
+    this._windSettling = false;
     this._reset();
+  }
+
+  // Applied wind: what the lattice edges, dev-mode ConstantWind and every
+  // reader of map.wind_direction / wind_speed see.
+  _applyWind(angle, speed) {
+    const map = this.map, bm = this.bm;
+    if (Number.isFinite(angle)) {
+      map.wind_direction = angle;
+      bm.direction = angle + 180;
+      map.constantWind.setAngle(angle);
+    }
+    if (Number.isFinite(speed)) {
+      map.wind_speed = speed;
+      if (bm.setWindSpeed) bm.setWindSpeed(speed); else bm.speed = speed / 30;
+      map.constantWind.setSpeed(speed);
+    }
+  }
+
+  _windCeiling(speed) {
+    const bm = this.bm;
+    return Math.max(0, bm.velScale > 0 ? Math.min(speed, 7.5 * bm.velScale) : speed);
+  }
+
+  // Target wind now: base, plus the schedule offset when it is on.
+  windTarget() {
+    const b = this.windBase, s = this.windSchedule;
+    if (!s.enabled) return { angle: b.angle, speed: b.speed };
+    const o = windScheduleOffset(s, this.windClock, this._windPhases);
+    return {
+      angle: (((b.angle + o.dirDeg) % 360) + 360) % 360,
+      speed: this._windCeiling(b.speed * o.speedFactor),
+    };
+  }
+
+  // Once per world step: advance the schedule clock and slew the applied
+  // wind toward the target (≤ WIND_MAX_DEG_PER_S, ≤ WIND_SLEW_SPEED_MPS_PER_S).
+  _stepWind(dt) {
+    const s = this.windSchedule;
+    if (!s.enabled && !s.ramp && !this._windSettling) return;
+    if (s.enabled) this.windClock += dt;
+    const map = this.map;
+    const next = windSlew({ angle: map.wind_direction, speed: map.wind_speed }, this.windTarget(),
+      WIND_MAX_DEG_PER_S * dt, WIND_SLEW_SPEED_MPS_PER_S * dt);
+    this._applyWind(next.angle, next.speed);
+    if (!s.enabled && !s.ramp && next.done) this._windSettling = false;
   }
 
   _reset() {
@@ -200,20 +264,33 @@ export class Sim {
       case 'spawnBoat': return this.spawnBoat(c);
       case 'removeBoat': return this.removeBoat(c.id);
       case 'autopilotGains': return this._autopilotGains(c);
-      case 'wind':
-        if (Number.isFinite(c.angle)) {
-          map.wind_direction = c.angle;
-          bm.direction = c.angle + 180;
-          map.constantWind.setAngle(c.angle);
-        }
-        if (Number.isFinite(c.speed)) {
-          // Clamp to the current mode's stable ceiling (7.5 m/s · velScale).
-          const speed = Math.max(0, bm.velScale > 0 ? Math.min(c.speed, 7.5 * bm.velScale) : c.speed);
-          map.wind_speed = speed;
-          if (bm.setWindSpeed) bm.setWindSpeed(speed); else bm.speed = speed / 30;
-          map.constantWind.setSpeed(speed);
+      case 'wind': {
+        // Sets the base wind. Clamp to the current mode's stable ceiling (7.5 m/s · velScale).
+        if (Number.isFinite(c.angle)) this.windBase.angle = c.angle;
+        if (Number.isFinite(c.speed)) this.windBase.speed = this._windCeiling(c.speed);
+        // Schedule or ramp on: _stepWind slews toward it. Else instant, as before.
+        const s = this.windSchedule;
+        if (!s.enabled && !s.ramp) {
+          this._windSettling = false;
+          this._applyWind(Number.isFinite(c.angle) ? c.angle : undefined, Number.isFinite(c.speed) ? this.windBase.speed : undefined);
         }
         return undefined;
+      }
+      case 'windSchedule': {
+        const v = validateWindSchedule(c);
+        if (v.error) return { error: v.error };
+        const prev = this.windSchedule;
+        const same = JSON.stringify(prev) === JSON.stringify(v.schedule);
+        if (same) return undefined;
+        // Same oscillation terms and seed (e.g. only wind_ramp changed): keep the clock.
+        const sameTerms = JSON.stringify({ ...prev, ramp: 0 }) === JSON.stringify({ ...v.schedule, ramp: 0 });
+        this.windSchedule = v.schedule;
+        this._windPhases = windSchedulePhases(v.schedule);
+        if (!sameTerms) this.windClock = 0;
+        // Switching off: slew back to the base instead of jumping.
+        if ((prev.enabled || prev.ramp) && !v.schedule.enabled && !v.schedule.ramp) this._windSettling = true;
+        return undefined;
+      }
       case 'devMode': map.setDevMode(c.on); return undefined;
       case 'barrier': bm.setBarriers(c.on); return undefined;
       case 'options':
@@ -229,6 +306,7 @@ export class Sim {
         bm.setResolution(mode.resolution, mode.stepsPerFrame);
         // A slower mode lowers the ceiling: clamp the wind to it.
         map.wind_speed = Math.min(map.wind_speed, 7.5 * bm.velScale);
+        this.windBase.speed = Math.min(this.windBase.speed, 7.5 * bm.velScale);
         map.constantWind.setSpeed(map.wind_speed);
         bm.setWindSpeed(map.wind_speed);
         return true;
@@ -419,6 +497,9 @@ export class Sim {
     }
     const inputs = typeof held === 'function' ? held() : held;
     if (inputs) for (const c of inputs) this._boatCommand(c);
+    // Base-wind schedule / ramp: the applied wind for this tick's forces,
+    // gusts and lattice edges (after scenario frames, which may set the base).
+    if (stepped) this._stepWind(simDt);
 
     const players = this.players;
     // Autopilot holdoff: heading hold after Left / Right is released
@@ -577,6 +658,7 @@ export class Sim {
       rulesTime: this.rulesTime,
       devMode: map.devMode,
       wind: { from: map.wind_direction, speed: map.wind_speed },
+      windBase: { from: this.windBase.angle, speed: this.windBase.speed },
       boats: this.players.map((b, i) => {
         const v = b.physics_model.getLinearVelocity();
         return {

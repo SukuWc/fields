@@ -350,7 +350,8 @@ export class Room {
     if (this._respawn) for (const [k, specs] of this._respawn) if (specs && specs.length && !keep.has(k)) keep.set(k, specs);
     for (const e of this.parked.values()) if (e.boats.length) keep.set(e, e.boats.map((b) => ({ name: b.name, color: b.color })));
     const st = old.roomState().settings;
-    this._makeCore({ mapW, mapH, windAngle: old.map.wind_direction, windSpeed: old.map.wind_speed, simRes: st.simRes });
+    // The base wind, not the scheduled one: the config applied next restarts the schedule.
+    this._makeCore({ mapW, mapH, windAngle: old.sim.windBase.angle, windSpeed: old.sim.windBase.speed, simRes: st.simRes });
     // Old boat ids are gone with the old core; _restart respawns from _respawn.
     for (const key of keep.keys()) { if (key.parked) key.boats = []; else this.owned.set(key, []); }
     this._respawn = keep.size ? keep : null;

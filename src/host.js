@@ -37,6 +37,7 @@ import {
 import { settingDefault } from './settings-registry.js';
 import { commandsFromConfig, validateRoomConfig } from './room-config.js';
 import { defaultGustSpawner } from './gusts.js';
+import { windScheduleSettings } from './wind-schedule.js';
 import { bodyOutlines, perfStats } from './present.js';
 import { sceneFrame } from './scene-state.js';
 import { eventForClient } from './host-protocol.js';
@@ -77,6 +78,8 @@ export class SimCore {
       amr: this.sim.options.amr, boatEnergy: this.sim.options.boatEnergy, ladder: this.sim.options.ladder, sailWakeGain: this.sim.options.sailWakeGain,
       fieldSkip: settingDefault('fieldSkip'),
       gusts: defaultGustSpawner(),
+      // Base-wind schedule (wind-schedule.js); settings.wind stays the base wind.
+      windSchedule: windScheduleSettings(this.sim.windSchedule),
     };
     // The constructor only took the root resolution; the mode's explicit
     // stepsPerFrame (fast-wind defaults such as '4f') applies before anything runs.
@@ -176,9 +179,16 @@ export class SimCore {
       case 'devMode': st.devMode = !!c.on; break;
       case 'barrier': st.barrier = !!c.on; break;
       case 'wind':
-        st.wind = { angle: this.map.wind_direction, speed: this.map.wind_speed };
+        // The configured base, not the scheduled / ramping applied wind.
+        st.wind = { angle: this.sim.windBase.angle, speed: this.sim.windBase.speed };
         break;
-      case 'simRes': st.simRes = SIM_RES_MODES[c.mode] ? c.mode : DEFAULT_SIM_RES; break;
+      case 'windSchedule':
+        st.windSchedule = windScheduleSettings(this.sim.windSchedule);
+        break;
+      case 'simRes':
+        st.simRes = SIM_RES_MODES[c.mode] ? c.mode : DEFAULT_SIM_RES;
+        st.wind = { angle: this.sim.windBase.angle, speed: this.sim.windBase.speed };
+        break;
       case 'amrMode': st.amrMode = c.mode === 'auto' ? 'auto' : 'fixed'; break;
       case 'sailWake': st.sailWakeGain = this.sim.options.sailWakeGain; break;
       case 'gusts': {

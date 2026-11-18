@@ -51,6 +51,7 @@ src/input-map.js     — Settings → Player → Input mapping radios: Keyboard 
 src/url-settings.js   — Sync #settings controls with the query string (non-defaults only)
 src/utils.js          — range_map and HSVtoRGB helpers
 src/wind.js           — Wind providers (fluid-sampled and constant). Boats only see Map.get_wind
+src/wind-schedule.js  — Base-wind schedule (room config wind_schedule*, off by default): seeded sine oscillation + slow trend sine of the boundary wind around the configured base, rate limits (≤ 0.5°/s, ≤ 0.5 %/s), slew of the applied wind (Sim._stepWind); sim.windBase is the base, map.wind_direction / wind_speed the applied wind
 src/boltzmann.js      — Lattice Boltzmann Method (LBM) fluid simulator
 src/boat.js           — Sailboat physics, aerodynamics, autopilot
 src/mark.js           — Race mark: dynamic 1 m buoy (boat mass / 10) on an anchor spring + damper

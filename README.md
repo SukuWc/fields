@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-11-16
+Last updated: 2026-11-18
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -78,6 +78,7 @@ Last updated: 2026-11-16
 - [x] Moving-column gusts: elliptical momentum columns injected into the lattice (long axis across the wind, carried downwind at free-stream speed, 10 s life), scenario 22: [#111](https://github.com/SukuWc/fields/pull/111)
 - [x] Large gusts (σ about 10–15 m, as on `europe-1`) sampled at every root cell, removing the checkerboard artifact on the wind field with no gain rescale, scenario 23: [#117](https://github.com/SukuWc/fields/pull/117)
 - [x] Room-config gust rate spawner: Poisson gust arrivals (`gust_rate_per_min`) with mean[,sd] knobs for gain, size, life and direction in room TOML, off by default: [#112](https://github.com/SukuWc/fields/pull/112)
+- [ ] Base-wind schedule (`wind_schedule`, off by default): the boundary wind oscillates around the configured base as θ0 + Σ A sin(2πt/T + φ) plus one slow sine as the trend (default ±6° / 6 min, ±3° / 9.5 min, ±2° / 14 min and a 10° / 60 min trend, up to ~1°/min within a race), speed U0·(1 + Σ B sin(…)) (±7 % / 7 min, ±4 % / 11.5 min, ±4 % / 45 min trend), phases from `wind_schedule_seed`, no noise. Peak rates Σ 2πA/T ≤ 0.5°/s and Σ 2πB/P ≤ 0.5 %/s are enforced (an over-rate TOML is refused), the applied wind slews toward the target so switching it on or off never steps the field, and `wind_ramp = true` also ramps manual wind changes (0.5°/s, 0.1 m/s per s). The room keeps the base wind in its settings and TOML: [#220](https://github.com/SukuWc/fields/pull/220)
 - [ ] Strategy tuning
 - [ ] Strong-wind speed cap (heel limit): close-hauled speed now levels off with wind ([#185](https://github.com/SukuWc/fields/pull/185)); a planing reach still is not modelled, so strong-wind beam reaches stay at displacement speed. Sweep data in [#83](https://github.com/SukuWc/fields/pull/83)
 - [x] Autopilot holdoff: `autopilot_holdoff_ms` (Dev TOML, default 500) replaces the `sticky_autopilot` setting; Left / Right are plain helm and heading hold engages on the then-current heading that many ms of sim time after release (0 = at once, -1 = never), per boat; Up / Down unaffected: [#216](https://github.com/SukuWc/fields/pull/216)
