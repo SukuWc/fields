@@ -12,10 +12,11 @@
 //   gust_* = number | [mean, sd]  → per-column sample knobs (sd optional, default 0)
 //   wind_schedule = true  → base-wind oscillation (wind-schedule.js) around
 //                           wind_angle_deg / wind_speed_mps, starting on the base;
-//                           [[wind_osc]] = one sine each: target = "direction" |
-//                           "speed", amp (° | % of base), period_s, optional
-//                           phase_deg, each [mean, sd] like gust_*; drawn once
-//                           per wind_schedule_seed (trend = a long-period entry)
+//                           [wind_dir] / [wind_speed]: termN = [amp, amp_sd, freq,
+//                           freq_sd], amp ° / % of base, freq cycles per hour,
+//                           drawn once per wind_schedule_seed like gust_*.
+//                           freq 0 = constant term: the base (° / m/s, terms add),
+//                           which then replaces wind_angle_deg / wind_speed_mps
 //   wind_ramp = true      → manual wind changes slew at 0.5°/s, 0.1 m/s per s
 //   scenario = "custom" + [custom] → marks / start / course / finish /
 //                           boundary from the TOML (custom-scenario.js)
@@ -42,6 +43,7 @@ import {
 import {
   DEFAULT_WIND_SCHEDULE,
   validateWindSchedule,
+  windScheduleBase,
 } from './wind-schedule.js';
 import {
   CUSTOM_SCENARIO,
@@ -76,7 +78,8 @@ export const ROOM_CONFIG_KEYS = [
   'gust_ramp_s',
   'wind_schedule',
   'wind_schedule_seed',
-  'wind_osc',
+  'wind_dir',
+  'wind_speed',
   'wind_ramp',
   // Only with scenario = "custom": static layout table (custom-scenario.js).
   'custom',
@@ -128,7 +131,8 @@ export const ROOM_CONFIG_DEFAULTS = Object.freeze({
   // Off by default: existing rooms, scenarios and tests keep a steady wind.
   wind_schedule: DEFAULT_WIND_SCHEDULE.enabled,
   wind_schedule_seed: DEFAULT_WIND_SCHEDULE.seed,
-  wind_osc: DEFAULT_WIND_SCHEDULE.osc,
+  wind_dir: DEFAULT_WIND_SCHEDULE.dir,
+  wind_speed: DEFAULT_WIND_SCHEDULE.speed,
   wind_ramp: DEFAULT_WIND_SCHEDULE.ramp,
   custom: DEFAULT_CUSTOM_COURSE,
 });
@@ -190,7 +194,7 @@ export function gustSpawnerFromConfig(cfg) {
 export function windScheduleFromConfig(cfg) {
   return {
     enabled: cfg.wind_schedule, seed: cfg.wind_schedule_seed, ramp: cfg.wind_ramp,
-    osc: cfg.wind_osc,
+    dir: cfg.wind_dir, speed: cfg.wind_speed,
   };
 }
 
@@ -201,7 +205,8 @@ export function windScheduleConfigFromSettings(w) {
   return {
     wind_schedule: s.enabled,
     wind_schedule_seed: s.seed,
-    wind_osc: s.osc,
+    wind_dir: s.dir,
+    wind_speed: s.speed,
     wind_ramp: s.ramp,
   };
 }
@@ -572,7 +577,16 @@ export function validateRoomConfig(cfg, checks = {}) {
       const w = v.schedule;
       out.wind_schedule = w.enabled;
       out.wind_schedule_seed = w.seed;
-      out.wind_osc = w.osc;
+      out.wind_dir = w.dir;
+      out.wind_speed = w.speed;
+      // Constant (freq 0) terms are the base: they replace wind_angle_deg /
+      // wind_speed_mps (sampled per seed), so every later reader of the base
+      // (the `wind` command, settings.wind, the round-trip) sees one value.
+      if (w.enabled) {
+        const base = windScheduleBase(w);
+        if (base.angle !== null) out.wind_angle_deg = base.angle;
+        if (base.speed !== null) out.wind_speed_mps = Math.min(MAX_WIND_MPS, base.speed);
+      }
       out.wind_ramp = w.ramp;
     }
 
@@ -649,7 +663,7 @@ export function commandsFromConfig(cfg, prev = null) {
   }
 
   // Base-wind schedule after the base wind it modulates.
-  const windKeys = ['wind_schedule', 'wind_schedule_seed', 'wind_osc', 'wind_ramp'];
+  const windKeys = ['wind_schedule', 'wind_schedule_seed', 'wind_dir', 'wind_speed', 'wind_ramp'];
   if (!prev || windKeys.some((k) => JSON.stringify(prev[k]) !== JSON.stringify(cfg[k]))) {
     cmds.push({ type: 'windSchedule', ...windScheduleFromConfig(cfg) });
   }
@@ -731,19 +745,14 @@ export function roomConfigErrorLine(text, err) {
     const i = lines.findIndex((l) => re.test(l));
     return i < 0 ? null : i + 1;
   };
-  // wind_osc[i](.key): the i-th [[wind_osc]] header, then key = inside that entry.
-  const osc = /\bwind_osc\[(\d+)\](?:\.(\w+))?/.exec(msg);
-  if (osc) {
-    const heads = [];
-    lines.forEach((l, i) => { if (/^\s*\[\[\s*wind_osc\s*\]\]/.test(l)) heads.push(i); });
-    const h = heads[Number(osc[1])];
-    if (h !== undefined) {
-      const key = osc[2] || (/unknown key\(s\) in wind_osc\[\d+\]: (\w+)/.exec(msg) || [])[1];
-      if (key) {
-        const re = new RegExp('^\\s*' + esc(key) + '\\s*=');
-        for (let i = h + 1; i < lines.length && !/^\s*\[/.test(lines[i]); i++) if (re.test(lines[i])) return i + 1;
-      }
-      return h + 1;
+  // wind_dir.termN / wind_speed.termN: that key inside its table.
+  const term = /\b(wind_dir|wind_speed)\.(\w+)/.exec(msg);
+  if (term) {
+    const h = findTable(term[1]);
+    if (h) {
+      const re = new RegExp('^\\s*' + esc(term[2]) + '\\s*=');
+      for (let i = h; i < lines.length && !/^\s*\[/.test(lines[i]); i++) if (re.test(lines[i])) return i + 1;
+      return h;
     }
   }
   const unk = /unknown key\(s\)(?: in \[([\w.]+)\])?: ([\w-]+)/.exec(msg);

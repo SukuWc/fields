@@ -25,7 +25,7 @@ import { buildScenarios } from './scenarios.js';
 import { CUSTOM_SCENARIO, customScenario } from './custom-scenario.js';
 import { GustField } from './gusts.js';
 import {
-  validateWindSchedule, realiseWindSchedule, windScheduleOffset, windSlew,
+  validateWindSchedule, realiseWindSchedule, windScheduleOscillation, windScheduleOffset, windSlew,
   WIND_MAX_DEG_PER_S, WIND_SLEW_SPEED_MPS_PER_S, DEFAULT_WIND_SCHEDULE,
 } from './wind-schedule.js';
 import { Boat } from './boat.js';
@@ -65,9 +65,10 @@ export { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps };
 //   { type: 'restart', scenario }      clear and load scenario N
 //   { type: 'wind', angle?, speed? }   base wind (from-angle °, true wind m/s); instant
 //                                      unless the schedule or wind ramp is on (then slewed)
-//   { type: 'windSchedule', enabled, seed, osc, ramp }
-//                                      (osc: [{ target: 'direction' | 'speed', amp, period_s,
-//                                      phase_deg? }], values [mean, sd], room config [[wind_osc]])
+//   { type: 'windSchedule', enabled, seed, dir, speed, ramp }
+//                                      (dir / speed: { termN: [amp, amp_sd, freq, freq_sd] },
+//                                      room config [wind_dir] / [wind_speed]; freq 0 terms
+//                                      are the base, applied by the room config, not here)
 //                                      base-wind oscillation (wind-schedule.js); returns
 //                                      { error } for invalid settings or a rate over the limit
 //   { type: 'devMode', on }            uniform wind, lattice frozen
@@ -285,8 +286,9 @@ export class Sim {
         const prev = this.windSchedule;
         const same = JSON.stringify(prev) === JSON.stringify(v.schedule);
         if (same) return undefined;
-        // Same oscillation terms and seed (e.g. only wind_ramp changed): keep the clock.
-        const sameTerms = JSON.stringify({ ...prev, ramp: 0 }) === JSON.stringify({ ...v.schedule, ramp: 0 });
+        // Same oscillating terms and seed (e.g. only wind_ramp or a constant term changed): keep the clock.
+        const osc = (x) => JSON.stringify({ ...windScheduleOscillation(x), ramp: 0 });
+        const sameTerms = osc(prev) === osc(v.schedule);
         this.windSchedule = v.schedule;
         this.windRealised = realiseWindSchedule(v.schedule);
         if (!sameTerms) this.windClock = 0;
