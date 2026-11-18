@@ -3,9 +3,11 @@
 //   statics (snapshot): course anchors / gates / finish, start line,
 //     boundary { x, yMin, yMax }
 //   frame state: boats by id (px / py, heading_deg), mark centres
-//     (state.course.c), the next mark (state.course.view.index), wind
-//     (the shown boat's twd_deg), the main view's laylines (state.layline,
-//     when Ladder lines is on; minimapLaylines)
+//     (state.course.c), the next mark (state.course.view.index), the shown
+//     boat's twd_deg (laylines when Ladder lines is off), the main view's
+//     laylines (state.layline, when Ladder lines is on; minimapLaylines),
+//     the room wind (state.rw: the boundary / forcing wind, which follows
+//     the wind schedule) for the wind indicator (.mm-wind: arrow + speed)
 //   view (this client): the camera rectangle.
 // Click (or drag) pans the camera there and turns Camera Follow off; the
 // "Follow" button turns it back on. Redrawn at 5 Hz. No sim state is read.
@@ -70,12 +72,53 @@ export function minimapLaylines(state, statics, { ownId = null, twdDeg = NaN, ma
   return laylineGeometry(() => w, anchors, { bounds });
 }
 
+// Room wind indicator from a frame's state.rw ([from compass °, m/s],
+// scene-state.js): the arrow points where the wind blows to (from + 180°,
+// north up like the map), the speed in m/s like the HUD's TWS (one
+// decimal). null when the frame has no room wind.
+export function roomWindReadout(state) {
+  const rw = state && state.rw;
+  if (!Array.isArray(rw) || !Number.isFinite(rw[0]) || !Number.isFinite(rw[1])) return null;
+  const from = ((rw[0] % 360) + 360) % 360;
+  const bearing = String(Math.round(from) % 360).padStart(3, '0') + '°';
+  const speed = rw[1].toFixed(1);
+  return {
+    fromDeg: from,
+    towardDeg: (from + 180) % 360,
+    bearing,
+    speed,
+    unit: 'm/s',
+    label: 'Room wind from ' + bearing + ' at ' + speed + ' m/s',
+  };
+}
+
 export function setupMinimap({ view, getMapSize, remote = false, lockstep = () => false } = {}, doc = document) {
   const root = doc.getElementById('minimap');
   if (!root || !view) return { onFrame() {}, setOwnId() {} };
   const cv = root.querySelector('canvas');
   const followBtn = root.querySelector('.mm-follow');
   const ctx = cv.getContext('2d');
+  // Room wind indicator (index.html .mm-wind): DOM, so the text stays
+  // readable when the phone's round map scales the canvas down.
+  const windEl = root.querySelector('.mm-wind');
+  const windArrow = windEl && windEl.querySelector('.mm-wind-arrow');
+  const windDir = windEl && windEl.querySelector('.mm-wind-dir');
+  const windSpd = windEl && windEl.querySelector('.mm-wind-spd');
+  let windShown = null;
+  const syncWind = (s) => {
+    if (!windEl) return;
+    const w = roomWindReadout(s);
+    const key = w ? w.towardDeg.toFixed(1) + '|' + w.label : '';
+    if (key === windShown) return;
+    windShown = key;
+    windEl.hidden = !w;
+    if (!w) return;
+    if (windArrow) windArrow.style.transform = 'rotate(' + w.towardDeg.toFixed(1) + 'deg)';
+    if (windDir) windDir.textContent = w.bearing;
+    if (windSpd) windSpd.textContent = w.speed + '\u00a0' + w.unit;
+    windEl.setAttribute('aria-label', w.label);
+    windEl.title = w.label;
+  };
   const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
   cv.width = MINIMAP_W * dpr; cv.height = MINIMAP_H * dpr;
   let ownId = null, lastState = null, lastStatics = null, last = 0;
@@ -213,21 +256,9 @@ export function setupMinimap({ view, getMapSize, remote = false, lockstep = () =
         ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + Math.sin(a) * (r + 6), py - Math.cos(a) * (r + 6)); ctx.stroke();
       }
     }
-    // wind arrow (top right): blowing towards
-    if (Number.isFinite(twdOf(s))) {
-      const a = (twdOf(s) + 180) * Math.PI / 180, cx = MINIMAP_W - 16, cy = 16;
-      const dx = Math.sin(a) * 9, dy = -Math.cos(a) * 9;
-      ctx.strokeStyle = '#7fd3ff'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(cx - dx, cy - dy); ctx.lineTo(cx + dx, cy + dy); ctx.stroke();
-      ctx.beginPath(); ctx.arc(cx + dx, cy + dy, 2.5, 0, 2 * Math.PI); ctx.fillStyle = '#7fd3ff'; ctx.fill();
-    }
+    syncWind(s);
     syncFollowBtn();
   }
-  const twdOf = (s) => {
-    const me = s && s.boats ? instrumentBoat(s.boats, { ownId, remote, lockstep: lockstep() }) : null;
-    const b = me || (s && s.boats && s.boats[0]);
-    return b && Number.isFinite(b.twd_deg) ? b.twd_deg : NaN;
-  };
   draw();
   return {
     setOwnId(id) { ownId = id || null; },

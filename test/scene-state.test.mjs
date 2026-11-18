@@ -10,6 +10,9 @@
 //      its first frame, again only when they change (restart, a new boat),
 //      and to a late joiner before its first frame; frames never carry them.
 //   4. buildScene is pure: the same state and statics build the same scene.
+//   6. Room wind (state.rw): the applied boundary wind as [from compass °,
+//      m/s] reaches a client through a Room, follows a `wind` command and the
+//      wind schedule, and is not the local field sample.
 //   5. The readout / HUD panels the client writes from the server JSON read
 //      exactly as the local ones (HUD values travel unrounded), and no state
 //      carries prebuilt HTML or guide records.
@@ -59,7 +62,7 @@ for (const [n, ticks] of [[0, 90], [11, 400], [15, 300], [19, 300], [17, 150], [
   check(`scenario ${n}: state carries no prebuilt text or geometry`, !prebuilt, prebuilt || '');
 }
 
-const want = ['hud', 'boats', 'mk', 'start', 'course', 'finish', 'pair', 'br', 'mr', 'mt', 'cf', 'pen', 'amr', 'bt'];
+const want = ['hud', 'boats', 'mk', 'start', 'course', 'finish', 'pair', 'br', 'mr', 'mt', 'cf', 'pen', 'amr', 'rw', 'bt'];
 check('the round trip covered every kind of state', want.every((k) => seen.has(k)), 'missing: ' + want.filter((k) => !seen.has(k)).join(','));
 
 // 2. Size, scenario 0, 1 boat.
@@ -105,6 +108,39 @@ check('the round trip covered every kind of state', want.every((k) => seen.has(k
   mute(() => { room.message(a, { type: 'command', id: 3, c: { type: 'restart', scenario: 7 } }); tick(); });
   check('room: a restart resends the statics', types(a) === 'sf' && types(b) === 'sf', types(a) + ' ' + types(b));
   check('room: statics and frame bytes are counted', room.staticsBytesSent > 0 && room.frameBytesSent > 0 && room.lastFrameBytes > 0);
+  room.stop();
+}
+
+// 6. Room wind to the client.
+{
+  const room = new Room('room-wind-test', { lockstep: true, fieldHz: 0 });
+  const a = { got: [], send(m) { this.got.push(parseServerMessage(m)); } };
+  const tick = () => room.message(a, { type: 'tick', req: { dt: 1 / 30, held: [], present: true, view } });
+  const lastRw = () => a.got.filter((m) => m.type === 'frame').pop().frame.state.rw;
+  const compass = (deg) => (((90 - deg) % 360) + 360) % 360;
+  const near = (p, q, e = 1e-3) => Math.abs(p - q) <= e;
+  mute(() => {
+    room.join(a); room.message(a, { type: 'init', opts });
+    room.message(a, { type: 'command', id: 1, c: { type: 'restart', scenario: 0 } });
+    tick();
+  });
+  let rw = lastRw();
+  check('room wind: every frame carries rw = [from compass, m/s] of the room wind', Array.isArray(rw) && rw.length === 2
+    && near(rw[0], compass(room.core.map.wind_direction)) && near(rw[1], room.core.map.wind_speed), JSON.stringify(rw));
+  mute(() => { room.message(a, { type: 'command', id: 2, c: { type: 'wind', angle: 60, speed: 5 } }); tick(); });
+  rw = lastRw();
+  check('room wind: a wind command (sim 60° = from 030°, 5 m/s) reaches the client', near(rw[0], 30) && near(rw[1], 5), JSON.stringify(rw));
+  mute(() => {
+    room.core.command({ type: 'windSchedule', enabled: true, seed: 2 }); // room config path (config command), direct here
+    for (let t = 0; t < 30 * 60; t++) tick();
+  });
+  rw = lastRw();
+  const m = room.core.map;
+  const field = m.get_wind(0, 0);
+  const fieldFrom = compass(Math.atan2(field.vy, field.vx) * 180 / Math.PI + 180);
+  check('room wind: follows the wind schedule (applied wind, off the base after 60 s)', near(rw[0], compass(m.wind_direction)) && near(rw[1], m.wind_speed)
+    && Math.abs(rw[0] - 30) > 0.5, `${JSON.stringify(rw)} base 030°`);
+  check('room wind: not the local field sample', rw[0] !== fieldFrom || rw[1] !== field.speed, `field ${fieldFrom.toFixed(3)}°`);
   room.stop();
 }
 
