@@ -654,6 +654,17 @@
         color: #fff; background: var(--sz-navy-85); border: 1px solid rgba(255,255,255,0.3); border-radius: var(--sz-r-sm); padding: 1px 6px; cursor: pointer;
       }
       .bp-wide #minimap .mm-follow[aria-pressed="true"] { background: var(--sz-yellow); color: var(--sz-navy); border-color: var(--sz-yellow); }
+      /* Room wind indicator (minimap.js roomWindReadout): top right of the
+         map, north up like the map; arrow = where the wind blows to. */
+      #minimap .mm-wind {
+        position: absolute; top: 6px; right: 6px; display: flex; align-items: center; gap: 4px;
+        padding: 1px 6px 1px 3px; font: 600 11px var(--sz-font-ui); font-variant-numeric: tabular-nums; line-height: 16px;
+        color: #fff; background: var(--sz-navy-85); border: 1px solid rgba(255,255,255,0.3); border-radius: var(--sz-r-sm);
+        pointer-events: none; white-space: nowrap;
+      }
+      #minimap .mm-wind[hidden] { display: none; }
+      #minimap .mm-wind-arrow { width: 16px; height: 16px; flex: none; fill: #7fd3ff; transition: transform 0.2s linear; }
+      #minimap .mm-wind-dir { opacity: 0.8; }
       /* chat sits above the minimap (plan zone G) */
       .bp-wide body #chat_panel { left: 10px; bottom: 276px; }
 
@@ -1260,6 +1271,16 @@
       }
       .bp-phone #minimap canvas { display: block; width: 100%; height: 100%; object-fit: cover; touch-action: none; }
       .bp-phone #minimap .mm-follow { display: none; }
+      /* Round map: the wind pill sits at the bottom centre, inside the circle
+         (the corners are cut off), speed only; the open map shows it bottom right. */
+      .bp-phone #minimap:not(.mm-open) .mm-wind {
+        top: auto; right: auto; bottom: 5px; left: 50%; transform: translateX(-50%);
+        gap: 1px; padding: 0 4px 0 2px; font-size: 10px; line-height: 13px; border: none; background: rgba(11, 23, 71, 0.75);
+      }
+      .bp-phone #minimap:not(.mm-open) .mm-wind-arrow { width: 13px; height: 13px; }
+      .bp-phone #minimap:not(.mm-open) .mm-wind-dir { display: none; }
+      .bp-phone #minimap.mm-open .mm-wind { top: auto; bottom: 6px; right: 6px; font-size: 13px; line-height: 18px; padding: 2px 8px 2px 4px; }
+      .bp-phone #minimap.mm-open .mm-wind-arrow { width: 18px; height: 18px; }
       .bp-phone #minimap.mm-open {
         z-index: calc(var(--sz-z-chrome) + 20); left: 50%; right: auto; transform: translateX(-50%);
         width: min(94vw, 440px); height: auto; aspect-ratio: 320 / 256; border-radius: var(--sz-r-xl); background: var(--sz-navy);
@@ -1558,7 +1579,7 @@
 
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-CdqprCL9.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-B67_RHDa.js"></script>
   </head>
   <body>
 
@@ -1655,6 +1676,7 @@
       <section id="minimap" aria-label="Minimap">
         <canvas width="320" height="256" aria-label="Map overview: click to move the camera"></canvas>
         <button type="button" class="mm-follow" aria-pressed="false" title="Camera follows your boat">Follow</button>
+        <div class="mm-wind" role="img" aria-label="Room wind" hidden><svg class="mm-wind-arrow" viewBox="-8 -8 16 16" aria-hidden="true"><path d="M0 -7 L5 1 L1.6 0 L1.6 7 L-1.6 7 L-1.6 0 L-5 1 Z"/></svg><span class="mm-wind-dir"></span><span class="mm-wind-spd"></span></div>
         <button type="button" class="mm-close" aria-label="Close map" title="Close map">×</button>
       </section>
       <button type="button" id="mm_toggle" class="sz-btn" aria-controls="minimap" aria-expanded="false" title="Show the minimap">Map</button>
