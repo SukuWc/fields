@@ -72,7 +72,8 @@ import { TRAIL_COLORS } from '../../src/boat-trails.js';
 // empty is refused, and so is more than CHAT_RATE_N messages per client in
 // CHAT_RATE_MS. Accepted, it goes to everyone in the room as
 // { type: 'event', ev: { type: 'chat', msg } }, msg = { seq, tick, at (ms
-// since epoch), text, from: { name, boatId, n (boat number: index in the
+// since epoch), rc (race clock, s from the start; only with a start
+// sequence), text, from: { name, boatId, n (boat number: index in the
 // race), color } }; system lines (a boat joined, left, disconnected) have
 // sys: true and no from. The last CHAT_HISTORY go in every welcome (chat),
 // so a joiner or a reconnect sees them. Plain text: clients render it as text.
@@ -502,6 +503,10 @@ export class Room {
     msg.seq = ++this.chatSeq;
     msg.tick = this.ticks;
     msg.at = Date.now();
+    // Race time (s from the starting signal) when the race has a start
+    // sequence: clients show it as the line's timestamp (chat-log.js).
+    const seq = this.core && this.core.sim && this.core.sim.startSequence;
+    if (seq && Number.isFinite(seq.clock)) msg.rc = seq.clock;
     this.chat.push(msg);
     if (this.chat.length > CHAT_HISTORY) this.chat.splice(0, this.chat.length - CHAT_HISTORY);
     this.broadcast({ type: 'event', ev: { type: 'chat', msg } });

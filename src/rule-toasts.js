@@ -11,6 +11,13 @@
 // boat (within PAIR_MEMORY_S of sim time). With no such encounter the toast
 // says "Penalty" with no rule. No DOM in RuleCallTracker; the panel is
 // setupRuleToasts below.
+//
+// Cleared: the sim's CLEARED flash (state.pen.cleared, PENALTY_CLEARED_MS
+// long) starting for a boat is one cleared call; while it is still showing,
+// a further drop in her pending count is another (two turns in a row). A
+// drop with no flash (a finishing boat's unserved penalties go to the
+// results) is not a clear. Each call names the rule of the boat's oldest
+// penalty seen here (cleared: 'Rule 10'), the order the sim serves them.
 import { markText, ruleText } from './rule-text.js';
 import { instrumentBoat } from './instrument-readout.js';
 
@@ -68,8 +75,9 @@ function pairRuleFor(p, id) {
 
 export class RuleCallTracker {
   constructor() { this.reset(); }
-  reset() { this.primed = false; this.counts = new Map(); this.recent = new Map(); this.clearedSeen = new Set(); this.ep = null; this.lastT = -Infinity; }
-  // → new calls: [{ kind: 'penalty' | 'cleared', boat, other, ref, text, code, count }]
+  reset() { this.primed = false; this.counts = new Map(); this.recent = new Map(); this.clearedSeen = new Set(); this.queues = new Map(); this.ep = null; this.lastT = -Infinity; }
+  // → new calls: [{ kind: 'penalty' | 'cleared', boat, other, ref, text, code,
+  // count (pending after the call), cleared (rule name of a cleared penalty | null) }]
   update(state) {
     if (!state || !state.boats) return [];
     const t = Number.isFinite(state.ts) ? state.ts : 0;
@@ -87,10 +95,20 @@ export class RuleCallTracker {
     const now = new Map();
     for (const e of pen.boats || []) now.set(e.i, e);
     const first = this.counts.size === 0 && !this.primed;
+    const cl = new Set((pen.cleared || []).map((e) => e.i));
+    const clearedCall = (id, c) => {
+      const q = this.queues.get(id);
+      const ref = q && q.length ? q.shift() : null;
+      return { kind: 'cleared', boat: id, other: null, code: null, count: c, ref: 'Cleared', text: (ref ? ref + ' ' : '') + 'penalty turn done', cleared: ref };
+    };
     for (const id of ids) {
       const e = now.get(id);
       const c = e ? e.c || 0 : 0;
       const prev = this.counts.get(id) || 0;
+      if (!first && ids.has(id) && cl.has(id)) {
+        if (!this.clearedSeen.has(id)) out.push(clearedCall(id, c));
+        else if (c < prev) for (let k = c; k < prev; k++) out.push(clearedCall(id, k));
+      }
       // a penalty already pending when we first look (joining mid-race) is
       // not a new call
       if (c > prev && !first) {
@@ -100,23 +118,32 @@ export class RuleCallTracker {
           if (r && t - r.t <= PAIR_MEMORY_S) rule = r;
         }
         const tx = ruleCallText(rule ? rule.code : null, e.ic);
-        out.push({ kind: 'penalty', boat: id, other: rule ? rule.other : null, code: rule ? rule.code : (Array.isArray(e.ic) ? e.ic[0] : null), count: c, ...tx });
+        out.push({ kind: 'penalty', boat: id, other: rule ? rule.other : null, code: rule ? rule.code : (Array.isArray(e.ic) ? e.ic[0] : null), count: c, cleared: null, ...tx });
+        const q = this.queues.get(id) || [];
+        for (let k = prev; k < c; k++) q.push(tx.ref === 'Penalty' ? null : tx.ref);
+        this.queues.set(id, q);
       }
+      // penalties pending when first seen: rule unknown
+      if (c > 0 && (first || !this.queues.has(id))) { const q = this.queues.get(id) || []; while (q.length < c) q.unshift(null); this.queues.set(id, q); }
       this.counts.set(id, c);
     }
     this.primed = true;
-    for (const id of [...this.counts.keys()]) if (!ids.has(id)) this.counts.delete(id);
-    const cl = new Set((pen.cleared || []).map((e) => e.i));
-    for (const id of cl) if (!this.clearedSeen.has(id) && ids.has(id)) out.push({ kind: 'cleared', boat: id, other: null, code: null, count: 0, ref: 'Cleared', text: 'penalty turn done' });
+    for (const id of [...this.counts.keys()]) if (!ids.has(id)) { this.counts.delete(id); this.queues.delete(id); }
+    // a count drop with no flash (finish): forget those penalties
+    for (const [id, q] of this.queues) { const c = this.counts.get(id) || 0; if (q.length > c) q.splice(0, q.length - c); }
     this.clearedSeen = cl;
     return out;
   }
 }
 
 // DOM: #hud_toasts. opts like the instrument panel (own boat by id).
-export function setupRuleToasts({ remote = false, lockstep = () => false, onOwnPenalty = null } = {}, doc = document) {
+// onCalls(calls, state, statics): every frame's new calls (the chat stream).
+export function setupRuleToasts({ remote = false, lockstep = () => false, onOwnPenalty = null, onCalls = null } = {}, doc = document) {
   const root = doc.getElementById('hud_toasts');
-  if (!root) return { onFrame() {}, setOwnId() {} };
+  if (!root) {
+    const t = new RuleCallTracker();
+    return { onFrame(state, statics) { const calls = t.update(state); if (calls.length && onCalls) onCalls(calls, state, statics); }, setOwnId() {} };
+  }
   root.classList.remove('hud-placeholder');
   const list = doc.createElement('div');
   list.className = 'rule-toasts';
@@ -146,7 +173,11 @@ export function setupRuleToasts({ remote = false, lockstep = () => false, onOwnP
   };
   return {
     setOwnId(id) { ownId = id || null; },
-    onFrame(state) { for (const c of tracker.update(state)) show(c, state); },
+    onFrame(state, statics) {
+      const calls = tracker.update(state);
+      for (const c of calls) show(c, state);
+      if (calls.length && onCalls) onCalls(calls, state, statics);
+    },
     _tracker: tracker,
   };
 }

@@ -40,6 +40,16 @@ check('broadcast to everyone in the room (sender too)', chats(A).some((m) => m.s
 const long = say(B, 'x'.repeat(500));
 check(`cut to ${CHAT_MAX_LEN} characters`, long.ok && chats(A).pop().text.length === CHAT_MAX_LEN);
 check('a client without a boat chats as spectator', chats(A).pop().from.name === 'spectator' && chats(A).at(-1).from.boatId === null);
+check('no start sequence: no race clock (rc) on the message', !('rc' in m1) || room.core.sim.startSequence);
+{
+  const keep = room.core.sim.startSequence;
+  room.core.sim.startSequence = { clock: -42.5 };
+  T += CHAT_RATE_MS * 2;
+  say(A, 'clocked');
+  const mc = chats(B).pop();
+  check('stamped with the race clock (rc) and server time (at) for every client', mc.text === 'clocked' && mc.rc === -42.5 && Number.isFinite(mc.at) && chats(A).pop().rc === -42.5);
+  room.core.sim.startSequence = keep;
+}
 check('system line when a boat joins', room.chat.some((m) => m.sys && /Ann joined \(boat \d+\)/.test(m.text)));
 
 // Rate limit (B sent 1 so far).
