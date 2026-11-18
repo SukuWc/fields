@@ -44,7 +44,7 @@ test('chartHoverAt: per-line values, labels, colours and y; text matches the str
   assert.equal(h.text, 'BSP 9.9 · VMG 1.0 m/s · now');
   assert.ok(h.values.every((v) => v.y >= 0 && v.y <= 34));
   const wind = chartHoverAt(b, strip('wind'), { windowS: 20, w: 300, h: 34, x: 150 });
-  assert.match(wind.text, /^TWS 4\.0 · AWS – m\/s · 10\.0s ago$/);
+  assert.match(wind.text, /^TWS 4\.0 · AWS – · ROOM WS – m\/s · 10\.0s ago$/);
   assert.ok(Number.isNaN(wind.values[1].y), 'missing value: no dot');
   assert.equal(chartHoverAt(b, strip('heading'), { windowS: 20, w: 300, h: 34, x: 300 }).text, 'HDG 360 ° · now');
   assert.equal(formatChartValue(strip('twa'), -40.4), '-40');
