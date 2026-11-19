@@ -12,7 +12,7 @@
 // Click (or drag) pans the camera there and turns Camera Follow off; the
 // "Follow" button turns it back on. Redrawn at 5 Hz. No sim state is read.
 import { boatColorCss, boatColorIndex } from './boat-colors.js';
-import { instrumentBoat } from './instrument-readout.js';
+import { instrumentBoat, signedDeg } from './instrument-readout.js';
 
 import { PHONE_QUERY } from './layout.js';
 import { ladderAnchorsFromState, ladderDrawable, laylineGeometry, mapBoundsFromLat } from './ladder-lines.js';
@@ -74,13 +74,15 @@ export function minimapLaylines(state, statics, { ownId = null, twdDeg = NaN, ma
 
 // Room wind indicator from a frame's state.rw ([from compass °, m/s],
 // scene-state.js): the arrow points where the wind blows to (from + 180°,
-// north up like the map), the speed in m/s like the HUD's TWS (one
+// north up like the map), the direction as a signed angle (359° → −1°,
+// instrument-readout.js signedDeg), the speed in m/s like the HUD's TWS (one
 // decimal). null when the frame has no room wind.
 export function roomWindReadout(state) {
   const rw = state && state.rw;
   if (!Array.isArray(rw) || !Number.isFinite(rw[0]) || !Number.isFinite(rw[1])) return null;
   const from = ((rw[0] % 360) + 360) % 360;
-  const bearing = String(Math.round(from) % 360).padStart(3, '0') + '°';
+  // signed like the ROOM WD tile and chart: 359° reads −1°
+  const bearing = signedDeg(from) + '°';
   const speed = rw[1].toFixed(1);
   return {
     fromDeg: from,

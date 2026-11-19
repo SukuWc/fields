@@ -152,7 +152,7 @@ check('offset on: CLR windward of centreline', on.clrx < -0.05, `clrx=${on.clrx.
   check('rudder_deg on every boat every frame', present);
   check('rudder_deg survives the remote wire round trip', rt);
 }
-check('fourteen tiles incl. RUD', READOUT_TILES.length === 14 && READOUT_TILES.some((t) => t.key === 'rudder'));
+check('sixteen tiles incl. RUD and the room wind', READOUT_TILES.length === 16 && READOUT_TILES.some((t) => t.key === 'rudder'));
 {
   const v = readoutValues({ boats: [{ id: 'a', ha: 0, vx: 1, vy: 0, wd: 90, rudder_deg: -12.4 }] });
   check('readout carries signed rudder', v && v.rudder === -12.4);

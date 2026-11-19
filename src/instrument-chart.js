@@ -6,20 +6,35 @@
 // Drawn with the shared chart helpers (boat-stats.js polylinePoints,
 // seriesRange). chartHoverAt: the sample under the pointer for the hover
 // crosshair and tooltip (instrument-panel.js).
+//
+// Room wind (state.rw, instrument-readout.js roomWindValues) has two strips
+// of its own, one line each: ROOM WD and ROOM WS (charted without a boat too).
+// TWD and ROOM WD are circular strips: values are unwrapped around the
+// circular mean of the shown window (each to mean ± 180°), the range fits them
+// (at least CIRC_MIN_SPAN wide, in 5° steps), so a few degrees of shift is
+// visible and a wind around north does not jump 0↔360. Labels wrap back to
+// 0–359 (TWD) or, for ROOM WD (signed: true), to a signed angle in
+// (−180, 180]: 359° reads −1° (instrument-readout.js signedDeg).
 import { polylinePoints, seriesRange } from './boat-stats.js';
+import { signedDeg } from './instrument-readout.js';
 import { agoLabel, nearestTimeIndex, timeToX, valueToY } from './svg-chart.js';
 
 export const CHART_SAMPLE_HZ = 5;
 export const CHART_WINDOWS = [30, 60, 120];
 export const CHART_DEFAULT_WINDOW = 60;
-export const CHART_KEYS = ['bs', 'vmg', 'tws', 'aws', 'twa', 'twd', 'heading'];
+export const CHART_KEYS = ['bs', 'vmg', 'tws', 'aws', 'twa', 'twd', 'heading', 'rwd', 'rws'];
+export const CIRC_MIN_SPAN = 20;
 // One strip per entry; lines drawn in order. Colours avoid green/red
-// (reserved for starboard / port).
+// (reserved for starboard / port). The order pairs strips in the phone's
+// two-row, column-first grid: BSP over TWA, TWS / AWS over ROOM WS, TWD over
+// ROOM WD, then HDG.
 export const CHART_STRIPS = [
   { key: 'speed', label: 'BSP / VMG', unit: 'm/s', min: null, max: null, lines: [{ key: 'bs', label: 'BSP', color: '#ffffff' }, { key: 'vmg', label: 'VMG', color: '#ffc400' }] },
-  { key: 'wind', label: 'TWS / AWS', unit: 'm/s', min: 0, max: null, lines: [{ key: 'tws', label: 'TWS', color: '#7fd3ff' }, { key: 'aws', label: 'AWS', color: '#ffc400' }] },
   { key: 'twa', label: 'TWA', unit: '°', min: -180, max: 180, wrap: true, lines: [{ key: 'twa', label: 'TWA', color: '#ffffff' }] },
-  { key: 'twd', label: 'TWD', unit: '°', min: 0, max: 360, wrap: true, lines: [{ key: 'twd', label: 'TWD', color: '#c9b6ff' }] },
+  { key: 'wind', label: 'TWS / AWS', unit: 'm/s', min: 0, max: null, lines: [{ key: 'tws', label: 'TWS', color: '#7fd3ff' }, { key: 'aws', label: 'AWS', color: '#ffc400' }] },
+  { key: 'rws', label: 'ROOM WS', unit: 'm/s', min: 0, max: null, room: true, lines: [{ key: 'rws', label: 'ROOM WS', color: '#ff9de2' }] },
+  { key: 'twd', label: 'TWD', unit: '°', min: 0, max: 360, wrap: true, circular: true, lines: [{ key: 'twd', label: 'TWD', color: '#c9b6ff' }] },
+  { key: 'rwd', label: 'ROOM WD', unit: '°', min: -180, max: 180, wrap: true, circular: true, signed: true, room: true, lines: [{ key: 'rwd', label: 'ROOM WD', color: '#ff9de2' }] },
   { key: 'heading', label: 'HDG', unit: '°', min: 0, max: 360, wrap: true, lines: [{ key: 'heading', label: 'HDG', color: '#ffffff' }] },
 ];
 
@@ -52,9 +67,37 @@ export class ChartBuffer {
   last(k) { const a = this[k]; return a.length ? a[a.length - 1] : NaN; }
 }
 
-// One value as the strip shows it: m/s to 0.1, degrees whole; dash if missing.
+// One value as the strip shows it: m/s to 0.1, degrees whole (0–359 on a
+// circular strip, −179…180 on a signed one); dash if missing.
 export function formatChartValue(strip, v) {
-  return Number.isFinite(v) ? (strip.unit === 'm/s' ? v.toFixed(1) : String(Math.round(v))) : '–';
+  if (!Number.isFinite(v)) return '–';
+  if (strip.unit === 'm/s') return v.toFixed(1);
+  if (strip.signed) return String(signedDeg(v));
+  return String(strip.circular ? Math.round(wrap360(v)) % 360 : Math.round(v));
+}
+
+const wrap360 = (d) => ((d % 360) + 360) % 360;
+const wrap180 = (d) => wrap360(d + 180) - 180;
+
+// Circular mean (degrees) of the finite values, or NaN.
+export function circularMean(arrays) {
+  let sx = 0, sy = 0, n = 0;
+  for (const a of arrays) for (const v of a) if (Number.isFinite(v)) { const r = v * Math.PI / 180; sx += Math.cos(r); sy += Math.sin(r); n++; }
+  return n && Math.hypot(sx, sy) > 1e-9 ? wrap360(Math.atan2(sy, sx) * 180 / Math.PI) : (n ? wrap360(arrays.flat().find(Number.isFinite)) : NaN);
+}
+
+// Values and range of a strip for the shown window: { arrs, lo, hi, mid }.
+// Circular strips: unwrapped around the circular mean (mid).
+function stripScale(strip, raw) {
+  if (!strip.circular) { const [lo, hi] = seriesRange(strip, raw); return { arrs: raw, lo, hi, mid: null }; }
+  const mid = circularMean(raw);
+  if (!Number.isFinite(mid)) return { arrs: raw, lo: 0, hi: 360, mid: 180 };
+  const arrs = raw.map((a) => a.map((v) => (Number.isFinite(v) ? mid + wrap180(v - mid) : NaN)));
+  let mn = Infinity, mx = -Infinity;
+  for (const a of arrs) for (const v of a) if (Number.isFinite(v)) { mn = Math.min(mn, v); mx = Math.max(mx, v); }
+  const half = Math.max(CIRC_MIN_SPAN / 2, (mx - mn) / 2 + 2);
+  const c = (mn + mx) / 2;
+  return { arrs, lo: Math.floor((c - half) / 5) * 5, hi: Math.ceil((c + half) / 5) * 5, mid };
 }
 
 // Samples inside the shown window: { i0, t1 } (i0 = -1 when empty).
@@ -76,24 +119,26 @@ export function chartHoverAt(buf, strip, { windowS, w, h, x }) {
   const j = nearestTimeIndex(t, tq);
   if (j < 0) return null;
   const i = i0 + j;
-  const [lo, hi] = seriesRange(strip, strip.lines.map((l) => buf[l.key].slice(i0)));
-  const values = strip.lines.map((l) => {
+  const sc = stripScale(strip, strip.lines.map((l) => buf[l.key].slice(i0)));
+  const values = strip.lines.map((l, k) => {
     const v = buf[l.key][i];
-    return { key: l.key, label: l.label, color: l.color, v, y: Number.isFinite(v) ? valueToY(v, lo, hi, h) : NaN };
+    const u = sc.arrs[k][j];
+    return { key: l.key, label: l.label, color: l.color, v, y: Number.isFinite(u) ? valueToY(u, sc.lo, sc.hi, h) : NaN };
   });
   const age = Math.max(0, t1 - buf.t[i]);
   const text = values.map((p) => `${p.label} ${formatChartValue(strip, p.v)}`).join(' · ') + ` ${strip.unit} · ${agoLabel(age)}`;
   return { i, t: buf.t[i], age, x: timeToX(buf.t[i], t1, windowS, w), values, text };
 }
 
-// Polylines for one strip: { lo, hi, lines: [{ color, pts: [string] }] }.
+// Polylines for one strip: { lo, hi, mid (circular centre | null), lines:
+// [{ key, color, dash, pts: [string] }] }.
 export function stripPolylines(buf, strip, { windowS, w, h }) {
   const { i0, t1 } = windowStart(buf, windowS);
   const t = i0 < 0 ? [] : buf.t.slice(i0);
-  const arrs = strip.lines.map((l) => (i0 < 0 ? [] : buf[l.key].slice(i0)));
-  const [lo, hi] = seriesRange(strip, arrs);
+  const sc = stripScale(strip, strip.lines.map((l) => (i0 < 0 ? [] : buf[l.key].slice(i0))));
+  const { lo, hi } = sc;
   return {
-    lo, hi,
-    lines: strip.lines.map((l, j) => ({ key: l.key, color: l.color, pts: polylinePoints(t, arrs[j], { t1, windowS, lo, hi, w, h, wrap: !!strip.wrap }) })),
+    lo, hi, mid: sc.mid,
+    lines: strip.lines.map((l, j) => ({ key: l.key, color: l.color, dash: l.dash || null, pts: polylinePoints(t, sc.arrs[j], { t1, windowS, lo, hi, w, h, wrap: !!strip.wrap }) })),
   };
 }

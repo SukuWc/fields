@@ -23,7 +23,7 @@ check('speed strip has bs and vmg lines', p.lines.length === 2 && p.lines[0].pts
 const first = Number(p.lines[0].pts[0].split(' ')[0].split(',')[0]);
 check('30 s window starts at the left edge', Math.abs(first) < 0.5);
 c.add(201, { boatId: 'a', bs: 1, vmg: 1, twa: NaN, tws: 5, aws: 6, twd: 350, heading: 10 });
-check('twd keeps wrap range', stripPolylines(c, CHART_STRIPS.find((s) => s.key === 'twd'), { windowS: 60, w: 300, h: 40 }).hi === 360);
+{ const tw = stripPolylines(c, CHART_STRIPS.find((s) => s.key === 'twd'), { windowS: 60, w: 300, h: 40 }); check('twd is circular: fitted around 350°, at least 20° wide', tw.mid !== null && Math.abs(tw.mid - 350) < 1e-6 && tw.lo <= 340 && tw.hi >= 360 && tw.hi - tw.lo >= 20 && tw.hi - tw.lo < 60); }
 console.log(`all ${n} instrument-chart checks passed`);
 const hd = CHART_STRIPS.find((s) => s.key === 'heading');
 check('heading strip is a 0–360 bearing', hd.min === 0 && hd.max === 360 && hd.wrap);

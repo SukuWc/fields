@@ -10,8 +10,10 @@
 // The chart window (30 / 60 / 120 s) is remembered too ('fields.instrumentChartWindow').
 // Values: instrument-readout.js (frame state only, own boat by id); chart
 // buffers: instrument-chart.js, sampled at 5 Hz of sim time (state.ts).
+// Room wind (state.rw): ROOM WD / ROOM WS tiles beside TWD / TWS, and dashed
+// lines on the TWD and TWS / AWS strips; shown while spectating too.
 // Chart hover (mouse; touch press and hold): instrument-chart-hover.js.
-import { READOUT_TILES, readoutValues, formatReadout } from './instrument-readout.js';
+import { READOUT_TILES, readoutValues, roomWindValues, formatReadout, compassPoint } from './instrument-readout.js';
 import { ChartBuffer, CHART_STRIPS, CHART_WINDOWS, CHART_DEFAULT_WINDOW, stripPolylines, formatChartValue, chartHoverAt } from './instrument-chart.js';
 import { bindChartHover } from './instrument-chart-hover.js';
 import { SVG_NS } from './svg-chart.js';
@@ -37,6 +39,10 @@ export function setupInstrumentPanel({ remote = false, lockstep = () => false } 
     el.innerHTML = `<span class="instr-label">${t.label}</span><span class="instr-value">–</span><span class="instr-unit">${t.unit}</span>`;
     if (t.key === 'next') el.title = 'Distance to the next mark as the leaderboard counts it (beats as sailed distance)';
     if (t.key === 'fin') el.title = 'Distance to the finish (dash on a looping course)';
+    if (t.key === 'twd' || t.key === 'tws') el.title = 'True wind at your boat: includes gusts, field effects and other boats\' shadows';
+    if (t.key === 'rwd') el.title = 'Room wind direction (from): the room\'s base wind and its scheduled shifts, the same for every boat; not the wind at your boat (TWD)';
+    if (t.key === 'rws') el.title = 'Room wind speed: the room\'s base wind and its scheduled changes, the same for every boat; not the wind at your boat (TWS)';
+    if (t.room) el.classList.add('instr-room');
     grid.appendChild(el);
     tiles.set(t.key, { el, value: el.querySelector('.instr-value'), unit: el.querySelector('.instr-unit') });
   }
@@ -87,7 +93,7 @@ export function setupInstrumentPanel({ remote = false, lockstep = () => false } 
     if (root.dataset.mode !== 'chart') { if (hover) hover.hide(); return; }
     for (const s of strips) {
       const p = stripPolylines(buf, s.st, { windowS, w: SW, h: SH });
-      const zv = s.st.min === 0 && s.st.max === 360 ? 180 : 0;
+      const zv = p.mid !== null && p.mid !== undefined ? p.mid : s.st.min === 0 && s.st.max === 360 ? 180 : 0;
       const zy = p.hi > p.lo ? SH - ((zv - p.lo) / (p.hi - p.lo)) * SH : SH / 2;
       s.zero.setAttribute('y1', zy); s.zero.setAttribute('y2', zy);
       s.g.textContent = '';
@@ -98,6 +104,7 @@ export function setupInstrumentPanel({ remote = false, lockstep = () => false } 
         pl.setAttribute('stroke', l.color);
         pl.setAttribute('stroke-width', '1.5');
         pl.setAttribute('vector-effect', 'non-scaling-stroke');
+        if (l.dash) pl.setAttribute('stroke-dasharray', l.dash);
         s.g.appendChild(pl);
       }
       s.now.innerHTML = s.st.lines.map((l) => `<span style="color:${l.color}">${fmt(s.st, l.key, buf.last(l.key))}</span>`).join(' / ') + ` <span class="instr-unit">${s.st.unit}</span>`;
@@ -137,11 +144,14 @@ export function setupInstrumentPanel({ remote = false, lockstep = () => false } 
   let lastV = null;
   const render = () => {
     const v = lastV = readoutValues(lastState, { ownId, remote, lockstep: lockstep() });
+    const room = roomWindValues(lastState);
     root.classList.toggle('no-boat', !v);
     if (note) note.textContent = v ? '' : (remote ? 'Spectating: join to see your instruments' : 'No boat');
     for (const t of READOUT_TILES) {
       const tile = tiles.get(t.key);
-      const val = v ? v[t.key] : null;
+      // the room wind does not need a boat
+      const val = t.room ? room[t.key] : v ? v[t.key] : null;
+      if (t.key === 'rwd') tile.unit.textContent = val !== null ? '° ' + compassPoint(val) : '°';
       tile.value.textContent = formatReadout(t.key, val);
       tile.el.classList.toggle('missing', val === null || val === undefined);
       if (t.key === 'next') tile.unit.textContent = v && v.nextLabel ? (val !== null ? 'm · ' : '') + v.nextLabel : 'm';
@@ -157,7 +167,10 @@ export function setupInstrumentPanel({ remote = false, lockstep = () => false } 
       lastState = state;
       // chart samples on sim time, every frame offered, kept at 5 Hz
       const tS = state && Number.isFinite(state.ts) ? state.ts : performance.now() / 1000;
-      const v = readoutValues(state, { ownId, remote, lockstep: lockstep() });
+      const b = readoutValues(state, { ownId, remote, lockstep: lockstep() });
+      // the room wind is charted with or without a boat
+      const room = roomWindValues(state);
+      const v = b || (room.rwd !== null ? { boatId: null, ...room } : null);
       if (buf.add(tS, v)) drawCharts();
       const now = performance.now();
       if (now - last < UPDATE_MS) return;

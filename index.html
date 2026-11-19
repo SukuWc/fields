@@ -781,7 +781,7 @@
         width: 100%; max-width: 678px; box-sizing: border-box;
       }
       .bp-desktop #hud_grid #instrument_panel .instr-tiles { grid-template-columns: repeat(auto-fit, minmax(60px, 1fr)); }
-      .bp-desktop #hud_grid #instrument_panel[data-mode="chart"] .instr-charts { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+      .bp-desktop #hud_grid #instrument_panel[data-mode="chart"] .instr-charts { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
       /* Zone F on desktop: the chat window (a rule-call log in solo games; the
          placeholder only shows if the chat panel is missing). */
       .bp-desktop #hud_grid #chat_panel {
@@ -865,6 +865,10 @@
       #instrument_panel .instr-value { font: 700 20px/1.15 var(--sz-font-ui); font-variant-numeric: tabular-nums; }
       #instrument_panel .instr-unit { font-size: var(--sz-fs-2xs); opacity: 0.65; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
       #instrument_panel .instr-tile.missing .instr-value { opacity: 0.45; }
+      /* Room wind tiles (ROOM WD / ROOM WS): the room's wind, not the wind at the
+         boat; pink like their dashed chart lines. */
+      #instrument_panel .instr-tile.instr-room { background: rgba(255, 157, 226, 0.10); box-shadow: inset 0 2px 0 rgba(255, 157, 226, 0.75); }
+      #instrument_panel .instr-tile.instr-room .instr-label { color: #ff9de2; }
       #instrument_panel .instr-charts, #instrument_panel .instr-window-wrap { display: none; }
       #instrument_panel[data-mode="chart"] .instr-tiles { display: none; }
       #instrument_panel[data-mode="chart"] .instr-charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 8px; }
@@ -872,7 +876,11 @@
       #instrument_panel .instr-window { font: inherit; background: var(--sz-navy); color: #fff; border: 1px solid rgba(255,255,255,0.25); border-radius: var(--sz-r-sm); }
       #instrument_panel .instr-strip { background: rgba(255,255,255,0.06); border-radius: var(--sz-r-sm); padding: 2px 4px; min-width: 0; }
       #instrument_panel .instr-strip-label { display: flex; gap: 6px; align-items: baseline; font-size: var(--sz-fs-xs); font-variant-numeric: tabular-nums; }
-      #instrument_panel .instr-strip-range { margin-left: auto; opacity: 0.55; font-size: var(--sz-fs-2xs); white-space: nowrap; }
+      /* One line per strip header (the room wind adds a third value): the
+         label and values keep their width, the range gives way (ellipsis). */
+      #instrument_panel .instr-strip-label { white-space: nowrap; min-width: 0; overflow: hidden; }
+      #instrument_panel .instr-strip-label > .instr-label, #instrument_panel .instr-strip-now { flex: none; }
+      #instrument_panel .instr-strip-range { margin-left: auto; opacity: 0.55; font-size: var(--sz-fs-2xs); white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
       #instrument_panel .instr-strip-svg { display: block; width: 100%; height: 30px; }
       /* Chart hover (instrument-chart-hover.js): crosshair + tooltip inside the panel. */
       #instrument_panel[data-mode="chart"] .instr-strip-svg { cursor: crosshair; }
@@ -1321,7 +1329,8 @@
          centred panel between the side stacks (as in #182) with buttons fitted
          around it; steers match the action-stack height. */
       .bp-phone body {
-        --ph-h: 106px;
+        /* Head row + two rows of tiles / chart strips (pt130u). */
+        --ph-h: 162px;
         --tc-round: 44px;
         --tc-round-gap: 4px;
         --tc-row-gap: 12px;
@@ -1373,7 +1382,7 @@
       /* Landscape: narrow centred panel between the side stacks (as #182);
          buttons stay at the bottom edge around it; steers match stack height. */
       .bp-phone-landscape body {
-        --ph-h: 106px;
+        --ph-h: 162px;
         --tc-band: 130px;
         --tc-steer-h: 190px; /* Tack..Depwr stack: 146 + 58 − 14 */
       }
@@ -1413,11 +1422,29 @@
       .bp-phone #instrument_panel .instr-window-wrap { display: none; margin-left: auto; font-size: 0; }
       .bp-phone #instrument_panel[data-mode="chart"] .instr-window-wrap { display: inline-flex; }
       .bp-phone #instrument_panel .instr-window { min-height: var(--sz-tap); font-size: var(--sz-fs-base); padding: 0 4px; }
-      .bp-phone #instrument_panel:not([data-mode="chart"]) .instr-tiles { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
-      .bp-phone #instrument_panel .instr-tile { flex: 0 0 auto; min-width: 58px; padding: 2px 4px; }
+      /* Narrow landscape panel: tighter mode tabs so the tabs plus the window
+         selector fit its width (they overflowed by ~50 px on a 750 px window). */
+      .bp-phone-landscape #instrument_panel .instr-head { gap: 4px; }
+      .bp-phone-landscape #instrument_panel .instr-mode { padding: 0 4px; }
+      .bp-phone-landscape #instrument_panel .instr-window { padding: 0 2px; }
+      /* Two rows on phones (pt130u), filled column by column so related tiles
+         pair up (HDG over TWD, ROOM WD over ROOM WS, AWA over AWS, …) and
+         strips share columns; when the columns do not all fit, the two-row
+         block scrolls sideways as one unit (never a third row). */
+      .bp-phone #instrument_panel:not([data-mode="chart"]) .instr-tiles {
+        display: grid; grid-template-columns: none; grid-template-rows: repeat(2, auto); grid-auto-flow: column; grid-auto-columns: minmax(52px, 1fr);
+        gap: 4px; overflow-x: auto; scrollbar-width: none;
+      }
+      .bp-phone #instrument_panel .instr-tile { min-width: 0; padding: 2px 2px; }
+      /* One-line labels (ROOM WD / ROOM WS) so both tile rows stay one tile high. */
+      .bp-phone #instrument_panel .instr-tile .instr-label { white-space: nowrap; letter-spacing: 0.02em; }
       .bp-phone #instrument_panel .instr-value { font-size: var(--sz-fs-xl); }
-      .bp-phone #instrument_panel[data-mode="chart"] .instr-charts { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
-      .bp-phone #instrument_panel .instr-strip { flex: 0 0 62%; }
+      .bp-phone #instrument_panel[data-mode="chart"] .instr-charts {
+        display: grid; grid-template-columns: none; grid-template-rows: repeat(2, auto); grid-auto-flow: column; grid-auto-columns: calc(50% - 3px);
+        gap: 4px 6px; overflow-x: auto; scrollbar-width: none;
+      }
+      /* Narrow landscape panel: one strip column fills it (header on one line). */
+      .bp-phone-landscape #instrument_panel[data-mode="chart"] .instr-charts { grid-auto-columns: 100%; }
       .bp-phone #instrument_panel .instr-strip-svg { height: 26px; }
       .bp-touch #instrument_panel #player_menu_name { min-height: var(--sz-tap); font-size: 16px; }
       .bp-phone #instrument_panel .pm-hint { display: none; }
@@ -1554,7 +1581,10 @@
         bottom: calc(14px + env(safe-area-inset-bottom)); z-index: calc(var(--sz-z-controls) + 5); box-sizing: border-box;
         width: min(660px, calc(100vw - 2 * (min(14vw, 120px) + 24px)));
       }
-      .bp-tablet #instrument_panel .instr-tiles { grid-template-columns: repeat(5, 1fr); }
+      /* Two rows of tiles (pt130u): 16 tiles, 8 per row. */
+      .bp-tablet #instrument_panel .instr-tiles { grid-template-columns: repeat(8, 1fr); }
+      /* Two rows of chart strips: 7 strips, 4 per row. */
+      .bp-tablet #instrument_panel[data-mode="chart"] .instr-charts { grid-template-columns: repeat(4, minmax(0, 1fr)); }
       .bp-tablet #instrument_panel .instr-modes { padding: 0; }
       .bp-tablet #instrument_panel .instr-window { min-height: var(--sz-tap); padding: 0 6px; font-size: var(--sz-fs-base); }
       .bp-tablet #instrument_panel .instr-mode { min-height: var(--sz-tap); padding: 0 14px; font-size: var(--sz-fs-base); }
