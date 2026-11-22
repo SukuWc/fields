@@ -504,6 +504,7 @@ export class RemoteHost {
         if (m.ev.type === 'room') this.room = m.ev.room;
         else if (m.ev.type === 'ownBoats') this.own = m.ev.boats || [];
         else if (m.ev.type === 'bindControls') this.bindings = m.ev.boats || 0;
+        else if (m.ev.type === 'restartVote') this.vote = { cast: m.ev.cast, total: m.ev.total, you: !!m.ev.you, can: !!m.ev.can };
         else if (m.ev.type === 'chat' && m.ev.msg) { this.chat.push(m.ev.msg); if (this.chat.length > 50) this.chat.shift(); }
         for (const fn of this._listeners) fn(m.ev);
         break;
@@ -696,6 +697,9 @@ export class RemoteHost {
   }
   // Chat (apps/server/room.js): resolves to { ok, seq } or { error }.
   sendChat(text) { return this._call('chat', 'text', String(text)); }
+  // Vote to restart (Room._vote): on = cast, false = revoke. Resolves to
+  // { ok, cast, total } or { error }; this.vote follows the server's events.
+  sendVote(on) { return this._call('vote', 'on', !!on); }
   query(q) { return this._call('query', 'q', q); }
   // Perf counters in this client's frames (frame.perf), or not.
   setPerf(on) { this._perfOn = !!on; this._send({ type: 'perf', on: !!on }); }

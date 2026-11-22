@@ -51,6 +51,22 @@ export function raceLifecycleHtmlOf(lc) {
   else if (Number.isFinite(lc.tl)) h += '<div class="race-time-left">Time left ' + formatTimeLeft(lc.tl) + '</div>';
   return h;
 }
+
+/**
+ * Vote to restart in the race timer (server rooms): v = { cast, total, you,
+ * can } from the room's restartVote events (remote-host vote). A racer (can)
+ * gets a button: vote, or revoke their vote; everyone sees votes cast /
+ * racers. Alone in the room the button starts a new race at once. '' when
+ * there is no vote state or nobody races.
+ */
+export function restartVoteHtmlOf(v) {
+  if (!v || !(v.total > 0)) return '';
+  const count = '<span class="restart-vote-count">' + v.cast + '/' + v.total + '</span>';
+  if (!v.can) return '<div class="restart-vote">Restart votes ' + count + '</div>';
+  const label = v.you ? 'Revoke restart vote' : (v.total === 1 ? 'Restart race' : 'Vote restart');
+  return '<div class="restart-vote"><button type="button" class="restart-vote-btn' + (v.you ? ' on' : '')
+    + '" data-vote="' + (v.you ? '0' : '1') + '" aria-pressed="' + (v.you ? 'true' : 'false') + '">' + label + '</button> ' + count + '</div>';
+}
 import {
   basisCode,
   basisText,
