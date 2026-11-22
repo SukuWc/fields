@@ -189,6 +189,29 @@
       #settings .room-config-reject { margin: 4px 6px; padding: 4px 6px; border-left: 3px solid #ff9f1a; background: rgba(255,159,26,0.12); color: #ffd9a8; white-space: pre-wrap; }
       #settings .room-config-reject[hidden] { display: none !important; }
       #settings .room-apply:not(:disabled) { background: var(--sz-yellow); color: var(--sz-navy); font-weight: 700; border: 1px solid var(--sz-yellow); }
+      /* TOML editors (Dev + Room): Apply / Revert / Reset and the validator
+         sit above the textarea; the textarea grows into the leftover drawer height. */
+      #settings .toml-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 6px 4px; flex: none; }
+      #settings .toml-box {
+        display: block; width: 100%; max-width: 100%; box-sizing: border-box; flex: 1 1 auto; min-height: 120px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.35;
+        background: #1a1a18; color: #f0e6d2; border: 1px solid rgba(255,210,120,0.35); border-radius: 4px;
+        padding: 8px; resize: none; overflow: auto;
+      }
+      #settings[data-tab="dev"],
+      #settings[data-tab="room"] {
+        display: flex; flex-direction: column; overflow: hidden;
+        height: calc(100% - 20px); max-height: calc(100% - 20px);
+      }
+      #settings[data-tab="dev"] #settings_tabs,
+      #settings[data-tab="room"] #settings_tabs { flex: none; }
+      #settings .settings-pane-toml {
+        display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: hidden;
+      }
+      #settings .settings-pane-toml > .room-config-head,
+      #settings .settings-pane-toml > .room-config-check,
+      #settings .settings-pane-toml > .room-config-reject,
+      #settings .settings-pane-toml > #room_admin_auth { flex: none; }
       /* Instrument panel, zone C (PR 5): bottom centre on desktop. Neutral and
          brand colours only (red / green are port / starboard). */
       #instrument_panel { display: none; }
@@ -822,6 +845,10 @@
         font-family: var(--sz-font-ui); font-size: var(--sz-fs-md);
       }
       .bp-desktop body.settings-open #settings { transform: none; visibility: visible; transition: transform 0.18s ease; }
+      .bp-desktop #settings[data-tab="dev"],
+      .bp-desktop #settings[data-tab="room"] {
+        height: calc(100% - var(--d-bar) - 16px); max-height: calc(100% - var(--d-bar) - 16px);
+      }
       /* Desktop with Touch controls on: the steer zones sit at the edges of the
          middle column (never in the minimap / chat columns or under the
          drawer), the Head up / Bear away pills and the round buttons above
@@ -1032,6 +1059,10 @@
         transform: none;
         visibility: visible;
         transition: transform 0.2s ease;
+      }
+      .bp-touch #settings[data-tab="dev"],
+      .bp-touch #settings[data-tab="room"] {
+        height: auto; max-height: none; /* fixed top/bottom already fills the screen */
       }
       /* Right-edge swipe strip. 16px, inside the safe-area inset, and only
          in the gap between the top-bar / minimap / leaderboard and the steer
@@ -1788,20 +1819,20 @@
       <div class="pref-footer"><input id="reset_settings" type="button" value="Reset settings"><span id="prefs_saved" class="prefs-saved">Saved in this browser</span></div>
       </div>
 
-      <div id="dev_panel" class="settings-section settings-pane" role="tabpanel" aria-labelledby="settings_tab_dev">
+      <div id="dev_panel" class="settings-section settings-pane settings-pane-toml" role="tabpanel" aria-labelledby="settings_tab_dev">
       <div class="settings-heading" title="This page's dev preferences as one TOML document, checked as you type. Apply updates this page. Autopilot P, I and D go to the sim for the boats this page may control: every boat in local or worker mode, only your own boats (by id) in a server room. Revert restores the applied document. Reset fills the defaults and does not apply. Invalid TOML is not applied.">Dev</div>
       <div class="room-config-head"><label for="dev_config" title="Flow tracers, tracer count (0 = auto), life and tail, forces, refinement border, perf overlay, plot, contrast, boat trails, ghost boat, autopilot holdoff (ms), and autopilot_kp / ki / kd. Saved in this browser.">Dev config (TOML)</label><span id="dev_config_mode" class="room-config-mode">This page</span></div>
-      <textarea id="dev_config" class="toml-box" autocomplete="off" spellcheck="false" rows="18" style="width:100%; max-width:100%; box-sizing:border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; line-height:1.35; background:#1a1a18; color:#f0e6d2; border:1px solid rgba(255,210,120,0.35); border-radius:4px; padding:8px; resize:vertical;"></textarea>
-      <div class="setting-row toml-actions" style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+      <div class="setting-row toml-actions">
         <input id="dev_config_commit" class="room-apply" type="button" value="Apply" disabled title="Apply this config (enabled when valid and changed)">
         <input id="dev_config_revert" type="button" value="Revert" disabled title="Discard edits: back to the applied config">
         <input id="dev_config_reset" type="button" value="Reset" title="Fill the default preset (does not apply)">
       </div>
       <div id="dev_config_check" class="room-config-check" role="status" aria-live="polite" title="Click an error to jump to its line"></div>
       <div id="dev_config_status" class="setting-row room-config-reject" role="alert" hidden></div>
+      <textarea id="dev_config" class="toml-box" autocomplete="off" spellcheck="false" rows="18"></textarea>
       </div>
 
-      <div id="admin_panel" class="settings-section settings-pane" role="tabpanel" aria-labelledby="settings_tab_room">
+      <div id="admin_panel" class="settings-section settings-pane settings-pane-toml" role="tabpanel" aria-labelledby="settings_tab_room">
       <div class="settings-heading" title="Room-wide settings as one TOML document, checked as you type. Apply sends them to everyone in the room (or this page in local / worker mode); Revert goes back to the live config. Reset fills the default TOML preset (map size kept as this room's current size); it does not push to the server.">Room settings<span id="admin_scope" hidden> · everyone in the room</span></div>
       <div id="room_admin_auth" class="setting-row" style="display:none; gap:8px; flex-wrap:wrap; align-items:center;">
         <span id="room_admin_state">Read-only</span>
@@ -1810,14 +1841,14 @@
         <input id="room_admin_logout" type="button" value="Logout" hidden>
       </div>
       <div class="room-config-head"><label for="room_config">Room config (TOML)</label><span id="room_config_mode" class="room-config-mode">Read-only</span></div>
-      <textarea id="room_config" autocomplete="off" spellcheck="false" rows="22" style="width:100%; max-width:100%; box-sizing:border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; line-height:1.35; background:#1a1a18; color:#f0e6d2; border:1px solid rgba(255,210,120,0.35); border-radius:4px; padding:8px; resize:vertical;"></textarea>
-      <div class="setting-row toml-actions" style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+      <div class="setting-row toml-actions">
         <input id="room_config_commit" class="room-apply" type="button" value="Apply" disabled title="Send this config to the room (enabled when valid and changed)">
         <input id="room_config_revert" type="button" value="Revert" disabled title="Discard edits: back to the live room config">
         <input id="room_config_reset" type="button" value="Reset" title="Fill the default preset (does not apply)">
       </div>
       <div id="room_config_check" class="room-config-check" role="status" aria-live="polite" title="Click an error to jump to its line"></div>
       <div id="admin_status" class="setting-row room-config-reject" role="alert" hidden></div>
+      <textarea id="room_config" class="toml-box" autocomplete="off" spellcheck="false" rows="22"></textarea>
       </div>
     </div>
 
