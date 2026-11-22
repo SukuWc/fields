@@ -910,6 +910,9 @@
       #instrument_panel .pm-status { flex: 1 1 160px; min-width: 0; font-size: var(--sz-fs-xs); opacity: 0.85; }
       #instrument_panel.spectating .pm-status { flex-basis: 100%; color: #ffb0a0; opacity: 1; }
       #instrument_panel .pm-status:empty { display: none; }
+      /* Second player: own row below Leave / status so it stands out. */
+      #instrument_panel .instr-player #own_boat_add,
+      #instrument_panel .instr-player #own_boat_remove2 { flex-basis: 100%; }
 
       /* bp-touch */
       .bp-touch #settings_toggle {
@@ -1705,10 +1708,10 @@
           <input id="player_menu_name" class="pm-spectating" type="text" placeholder="Your name" maxlength="24" autocomplete="off" aria-label="Your name" title="Name shown on your boat (the same as Settings → Player → name)">
           <button type="button" id="own_boat_join" class="sz-btn pm-join">Join with my boat</button>
           <button type="button" id="own_boat_leave" class="sz-btn" hidden>Leave</button>
-          <button type="button" id="own_boat_add" class="sz-btn" title="A second boat on this page: player 2 steers with A / D, W / S, F, G, Q / E, X; player 1 keeps the arrows, Space, Enter, , . /. The camera follows the midpoint of the two boats; zoom with = / -." hidden>Add second player</button>
-          <button type="button" id="own_boat_remove2" class="sz-btn" hidden>Remove player 2</button>
           <span class="pm-hint pm-spectating">You are spectating. Join to sail your own boat.</span>
           <span id="own_boat_status" class="pm-status" aria-live="polite"></span>
+          <button type="button" id="own_boat_add" class="sz-btn" title="A second boat on this page: player 2 steers with A / D, W / S, F, G, Q / E, X; player 1 keeps the arrows, Space, Enter, , . /. The camera follows the midpoint of the two boats; zoom with = / -." hidden>Add second player</button>
+          <button type="button" id="own_boat_remove2" class="sz-btn" hidden>Remove player 2</button>
         </div>
       </section>
     </div>
