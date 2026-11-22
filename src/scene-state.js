@@ -19,7 +19,7 @@
 //   mk     mark buoy positions [[x, y], ...] (anchors in statics.marks)
 //   start  startGuideState (start.js) for boat 0
 //   course courseGuideState (course.js) for boat 0
-//   finish finishGuideState (finish.js)
+//   finish finishGuideState (finish.js): { next }
 //   fp     finish places [[boat id, place (0 = DSQ)]] for finished boats
 //          (finish.js finishPlaceState: corrected-time order), when any
 //   br, mr boundary-room / mark-room badges: [[entitled, giving boat id]]
@@ -245,7 +245,7 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
   const course = sim.course;
   if (course && racing[0]) s.course = courseGuideState(course, course.progressFor(racing[0]));
   const results = sim.raceResults;
-  if (course && course.finish && results) s.finish = finishGuideState(course, racing[0] ? course.progressFor(racing[0]) : null, results, racing, rec.raceClock);
+  if (course && course.finish && results) s.finish = finishGuideState(course, racing[0] ? course.progressFor(racing[0]) : null, results);
   if (course && course.finish && results && results.entries.length) {
     const fp = finishPlaceState(results, racing);
     if (fp.length) s.fp = fp;
@@ -266,9 +266,9 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
   const cf = contactFlashState(nowMs);
   if (cf.length) s.cf = cf;
   const pen = penaltyGuideState(racing, nowMs);
-  // Penalty badges and finish labels carry numbers that end up as text.
+  // Penalty badges and finish places carry numbers that end up as text.
   if (pen.boats.length || pen.cleared.length) s.pen = markExact(pen);
-  if (s.finish) markExact(s.finish.labels);
+  if (s.fp) markExact(s.fp);
   if (!map.devMode) s.amr = { mode: bm.amrMode, d: bm.domains.map(domainState) };
   else {
     const wind = map.get_wind(0, 0);

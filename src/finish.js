@@ -40,12 +40,10 @@
 import { LAYER_COURSE } from './draw-order.js';
 import { boatStartGeometry } from './start.js';
 import { finishBoatPenalties, penaltyCode, headingForward, stateId, boatsById } from './rules.js';
-import { penaltyNameText, unservedCodes } from './rule-text.js';
+import { penaltyNameText } from './rule-text.js';
 
 export const FINISH_UNSERVED_PENALTY_S = 20;
 export const UNSERVED_PENALTY_MODE = 'time';
-// "Finished P1" label on the boat for this long (sim seconds).
-export const FINISH_LABEL_S = 6;
 export const FINISH_LINE_COLOR = 0xffffff;
 export const FINISH_NEXT_COLOR = 0x7dff5a;
 
@@ -214,12 +212,13 @@ export function resultsHtml(results) {
 }
 
 // Finish line overlay: dashed line between the ends (green while it is
-// boat 0's next step), "FINISH" / "NEXT FINISH" label, and a "Finished P1"
-// badge on each boat for FINISH_LABEL_S after she finishes.
+// boat 0's next step) and a "FINISH" / "NEXT FINISH" label. A finished
+// boat's place is the stern badge (finishPlaceGuidesFromState); the old 6 s
+// "Finished P1 · +20 s" label over the boat is gone (it overlapped it).
 export function finishGuides(course, progress, results, boats, clock, nowMs = 0) {
   const line = course && course.finish;
   if (!line) return [];
-  return finishGuidesFromState(finishLineState(line), finishGuideState(course, progress, results, boats, clock), nowMs);
+  return finishGuidesFromState(finishLineState(line), finishGuideState(course, progress, results), nowMs);
 }
 
 // The finish line as plain data.
@@ -228,21 +227,10 @@ export function finishLineState(line) {
 }
 
 // What finishGuides needs this tick (scene-state.js): whether the finish is
-// next, and the "Finished" badges with their boat positions.
-export function finishGuideState(course, progress, results, boats, clock) {
+// next for boat 0.
+export function finishGuideState(course, progress, results) {
   const next = !!progress && progress.finishNext && !(results && results.isFinished(progress.boat));
-  const labels = [];
-  if (results) {
-    for (const e of results.entries) {
-      if (!(clock - e.finishTime <= FINISH_LABEL_S)) continue;
-      const boat = boats ? boats[e.index] : e.boat;
-      if (!boat) continue;
-      // The result as data; finishGuidesFromState writes the text.
-      // unserved: penalty codes (rule-text.js penaltyNameText).
-      labels.push({ x: boat.x, y: boat.y, dsq: e.dsq ? 1 : 0, position: e.position, unserved: unservedCodes(e), penaltyS: e.penaltyS });
-    }
-  }
-  return { next, labels };
+  return { next };
 }
 
 // The dashed finish line draws under the flow tracers (LAYER_COURSE).
@@ -259,10 +247,6 @@ export function finishGuidesFromState(line, s, nowMs = 0) {
   }
   const m = line.mid;
   g.push({ type: 'label', badge: true, x: m.x, y: m.y + 1.6, lines: [{ text: next ? 'NEXT FINISH' : 'FINISH', role: next ? 'next' : 'markno', id: 'finish' }] });
-  for (const l of s.labels) {
-    const text = (l.dsq ? 'Finished · DSQ' : 'Finished P' + l.position) + (l.unserved.length ? ' · ' + penaltyNote({ ...l, unserved: l.unserved.map(penaltyNameText) }) : '');
-    g.push({ type: 'label', badge: true, x: l.x, y: l.y + 3.3, lines: [{ text, role: l.unserved.length ? 'turn' : 'cleared', id: 'fin' }] });
-  }
   return g;
 }
 

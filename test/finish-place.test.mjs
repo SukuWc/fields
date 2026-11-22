@@ -60,6 +60,7 @@ const mute = (f) => { const l = console.log; console.log = () => {}; try { retur
   const scene = buildScene(fr.state, core.statics, null);
   const lab = scene.guides.filter((x) => x.type === 'label' && x.lines[0].id === 'place');
   check('scene: one medal label at the finisher', lab.length === 1 && lab[0].lines[0].role === 'medal1');
+  check('no old "Finished P1" label over the boat', !scene.guides.some((x) => x.type === 'label' && (x.lines[0].id === 'fin' || /^Finished/.test(x.lines[0].text))) && JSON.stringify(Object.keys(fr.state.finish)) === '["next"]');
   mute(() => core.command({ type: 'restart', scenario: 16 }));
   fr = tick();
   check('new race: places gone', fr.state.fp === undefined);
