@@ -5,7 +5,7 @@
 import './dom-stub.mjs';
 import { SimCore } from '../src/host.js';
 import {
-  FINISH_GHOST_CATEGORY, WALL_CATEGORY, FINISH_GHOST_OPACITY, setFinishGhost, rulesBoats, desaturate, ghostGuide,
+  FINISH_GHOST_CATEGORY, WALL_CATEGORY, FINISH_GHOST_OPACITY, setFinishGhost, racingBoats, desaturate, ghostGuide,
 } from '../src/finish-ghost.js';
 import { boatTrueWind } from '../src/wind.js';
 import { buildScene } from '../src/scene-build.js';
@@ -29,9 +29,14 @@ const sim = core.sim;
 tick(core);
 const [b0, b1] = sim.players;
 let n = 1;
+const disks = () => sim.bm.domains.filter((d) => d.disk).length;
+const disksBefore = disks();
 while (!sim.raceResults.isFinished(b1) && n < 30 * 40) { tick(core); n++; }
 check('boat 1 finishes (scenario 16)', sim.raceResults.isFinished(b1), `${(n / 30).toFixed(1)} s`);
 check('the finisher is a ghost, the racer is not', b1.finishGhost === true && !b0.finishGhost);
+// Refinement: the AMR windows (one disk per boat) stop following the ghost.
+for (let i = 0; i < 10; i++) tick(core);
+check('AMR: the ghost loses her refinement window, the racer keeps hers', disksBefore === 2 && disks() === 1, `${disksBefore} → ${disks()}`);
 
 // Collisions: walls only.
 {
@@ -76,7 +81,7 @@ check('the finisher is a ghost, the racer is not', b1.finishGhost === true && !b
   }
   check('no rule pairs with the ghost', pairs === 0);
   check('no penalty for touching the ghost', pendingPenaltyCount(b0) === before, `${before} → ${pendingPenaltyCount(b0)}`);
-  check('rulesBoats drops ghosts only', rulesBoats(sim.players).length === 1 && rulesBoats(sim.players)[0] === b0);
+  check('racingBoats drops ghosts only', racingBoats(sim.players).length === 1 && racingBoats(sim.players)[0] === b0);
 }
 
 // Frame state and the client scene.
@@ -98,6 +103,20 @@ check('the finisher is a ghost, the racer is not', b1.finishGhost === true && !b
   const per = [0, 0];
   tr.forEachDot((i) => { per[i]++; });
   check('trail: the ghost drops no new dots', per[1] < per[0] && per[1] <= 11, JSON.stringify(per));
+}
+
+// Walls: a ghost driven at the map edge stays on the map.
+{
+  const wallX = sim.map.width / 2 - 2;
+  b1.physics_model.setPosition({ x: wallX - 3, y: 0 });
+  b1.physics_model.setAngle(Math.PI / 2);
+  let maxX = -Infinity;
+  for (let i = 0; i < 45; i++) {
+    b1.physics_model.setLinearVelocity({ x: 8, y: 0 });
+    tick(core);
+    maxX = Math.max(maxX, b1.physics_model.getPosition().x);
+  }
+  check('ghost driven into the wall at 8 m/s stays inside the map', maxX < wallX, `max x ${maxX.toFixed(2)} < wall ${wallX}`);
 }
 
 // Off again, and a new race clears ghosts.

@@ -10,7 +10,9 @@
 //   FINISH_GHOST_CATEGORY, mask WALL_CATEGORY): she passes through boats and
 //   marks, and they through her;
 // - Sim.step leaves her out of the rules (pair evaluation, contacts, mark
-//   touches), so a racer is never charged for her.
+//   touches), so a racer is never charged for her;
+// - the AMR refinement windows no longer follow her (trackBoats gets only
+//   racingBoats), so her finer grid goes when she finishes.
 // Boats never have a lattice barrier, so there is nothing to remove there.
 // A new race builds new Boat objects, so ghosts clear on every restart.
 //
@@ -50,8 +52,9 @@ export function setFinishGhost(boat, on = true) {
   }
 }
 
-// Boats that still take part in the rules (not ghosts).
-export function rulesBoats(boats) {
+// Boats still racing (not ghosts): the rules, race bots and the AMR
+// refinement windows (domainTrack.js trackBoats) only see these.
+export function racingBoats(boats) {
   return (boats || []).some(isFinishGhost) ? boats.filter((b) => !isFinishGhost(b)) : boats;
 }
 

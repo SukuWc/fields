@@ -30,7 +30,7 @@ import {
 } from './wind-schedule.js';
 import { Boat } from './boat.js';
 import { RaceLifecycle, SIM_RACE_LIFECYCLE, validateRaceLifecycle } from './race-lifecycle.js';
-import { setFinishGhost, rulesBoats } from './finish-ghost.js';
+import { setFinishGhost, racingBoats } from './finish-ghost.js';
 import { settingDefault } from './settings-registry.js';
 import { validateAutopilotGains } from './dev-config.js';
 
@@ -615,7 +615,7 @@ export class Sim {
     // Race bots (scenario 17): autopilot targets once per step.
     const windFrom = map.wind_direction;
     if (stepped) {
-      for (const bot of this.raceBots) bot.step(raceClock, windFrom, rulesBoats(players), !!results && results.isFinished(bot.boat), results ? results.entries.length : 1);
+      for (const bot of this.raceBots) bot.step(raceClock, windFrom, racingBoats(players), !!results && results.isFinished(bot.boat), results ? results.entries.length : 1);
     }
     // Live leaderboard for any course.
     if (course) {
@@ -663,7 +663,7 @@ export class Sim {
     }
     // Finish ghosts take no part in the rules: no pairs, contacts or mark
     // touches, so a racer is never charged for one (finish-ghost.js).
-    const ruled = rulesBoats(players);
+    const ruled = racingBoats(players);
     rec.resolutions = evaluateAllPairs(ruled, getWind, rulesTime, { markFor, boundary });
     recordContacts(rec.resolutions, rulesTime, ruled);
     // Rule 31: boat-versus-mark touches. Racing from the preparatory signal
@@ -676,7 +676,8 @@ export class Sim {
     // curl, which only changes on a lattice step, so it runs on stepping
     // frames. Dev mode leaves the lattice frozen.
     const trackT0 = perfNow();
-    if (!map.devMode && this.options.amr && bm.stepsDueThisFrame() > 0) trackBoats(bm, players);
+    // Finish ghosts (finish-ghost.js) get no refinement window of their own.
+    if (!map.devMode && this.options.amr && bm.stepsDueThisFrame() > 0) trackBoats(bm, racingBoats(players));
     const trackMs = perfNow() - trackT0;
     // AMR off: a restart that removed a boat would keep drawing a ring.
     if (!map.devMode && !this.options.amr && bm.domains.length > players.length) {
