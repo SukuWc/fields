@@ -6,6 +6,8 @@
 // canvas, so they never pan. Spectators (follow off) keep a plain pan with
 // no snap-back. Touch only: desktop mouse is unchanged. Client-only.
 
+import { isAutopilotHandleDragging } from './autopilot-handle.js';
+
 export const SNAP_MS = 300;
 export const TAP_PX = 8;
 const FOV_DEG = 70; // renderer.js PerspectiveCamera, looking straight down
@@ -53,6 +55,7 @@ export function setupDragLook(view, { canvas = document.getElementById('sim_canv
   }
 
   canvas.addEventListener('touchstart', (e) => {
+    if (isAutopilotHandleDragging()) return;
     if (e.touches.length !== 1) {
       // Pinch: hand the gesture over and keep follow where the look left it.
       if (drag) { if (drag.follow) view.camera_follow = true; drag = null; }
@@ -64,6 +67,7 @@ export function setupDragLook(view, { canvas = document.getElementById('sim_canv
   }, { passive: true });
 
   canvas.addEventListener('touchmove', (e) => {
+    if (isAutopilotHandleDragging()) return;
     if (!drag || e.touches.length !== 1) return;
     const t = e.touches[0];
     if (t.identifier !== drag.id) return;
