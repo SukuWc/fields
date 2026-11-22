@@ -1,4 +1,4 @@
-// Settings → Player → Input mapping: one radio row per input device
+// Settings → Preferences → Input mapping: one radio row per input device
 // (Keyboard: Split / Boat 1 / Boat 2; Gamepad 1 and 2: Boat 1 / Boat 2).
 // The routing itself is controls.js (setInputMap, keyBindings, setPadAction);
 // this module only wires the radios, the gamepad status and persistence.
