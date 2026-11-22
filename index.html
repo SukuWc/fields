@@ -900,6 +900,10 @@
       #instrument_panel .instr-charts, #instrument_panel .instr-window-wrap { display: none; }
       #instrument_panel[data-mode="chart"] .instr-tiles { display: none; }
       #instrument_panel[data-mode="chart"] .instr-charts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 8px; }
+      /* Dev TOML readout_columns / chart_columns (instrument-panel.js setLayout):
+         a fixed column count on desktop and tablet; phones keep their two rows. */
+      :root:not(.bp-phone) #instrument_panel .instr-tiles[data-cols],
+      :root:not(.bp-phone) #instrument_panel[data-mode="chart"] .instr-charts[data-cols] { grid-template-columns: repeat(var(--instr-cols), minmax(0, 1fr)) !important; }
       #instrument_panel[data-mode="chart"] .instr-window-wrap { display: inline-flex; gap: 4px; align-items: center; font-size: var(--sz-fs-xs); }
       #instrument_panel .instr-window { font: inherit; background: var(--sz-navy); color: #fff; border: 1px solid rgba(255,255,255,0.25); border-radius: var(--sz-r-sm); }
       #instrument_panel .instr-strip { background: rgba(255,255,255,0.06); border-radius: var(--sz-r-sm); padding: 2px 4px; min-width: 0; }
@@ -1657,7 +1661,7 @@
 
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-Dtkdhhbx.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-BwlWpUGJ.js"></script>
   </head>
   <body>
 
