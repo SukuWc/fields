@@ -223,8 +223,12 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
         ladderCaches.set(sim, cache);
       }
       const getWind = (x, y) => map.get_wind(x, y);
-      const key = [map, sim.epoch || 0, ...ladderBuildKey(getWind, anchors)];
-      const geo = cache(key, () => ladderGeometry(getWind, anchors, { bounds }));
+      const laylineCorr = {
+        upwind: Number.isFinite(view && view.layline_upwind_corr_deg) ? view.layline_upwind_corr_deg : 0,
+        downwind: Number.isFinite(view && view.layline_downwind_corr_deg) ? view.layline_downwind_corr_deg : 0,
+      };
+      const key = [map, sim.epoch || 0, ...ladderBuildKey(getWind, anchors, laylineCorr)];
+      const geo = cache(key, () => ladderGeometry(getWind, anchors, { bounds, laylineCorr }));
       s.ladder = geo.ladder;
       s.layline = geo.layline;
     }

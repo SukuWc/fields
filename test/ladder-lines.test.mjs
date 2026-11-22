@@ -8,6 +8,7 @@ import {
   ladderGeometry,
   ladderSide,
   laylineHalfAngleDeg,
+  laylineCorrOf,
   laylineGuidesFromState,
   ladderBuildKey,
   ladderWindDeg,
@@ -582,6 +583,45 @@ const along = (x, y, ox, oy, dirDeg) => {
   // falls back to the single-point laylines, as before.
   const midOnly = ladderAnchorsFromState({ hud: { co: { done: 1 } }, course: { c: [w] } }, { course: { n: 1, anchors: [w], fin: { x: 0, y: -70 } } });
   check('finish without ends: no gate, single-point laylines', midOnly && !midOnly.gate && midOnly.origin.y === -70, JSON.stringify(midOnly));
+}
+
+
+// Dev TOML layline angle corrections: add degrees to the drawn half-angle
+// only. Defaults leave the boat-draw VMG angles unchanged. Rule 13's
+// CLOSE_HAULED_TWA_DEG (40°) lives in rules.js and is not imported here.
+{
+  const cw = new ConstantWind(90, 4.5);
+  const getWind = (x, y) => cw.getWind(x, y);
+  const anchors = { origin: { x: 0, y: 40 }, toward: { x: 0, y: -70 }, towardIsBoat: true };
+  check('laylineCorrOf: absent / NaN → 0',
+    laylineCorrOf(null).upwind === 0 && laylineCorrOf({ upwind: NaN, downwind: 3 }).downwind === 3 && laylineCorrOf({ upwind: 2 }).upwind === 2);
+  check('half angles with default corr match boat-draw VMG (50 / 20)',
+    laylineHalfAngleDeg(1) === 50 && laylineHalfAngleDeg(-1) === 20
+    && laylineHalfAngleDeg(1, { upwind: 0, downwind: 0 }) === 50
+    && laylineHalfAngleDeg(-1, { upwind: 5, downwind: 0 }) === 20);
+  check('upwind corr +5° → half 55°; downwind corr −5° → half 15°',
+    laylineHalfAngleDeg(1, { upwind: 5 }) === 55 && laylineHalfAngleDeg(-1, { downwind: -5 }) === 15);
+  const base = ladderGeometry(getWind, anchors, { bounds });
+  const wide = ladderGeometry(getWind, anchors, { bounds, laylineCorr: { upwind: 5, downwind: 0 } });
+  const angs = wide.layline.map((f) => Math.atan2(f[3] - f[1], f[2] - f[0]) * 180 / Math.PI)
+    .map((x) => Math.round(x * 1e6) / 1e6).sort((p, q) => p - q);
+  // Dead downwind −90°; ±55° → −145° and −35°.
+  check('upwind +5° corr: laylines at ±55° from dead downwind', angs.join() === '-145,-35', angs.join());
+  const tan55 = Math.tan(55 * Math.PI / 180);
+  check('upwind +5° corr: near rung ends on the wider laylines',
+    near(wide.ladder[0][0], -10 * tan55, 1e-6) && near(wide.ladder[0][2], 10 * tan55, 1e-6));
+  check('zero corr matches the uncorrected geometry',
+    JSON.stringify(ladderGeometry(getWind, anchors, { bounds, laylineCorr: { upwind: 0, downwind: 0 } })) === JSON.stringify(base));
+  const k0 = JSON.stringify(ladderBuildKey(getWind, anchors));
+  const k5 = JSON.stringify(ladderBuildKey(getWind, anchors, { upwind: 5, downwind: 0 }));
+  check('build key includes layline corrections', k0 !== k5 && k0 === JSON.stringify(ladderBuildKey(getWind, anchors, null)));
+  // Downwind mark with a downwind correction.
+  const dw = { origin: { x: 0, y: -45 }, toward: { x: 0, y: 65 }, towardIsBoat: true };
+  const dwGeo = ladderGeometry(getWind, dw, { bounds, laylineCorr: { upwind: 0, downwind: 5 } });
+  const dwAngs = dwGeo.layline.map((f) => Math.atan2(f[3] - f[1], f[2] - f[0]) * 180 / Math.PI)
+    .map((x) => Math.round(x * 1e6) / 1e6).sort((p, q) => p - q);
+  // Dead upwind +90°; ±25° → 65° and 115°.
+  check('downwind +5° corr: laylines at ±25° from dead upwind', dwAngs.join() === '65,115', dwAngs.join());
 }
 
 if (failed) { console.log(`${failed} check(s) failed`); process.exit(1); }

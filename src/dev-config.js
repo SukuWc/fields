@@ -90,6 +90,8 @@ import { CHART_STRIPS } from './instrument-chart.js';
 export const DEV_TOML_FIELDS = [
   { key: 'flow_tracers', id: 'show_field' },
   { key: 'ladder_lines', id: 'ladder' },
+  { key: 'layline_upwind_corr_deg', id: 'laylineUpwindCorr' },
+  { key: 'layline_downwind_corr_deg', id: 'laylineDownwindCorr' },
   { key: 'tracer_count', id: 'tracers', zeroMeansAuto: true },
   { key: 'tracer_life_s', id: 'tracerLife' },
   { key: 'tracer_tail_s', id: 'tracerTail' },
@@ -136,6 +138,7 @@ const HEADER = [
   '# This page only. Apply sends the autopilot gains to boats this page may control.',
   '# A tracer count of 0 is automatic. Default gains are P 2, I 0, D 0 (P only); D was about 29.9 before #200.',
   '# ladder_lines (default true): laylines at the next course mark (one from each mark of a gate; 50° off downwind at an upwind mark, 20° off upwind at a downwind one) and lines square to the wind every 10 m between them, back to the previous mark or the start line; none before the start.',
+  '# layline_upwind_corr_deg / layline_downwind_corr_deg (default 0, −30..30): degrees added to the drawn layline half-angle (50° upwind / 20° downwind) to offset the boat wake shifting local wind. Drawn guides only; Rule 13 close-hauled 40° is unchanged.',
   '# rudder_max_deg: manual helm hard-over each side, 10..90 degrees (default 60). The autopilot uses the same limit; penalty turns stay at 50 or less.',
   '# rudder_max_force_n: rudder blade load limit in newtons, 0..5000 (default 200, 0 = none). Over it, the blade takes the nearest angle within the stop whose load is within it.',
   '# readout_tiles / chart_strips: the Readout tiles and Chart strips in order; leave an id out to hide it. Unknown ids are ignored.',
@@ -379,6 +382,8 @@ export function devClientEffects(cfg) {
   return {
     flowTracers: cfg.flow_tracers,
     ladderLines: cfg.ladder_lines,
+    laylineUpwindCorrDeg: cfg.layline_upwind_corr_deg,
+    laylineDownwindCorrDeg: cfg.layline_downwind_corr_deg,
     tracerCount: cfg.tracer_count === 0 ? null : cfg.tracer_count,
     tracerLife: cfg.tracer_life_s,
     tracerTail: cfg.tracer_tail_s,

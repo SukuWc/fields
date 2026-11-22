@@ -265,6 +265,7 @@ export function applyDevEffects(effects, { view, host, setTracerParams, setBoatT
   if (view) {
     if (view.input_show_fields) view.input_show_fields(effects.flowTracers);
     if (view.input_show_ladder) view.input_show_ladder(effects.ladderLines);
+    if (view.input_layline_corr) view.input_layline_corr(effects.laylineUpwindCorrDeg, effects.laylineDownwindCorrDeg);
     if (view.input_show_forces) view.input_show_forces(effects.showForces);
     if (view.input_show_refinement) view.input_show_refinement(effects.showRefinement);
   }

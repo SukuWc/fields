@@ -44,6 +44,8 @@ test('defaults match the registry and the boat PD controller', () => {
   assert.equal(DEV_CONFIG_DEFAULTS.autopilot_kd, AUTOPILOT_KD);
   assert.equal(DEV_CONFIG_DEFAULTS.flow_tracers, true);
   assert.equal(DEV_CONFIG_DEFAULTS.ladder_lines, true);
+  assert.equal(DEV_CONFIG_DEFAULTS.layline_upwind_corr_deg, 0);
+  assert.equal(DEV_CONFIG_DEFAULTS.layline_downwind_corr_deg, 0);
   assert.equal(DEV_CONFIG_DEFAULTS.tracer_count, 0);
   assert.equal(DEV_CONFIG_DEFAULTS.boat_trails, true);
   assert.equal(DEV_CONFIG_DEFAULTS.ghost_boat, false);
@@ -144,6 +146,9 @@ test('gain validation rejects a bad command before any boat is named', () => {
   assert.match(validateAutopilotGains({ kp: 99, ki: 0, kd: 1 }).error, /autopilot_kp/);
   const fx = devClientEffects({ ...DEV_CONFIG_DEFAULTS, tracer_count: 0, plot: 'curl' });
   assert.equal(fx.tracerCount, null);
+  assert.equal(fx.laylineUpwindCorrDeg, 0);
+  assert.equal(fx.laylineDownwindCorrDeg, 0);
+  assert.equal(devClientEffects({ ...DEV_CONFIG_DEFAULTS, layline_upwind_corr_deg: 3, layline_downwind_corr_deg: -2 }).laylineUpwindCorrDeg, 3);
   assert.equal(fx.plotType, PLOT_TOKENS.indexOf('curl'));
   assert.deepEqual(autopilotGainsOf(DEV_CONFIG_DEFAULTS), { kp: AUTOPILOT_KP, ki: 0, kd: AUTOPILOT_KD });
   assert.deepEqual(validateAutopilotGains({ kp: 2, ki: 0, kd: 0, autopilotHoldoffMs: 0 }), { kp: 2, ki: 0, kd: 0, autopilotHoldoffMs: 0 });
