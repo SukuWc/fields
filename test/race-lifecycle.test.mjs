@@ -154,5 +154,30 @@ const tick = (room, n) => { for (let i = 0; i < n; i++) mute(() => room.step({ d
   check('HUD: "Time left 9:45" after 15 s of racing', /Time left 9:45/.test(hud.startHud.html), hud.startHud.html);
 }
 
+// 6. No start sequence (scenario 0): Time left from the scenario start.
+{
+  const cfg = parseAndValidateRoomConfig('scenario = 0\ngusts = false\nrace_time_limit_s = 3\n').config;
+  const hudOf = (core) => { const f = mute(() => core.tick({ dt: 1 / 30, held: [], present: true, view: {} })); return hudFromState(f.state.hud, null, f.state.boats); };
+  const room = new SimCore({ mapW: 100, mapH: 200, simRes: '2f' });
+  mute(() => room.command({ type: 'config', config: cfg }));
+  mute(() => room.command({ type: 'spawnBoat', name: 'A' }));
+  for (let i = 0; i < 59; i++) hudOf(room);
+  const h = hudOf(room);
+  check('room, scenario 0: no start clock, "Time left 0:01" after 2 s', !h.startHud.html.includes('start-clock') && /Time left 0:01/.test(h.startHud.html), h.startHud.html);
+  const solo = new SimCore({ mapW: 100, mapH: 200, simRes: '2f', soloBoat: true });
+  mute(() => solo.command({ type: 'config', config: cfg }));
+  for (let i = 0; i < 59; i++) hudOf(solo);
+  const hs = hudOf(solo);
+  check('single player, scenario 0 (no spawned boat): the clock runs from the scenario start', /Time left 0:01/.test(hs.startHud.html) && solo.sim.players.every((b) => !b.spawnId), hs.startHud.html);
+  let ev = null;
+  solo.sim.on((e) => { if (e.type === 'raceLifecycle') ev = e; });
+  for (let i = 0; i < 40 && !ev; i++) hudOf(solo);
+  check('single player, scenario 0: the time limit fires (the page re-commits its config)', ev && ev.reason === 'timeLimit', JSON.stringify(ev));
+  const bare = new SimCore({ mapW: 100, mapH: 200, simRes: '2f' });
+  mute(() => bare.command({ type: 'config', config: cfg }));
+  for (let i = 0; i < 59; i++) hudOf(bare);
+  check('room with no player boat: the clock waits (Time left 0:03)', /Time left 0:03/.test(hudOf(bare).startHud.html));
+}
+
 if (failed) { console.log(`${failed} check(s) failed`); process.exit(1); }
 console.log('all race lifecycle checks passed');
