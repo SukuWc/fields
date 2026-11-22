@@ -316,7 +316,7 @@ function startClient() {
   // Before installUrlSettings: the device default must be the checkbox default.
   setupTouchControls();
   setupGamepad();
-  // Player tab → Input mapping: which boat the keyboard and each pad drive.
+  // Preferences tab → Input mapping: which boat the keyboard and each pad drive.
   setupInputMap();
   // After the WebGL canvas exists (#sim_canvas): two-finger pinch zooms the client camera.
   setupPinchZoom(view);

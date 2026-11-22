@@ -15,7 +15,8 @@ export function applySettingDefaults(doc = document) {
     if (s.control === false) continue;
     const el = doc.getElementById(s.id);
     if (!el) { problems.push(s.id + ': no control'); continue; }
-    if (!el.closest('#' + PANEL_IDS[s.panel])) problems.push(s.id + ': not in #' + PANEL_IDS[s.panel]);
+    // boat_name (host:player_menu) sits in the instrument Player menu, not #player_panel.
+    if (!el.closest('#' + PANEL_IDS[s.panel]) && s.host !== 'player_menu') problems.push(s.id + ': not in #' + PANEL_IDS[s.panel]);
     const d = s.default;
     if (el.type === 'checkbox') {
       el.defaultChecked = !!d;
