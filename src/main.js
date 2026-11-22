@@ -334,10 +334,18 @@ function startClient() {
   // After the URL: saved player prefs fill what the query string leaves unset.
   const playerPrefs = installPlayerPrefs();
   // Dev TOML: query wins over the saved document, then Apply (visuals + PID).
+  // The panel layout can arrive before the instrument panel exists (local
+  // Apply is synchronous): kept here and handed over once it is set up.
+  let instrumentPanel = null;
+  let panelLayout = null;
+  const setPanelLayout = (layout) => {
+    panelLayout = layout;
+    if (instrumentPanel) instrumentPanel.setLayout(layout);
+  };
   installDevPrefs(document, {
     host,
     applyLocal: (effects) => applyDevEffects(effects, {
-      view, host, setTracerParams, setBoatTrailsOn, setTrailParams, setGhostParams, setPerfOverlayOn,
+      view, host, setTracerParams, setBoatTrailsOn, setTrailParams, setGhostParams, setPerfOverlayOn, setPanelLayout,
     }),
   });
   setupSettingsTabs();
@@ -401,6 +409,8 @@ function startClient() {
   let handleBoat = null; // render-state for the autopilot drag handle
   // Instrument panel (zone C): own boat by id.
   const instruments = setupInstrumentPanel({ remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
+  instrumentPanel = instruments;
+  if (panelLayout) instruments.setLayout(panelLayout);
   const minimap = setupMinimap({ view, getMapSize: () => [map_w, map_h], remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
   const rankChip = setupRankChip({ remote: host.kind === 'remote' });
   const mobileStrip = setupMobileStrip({ remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
