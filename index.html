@@ -1291,7 +1291,12 @@
         top: calc(var(--m-top) + 8px); left: calc(8px + env(safe-area-inset-left)); right: calc(8px + env(safe-area-inset-right));
         width: auto; transform: none; z-index: var(--sz-z-bar);
       }
-      .bp-touch body:has(#start_hud:not([hidden])) .rule-toasts { top: calc(var(--m-top) + 112px); }
+      /* Below the timer at its live height (start-hud-size.js: the lifecycle
+         line and restart vote row make it taller) and below the scenario card
+         under the minimap, whichever ends lower. 98px = the 3-line timer. */
+      .bp-touch body:has(#start_hud:not([hidden])) .rule-toasts {
+        top: max(calc(var(--m-top) + 14px + var(--start-hud-h, 98px)), calc(var(--scenario-card-b, 0px) + 6px));
+      }
       .bp-touch .rule-toast { font-size: var(--sz-fs-base); padding: 6px 10px; }
       .bp-touch .rule-toast .rt-boats { font-size: var(--sz-fs-sm); }
       .bp-touch .rule-toast:nth-child(n+3) { display: none; }
