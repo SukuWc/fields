@@ -20,6 +20,8 @@
 //   start  startGuideState (start.js) for boat 0
 //   course courseGuideState (course.js) for boat 0
 //   finish finishGuideState (finish.js)
+//   fp     finish places [[boat id, place (0 = DSQ)]] for finished boats
+//          (finish.js finishPlaceState: corrected-time order), when any
 //   br, mr boundary-room / mark-room badges: [[entitled, giving boat id]]
 //          (rules.js roomGuideState)
 //   pair   rule-resolver pair overlays: [rules.js pairStateFor] (only
@@ -60,7 +62,7 @@
 //          { id, kind, stroke, r | v (local vertices), com? } (moving bodies)
 import { lineState, startGuideState } from './start.js';
 import { courseStatics, courseGuideState } from './course.js';
-import { finishLineState, finishGuideState } from './finish.js';
+import { finishLineState, finishGuideState, finishPlaceState } from './finish.js';
 import {
   contactFlashState,
   pairStateFor,
@@ -244,6 +246,10 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
   if (course && racing[0]) s.course = courseGuideState(course, course.progressFor(racing[0]));
   const results = sim.raceResults;
   if (course && course.finish && results) s.finish = finishGuideState(course, racing[0] ? course.progressFor(racing[0]) : null, results, racing, rec.raceClock);
+  if (course && course.finish && results && results.entries.length) {
+    const fp = finishPlaceState(results, racing);
+    if (fp.length) s.fp = fp;
+  }
   const res = rec.resolutions;
   const br = roomGuideState(res, racing, 'boundaryRoom');
   if (br.length) s.br = br;

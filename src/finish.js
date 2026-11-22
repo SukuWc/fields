@@ -39,7 +39,7 @@
 
 import { LAYER_COURSE } from './draw-order.js';
 import { boatStartGeometry } from './start.js';
-import { finishBoatPenalties, penaltyCode } from './rules.js';
+import { finishBoatPenalties, penaltyCode, headingForward, stateId, boatsById } from './rules.js';
 import { penaltyNameText, unservedCodes } from './rule-text.js';
 
 export const FINISH_UNSERVED_PENALTY_S = 20;
@@ -262,6 +262,47 @@ export function finishGuidesFromState(line, s, nowMs = 0) {
   for (const l of s.labels) {
     const text = (l.dsq ? 'Finished · DSQ' : 'Finished P' + l.position) + (l.unserved.length ? ' · ' + penaltyNote({ ...l, unserved: l.unserved.map(penaltyNameText) }) : '');
     g.push({ type: 'label', badge: true, x: l.x, y: l.y + 3.3, lines: [{ text, role: l.unserved.length ? 'turn' : 'cleared', id: 'fin' }] });
+  }
+  return g;
+}
+
+// Finish position overlay: every finished boat carries her place on the
+// hull, at the stern where the penalty count badge sits (rules.js
+// penaltyGuidesFromState), for as long as she is on the water. Places are
+// RaceResults positions: ranked by corrected time (finish time + the time
+// penalty for unserved penalties), so they change live when a later finisher
+// beats a penalised boat. 1–3 draw as gold / silver / bronze medals.
+//
+// finishPlaceState(results, boats) → [[boat id, place]] (place 0 = DSQ),
+// sent as state.fp (scene-state.js); boats: the Sim's players.
+export function finishPlaceState(results, boats) {
+  const out = [];
+  if (!results) return out;
+  const live = new Set(boats || []);
+  for (const e of results.entries) {
+    if (!live.has(e.boat)) continue;
+    out.push([stateId(e.boat), e.dsq ? 0 : e.position]);
+  }
+  return out;
+}
+
+// Label role of a place: 'medal1' .. 'medal3', else 'place' (renderer.js
+// paintLabelTexture draws both).
+export function finishPlaceRole(place) {
+  return place >= 1 && place <= 3 ? 'medal' + place : 'place';
+}
+
+// Badges from state.fp; boats: state.boats ({ id, x, y, ha }). Same anchor as
+// the penalty count badge: 2.5 m behind the boat along her heading.
+export function finishPlaceGuidesFromState(fp, boats) {
+  const g = [];
+  const byId = boatsById(boats);
+  for (const [id, place] of fp || []) {
+    const b = byId.get(id);
+    if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.y)) continue;
+    const fwd = headingForward(b.ha);
+    const ax = fwd ? -fwd.x * 2.5 : 0, ay = fwd ? -fwd.y * 2.5 : 2.5;
+    g.push({ type: 'label', badge: true, x: b.x + ax, y: b.y + ay, lines: [{ text: place > 0 ? String(place) : 'DSQ', role: finishPlaceRole(place), id: 'place' }] });
   }
   return g;
 }
