@@ -86,23 +86,29 @@
         font-family: var(--sz-font-mono);
         pointer-events: none;
       }
+      /* Scenario name + description live in the minimap UI (Group 5 / top HUD).
+         Breakpoints restyle it as a header on the map (desktop / tablet) or a
+         chip under the round map (phones). */
       #scenario_card {
-        position: absolute;
-        top: 10px;
-        left: 10px;
-        width: min(340px, calc(100vw - 280px));
-        max-height: 42vh;
-        overflow: auto;
-        z-index: var(--sz-z-controls);
+        position: relative;
+        top: auto; left: auto; right: auto;
+        width: auto; max-width: none;
+        max-height: none;
+        overflow: hidden;
+        z-index: auto;
+        box-sizing: border-box;
         color: #f4f7fb;
         font-family: var(--sz-font-ui);
         font-size: var(--sz-fs-md);
         line-height: 1.45;
-        background: rgba(12, 18, 28, 0.9);
-        border: 1px solid rgba(180, 200, 220, 0.45);
-        border-radius: var(--sz-r-md);
-        padding: 8px 10px 10px;
+        background: var(--sz-navy-97);
+        border: 0;
+        border-bottom: 1px solid var(--sz-yellow-50);
+        border-radius: 0;
+        padding: 6px 8px;
+        pointer-events: auto;
       }
+      #top_hud { display: contents; }
       #scenario_card_head {
         display: flex;
         align-items: baseline;
@@ -619,9 +625,6 @@
       body.touch-on #perf_overlay_hud {
         bottom: calc(var(--touch-panel-h) + 34px);
       }
-      body.touch-on #scenario_card {
-        max-height: calc(100% - var(--touch-panel-h) - 20px);
-      }
       body.touch-on #settings {
         max-height: calc(100% - var(--touch-panel-h) - 20px);
         overflow-y: auto;
@@ -715,27 +718,25 @@
       }
       .bp-desktop-compact body { --col-l: 48px; }
       .bp-desktop-compact body.mm-expanded { --col-l: 160px; }
-      /* Desktop top bar (standardization PR 8): the phone idea on a wide
-         screen. One 44 px navy row: scenario chip left (the card collapsed
-         into the bar; Show drops it down), rank chip and ☰ right. The drawer
-         and the HUD columns start under it. */
+      /* Desktop top bar: one 44 px navy row with the rank chip and ☰.
+         Scenario name/description sit on the minimap (left column). The drawer
+         and the HUD columns start under the bar. */
       .bp-desktop #mobile_bar {
         display: block; position: fixed; left: 0; right: 0; top: 0; height: var(--d-bar); z-index: calc(var(--sz-z-bar) + 4);
         background: var(--sz-navy); border-bottom: 1px solid var(--sz-yellow-50); pointer-events: none;
       }
-      .bp-desktop #scenario_card {
-        top: 0; left: 0; z-index: var(--sz-z-chrome); width: min(520px, calc(100vw - 200px)); box-sizing: border-box;
-        min-height: var(--d-bar); max-height: calc(100% - var(--d-bar) - 20px); padding: 0 10px 0 12px;
-        background: transparent; border: 0; border-radius: 0;
+      .bp-desktop #hud_minimap #scenario_card {
+        position: relative; z-index: auto; width: 100%; box-sizing: border-box;
+        min-height: 0; max-height: 40vh; overflow: auto;
+        padding: 6px 8px; background: var(--sz-navy); border: 1px solid var(--sz-yellow-50); border-bottom: 0;
+        border-radius: var(--sz-r-md) var(--sz-r-md) 0 0; box-shadow: none;
       }
-      .bp-desktop #scenario_card_head { align-items: center; min-height: var(--d-bar); }
-      .bp-desktop #scenario_card_num { color: var(--sz-yellow); }
-      .bp-desktop #scenario_card.collapsed #scenario_card_title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-      .bp-desktop #scenario_card_toggle { border: 0; color: var(--sz-yellow); text-decoration: underline; font-size: var(--sz-fs-sm); }
-      .bp-desktop #scenario_card:not(.collapsed) {
-        background: var(--sz-navy-97); border: 1px solid var(--sz-yellow-50); border-top: 0; border-radius: 0 0 var(--sz-r-lg) 0;
-        padding-bottom: 10px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-      }
+      .bp-desktop #hud_minimap #scenario_card_head { align-items: center; min-height: 28px; gap: 6px; }
+      .bp-desktop #hud_minimap #scenario_card_num { color: var(--sz-yellow); font-size: var(--sz-fs-sm); }
+      .bp-desktop #hud_minimap #scenario_card_title { min-width: 0; font-size: var(--sz-fs-sm); font-weight: 700; }
+      .bp-desktop #hud_minimap #scenario_card.collapsed #scenario_card_title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .bp-desktop #hud_minimap #scenario_card_toggle { border: 0; color: var(--sz-yellow); text-decoration: underline; font-size: var(--sz-fs-xs); padding: 0 4px; }
+      .bp-desktop #hud_minimap #scenario_card_body { margin: 6px 0 2px; font-size: var(--sz-fs-sm); line-height: 1.35; opacity: 0.9; }
       .bp-desktop #bar_rank {
         display: inline-flex; align-items: center; position: fixed; top: 8px; right: 56px; z-index: var(--sz-z-chrome); height: 28px; padding: 0 9px; box-sizing: border-box;
         font: 800 var(--sz-fs-lg)/1 var(--sz-font-ui); font-variant-numeric: tabular-nums; color: var(--sz-navy); background: var(--sz-yellow); border-radius: 14px;
@@ -752,7 +753,7 @@
       .bp-desktop #hud_grid .hud-zone > * { pointer-events: auto; }
       .bp-desktop #hud_grid #hud_top { grid-column: 2; grid-row: 1; align-items: center; }
       .bp-desktop #hud_grid #hud_instruments { grid-column: 2; grid-row: 3; align-self: end; align-items: center; }
-      .bp-desktop #hud_grid #hud_minimap { grid-column: 1; grid-row: 3; align-self: end; align-items: flex-start; }
+      .bp-desktop #hud_grid #hud_minimap { grid-column: 1; grid-row: 3; align-self: end; align-items: stretch; display: flex; flex-direction: column; gap: 0; }
       .bp-desktop #hud_grid #hud_rcol { grid-column: 3; grid-row: 1 / -1; gap: var(--d-gap); }
       .bp-desktop #hud_grid #hud_right { flex: 0 1 auto; align-items: stretch; }
       .bp-desktop #hud_grid #hud_toasts { flex: 1 1 0; justify-content: flex-end; overflow: hidden; }
@@ -766,7 +767,7 @@
       /* Zone E on desktop: rule toasts sit in the right column above the chat. */
       .bp-desktop .rule-toasts { position: static; top: auto; left: auto; transform: none; width: auto; flex-direction: column-reverse; }
       /* Zone D on desktop: the minimap fills the left column (5:4). */
-      .bp-desktop #hud_grid #minimap { position: relative; left: auto; bottom: auto; width: 100%; height: auto; box-sizing: border-box; }
+      .bp-desktop #hud_grid #minimap { position: relative; left: auto; bottom: auto; width: 100%; height: auto; box-sizing: border-box; border: 1px solid var(--sz-yellow-50); border-radius: 0 0 var(--sz-r-md) var(--sz-r-md); }
       .bp-desktop #hud_grid #minimap canvas { width: 100%; height: auto; aspect-ratio: 5 / 4; }
       #mm_toggle { display: none; }
       .bp-desktop-compact #hud_grid #mm_toggle {
@@ -774,7 +775,8 @@
         --sz-btn-bg: var(--sz-navy-90); --sz-btn-border: var(--sz-yellow-35);
       }
       .bp-desktop-compact body.mm-expanded #hud_grid #mm_toggle { width: auto; min-height: 28px; padding: 0 10px; }
-      .bp-desktop-compact body:not(.mm-expanded) #hud_grid #minimap { display: none; }
+      .bp-desktop-compact body:not(.mm-expanded) #hud_grid #minimap,
+      .bp-desktop-compact body:not(.mm-expanded) #hud_grid #scenario_card { display: none; }
       /* Zone C on desktop: the panel fills the middle column up to 660 px of content. */
       .bp-desktop #hud_grid #instrument_panel {
         position: relative; left: auto; bottom: auto; transform: none; z-index: auto;
@@ -910,6 +912,9 @@
       #instrument_panel .pm-status { flex: 1 1 160px; min-width: 0; font-size: var(--sz-fs-xs); opacity: 0.85; }
       #instrument_panel.spectating .pm-status { flex-basis: 100%; color: #ffb0a0; opacity: 1; }
       #instrument_panel .pm-status:empty { display: none; }
+      /* Second player: own row below Leave / status so it stands out. */
+      #instrument_panel .instr-player #own_boat_add,
+      #instrument_panel .instr-player #own_boat_remove2 { flex-basis: 100%; }
 
       /* bp-touch */
       .bp-touch #settings_toggle {
@@ -943,8 +948,8 @@
       .bp-touch body.settings-open #settings_backdrop {
         display: block;
       }
-      /* The desktop #info sits between the scenario card and the settings
-         panel (left 368px, right 270px), which is off screen on a phone. */
+      /* The desktop #info sits left of the settings drawer; the scenario card
+         now lives on the minimap. Off screen on a phone. */
       .bp-touch #info {
         top: auto;
         left: calc(10px + env(safe-area-inset-left));
@@ -994,17 +999,9 @@
         font-size: var(--sz-fs-2xs);
         line-height: 1.15;
       }
-      /* The canvas area is short on a phone: the card scrolls inside what
-         is left above the readout (its Hide button collapses it). */
-      .bp-touch body.touch-on #scenario_card {
-        max-height: max(64px, calc(100% - var(--touch-panel-h) - 210px));
-      }
       /* The drawer stays full height; the half-height cap is for desktop. */
       .bp-touch body.touch-on #settings {
         max-height: none;
-      }
-      .bp-touch #scenario_card {
-        width: calc(100vw - 92px - env(safe-area-inset-right) - env(safe-area-inset-left));
       }
       .bp-touch #settings {
         position: fixed;
@@ -1166,17 +1163,16 @@
       #chat_status { color: #f99; font-size: var(--sz-fs-sm); }
       /* Beside #fps; above the touch helm when it shows. */
       body.touch-on #chat_panel { bottom: calc(var(--touch-panel-h) + 6px); }
-      /* Mobile readout strip (plan M3): BSP / VMG / TWA / TWS under the top of
-         the screen where the instrument panel is hidden; everything anchored
-         to the top moves down by --m-top. Green / red only on the tack chip. */
+      /* Mobile quick-stats strip: BSP / VMG / TWA / TWS. Merged into the single
+         top HUD row with 🏁 / fullscreen / ☰ (Group 5). Green / red only on the
+         tack chip. */
       #mobile_strip { display: none; }
       /* bp-touch */
-      .bp-touch body { --m-top: calc(46px + env(safe-area-inset-top)); }
       .bp-touch #mobile_strip {
         display: grid; grid-template-columns: repeat(4, 1fr);
-        position: fixed; left: 0; right: 0; top: 0; height: var(--m-top); z-index: calc(var(--sz-z-bar) + 5);
+        position: fixed; left: 0; right: 0; top: 0; height: var(--m-bar); z-index: calc(var(--sz-z-bar) + 5);
         padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); box-sizing: border-box;
-        background: rgba(11, 23, 71, 0.82); border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+        background: transparent; border: 0;
         font-family: var(--sz-font-ui); color: #fff; pointer-events: none;
       }
       .bp-touch #mobile_strip .ms-cell { display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
@@ -1186,55 +1182,39 @@
       .bp-touch #mobile_strip .ms-tack { margin-left: 4px; padding: 1px 4px; border-radius: var(--sz-r-xs); font-size: var(--sz-fs-xs); font-weight: 800; vertical-align: 3px; }
       .bp-touch #mobile_strip .ms-tack.port { background: var(--sz-port); color: #fff; }
       .bp-touch #mobile_strip .ms-tack.stbd { background: var(--sz-stbd); color: #fff; }
-      .bp-touch #scenario_card { top: calc(10px + var(--m-top)); }
-      .bp-touch #settings_toggle { top: calc(10px + var(--m-top)); }
-      .bp-touch #start_hud { top: calc(48px + var(--m-top)); }
-      .bp-touch .rule-toasts { top: calc(64px + var(--m-top)); }
-      .bp-touch #settings { padding-top: calc(68px + var(--m-top)); }
-
-      /* Mobile top bar (plan M4): one 44 px row with the scenario chip (the card
-         collapsed into the bar; Show drops it down), the 🏁 / fullscreen buttons and the menu.
-         The readout strip sits right under it (portrait) or inside it
-         (landscape), and the start timer below that, so none of them overlap. */
+      /* Top HUD (Group 5): one 44 px navy row. Quick stats share it with the
+         🏁 / fullscreen / ☰ controls; scenario lives on the minimap. */
       #mobile_bar, #bar_rank { display: none; }
       /* bp-touch */
-      .bp-touch body { --m-bar: calc(44px + env(safe-area-inset-top)); --m-top: calc(var(--m-bar) + 46px); --race-top: calc(var(--m-bar) + 1px); }
+      .bp-touch body { --m-bar: calc(44px + env(safe-area-inset-top)); --m-top: var(--m-bar); --race-top: calc(var(--m-bar) + 1px); }
       .bp-touch #mobile_bar {
         display: block; position: fixed; left: 0; right: 0; top: 0; height: var(--m-bar); z-index: calc(var(--sz-z-bar) + 4);
         background: var(--sz-navy); border-bottom: 1px solid var(--sz-yellow-50); pointer-events: none;
       }
-      .bp-touch #mobile_strip { top: var(--m-bar); height: 46px; padding-top: 0; }
-      .bp-touch #scenario_card, .bp-touch body.touch-on #scenario_card {
-        top: env(safe-area-inset-top); left: env(safe-area-inset-left); z-index: var(--sz-z-chrome);
-        width: calc(100vw - 44px - 20px - env(safe-area-inset-left) - env(safe-area-inset-right));
-        box-sizing: border-box; min-height: var(--sz-tap); padding: 0 0 0 10px;
-        background: transparent; border: 0; border-radius: 0;
-        max-height: calc(100% - var(--touch-panel-h, 0px) - var(--m-bar) - 8px);
+      /* Strip fills the bar row, leaving room on the right for flag / FS / menu. */
+      .bp-touch #mobile_strip {
+        top: 0; height: var(--m-bar); padding: env(safe-area-inset-top) calc(96px + env(safe-area-inset-right)) 0 env(safe-area-inset-left);
+        right: 0; left: 0; z-index: calc(var(--sz-z-bar) + 6); background: transparent; border: 0;
       }
-      .bp-touch #scenario_card_head { align-items: center; min-height: var(--sz-tap); gap: 6px; }
-      .bp-touch #scenario_card_title { min-width: 0; font-size: var(--sz-fs-md); line-height: 1.25; }
-      .bp-touch #scenario_card.collapsed #scenario_card_title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .bp-touch #scenario_card_toggle { margin: 0; border: 0; color: var(--sz-yellow); text-decoration: underline; }
-      .bp-touch #scenario_card:not(.collapsed) {
-        background: var(--sz-navy-97); border-bottom: 1px solid var(--sz-yellow-50);
-        padding-bottom: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      .bp-touch:has(#fullscreen_toggle:not([hidden])) #mobile_strip {
+        padding-right: calc(140px + env(safe-area-inset-right));
       }
+      .bp-touch #mobile_strip .ms-value { font-size: var(--sz-fs-xl); margin-top: 2px; }
       .bp-touch #settings_toggle { top: env(safe-area-inset-top); right: env(safe-area-inset-right); width: var(--sz-tap); height: var(--sz-tap); }
       .bp-touch #start_hud { top: calc(var(--m-top) + 8px); }
       .bp-touch .rule-toasts { top: calc(var(--m-top) + 8px); }
       .bp-touch #settings { padding-top: calc(var(--m-bar) + 12px); }
 
-      /* Landscape phone: bar and strip share one row; chip left, readouts in the middle. */
+      /* Landscape phone: stats sit between the left map/scenario chip and the right controls. */
       /* bp-phone-landscape */
-      .bp-phone-landscape body { --m-top: var(--m-bar); }
       .bp-phone-landscape #mobile_strip {
-        top: env(safe-area-inset-top); height: var(--sz-tap); z-index: calc(var(--sz-z-bar) + 6); background: transparent; border: 0;
-        left: calc(env(safe-area-inset-left) + 230px); right: calc(env(safe-area-inset-right) + 96px); padding: 0;
+        padding: env(safe-area-inset-top) calc(96px + env(safe-area-inset-right)) 0 calc(env(safe-area-inset-left) + var(--mm-d, 76px) + 12px);
+      }
+      .bp-phone-landscape:has(#fullscreen_toggle:not([hidden])) #mobile_strip {
+        padding-right: calc(140px + env(safe-area-inset-right));
       }
       .bp-phone-landscape #mobile_strip .ms-value { font-size: 17px; margin-top: 2px; }
       .bp-phone-landscape #mobile_strip .ms-label { font-size: var(--sz-fs-2xs); }
-      .bp-phone-landscape #scenario_card, .bp-phone-landscape body.touch-on #scenario_card { width: 226px; }
-      .bp-phone-landscape #scenario_card:not(.collapsed) { width: min(420px, 60vw); }
 
       /* Mobile toast placement (plan M5): full width under the top bar and
          strip, 14 px text, at most 2 visible (newest first); below the start
@@ -1260,7 +1240,7 @@
       /* Phones and touch-only devices: every tap target at least 44 x 44 px
          (Apple HIG / WCAG 2.5.5). Same query as the mobile menu above. */
       /* bp-touch */
-      .bp-touch #scenario_card_toggle { min-width: var(--sz-tap); min-height: var(--sz-tap); margin: -10px -6px -10px 0; font-size: var(--sz-fs-md); padding: 0 10px; }
+      .bp-touch #scenario_card_toggle { min-width: 44px; min-height: 28px; margin: 0; font-size: var(--sz-fs-sm); padding: 0 8px; }
       .bp-touch #chat_toggle { min-width: 64px; min-height: var(--sz-tap); font-size: var(--sz-fs-lg); }
       /* Player form: the saved name (Join / Leave live in the Player menu tab). */
       .bp-touch #settings #own_boat_panel { flex-wrap: wrap; gap: 8px; padding: 6px 0; cursor: default; }
@@ -1312,6 +1292,39 @@
       .bp-phone #minimap.mm-open .mm-follow { left: 6px; }
       .bp-phone #minimap.mm-open .mm-follow[aria-pressed="true"] { background: var(--sz-yellow); color: var(--sz-navy); border-color: var(--sz-yellow); }
       .bp-phone #minimap.mm-open .mm-close { right: 6px; font-size: 22px; padding: 0; width: var(--sz-tap); }
+      /* Scenario chip rides with the minimap UI: under the round map when
+         closed; stacked above the open map panel as its header. */
+      .bp-phone #hud_minimap #scenario_card {
+        display: block; position: fixed; z-index: calc(var(--sz-z-bar) + 2);
+        top: calc(var(--m-top) + 8px + var(--mm-d) + 6px);
+        right: calc(8px + env(safe-area-inset-right));
+        left: auto; transform: none;
+        width: max-content; max-width: min(46vw, 180px);
+        padding: 4px 8px; background: var(--sz-navy-90); border: 1px solid var(--sz-yellow-50);
+        border-radius: var(--sz-r-md); box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+      }
+      .bp-phone #hud_minimap #scenario_card_head { align-items: center; min-height: 0; gap: 4px; }
+      .bp-phone #hud_minimap #scenario_card_num { color: var(--sz-yellow); font-size: var(--sz-fs-xs); }
+      .bp-phone #hud_minimap #scenario_card_title { min-width: 0; font-size: var(--sz-fs-xs); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .bp-phone #hud_minimap #scenario_card_toggle { font-size: var(--sz-fs-2xs); color: var(--sz-yellow); border: 0; text-decoration: underline; padding: 0 2px; }
+      .bp-phone #hud_minimap #scenario_card:not(.collapsed) {
+        max-width: min(70vw, 280px); max-height: 28vh; overflow: auto;
+      }
+      .bp-phone #hud_minimap #scenario_card_body { margin: 4px 0 0; font-size: var(--sz-fs-xs); line-height: 1.3; }
+      /* Open map: scenario becomes the panel header above the circle-expanded map. */
+      .bp-phone body:has(#minimap.mm-open) #hud_minimap #scenario_card {
+        top: calc(var(--m-top) + 8px); left: 50%; right: auto; transform: translateX(-50%);
+        width: min(94vw, 440px); max-width: min(94vw, 440px); max-height: 30vh;
+        border: 1px solid var(--sz-yellow-50); border-bottom: 0;
+        border-radius: var(--sz-r-xl) var(--sz-r-xl) 0 0; background: var(--sz-navy);
+        padding: 8px 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.35); z-index: calc(var(--sz-z-chrome) + 21);
+      }
+      .bp-phone body:has(#minimap.mm-open) #hud_minimap #scenario_card_title { font-size: var(--sz-fs-md); white-space: normal; }
+      .bp-phone body:has(#minimap.mm-open) #hud_minimap #scenario_card_body { margin: 6px 0 0; font-size: var(--sz-fs-sm); }
+      .bp-phone body:has(#minimap.mm-open) #minimap.mm-open {
+        top: calc(var(--m-top) + 8px + 52px); /* room for scenario header; JS/CSS approx */
+        border-radius: 0 0 var(--sz-r-xl) var(--sz-r-xl);
+      }
       /* The start timer moves left and toasts keep clear of the circle. */
       .bp-phone #start_hud { left: calc(8px + env(safe-area-inset-left)); transform: none; box-sizing: border-box; max-width: calc(100vw - var(--mm-d) - 32px); white-space: normal; }
       .bp-phone .rule-toasts { right: calc(var(--mm-d) + 16px + env(safe-area-inset-right)); }
@@ -1319,7 +1332,15 @@
       /* bp-phone-landscape */
       .bp-phone-landscape body { --mm-d: 76px; }
       .bp-phone-landscape #minimap { right: auto; left: calc(8px + env(safe-area-inset-left)); top: calc(var(--m-top) + 6px); }
+      .bp-phone-landscape #hud_minimap #scenario_card {
+        top: calc(var(--m-top) + 6px + var(--mm-d) + 6px);
+        right: auto; left: calc(8px + env(safe-area-inset-left));
+      }
       .bp-phone-landscape #minimap.mm-open { top: calc(var(--m-top) + 6px); width: auto; height: calc(100% - var(--m-top) - var(--touch-panel-h) - 12px); }
+      .bp-phone-landscape body:has(#minimap.mm-open) #hud_minimap #scenario_card {
+        left: calc(8px + env(safe-area-inset-left)); right: auto; transform: none; width: min(52vw, 400px);
+      }
+      .bp-phone-landscape body:has(#minimap.mm-open) #minimap.mm-open { top: calc(var(--m-top) + 6px + 52px); }
       .bp-phone-landscape #start_hud { left: 50%; transform: translateX(-50%); max-width: none; }
 
 
@@ -1483,7 +1504,7 @@
       /* Fullscreen sits immediately right of the finish flag (left of ☰).
          Hidden unless the document element can enter fullscreen, so iPhone
          Safari (no element Fullscreen API) keeps the old top-bar spacing.
-         :has() shifts the flag and the scenario chip only then. */
+         :has() shifts the flag and the strip padding only then. */
       #fullscreen_toggle { display: none; }
       .bp-touch #fullscreen_toggle:not([hidden]) {
         display: flex; align-items: center; justify-content: center; position: fixed; z-index: var(--sz-z-chrome);
@@ -1498,20 +1519,6 @@
       .bp-touch #fullscreen_toggle[aria-pressed="true"] .fs-exit { display: block; }
       .bp-touch:has(#fullscreen_toggle:not([hidden])) #sheet_toggle { right: calc(96px + env(safe-area-inset-right)); }
       .bp-touch:has(#fullscreen_toggle:not([hidden])) #sheet_toggle.has-rank { width: 56px; right: calc(94px + env(safe-area-inset-right)); }
-      .bp-touch:has(#fullscreen_toggle:not([hidden])) #scenario_card,
-      .bp-touch:has(#fullscreen_toggle:not([hidden])) body.touch-on #scenario_card {
-        width: calc(100vw - 44px - 44px - 44px - 20px - env(safe-area-inset-left) - env(safe-area-inset-right));
-      }
-      .bp-touch:has(#fullscreen_toggle:not([hidden])) body.rank-on #scenario_card,
-      .bp-touch:has(#fullscreen_toggle:not([hidden])) body.rank-on.touch-on #scenario_card {
-        width: calc(100vw - 44px - 44px - 44px - 28px - env(safe-area-inset-left) - env(safe-area-inset-right));
-      }
-      .bp-touch #scenario_card, .bp-touch body.touch-on #scenario_card {
-        width: calc(100vw - 44px - 44px - 20px - env(safe-area-inset-left) - env(safe-area-inset-right));
-      }
-      .bp-touch body.rank-on #scenario_card, .bp-touch body.rank-on.touch-on #scenario_card {
-        width: calc(100vw - 44px - 44px - 28px - env(safe-area-inset-left) - env(safe-area-inset-right));
-      }
       .bp-touch body.sheet-on #chat_panel { display: none; }
       .bp-touch #mobile_sheet:not([hidden]) {
         display: flex; flex-direction: column; position: fixed; z-index: calc(var(--sz-z-sheet) + 20); left: 0; right: 0; bottom: 0;
@@ -1543,24 +1550,7 @@
       .bp-touch #chat_input { flex: 1; min-width: 0; min-height: var(--sz-tap); box-sizing: border-box; font-size: var(--sz-fs-xl); padding: 0 10px; }
       .bp-touch #chat_send { min-width: 64px; min-height: var(--sz-tap); font-size: var(--sz-fs-xl); }
 
-      /* bp-phone-landscape */
-      .bp-phone-landscape #mobile_strip { right: calc(env(safe-area-inset-right) + 96px); }
-      /* Landscape: give the readout strip back the 44 px the fullscreen button
-         takes, by shortening the scenario chip. At 568 px wide the strip stays
-         about as wide as before the button. */
-      .bp-phone-landscape:has(#fullscreen_toggle:not([hidden])) #scenario_card,
-      .bp-phone-landscape:has(#fullscreen_toggle:not([hidden])) body.touch-on #scenario_card,
-      .bp-phone-landscape:has(#fullscreen_toggle:not([hidden])) body.rank-on #scenario_card,
-      .bp-phone-landscape:has(#fullscreen_toggle:not([hidden])) body.rank-on.touch-on #scenario_card { width: 178px; }
-      .bp-phone-landscape:has(#fullscreen_toggle:not([hidden])) #mobile_strip {
-        left: calc(env(safe-area-inset-left) + 182px); right: calc(env(safe-area-inset-right) + 144px);
-      }
-      .bp-phone-landscape:has(#fullscreen_toggle:not([hidden])) body.rank-on #mobile_strip { right: calc(env(safe-area-inset-right) + 152px); }
-      .bp-phone-landscape #scenario_card, .bp-phone-landscape body.touch-on #scenario_card { width: 226px; }
-      .bp-phone-landscape body.rank-on #scenario_card, .bp-phone-landscape body.rank-on.touch-on #scenario_card { width: 226px; }
-      .bp-phone-landscape body.rank-on #scenario_card:not(.collapsed) { width: min(420px, 60vw); }
-      .bp-phone-landscape body.rank-on #mobile_strip { right: calc(env(safe-area-inset-right) + 104px); }
-      .bp-phone-landscape #scenario_card:not(.collapsed) { width: min(420px, 60vw); }
+      /* bp-phone-landscape: strip padding is set with the merged top HUD above. */
       .bp-phone-landscape #mobile_sheet:not([hidden]) {
         left: auto; top: var(--m-top); height: auto; width: min(400px, 52vw);
         border-radius: 16px 0 0 0; border-top: 0; border-left: 1px solid var(--sz-yellow-60);
@@ -1574,9 +1564,30 @@
       /* bp-tablet */
       .bp-tablet body { --m-top: var(--m-bar); --tz-h: min(30vh, 300px); --ip-h: 240px; }
       .bp-tablet #mobile_strip { display: none; }
-      .bp-tablet #minimap { top: calc(var(--m-top) + 10px); left: calc(10px + env(safe-area-inset-left)); bottom: auto; width: 300px; height: 240px; }
+      .bp-tablet #hud_minimap {
+        display: flex; flex-direction: column; gap: 0;
+        position: fixed; z-index: calc(var(--sz-z-bar) + 1);
+        top: calc(var(--m-top) + 10px); left: calc(10px + env(safe-area-inset-left));
+        width: 300px; pointer-events: none;
+      }
+      .bp-tablet #hud_minimap > * { pointer-events: auto; }
+      .bp-tablet #minimap {
+        position: relative; top: auto; left: auto; bottom: auto;
+        width: 300px; height: 240px; overflow: hidden;
+      }
       .bp-tablet #minimap canvas { width: 300px; height: 240px; }
       .bp-tablet #minimap .mm-follow { min-height: var(--sz-tap); min-width: 64px; font-size: var(--sz-fs-base); }
+      .bp-tablet #hud_minimap #scenario_card {
+        position: relative; width: 100%; padding: 6px 8px; background: var(--sz-navy);
+        border: 1px solid var(--sz-yellow-50); border-bottom: 0;
+        border-radius: var(--sz-r-md) var(--sz-r-md) 0 0; max-height: 30vh; overflow: auto;
+      }
+      .bp-tablet #hud_minimap #scenario_card_head { align-items: center; min-height: 28px; gap: 6px; }
+      .bp-tablet #hud_minimap #scenario_card_num { color: var(--sz-yellow); }
+      .bp-tablet #hud_minimap #scenario_card_title { min-width: 0; font-size: var(--sz-fs-sm); font-weight: 700; }
+      .bp-tablet #hud_minimap #scenario_card.collapsed #scenario_card_title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .bp-tablet #hud_minimap #scenario_card_toggle { border: 0; color: var(--sz-yellow); text-decoration: underline; font-size: var(--sz-fs-xs); }
+      .bp-tablet #minimap { border-radius: 0 0 var(--sz-r-md) var(--sz-r-md); }
       .bp-tablet #instrument_panel, .bp-tablet body:not(.settings-open) #instrument_panel {
         bottom: calc(14px + env(safe-area-inset-bottom)); z-index: calc(var(--sz-z-controls) + 5); box-sizing: border-box;
         width: min(660px, calc(100vw - 2 * (min(14vw, 120px) + 24px)));
@@ -1597,7 +1608,7 @@
         right: calc(min(14vw, 120px) + 24px + env(safe-area-inset-right));
         bottom: calc(max(var(--tz-h), var(--ip-h) + 88px) + 14px + env(safe-area-inset-bottom));
       }
-      .bp-tablet #start_hud { left: 50%; transform: translateX(-50%); top: calc(var(--m-top) + 262px); max-width: none; }
+      .bp-tablet #start_hud { left: 50%; transform: translateX(-50%); top: calc(var(--m-top) + 310px); max-width: none; }
       .bp-tablet body.tc-overlay .tc-steer, .bp-tablet body.tc-overlay .tc-steer:not(.tc-right) {
         top: auto; bottom: calc(14px + env(safe-area-inset-bottom)); height: var(--tz-h); width: min(14vw, 120px);
       }
@@ -1619,18 +1630,10 @@
 
     </style>
   
-    <script type="module" crossorigin src="/fields/pr-preview/pr-234/assets/index-B5sWUR9p.js"></script>
+    <script type="module" crossorigin src="/fields/pr-preview/pr-234/assets/index-CHV8x5EY.js"></script>
   </head>
   <body>
 
-    <div id="scenario_card">
-      <div id="scenario_card_head">
-        <span id="scenario_card_num"></span>
-        <span id="scenario_card_title"></span>
-        <button id="scenario_card_toggle" type="button" aria-expanded="true" title="Hide or show the scenario description">Hide</button>
-      </div>
-      <p id="scenario_card_body" class="dev-only"></p>
-    </div>
     <div id="info" class="dev-only"></div>
     <div id="rule_labels"></div>
     <!-- Desktop (bp-desktop) three-column HUD grid: left = minimap, middle =
@@ -1706,14 +1709,22 @@
           <input id="player_menu_name" class="pm-spectating" type="text" placeholder="Your name" maxlength="24" autocomplete="off" aria-label="Your name" title="Name shown on your boat (the same as Settings → Player → name)">
           <button type="button" id="own_boat_join" class="sz-btn pm-join">Join with my boat</button>
           <button type="button" id="own_boat_leave" class="sz-btn" hidden>Leave</button>
-          <button type="button" id="own_boat_add" class="sz-btn" title="A second boat on this page: player 2 steers with A / D, W / S, F, G, Q / E, X; player 1 keeps the arrows, Space, Enter, , . /. The camera follows the midpoint of the two boats; zoom with = / -." hidden>Add second player</button>
-          <button type="button" id="own_boat_remove2" class="sz-btn" hidden>Remove player 2</button>
           <span class="pm-hint pm-spectating">You are spectating. Join to sail your own boat.</span>
           <span id="own_boat_status" class="pm-status" aria-live="polite"></span>
+          <button type="button" id="own_boat_add" class="sz-btn" title="A second boat on this page: player 2 steers with A / D, W / S, F, G, Q / E, X; player 1 keeps the arrows, Space, Enter, , . /. The camera follows the midpoint of the two boats; zoom with = / -." hidden>Add second player</button>
+          <button type="button" id="own_boat_remove2" class="sz-btn" hidden>Remove player 2</button>
         </div>
       </section>
     </div>
     <div id="hud_minimap" class="hud-zone" data-zone="D">
+      <div id="scenario_card">
+        <div id="scenario_card_head">
+          <span id="scenario_card_num"></span>
+          <span id="scenario_card_title"></span>
+          <button id="scenario_card_toggle" type="button" aria-expanded="true" title="Hide or show the scenario description">Hide</button>
+        </div>
+        <p id="scenario_card_body" class="dev-only"></p>
+      </div>
       <section id="minimap" aria-label="Minimap">
         <canvas width="320" height="256" aria-label="Map overview: click to move the camera"></canvas>
         <button type="button" class="mm-follow" aria-pressed="false" title="Camera follows your boat">Follow</button>
@@ -1723,10 +1734,14 @@
       <button type="button" id="mm_toggle" class="sz-btn" aria-controls="minimap" aria-expanded="false" title="Show the minimap">Map</button>
     </div>
     </div>
-    <!-- Mobile readout strip (plan M3, mobile-strip.js): phones / touch only. -->
-    <div id="mobile_strip" aria-label="Instruments"></div>
-    <!-- Mobile top bar backdrop (plan M4): scenario chip, 🏁 / fullscreen and the menu sit on it. -->
-    <div id="mobile_bar" aria-hidden="true"></div>
+    <!-- Top HUD: one component for the navy top chrome. On phones the
+         quick-stats strip (BSP / VMG / TWA / TWS) shares the same row as the
+         🏁 / fullscreen / ☰ controls; on desktop the bar holds the rank chip
+         and ☰. Scenario name/description live in the minimap (#scenario_card). -->
+    <div id="top_hud">
+      <div id="mobile_bar" aria-hidden="true"></div>
+      <div id="mobile_strip" aria-label="Instruments"></div>
+    </div>
     <span id="bar_rank" hidden></span>
     <pre id="perf_overlay_hud"></pre>
     <pre id="client_perf_hud"></pre>
