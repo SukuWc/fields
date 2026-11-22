@@ -688,7 +688,8 @@ export class Room {
 
   _chatRoomSeed(w) {
     if (!w) return;
-    this._chatSystem(`Room seed ${w.seed} (wind_schedule_seed = [${w.spec.join(', ')}])`);
+    // Player-facing: just the seed; the full [mean, sd] spec is in the server log (onWindSeed).
+    this._chatSystem(`Room seed ${w.seed}`);
   }
 
   // After a config apply (every one draws a seed; room-config.js): log + chat.

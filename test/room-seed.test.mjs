@@ -78,7 +78,7 @@ const runSeries = (seed, ticks = 90) => {
   got.length = 0;
   mute(() => room.applyTomlConfig(toml(77)));
   const sys = got.filter((m) => m.type === 'event' && m.ev && m.ev.type === 'chat').map((m) => m.ev.msg);
-  const seedLine = sys.find((m) => m.sys && /^Room seed 77 \(wind_schedule_seed = \[77, 0\]\)$/.test(m.text));
+  const seedLine = sys.find((m) => m.sys && /^Room seed 77$/.test(m.text));
   check('config apply: Room seed posted as sys chat via _chatSystem/_chatPush', !!seedLine && seedLine.sys === true && Number.isInteger(seedLine.seq) && Number.isInteger(seedLine.tick),
     JSON.stringify(sys.map((m) => m.text)));
   check('gust spawner seed equals drawn room seed (not room-name hash)', room.core.sim.gusts.spawner.seed === 77
@@ -90,7 +90,7 @@ const runSeries = (seed, ticks = 90) => {
   got.length = 0;
   mute(() => room.message(client, { type: 'command', id: 9, c: { type: 'restart', scenario: 0 } }));
   const after = got.filter((m) => m.type === 'event' && m.ev && m.ev.type === 'chat').map((m) => m.ev.msg);
-  const restartLine = after.find((m) => m.sys && /^Room seed 77 \(wind_schedule_seed = \[77, 0\]\)$/.test(m.text));
+  const restartLine = after.find((m) => m.sys && /^Room seed 77$/.test(m.text));
   check('bare restart: Room seed posted again as sys chat (same path as penalties)', !!restartLine && restartLine.sys === true, JSON.stringify(after.map((m) => m.text)));
   check('bare restart: gust PRNG reseeded from room seed, columns cleared', room.core.sim.gusts.spawner.seed === 77
     && room.core.sim.gusts.columns.length === 0 && beforeCols >= 0);
