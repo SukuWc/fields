@@ -30,6 +30,7 @@ import {
 } from './wind-schedule.js';
 import { Boat } from './boat.js';
 import { RaceLifecycle, SIM_RACE_LIFECYCLE, validateRaceLifecycle } from './race-lifecycle.js';
+import { setFinishGhost, rulesBoats } from './finish-ghost.js';
 import { settingDefault } from './settings-registry.js';
 import { validateAutopilotGains } from './dev-config.js';
 
@@ -563,7 +564,8 @@ export class Sim {
     players.forEach((player, index) => {
       player.physics_model_step();
       if (player.telemetry) rec.telemetryIndex = index;
-      if (!map.devMode && this.options.boatEnergy) {
+      // Finish ghosts (finish-ghost.js) put no momentum into the lattice.
+      if (!map.devMode && this.options.boatEnergy && !player.finishGhost) {
         const eff = this.sailEfficiency();
         for (const seg of player.getSailSegments()) {
           bm.apply_energy_segment(seg.x0, seg.y0, seg.x1, seg.y1, seg.fx * eff, seg.fy * eff);
@@ -601,7 +603,10 @@ export class Sim {
     const results = this.raceResults;
     const raceClock = startSeq ? startSeq.clock : (results ? results.relClock(rulesTime) : rulesTime);
     rec.raceClock = raceClock;
-    if (course && course.finish && results && stepped) results.update(players, raceClock);
+    if (course && course.finish && results && stepped) {
+      // A boat that finishes becomes a finish ghost (finish-ghost.js).
+      for (const e of results.update(players, raceClock)) setFinishGhost(e.boat, true);
+    }
     // Race time limit / finish countdown: the host restarts on 'restart'.
     if (stepped) {
       const lc = this.raceLifecycle.step(simDt, { startSeq, players, results });
@@ -610,7 +615,7 @@ export class Sim {
     // Race bots (scenario 17): autopilot targets once per step.
     const windFrom = map.wind_direction;
     if (stepped) {
-      for (const bot of this.raceBots) bot.step(raceClock, windFrom, players, !!results && results.isFinished(bot.boat), results ? results.entries.length : 1);
+      for (const bot of this.raceBots) bot.step(raceClock, windFrom, rulesBoats(players), !!results && results.isFinished(bot.boat), results ? results.entries.length : 1);
     }
     // Live leaderboard for any course.
     if (course) {
@@ -656,13 +661,16 @@ export class Sim {
       if (stepped && this.boundaryScript) this.boundaryScript.step(rulesTime);
       if (stepped) boundary.update(players, rulesTime);
     }
-    rec.resolutions = evaluateAllPairs(players, getWind, rulesTime, { markFor, boundary });
-    recordContacts(rec.resolutions, rulesTime, players);
+    // Finish ghosts take no part in the rules: no pairs, contacts or mark
+    // touches, so a racer is never charged for one (finish-ghost.js).
+    const ruled = rulesBoats(players);
+    rec.resolutions = evaluateAllPairs(ruled, getWind, rulesTime, { markFor, boundary });
+    recordContacts(rec.resolutions, rulesTime, ruled);
     // Rule 31: boat-versus-mark touches. Racing from the preparatory signal
     // when there is a start sequence, else always.
     // Only the boat's own next mark / gate ends / line ends count.
     const activeMarks = course ? (boat) => activeTouchMarks(course, startSeq, boat) : null;
-    recordMarkTouches(players, this.marks, { simTime: rulesTime, racing: !startSeq || startSeq.racing, activeMarks });
+    recordMarkTouches(ruled, this.marks, { simTime: rulesTime, racing: !startSeq || startSeq.racing, activeMarks });
 
     // Refinement windows follow the boats (and curl islands). Tracking reads
     // curl, which only changes on a lattice step, so it runs on stepping

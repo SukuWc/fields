@@ -401,6 +401,8 @@ export class Boat{
     // Density only locates the geometric centre. Mass and yaw inertia are
     // the real dinghy (hull + crew) in kilograms and kg·m².
     boat.createFixture(this.hull_shape, 1);
+    // Body → boat, for the hull outline's boat id (scene-state.js bodyScene).
+    boat.boatOf = this;
     const mass = dinghyTotalMass(this.dinghy);
     const center = boat.getLocalCenter();
     const r2 = center.x * center.x + center.y * center.y;
