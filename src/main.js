@@ -71,6 +71,7 @@ import {
 } from './perf-overlay.js';
 import { setupMobileMenu } from './mobile-menu.js';
 import { setupDesktopHud } from './desktop-hud.js';
+import { restartVoteHtmlOf } from './hud.js';
 import { setupTouchControls } from './touch-controls.js';
 import { setupGamepad } from './gamepad.js';
 import { setupInputMap } from './input-map.js';
@@ -376,15 +377,33 @@ function startClient() {
   const loop = new FixedStepLoop({ step() {} }, { tickHz: 30, maxCatchUp: 4 });
   if (typeof window !== 'undefined') { window.__simLoop = loop; window.__view = view; }
 
+  // Race timer: the start / lifecycle lines, then the vote to restart (server
+  // rooms, hud.js restartVoteHtmlOf). Two children, each rewritten only when
+  // its HTML changes, so the vote button stays put between press and click.
+  const startHudMain = document.createElement('div');
+  const startHudVote = document.createElement('div');
+  if (startHud) {
+    startHud.replaceChildren(startHudMain, startHudVote);
+    startHudVote.addEventListener('click', (e) => {
+      const b = e.target.closest && e.target.closest('button[data-vote]');
+      if (!b || !host || !host.sendVote) return;
+      b.blur();
+      host.sendVote(b.dataset.vote === '1').then((r) => { if (r && r.error) console.warn('restart vote:', r.error); });
+    });
+  }
+  const setHtml = (el, h) => { if (el.dataset.h !== h) { el.dataset.h = h; el.innerHTML = h; } };
+
   // Readout and HUD panels built from the frame state (hud.js hudFromState).
   function applyHud(hud) {
     if (hud.dist !== null) distInfoEl.innerHTML = hud.dist;
     setInfo(hud.info);
-    if (hud.startHud) {
+    const voteHtml = restartVoteHtmlOf(host && host.vote);
+    if (hud.startHud || voteHtml) {
       if (startHud) {
         startHud.hidden = false;
-        startHud.innerHTML = hud.startHud.html;
-        startHud.classList.toggle('flash', hud.startHud.flash);
+        setHtml(startHudMain, hud.startHud ? hud.startHud.html : '');
+        setHtml(startHudVote, voteHtml);
+        startHud.classList.toggle('flash', !!(hud.startHud && hud.startHud.flash));
       }
     } else if (startHud && !startHud.hidden) {
       startHud.hidden = true;

@@ -77,6 +77,15 @@ import { TRAIL_COLORS } from '../../src/boat-trails.js';
 // sys: true and no from (join/leave, room seed on apply/restart, penalties
 // via the client). The last CHAT_HISTORY go in every welcome (chat),
 // so a joiner or a reconnect sees them. Plain text: clients render it as text.
+//
+// Vote to restart ({ type: 'vote', id, on }, answered with { type: 'result',
+// id, r: { ok, cast, total } | { error } }): voters are connected clients with
+// a player boat (spectators, scenario boats, race bots and owners away in
+// their grace period do not count). When every voter has voted, the room
+// starts a new race (newRace: new room seed). Votes can be revoked, clear on
+// every restart, and the total is recomputed every tick (joins, leaves,
+// spawns, removed boats). Each client gets { type: 'event', ev: { type:
+// 'restartVote', cast, total, you, can } } when its view changes.
 export const CHAT_MAX_LEN = 200;
 export const CHAT_HISTORY = 50;
 export const CHAT_RATE_N = 5;
@@ -283,6 +292,10 @@ export class Room {
     // After a room-wide restart: per client [{ name, color }] to spawn again.
     this._respawn = null;
     this._restarting = false;
+    // Vote to restart (_vote): clients voting for a new race, and the last
+    // { cast, total, you, can } sent to each client.
+    this.restartVotes = new Set();
+    this._voteSent = new Map();
     this.ticks = 0;
     this.broadcasts = 0;
     this.sendSkips = 0;
@@ -423,6 +436,10 @@ export class Room {
       if (this.clients.size > 1) for (const w of whos) this._chatSystem(`${w.name} left (boat ${w.n})`);
     }
     this.chatTimes.delete(client);
+    // Votes: a leaver's vote goes; the total is recomputed on the next tick
+    // (_voteTick), which may pass the vote for the players still here.
+    this.restartVotes.delete(client);
+    this._voteSent.delete(client);
     this.tokens.delete(client);
     this.owned.delete(client);
     this.clients.delete(client);
@@ -589,6 +606,7 @@ export class Room {
       return;
     }
     if (m.type === 'chat') { this.send(client, { type: 'result', id: m.id, r: this._chat(client, m.text) }); return; }
+    if (m.type === 'vote') { this.send(client, { type: 'result', id: m.id, r: this._vote(client, m.on) }); return; }
     if (m.type === 'field') { this._setField(client, m); return; }
     if (m.type === 'flow') { return; }
     if (m.type === 'perf') { if (m.on) this.perfSubs.add(client); else this.perfSubs.delete(client); return; }
@@ -717,6 +735,74 @@ export class Room {
     this.newRace();
   }
 
+  // Vote to restart. Voters are connected clients racing a player boat
+  // (owned, or waiting to respawn after a restart); spectators, scenario
+  // boats, race bots and owners away in their grace period do not count.
+  _voters() {
+    const out = new Set();
+    for (const c of this.clients) {
+      if ((this.owned.get(c) || []).length || (this._respawn && (this._respawn.get(c) || []).length)) out.add(c);
+    }
+    return out;
+  }
+
+  _voteName(client) {
+    const own = (this.owned.get(client) || [])[0];
+    if (own) return this._chatBoat(own).name;
+    const spec = this._respawn && (this._respawn.get(client) || [])[0];
+    return (spec && spec.name) || 'A player';
+  }
+
+  // { type: 'vote', on }: cast (on) or revoke a vote for a new race.
+  _vote(client, on) {
+    if (!this.core) return { error: 'no room' };
+    const voters = this._voters();
+    if (!voters.has(client)) return { error: 'join the race to vote' };
+    on = !!on;
+    if (on !== this.restartVotes.has(client)) {
+      const now = this.now();
+      const times = (this.chatTimes.get(client) || []).filter((x) => now - x < CHAT_RATE_MS);
+      if (times.length >= CHAT_RATE_N) { this.chatTimes.set(client, times); return { error: 'slow down: at most ' + CHAT_RATE_N + ' votes or messages per ' + CHAT_RATE_MS / 1000 + ' s' }; }
+      times.push(now);
+      this.chatTimes.set(client, times);
+      if (on) this.restartVotes.add(client); else this.restartVotes.delete(client);
+      const cast = [...this.restartVotes].filter((c) => voters.has(c)).length;
+      const name = this._voteName(client);
+      if (on && cast < voters.size) this._chatSystem(`${name} votes for a new race (${cast}/${voters.size})`);
+      else if (!on) this._chatSystem(`${name} withdrew the restart vote (${cast}/${voters.size})`);
+    }
+    this._voteTick();
+    const { cast, total } = this._voteState();
+    return { ok: true, cast, total };
+  }
+
+  _voteState() {
+    const voters = this._voters();
+    for (const c of this.restartVotes) if (!voters.has(c)) this.restartVotes.delete(c);
+    return { cast: this.restartVotes.size, total: voters.size, voters };
+  }
+
+  // Every tick and on each vote: drop votes of clients who no longer race,
+  // pass the vote when every racer has voted, and send each client its view
+  // { type: 'restartVote', cast, total, you, can } when it changed.
+  _voteTick() {
+    if (!this.core) return;
+    let { cast, total, voters } = this._voteState();
+    if (total > 0 && cast === total) {
+      this._chatSystem(total === 1 ? 'Restart vote · new race' : `Restart vote passed (${cast}/${total}) · new race`);
+      this.restartVotes.clear();
+      this.newRace();
+      ({ cast, total, voters } = this._voteState());
+    }
+    for (const c of this.clients) {
+      const ev = { type: 'restartVote', cast, total, you: this.restartVotes.has(c), can: voters.has(c) };
+      const k = `${cast}/${total}/${ev.you ? 1 : 0}${ev.can ? 1 : 0}`;
+      if (this._voteSent.get(c) === k) continue;
+      this._voteSent.set(c, k);
+      this.send(c, { type: 'event', ev });
+    }
+  }
+
   /**
    * New race: apply the room's current TOML again, so validation draws a new
    * room seed from wind_schedule_seed = [mean, sd] (sd 0: the same seed), the
@@ -792,6 +878,8 @@ export class Room {
     // Absent owners' boats (grace period) come back too.
     for (const e of this.parked.values()) if (e.boats.length) { keep.set(e, e.boats.map((b) => ({ name: b.name, color: b.color }))); }
     this._restarting = true;
+    // Every restart starts a fresh vote.
+    this.restartVotes.clear();
     let r;
     try { r = this.core.command(layout ? { type: 'restart', scenario: n, layout } : { type: 'restart', scenario: n }); } finally { this._restarting = false; }
     // Scenario restart clears sim.players; drop any stray player boats that
@@ -969,6 +1057,7 @@ export class Room {
     if (r.dt !== undefined) this.ticks++;
     this._respawnDue();
     this._newRaceDue();
+    this._voteTick();
     frame.fieldReady = false;
     // Per-client extras go to their subscribers only (_publish).
     const flow = null, perf = frame.perf || null;
