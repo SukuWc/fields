@@ -72,6 +72,14 @@ test('markup: Player menu is the first instrument tab and holds every own-boat c
   assert.ok(!html.includes('player_menu_name'));
   assert.match(html, /#instrument_panel\[data-mode="player"\] \.instr-player \{ display: flex;/);
   assert.match(html, /#instrument_panel\[data-mode="player"\] \.instr-tiles,\n\s*#instrument_panel\[data-mode="player"\] \.instr-charts \{ display: none !important; \}/);
+  // Add / Remove second player sit after Leave + status and take their own row.
+  assert.match(html, /#instrument_panel \.instr-player #own_boat_add,\n\s*#instrument_panel \.instr-player #own_boat_remove2 \{ flex-basis: 100%; \}/);
+  const addAt = panel.indexOf('id="own_boat_add"');
+  const remAt = panel.indexOf('id="own_boat_remove2"');
+  const statusAt = panel.indexOf('id="own_boat_status"');
+  const leaveAt = panel.indexOf('id="own_boat_leave"');
+  assert.ok(leaveAt > 0 && statusAt > leaveAt && addAt > statusAt && remAt > addAt,
+    'Leave, status, Add second player, Remove player 2 order');
   assert.ok(!html.includes('join_tab_name') && !html.includes('data-mode="join"'));
 });
 
