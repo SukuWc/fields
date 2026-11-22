@@ -52,7 +52,6 @@ import {
   stringifyRoomConfig,
   validateRoomConfig,
 } from '../../src/room-config.js';
-import { hashSeed } from '../../src/gusts.js';
 import { encodeVectorGrids } from '../../src/vector-field.js';
 import { encodeFieldText } from '../../src/field-codec.js';
 import { encodeWire, fieldForWire } from '../../src/wire-codec.js';
@@ -75,7 +74,8 @@ import { TRAIL_COLORS } from '../../src/boat-trails.js';
 // since epoch), rc (race clock, s from the start; only with a start
 // sequence), text, from: { name, boatId, n (boat number: index in the
 // race), color } }; system lines (a boat joined, left, disconnected) have
-// sys: true and no from. The last CHAT_HISTORY go in every welcome (chat),
+// sys: true and no from (join/leave, room seed on apply/restart, penalties
+// via the client). The last CHAT_HISTORY go in every welcome (chat),
 // so a joiner or a reconnect sees them. Plain text: clients render it as text.
 export const CHAT_MAX_LEN = 200;
 export const CHAT_HISTORY = 50;
@@ -314,7 +314,9 @@ export class Room {
     if (!this.lockstep) this._start();
   }
 
-  // A SimCore wired to this room (events broadcast, gust seed from the name).
+  // A SimCore wired to this room (events broadcast). Gusts are seeded from
+  // the room's drawn wind_schedule_seed (_windSeed) when a config is applied;
+  // until then the default gust seed (1) stands.
   _makeCore({ mapW, mapH, windAngle, windSpeed, simRes }) {
     const core = new SimCore({
       mapW, mapH, windAngle, windSpeed, simRes,
@@ -333,8 +335,6 @@ export class Room {
       this.broadcast({ type: 'event', ev: eventForClient(core, ev) });
     });
     this.core = core;
-    // Deterministic gust PRNG seed from room name (local hosts keep seed 1).
-    core.command({ type: 'gusts', ...core.settings.gusts, seed: hashSeed(this.name) });
     return core;
   }
 
@@ -678,18 +678,35 @@ export class Room {
     return { error: 'unknown command ' + c.type };
   }
 
-  // The drawn wind schedule seed (room settings), for /api/rooms and the
-  // server log (onWindSeed, set by apps/server/index.js), so a game can be
-  // replayed with wind_schedule_seed = [seed, 0].
+  // The drawn room seed (wind schedule settings): drives wind-schedule
+  // streams and the gust PRNG. For /api/rooms, the server log (onWindSeed)
+  // and the in-game chat. Replay with wind_schedule_seed = [seed, 0].
   windSeed() {
     const w = this.core && this.core.sim.windSchedule;
     return w ? { enabled: w.enabled, seed: w.seed, spec: [...w.seedSpec] } : null;
   }
 
-  // After a config apply (every one draws a seed; room-config.js).
+  _chatRoomSeed(w) {
+    if (!w) return;
+    this._chatSystem(`Room seed ${w.seed} (wind_schedule_seed = [${w.spec.join(', ')}])`);
+  }
+
+  // After a config apply (every one draws a seed; room-config.js): log + chat.
   _noteWindSeed() {
     const w = this.windSeed();
-    if (w && this.onWindSeed) this.onWindSeed(this, w);
+    if (!w) return;
+    if (this.onWindSeed) this.onWindSeed(this, w);
+    this._chatRoomSeed(w);
+  }
+
+  // Reseed the gust PRNG from the room seed and clear live columns, so a
+  // restart (or a config that did not change gust knobs) still starts the
+  // gust stream from the same seed as the wind schedule.
+  _reseedGustsFromRoomSeed() {
+    const w = this.windSeed();
+    if (!w || !this.core) return;
+    const g = this.core.settings.gusts || {};
+    this.core.command({ type: 'gusts', ...g, seed: w.seed >>> 0 });
   }
 
   _roomCommand(c) {
@@ -709,11 +726,15 @@ export class Room {
         last = r;
         if ((cmd.type === 'simRes' || cmd.type === 'amrMode' || cmd.type === 'refine') && r && r.rebuilt) rebuilt = true;
       }
+      // Gusts command already carries _windSeed; if gust keys were unchanged
+      // and skipped, still reseed so the gust stream matches this game's seed.
+      this._reseedGustsFromRoomSeed();
       if (resized && restartScenario === null) restartScenario = c.config.scenario;
       if (restartScenario !== null || rebuilt) {
         const n = restartScenario !== null ? restartScenario
           : (hasScenario(this.core.sim) ? this.core.sim.scenarioIndex : c.config.scenario);
-        last = this._restart(n, n === CUSTOM_SCENARIO ? layout : undefined);
+        // announceSeed false: _noteWindSeed posts once for this apply.
+        last = this._restart(n, n === CUSTOM_SCENARIO ? layout : undefined, { announceSeed: false });
       }
       this._noteWindSeed();
       return last;
@@ -727,8 +748,9 @@ export class Room {
   }
 
   // Room-wide restart that keeps player boats (spawned again after the
-  // scenario's first tick, see _compute).
-  _restart(n, layout) {
+  // scenario's first tick, see _compute). Reseeds gusts from the room seed
+  // and (unless announceSeed is false) posts that seed in chat.
+  _restart(n, layout, { announceSeed = true } = {}) {
     const keep = new Map();
     // A prior restart may still be waiting to respawn (owned already cleared).
     if (this._respawn) {
@@ -747,6 +769,9 @@ export class Room {
     this._removeAllPlayerBoats();
     for (const key of keep.keys()) { if (key.parked) key.boats = []; else this.owned.set(key, []); }
     this._respawn = keep.size ? keep : null;
+    // Same room seed → same gust arrivals from the start of this race.
+    this._reseedGustsFromRoomSeed();
+    if (announceSeed) this._chatRoomSeed(this.windSeed());
     return r;
   }
 
