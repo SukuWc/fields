@@ -217,6 +217,31 @@
       #settings .settings-pane-toml > .room-config-check,
       #settings .settings-pane-toml > .room-config-reject,
       #settings .settings-pane-toml > #room_admin_auth { flex: none; }
+      /* Dual-layer TOML highlight: non-default key = value lines are red in
+         the backdrop <pre>; the textarea stays editable (transparent text).
+         Validation errors stay amber (.bad). Independent of the controls-
+         above layout (#226): .toml-editor flexes when the pane is a column. */
+      #settings .toml-editor {
+        position: relative; width: 100%; max-width: 100%; box-sizing: border-box;
+        flex: 1 1 auto; min-height: 120px; display: flex; flex-direction: column;
+      }
+      #settings .toml-highlight {
+        position: absolute; inset: 0; margin: 0; padding: 8px; overflow: hidden;
+        pointer-events: none; z-index: 0; white-space: pre-wrap; word-wrap: break-word;
+        overflow-wrap: break-word; tab-size: 2;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px; line-height: 1.35; color: #f0e6d2; background: #1a1a18;
+        border: 1px solid transparent; border-radius: 4px; box-sizing: border-box;
+      }
+      #settings .toml-highlight .toml-nondefault { color: #ff6b6b; }
+      #settings .toml-box-overlay {
+        position: relative; z-index: 1; color: transparent; caret-color: #f0e6d2;
+        background: transparent !important; -webkit-text-fill-color: transparent;
+      }
+      #settings .toml-box-overlay::selection {
+        background: rgba(255, 210, 120, 0.35); color: transparent;
+      }
+      #settings .toml-editor > .toml-box { flex: 1 1 auto; min-height: 0; }
       /* Instrument panel, zone C (PR 5): bottom centre on desktop. Neutral and
          brand colours only (red / green are port / starboard). */
       #instrument_panel { display: none; }
@@ -1834,7 +1859,7 @@
       </div>
       <div id="dev_config_check" class="room-config-check" role="status" aria-live="polite" title="Click an error to jump to its line"></div>
       <div id="dev_config_status" class="setting-row room-config-reject" role="alert" hidden></div>
-      <textarea id="dev_config" class="toml-box" autocomplete="off" spellcheck="false" rows="18"></textarea>
+      <div class="toml-editor"><pre class="toml-highlight" aria-hidden="true"></pre><textarea id="dev_config" class="toml-box toml-box-overlay" autocomplete="off" spellcheck="false" rows="18"></textarea></div>
       </div>
 
       <div id="admin_panel" class="settings-section settings-pane settings-pane-toml" role="tabpanel" aria-labelledby="settings_tab_room">
@@ -1853,7 +1878,7 @@
       </div>
       <div id="room_config_check" class="room-config-check" role="status" aria-live="polite" title="Click an error to jump to its line"></div>
       <div id="admin_status" class="setting-row room-config-reject" role="alert" hidden></div>
-      <textarea id="room_config" class="toml-box" autocomplete="off" spellcheck="false" rows="22"></textarea>
+      <div class="toml-editor"><pre class="toml-highlight" aria-hidden="true"></pre><textarea id="room_config" class="toml-box toml-box-overlay" autocomplete="off" spellcheck="false" rows="22"></textarea></div>
       </div>
     </div>
 

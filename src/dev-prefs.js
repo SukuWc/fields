@@ -29,6 +29,7 @@ import {
   sameDevValue,
   stringifyDevConfig,
 } from './dev-config.js';
+import { installTomlHighlight } from './toml-highlight.js';
 
 function readJson(storage, key) {
   if (!storage) return null;
@@ -109,6 +110,14 @@ export function installDevPrefs(doc, { host, applyLocal, storage } = {}) {
   const ta = root.getElementById('dev_config');
   if (!ta || !host) return { ready: Promise.resolve(null) };
 
+  const tomlHighlight = installTomlHighlight(ta, {
+    getDefaults: () => DEV_CONFIG_DEFAULTS,
+    getConfig: (text) => {
+      const v = parseAndValidateDevConfig(text);
+      return v.error ? null : v.config;
+    },
+  });
+
   const saved = readJson(store, DEV_CONFIG_KEY);
   const legacy = readJson(store, PREFS_KEY);
   let stickyRaw = null;
@@ -157,6 +166,7 @@ export function installDevPrefs(doc, { host, applyLocal, storage } = {}) {
     if (commit) commit.disabled = !!v.error || !changed;
     const revert = root.getElementById('dev_config_revert');
     if (revert) revert.disabled = !changed;
+    if (tomlHighlight) tomlHighlight.refresh();
   }
 
   function fill(cfg) {
