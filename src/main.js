@@ -71,6 +71,7 @@ import {
 } from './perf-overlay.js';
 import { setupMobileMenu } from './mobile-menu.js';
 import { setupDesktopHud } from './desktop-hud.js';
+import { setupStartHudSize } from './start-hud-size.js';
 import { restartVoteHtmlOf } from './hud.js';
 import { setupTouchControls } from './touch-controls.js';
 import { setupGamepad } from './gamepad.js';
@@ -354,6 +355,7 @@ function startClient() {
   if (mapSizeClamped) console.info(`map_size ${_askedMapSize} is too small for scenario ${_scenarioParam}; using ${mapSizeKey}`);
   setupMobileMenu();
   setupDesktopHud();
+  setupStartHudSize();
 
   let currentGuides = [];
   let devMode = false;
