@@ -189,6 +189,30 @@
       #settings .room-config-reject { margin: 4px 6px; padding: 4px 6px; border-left: 3px solid #ff9f1a; background: rgba(255,159,26,0.12); color: #ffd9a8; white-space: pre-wrap; }
       #settings .room-config-reject[hidden] { display: none !important; }
       #settings .room-apply:not(:disabled) { background: var(--sz-yellow); color: var(--sz-navy); font-weight: 700; border: 1px solid var(--sz-yellow); }
+      /* Dual-layer TOML highlight: non-default key = value lines are red in
+         the backdrop <pre>; the textarea stays editable (transparent text).
+         Validation errors stay amber (.bad). Independent of the controls-
+         above layout (#226): .toml-editor flexes when the pane is a column. */
+      #settings .toml-editor {
+        position: relative; width: 100%; max-width: 100%; box-sizing: border-box;
+        flex: 1 1 auto; min-height: 120px; display: flex; flex-direction: column;
+      }
+      #settings .toml-highlight {
+        position: absolute; inset: 0; margin: 0; padding: 8px; overflow: hidden;
+        pointer-events: none; z-index: 0; white-space: pre-wrap; word-wrap: break-word;
+        overflow-wrap: break-word; tab-size: 2;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px; line-height: 1.35; color: #f0e6d2; background: #1a1a18;
+        border: 1px solid transparent; border-radius: 4px; box-sizing: border-box;
+      }
+      #settings .toml-highlight .toml-nondefault { color: #ff6b6b; }
+      #settings .toml-box-overlay {
+        position: relative; z-index: 1; color: transparent; caret-color: #f0e6d2;
+        background: transparent !important; -webkit-text-fill-color: transparent;
+      }
+      #settings .toml-box-overlay::selection {
+        background: rgba(255, 210, 120, 0.35); color: transparent;
+      }
       /* Instrument panel, zone C (PR 5): bottom centre on desktop. Neutral and
          brand colours only (red / green are port / starboard). */
       #instrument_panel { display: none; }
@@ -1791,7 +1815,7 @@
       <div id="dev_panel" class="settings-section settings-pane" role="tabpanel" aria-labelledby="settings_tab_dev">
       <div class="settings-heading" title="This page's dev preferences as one TOML document, checked as you type. Apply updates this page. Autopilot P, I and D go to the sim for the boats this page may control: every boat in local or worker mode, only your own boats (by id) in a server room. Revert restores the applied document. Reset fills the defaults and does not apply. Invalid TOML is not applied.">Dev</div>
       <div class="room-config-head"><label for="dev_config" title="Flow tracers, tracer count (0 = auto), life and tail, forces, refinement border, perf overlay, plot, contrast, boat trails, ghost boat, autopilot holdoff (ms), and autopilot_kp / ki / kd. Saved in this browser.">Dev config (TOML)</label><span id="dev_config_mode" class="room-config-mode">This page</span></div>
-      <textarea id="dev_config" class="toml-box" autocomplete="off" spellcheck="false" rows="18" style="width:100%; max-width:100%; box-sizing:border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; line-height:1.35; background:#1a1a18; color:#f0e6d2; border:1px solid rgba(255,210,120,0.35); border-radius:4px; padding:8px; resize:vertical;"></textarea>
+      <div class="toml-editor"><pre class="toml-highlight" aria-hidden="true"></pre><textarea id="dev_config" class="toml-box toml-box-overlay" autocomplete="off" spellcheck="false" rows="18" style="width:100%; max-width:100%; box-sizing:border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; line-height:1.35; background:transparent; color:transparent; caret-color:#f0e6d2; border:1px solid rgba(255,210,120,0.35); border-radius:4px; padding:8px; resize:vertical;"></textarea></div>
       <div class="setting-row toml-actions" style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
         <input id="dev_config_commit" class="room-apply" type="button" value="Apply" disabled title="Apply this config (enabled when valid and changed)">
         <input id="dev_config_revert" type="button" value="Revert" disabled title="Discard edits: back to the applied config">
@@ -1810,7 +1834,7 @@
         <input id="room_admin_logout" type="button" value="Logout" hidden>
       </div>
       <div class="room-config-head"><label for="room_config">Room config (TOML)</label><span id="room_config_mode" class="room-config-mode">Read-only</span></div>
-      <textarea id="room_config" autocomplete="off" spellcheck="false" rows="22" style="width:100%; max-width:100%; box-sizing:border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; line-height:1.35; background:#1a1a18; color:#f0e6d2; border:1px solid rgba(255,210,120,0.35); border-radius:4px; padding:8px; resize:vertical;"></textarea>
+      <div class="toml-editor"><pre class="toml-highlight" aria-hidden="true"></pre><textarea id="room_config" class="toml-box toml-box-overlay" autocomplete="off" spellcheck="false" rows="22" style="width:100%; max-width:100%; box-sizing:border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; line-height:1.35; background:transparent; color:transparent; caret-color:#f0e6d2; border:1px solid rgba(255,210,120,0.35); border-radius:4px; padding:8px; resize:vertical;"></textarea></div>
       <div class="setting-row toml-actions" style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
         <input id="room_config_commit" class="room-apply" type="button" value="Apply" disabled title="Send this config to the room (enabled when valid and changed)">
         <input id="room_config_revert" type="button" value="Revert" disabled title="Discard edits: back to the live room config">

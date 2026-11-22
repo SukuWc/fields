@@ -18,6 +18,7 @@ import {
   scenarioFromQuery, standaloneStartConfig,
 } from './room-config.js';
 import { windCeilingMps } from './sim-modes.js';
+import { installTomlHighlight } from './toml-highlight.js';
 import {
   DEFAULT_MAP_SIZE,
   MAP_SIZES,
@@ -397,6 +398,7 @@ let _windCeiling = windCeilingMps('2f');
 // phones, standardization PR 8 on desktop); Show drops it down.
 let scenarioCardCollapsed = true;
 let _appliedConfig = null;
+let _roomTomlHighlight = null;
 let _dirty = false;
 // Standalone start: settings the page owns over standaloneStartConfig.
 const STANDALONE_PAGE_KEYS = ['map_width_m', 'map_height_m', 'root_cell_m', 'steps_per_frame', 'wind_angle_deg', 'wind_speed_mps', 'dev_mode'];
@@ -511,6 +513,7 @@ export function refreshRoomEditor() {
   if (commit) commit.disabled = !can || !!v.error || !changed;
   const revert = document.getElementById("room_config_revert");
   if (revert) revert.disabled = !can || !changed;
+  if (_roomTomlHighlight) _roomTomlHighlight.refresh();
 }
 
 function roomConfigEl() { return document.getElementById("room_config"); }
@@ -658,7 +661,16 @@ export function setupControls(host, view, getCamera) {
   document.addEventListener("mousemove", mouse_monitor);
 
   const ta = roomConfigEl();
-  if (ta) ta.addEventListener("input", () => { markDirty(); showRoomError(null); refreshRoomEditor(); });
+  if (ta) {
+    _roomTomlHighlight = installTomlHighlight(ta, {
+      getDefaults: () => defaultRoomConfig(_mapW, _mapH),
+      getConfig: (text) => {
+        const v = parseAndValidateRoomConfig(text, { scenarios: _infoScenarios });
+        return v.error ? null : v.config;
+      },
+    });
+    ta.addEventListener("input", () => { markDirty(); showRoomError(null); refreshRoomEditor(); });
+  }
   const check = document.getElementById("room_config_check");
   // Click the error: select the line it points at.
   if (check && ta) check.addEventListener("click", () => {
