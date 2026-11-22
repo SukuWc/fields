@@ -140,8 +140,9 @@ test('markup: 44 px button beside the flag, desktop stays without it, unsupporte
   assert.match(html, /#fullscreen_toggle \{ display: none; \}/);
   assert.doesNotMatch(html, /\.bp-desktop #fullscreen_toggle/);
   assert.match(html, /\.bp-touch:has\(#fullscreen_toggle:not\(\[hidden\]\)\) #sheet_toggle \{ right: calc\(96px \+ env\(safe-area-inset-right\)\)/);
-  assert.match(html, /100vw - 44px - 44px - 44px - 20px/);
-  // 360 px portrait: chip ends before the flag once the button is shown
+  // Merged top HUD: fullscreen widens the strip's right padding so stats clear the button.
+  assert.match(html, /\.bp-touch:has\(#fullscreen_toggle:not\(\[hidden\]\)\) #mobile_strip \{/);
+  // 360 px portrait: strip padding clears the flag / fullscreen / menu
   // (Boat stats is gone, so the chip takes its room).
   const chip = 360 - 44 - 44 - 44 - 20;
   const flagLeft = 360 - 144;

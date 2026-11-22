@@ -393,8 +393,8 @@ export function setWindCeiling(mps) {
 }
 let _windCeiling = windCeilingMps('2f');
 
-// Every size: the card starts collapsed into the top bar (plan M4 on
-// phones, standardization PR 8 on desktop); Show drops it down.
+// Every size: the card starts collapsed on the minimap (Group 5 top HUD);
+// Show expands the scenario description.
 let scenarioCardCollapsed = true;
 let _appliedConfig = null;
 let _dirty = false;

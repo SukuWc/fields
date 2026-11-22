@@ -6,9 +6,10 @@ import { setupRankChip } from '../src/rank-chip.js';
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const controls = readFileSync(new URL('../src/controls.js', import.meta.url), 'utf8');
 
-test('desktop top bar: bar, scenario chip, rank chip and menu in one 44 px row', () => {
+test('desktop top bar: bar, rank chip and menu; scenario lives on the minimap', () => {
   assert.match(html, /\.bp-desktop #mobile_bar \{\n\s+display: block;/);
-  assert.match(html, /\.bp-desktop #scenario_card \{\n\s+top: 0; left: 0;/);
+  assert.match(html, /\.bp-desktop #hud_minimap #scenario_card \{/);
+  assert.doesNotMatch(html, /\.bp-desktop #scenario_card \{\n\s+top: 0; left: 0;/);
   assert.match(html, /<span id="bar_rank" hidden><\/span>/);
   assert.match(html, /\.bp-desktop #settings_toggle \{[^}]*top: 0; right: 0;/);
   assert.match(html, /\.bp-desktop #settings \{\n\s+top: calc\(var\(--d-bar\) \+ 6px\)/);
