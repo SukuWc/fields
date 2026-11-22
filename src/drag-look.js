@@ -13,6 +13,8 @@
 
 import { TOUCH_UI_QUERY, matches } from './layout.js';
 
+import { isAutopilotHandleDragging } from './autopilot-handle.js';
+
 export const SNAP_MS = 300;
 export const TAP_PX = 8;
 export const DOUBLE_TAP_MS = 320;
@@ -86,6 +88,9 @@ export function setupDragLook(view, {
   }
 
   canvas.addEventListener('touchstart', (e) => {
+    // The autopilot handle claimed this pointer: no pan, and a handle grab
+    // never counts as half of a double-tap.
+    if (isAutopilotHandleDragging()) { lastTap = null; return; }
     if (e.touches.length !== 1) {
       // Pinch: hand the gesture over and keep follow where the look left it.
       if (drag) { if (drag.follow) view.camera_follow = true; drag = null; }
@@ -98,6 +103,7 @@ export function setupDragLook(view, {
   }, { passive: true });
 
   canvas.addEventListener('touchmove', (e) => {
+    if (isAutopilotHandleDragging()) return;
     if (!drag || e.touches.length !== 1) return;
     const t = e.touches[0];
     if (t.identifier !== drag.id) return;

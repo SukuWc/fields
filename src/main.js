@@ -1,5 +1,7 @@
 import './layout.js';
 import { setupDragLook } from './drag-look.js';
+import { setupAutopilotHandle } from './autopilot-handle.js';
+import { autopilotHandleGuides } from './boat-draw.js';
 import * as THREE from 'three';
 import { FixedStepLoop } from './loop.js';
 
@@ -322,6 +324,12 @@ function startClient() {
   setupWheelZoom(view);
   // One-finger drag on the race view looks around, then eases back (plan M11).
   setupDragLook(view);
+  setupAutopilotHandle(view, {
+    getCamera,
+    getBoat: () => handleBoat,
+    command: (c) => host.command(c),
+    boatIndex: () => 0,
+  });
   installUrlSettings(undefined, { ids: urlSettingIds({ remote }) });
   // After the URL: saved player prefs fill what the query string leaves unset.
   const playerPrefs = installPlayerPrefs();
@@ -390,6 +398,7 @@ function startClient() {
   let followTarget;
   let ownBoatId = null;
   let ownBoatIds = [];
+  let handleBoat = null; // render-state for the autopilot drag handle
   // Instrument panel (zone C): own boat by id.
   const instruments = setupInstrumentPanel({ remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
   const minimap = setupMinimap({ view, getMapSize: () => [map_w, map_h], remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
@@ -441,6 +450,16 @@ function startClient() {
     if (frame.state && frame.statics) {
       // The readout shows this client's own boat in a server room.
       const scene = buildScene(frame.state, frame.statics, view, ownBoatId);
+      {
+        const boats = frame.state.boats || [];
+        if (ownBoatId != null) handleBoat = boats.find((b) => b && b.id === ownBoatId) || null;
+        else handleBoat = host.kind === 'remote' ? null : (boats[0] || null);
+      }
+      // Yellow AP handle: Camera Follow on, and a boat this client can steer
+      // (own boat in a room; boat 0 locally). Spectators get none.
+      if (view.camera_follow && handleBoat) {
+        scene.guides.push(...autopilotHandleGuides(handleBoat));
+      }
       if (scene.hud) applyHud(scene.hud);
       currentGuides = scene.guides;
       frameBodies = scene.bodies;
