@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-11-18
+Last updated: 2026-11-22
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -177,6 +177,7 @@ Last updated: 2026-11-18
 - [x] Readout frame state: per-boat `aws_ms` / `tws_ms` (m/s, TWS always present), `heading_deg` / `twd_deg` (compass 0–360, TWD = wind from), `next_mark_dist_m` / `to_finish_m` from the leaderboard, in worker, local and remote frames: [#151](https://github.com/SukuWc/fields/pull/151)
 - [x] UI overhaul 6: instrument panel Chart mode (strip charts for BSP + VMG, TWA, TWD and heading over 30 / 60 / 120 s of sim time, 5 Hz, gaps where the frame has no value; mode and window remembered in this browser): [#152](https://github.com/SukuWc/fields/pull/152)
 - [x] UI overhaul 7: instruments read the sim fields (#151): HDG / TWD as 0–360 bearings, TWS / AWS in m/s, NEXT from the leaderboard leg distance, new FIN tile; Chart mode adds a TWS / AWS strip and draws HDG / TWD as bearings: [#153](https://github.com/SukuWc/fields/pull/153)
+- [ ] Instrument panel layout in the Dev TOML: `readout_tiles` and `chart_strips` list the Readout tiles and Chart strips in order (leave an id out to hide it; unknown or repeated ids are dropped with a validator warning), `readout_columns` / `chart_columns` set a fixed column count on desktop and tablet (0 = automatic; phones keep their two rows). Defaults reproduce today's panel; the tab bar and panel height are unchanged: [#PR](https://github.com/SukuWc/fields/pull/PR)
 - [x] UI overhaul 8: rule-call toasts (zone E, right above the instruments): rule reference + plain explanation, boats involved, own-boat calls emphasised, 5 s auto-dismiss, at most 3 stacked, penalty cleared notices: [#154](https://github.com/SukuWc/fields/pull/154)
 - [x] UI overhaul 9: minimap (zone D, bottom left): course, start / finish lines, marks with the next one highlighted, laylines on the next mark, boats by id in their colours, camera rectangle; click or drag pans the camera (turns follow off), Follow button turns it back on; chat moved above it: [#156](https://github.com/SukuWc/fields/pull/156)
 - [x] Mobile 1: touch buttons tidied: no keyboard hints on touch-only devices, Depower fits the grid (portrait 2 × 4, landscape 4 × 2) so nothing is cut off: [#159](https://github.com/SukuWc/fields/pull/159)
