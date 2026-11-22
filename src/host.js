@@ -80,6 +80,8 @@ export class SimCore {
       gusts: defaultGustSpawner(),
       // Base-wind schedule (wind-schedule.js); settings.wind stays the base wind.
       windSchedule: windScheduleSettings(this.sim.windSchedule),
+      // Race time limit / finish countdown (race-lifecycle.js); off until a room config.
+      raceLifecycle: { ...this.sim.raceLifecycle.settings },
     };
     // The constructor only took the root resolution; the mode's explicit
     // stepsPerFrame (fast-wind defaults such as '4f') applies before anything runs.
@@ -184,6 +186,9 @@ export class SimCore {
         break;
       case 'windSchedule':
         st.windSchedule = windScheduleSettings(this.sim.windSchedule);
+        break;
+      case 'raceLifecycle':
+        st.raceLifecycle = { ...this.sim.raceLifecycle.settings };
         break;
       case 'simRes':
         st.simRes = SIM_RES_MODES[c.mode] ? c.mode : DEFAULT_SIM_RES;

@@ -332,6 +332,7 @@ export class Room {
         if (ev.type === 'bindControls') return;
         if (ev.type === 'cleared' && !this._restarting) this._dropOwnership();
       }
+      if (ev.type === 'raceLifecycle') this._onRaceLifecycle(ev);
       this.broadcast({ type: 'event', ev: eventForClient(core, ev) });
     });
     this.core = core;
@@ -700,6 +701,34 @@ export class Room {
     this._chatRoomSeed(w);
   }
 
+  // Race lifecycle events from the Sim (race-lifecycle.js): chat lines, and a
+  // new race after the tick (not inside the Sim's step).
+  _onRaceLifecycle(ev) {
+    if (ev.phase === 'countdown') this._chatSystem(`All finished · new race in ${Math.round(ev.s)} s`);
+    else if (ev.phase === 'restart') {
+      this._chatSystem(ev.reason === 'timeLimit' ? 'Time limit reached · new race' : 'New race');
+      this._newRacePending = ev.reason;
+    }
+  }
+
+  _newRaceDue() {
+    if (!this._newRacePending) return;
+    this._newRacePending = null;
+    this.newRace();
+  }
+
+  /**
+   * New race: apply the room's current TOML again, so validation draws a new
+   * room seed from wind_schedule_seed = [mean, sd] (sd 0: the same seed), the
+   * scenario restarts with the player boats kept, and "Room seed N" is posted.
+   */
+  newRace() {
+    if (!this.core) return { error: 'room not ready' };
+    const r = this.applyTomlConfig(this.tomlConfig());
+    if (this.onNewRace) this.onNewRace(this, r);
+    return r;
+  }
+
   // Reseed the gust PRNG from the room seed and clear live columns, so a
   // restart (or a config that did not change gust knobs) still starts the
   // gust stream from the same seed as the wind schedule.
@@ -939,6 +968,7 @@ export class Room {
     this.tickMs = this.now() - t0;
     if (r.dt !== undefined) this.ticks++;
     this._respawnDue();
+    this._newRaceDue();
     frame.fieldReady = false;
     // Per-client extras go to their subscribers only (_publish).
     const flow = null, perf = frame.perf || null;

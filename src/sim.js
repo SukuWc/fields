@@ -29,6 +29,7 @@ import {
   WIND_MAX_DEG_PER_S, WIND_SLEW_SPEED_MPS_PER_S, SIM_WIND_SCHEDULE,
 } from './wind-schedule.js';
 import { Boat } from './boat.js';
+import { RaceLifecycle, SIM_RACE_LIFECYCLE, validateRaceLifecycle } from './race-lifecycle.js';
 import { settingDefault } from './settings-registry.js';
 import { validateAutopilotGains } from './dev-config.js';
 
@@ -79,6 +80,8 @@ export { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps };
 //   { type: 'simRes', mode }           SIM_RES_MODES key; returns true if the lattice was rebuilt
 //   { type: 'amrMode', mode }          'auto' | 'fixed'; returns true if the lattice was rebuilt
 //   { type: 'sailWake', gain }         sail → lattice momentum multiple (SAIL_WAKE_GAIN 16)
+//   { type: 'raceLifecycle', timeLimitS, finishCountdownS }  race-lifecycle.js
+//                                      (emits { type: 'raceLifecycle', phase, ... })
 //   { type: 'gusts', enabled, ratePerMin, forceGain, forceGainSd, ... }
 //                                      room-config rate spawner (gusts.js); clears columns
 // Gusts (gusts.js GustField on sim.gusts): scenarios call sim.gusts.add(...); stepped each tick.
@@ -122,6 +125,9 @@ export class Sim {
     this.customLayout = null;
     this.rulesTime = 0;
     this.leaderboard = null;
+    // Race time limit + finish countdown (race-lifecycle.js); off in a bare Sim,
+    // set by the room config. Kept across scenario loads, reset by each one.
+    this.raceLifecycle = new RaceLifecycle(SIM_RACE_LIFECYCLE);
     this.ticks = 0;
     this._listeners = [];
     this._nextSpawn = 1;
@@ -234,6 +240,7 @@ export class Sim {
     this.epoch = (this.epoch || 0) + 1;
     resetContacts();
     resetMarkTouches();
+    if (this.raceLifecycle) this.raceLifecycle.reset();
     this.emit({ type: 'cleared' });
   }
 
@@ -310,6 +317,12 @@ export class Sim {
         }
         // Switching off: slew back to the base instead of jumping.
         if ((prev.enabled || prev.ramp) && !v.schedule.enabled && !v.schedule.ramp) this._windSettling = true;
+        return undefined;
+      }
+      case 'raceLifecycle': {
+        const v = validateRaceLifecycle(c);
+        if (v.error) return { error: v.error };
+        if (JSON.stringify(v.settings) !== JSON.stringify(this.raceLifecycle.settings)) this.raceLifecycle.set(v.settings);
         return undefined;
       }
       case 'devMode': map.setDevMode(c.on); return undefined;
@@ -589,6 +602,11 @@ export class Sim {
     const raceClock = startSeq ? startSeq.clock : (results ? results.relClock(rulesTime) : rulesTime);
     rec.raceClock = raceClock;
     if (course && course.finish && results && stepped) results.update(players, raceClock);
+    // Race time limit / finish countdown: the host restarts on 'restart'.
+    if (stepped) {
+      const lc = this.raceLifecycle.step(simDt, { startSeq, players, results });
+      if (lc) this.emit({ type: 'raceLifecycle', ...lc });
+    }
     // Race bots (scenario 17): autopilot targets once per step.
     const windFrom = map.wind_direction;
     if (stepped) {
