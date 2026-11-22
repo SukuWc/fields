@@ -1,4 +1,4 @@
-// Input mapping (Settings → Player → Input mapping): which boat the keyboard
+// Input mapping (Settings → Preferences → Input mapping): which boat the keyboard
 // and each gamepad drive. Key layouts per keyboard target, pad routing by pad
 // index, one boat = everything on boat 1, persistence helpers, and the
 // commands reaching the right boat in a local game and a server room.

@@ -193,9 +193,9 @@ for (const m of html.matchAll(/<(input|select|textarea)\b([^>]*)>/g)) {
 
 // 4. URL sync: player settings only (room settings are TOML, url:false).
 {
-  const playerControls = controls.filter((c) => c.panel === 'player').map((c) => c.id);
-  const devIds = SETTINGS.filter((s) => s.panel === 'dev').map((s) => s.id);
-  const wantUrl = playerControls.concat(devIds).join();
+  // Player drawer controls plus host:player_menu (boat_name) plus Dev TOML ids,
+  // in registry order — same set urlSettingIds returns for player settings.
+  const wantUrl = SETTINGS.filter((s) => s.scope === 'player').map((s) => s.id).join();
   const local = urlSettingIds({ remote: false }), remote = urlSettingIds({ remote: true });
   check('URL settings (local): player controls then dev TOML settings, in registry order', local.join() === wantUrl, local.join() + ' vs ' + wantUrl);
   check('URL settings (remote): the same Player and Dev settings (room never in the URL)', remote.join() === wantUrl);
@@ -207,8 +207,17 @@ for (const m of html.matchAll(/<(input|select|textarea)\b([^>]*)>/g)) {
 // TOML textarea + Commit / Reset (room settings have control:false).
 {
   const byPanel = (p) => controls.filter((c) => c.panel === p).map((c) => c.id).join();
-  const playerIds = SETTINGS.filter((s) => s.panel === 'player' && s.control !== false).map((s) => s.id).join();
-  check('the Player panel holds exactly the player-panel settings, in order', byPanel('player') === playerIds, byPanel('player'));
+  const playerIds = SETTINGS.filter((s) => s.panel === 'player' && s.control !== false && s.host !== 'player_menu').map((s) => s.id).join();
+  check('the Preferences panel holds the drawer player settings (name is in the Player menu)', byPanel('player') === playerIds, byPanel('player'));
+  check('boat_name lives in the Player menu, not the Preferences drawer',
+    /id="boat_name"/.test(html) && html.indexOf('id="boat_name"') < panels.settings[0]
+    || (html.indexOf('id="boat_name"') > panels.settings[1]),
+    'boat_name at ' + html.indexOf('id="boat_name"'));
+  // Force boolean: boat_name is outside #settings
+  {
+    const at = html.indexOf('id="boat_name"');
+    check('boat_name is outside the settings drawer', at > 0 && (at < panels.settings[0] || at > panels.settings[1]));
+  }
   check('the Dev panel is the TOML editor (no per-setting controls)', byPanel('dev') === 'dev_config', byPanel('dev'));
   check('dev settings are control:false', SETTINGS.filter((s) => s.panel === 'dev').every((s) => s.control === false));
   check('the Room settings panel is the TOML editor plus the admin login field (not registry settings)', byPanel('room') === 'room_admin_secret,room_config', byPanel('room'));
@@ -228,7 +237,15 @@ for (const m of html.matchAll(/<(input|select|textarea)\b([^>]*)>/g)) {
     check(`${s.id}: the options are the allowed values`, [...vals].sort().join() === [...s.values].sort().join() && vals.includes(String(s.default)), vals.join());
   }
   check('player control types match (checkbox = bool, select = enum, number / range = number / int, text)', SETTINGS.filter((s) => s.control !== false).every((s) => {
-    const c = controls.find((x) => x.id === s.id);
+    let c = controls.find((x) => x.id === s.id);
+    if (!c && s.host === 'player_menu') {
+      const re = new RegExp('<(input|select|textarea)\\b([^>]*\\bid="' + s.id + '"[^>]*)>', 'i');
+      const mm = re.exec(html);
+      if (!mm) return false;
+      const type = (mm[2].match(/\btype="([^"]*)"/) || [])[1] || (mm[1].toLowerCase() === 'input' ? 'text' : '');
+      c = { id: s.id, tag: mm[1].toUpperCase(), type };
+    }
+    if (!c) return false;
     return s.type === 'bool' ? c.type === 'checkbox' : s.type === 'enum' ? c.tag === 'SELECT' : s.type === 'text' ? c.type === 'text' : (c.type === 'number' || c.type === 'range');
   }));
 }
@@ -264,6 +281,11 @@ check('map size default: the registry\'s', MAP_DEFAULT === DEFAULT_MAP_SIZE && s
       Object.defineProperty(el, 'value', { get() { const o = this.options.find((x) => x.defaultSelected); return this._v ?? (o ? o.value : this.options[0].value); }, set(v) { this._v = v; } });
     }
     els.set(c.id, el);
+  }
+  // boat_name lives in the Player menu (host:player_menu); include a stand-in.
+  for (const s of SETTINGS.filter((x) => x.host === 'player_menu' && x.control !== false)) {
+    els.set(s.id, { id: s.id, tagName: 'INPUT', type: 'text', value: '', defaultValue: '', checked: false, defaultChecked: false,
+      closest: () => null });
   }
   const warn = console.warn; console.warn = () => {};
   const problems = applySettingDefaults({ getElementById: (id) => els.get(id) || null });

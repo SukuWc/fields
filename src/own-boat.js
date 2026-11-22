@@ -1,15 +1,15 @@
 // Own boat in a remote room (RemoteHost, apps/server): the "Join with my
-// boat" control in the player panel. The server spawns a boat at a free
+// boat" control in the Player menu tab. The server spawns a boat at a free
 // spawn point and this connection owns it: its keys and touch buttons steer
 // only that boat (the server sends this client's key binding, bindControls
 // with boats 1), and the camera follows it. Without a boat (before joining,
 // after Leave) the page is spectating: the server drops its boat commands,
 // it has no key binding, the touch buttons dim, and the instrument panel
 // selects its Player menu tab (instrument-panel.js setSpectating). That tab
-// holds every own-boat control: the name field (#player_menu_name, mirrors
-// the saved Player name #boat_name, the one value both read) and "Join with
-// my boat" while spectating; Leave, Add second player / Remove player 2 and
-// the status line once joined. The settings drawer keeps only the saved name.
+// holds every own-boat control: the name field (#boat_name, saved with the
+// player prefs) next to Join / Leave, "Join with my boat" while spectating,
+// and Leave / Add second player / Remove player 2 / status once joined. The
+// Preferences settings drawer no longer holds the name, zoom or pan controls.
 // "Add second player" spawns a second boat owned by the same connection (the
 // server binds two players: see controls.js for the keys) and the camera
 // follows the midpoint of the two. Leave or a disconnect removes the boat(s); a room-wide restart keeps it (the
@@ -24,43 +24,36 @@ function colorFor(name) {
 }
 
 // onChange(ids): called with this client's boat ids (first = followed).
-// savePrefs: saves the Player prefs after a Player menu name edit (the mirror
-// writes #boat_name programmatically, which player-prefs.js does not save).
+// savePrefs: saves the player prefs after a name edit (player-prefs.js only
+// saves trusted DOM edits; call it after our own input handler too).
 export function setupOwnBoat(host, onChange, { savePrefs = null } = {}, doc = document) {
-  const panel = doc.getElementById('own_boat_panel');
-  if (!panel || host.kind !== 'remote') return;
-  panel.hidden = false;
   const join = doc.getElementById('own_boat_join');
+  if (!join || host.kind !== 'remote') return;
   const leave = doc.getElementById('own_boat_leave');
   const add = doc.getElementById('own_boat_add');
   const remove2 = doc.getElementById('own_boat_remove2');
   const nameEl = doc.getElementById('boat_name');
   const status = doc.getElementById('own_boat_status');
-  const tabName = doc.getElementById('player_menu_name');
   const touch = doc.getElementById('touch_controls');
   let own = host.own || [];
   let error = '';
-  // Player menu name <-> saved Player name: #boat_name holds the value.
-  if (tabName && nameEl) {
-    tabName.value = nameEl.value;
-    const fromSaved = () => { if (tabName.value !== nameEl.value) tabName.value = nameEl.value; };
-    nameEl.addEventListener('input', fromSaved);
-    nameEl.addEventListener('change', fromSaved);
-    tabName.addEventListener('input', () => {
-      nameEl.value = tabName.value;
-      nameEl.dispatchEvent(new Event('input', { bubbles: true }));
-      nameEl.dispatchEvent(new Event('change', { bubbles: true }));
-      if (savePrefs) savePrefs();
+  // Name lives only in the Player menu (#boat_name). Enter joins while
+  // spectating; edits always save into player prefs for the next join.
+  if (nameEl) {
+    nameEl.addEventListener('input', () => { if (savePrefs) savePrefs(); });
+    nameEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && join && !join.hidden) join.click();
     });
-    tabName.addEventListener('keydown', (e) => { if (e.key === 'Enter' && join) join.click(); });
   }
   const render = () => {
     const spectating = own.length === 0;
-    if (join) join.hidden = !spectating;
-    if (tabName) tabName.hidden = !spectating;
+    join.hidden = !spectating;
     leave.hidden = spectating;
     if (add) add.hidden = spectating || own.length >= 2;
     if (remove2) remove2.hidden = own.length < 2;
+    // Name stays visible while sailing so players can edit the saved name
+    // next to Join / Leave (live boat names are set at spawn).
+    if (nameEl) nameEl.hidden = false;
     status.textContent = error || (spectating ? '' : own.length > 1
       ? 'Sailing ' + own[0].name + ' (arrows) and ' + own[1].name + ' (A / D, W / S) · zoom = / -'
       : 'Sailing ' + own.map((b) => b.name).join(', ') + ' · arrows / touch steer it');
@@ -79,15 +72,14 @@ export function setupOwnBoat(host, onChange, { savePrefs = null } = {}, doc = do
     render();
     onChange(own.map((b) => b.id));
   });
-  if (join) join.addEventListener('click', () => {
-    if (tabName) nameEl.value = tabName.value;
-    const name = nameEl.value.trim();
+  join.addEventListener('click', () => {
+    const name = (nameEl ? nameEl.value : '').trim();
     host.command({ type: 'spawnBoat', name, color: colorFor(name || String(Math.random())) }).then((r) => {
       if (r && r.error) { error = 'Cannot join: ' + r.error; render(); }
     });
   });
   if (add) add.addEventListener('click', () => {
-    const base = nameEl.value.trim() || (own[0] && own[0].name) || 'Player';
+    const base = (nameEl && nameEl.value.trim()) || (own[0] && own[0].name) || 'Player';
     const name = base + ' 2';
     host.command({ type: 'spawnBoat', name, color: colorFor(name) }).then((r) => {
       if (r && r.error) { error = 'Cannot add: ' + r.error; render(); }

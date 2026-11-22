@@ -76,7 +76,8 @@ export const LAYLINE_CORR_DEG_LIMITS = Object.freeze({ min: -30, max: 30 });
 
 export const SETTINGS = [
   // Player panel. Trails, ghost and the autopilot holdoff live in the Dev TOML.
-  { id: 'boat_name', scope: 'player', panel: 'player', type: 'text', default: '' },
+  // Name field lives in the instrument Player menu (host:player_menu), not the Preferences drawer.
+  { id: 'boat_name', scope: 'player', panel: 'player', type: 'text', default: '', host: 'player_menu' },
   { id: 'show_row_outline', scope: 'player', panel: 'player', type: 'bool', default: false },
   { id: 'show_row_lines', scope: 'player', panel: 'player', type: 'bool', default: true },
   { id: 'show_rule_labels', scope: 'player', panel: 'player', type: 'bool', default: true },

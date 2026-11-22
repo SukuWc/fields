@@ -54,6 +54,17 @@
 // Replaces sticky_autopilot (true / false): a saved or legacy false becomes
 // -1, true the default.
 //
+// Instrument panel layout (readout_tiles / readout_columns / chart_strips /
+// chart_columns). This page only, like the visuals. readout_tiles lists the
+// Readout tab's tiles in order (READOUT_TILES keys), chart_strips the Chart
+// tab's strips in order (CHART_STRIPS keys); an id left out is not shown.
+// An unknown or repeated id is dropped with a warning (the document still
+// validates). *_columns: 0 = the breakpoint's own grid (default), N = N
+// columns on desktop and tablet; phones keep their two-row block. Defaults
+// are every tile / strip in today's order and 0, so an untouched document
+// draws the panel as before. Applied by instrument-panel.js setLayout; not
+// in the URL (no registry setting), saved with the rest of the document.
+//
 // Persistence. Applied config is localStorage 'fields.devConfig'. Older
 // saves (fields.playerPrefs keys for these settings, and
 // fields.stickyAutopilot) are copied in once and then removed. A query
@@ -71,6 +82,8 @@ import {
   AUTOPILOT_HOLDOFF_MS_DEFAULT,
   setting,
 } from './settings-registry.js';
+import { READOUT_TILES } from './instrument-readout.js';
+import { CHART_STRIPS } from './instrument-chart.js';
 
 // Registry id → TOML key. Order is the document order. Every dev-panel
 // setting is here (test checks the inventory).
@@ -101,8 +114,19 @@ export const DEV_TOML_FIELDS = [
   { key: 'rudder_max_force_n', id: 'rudderMaxForce' },
 ];
 
-export const DEV_CONFIG_KEYS = DEV_TOML_FIELDS.map((f) => f.key);
-const FIELD_BY_KEY = new Map(DEV_TOML_FIELDS.map((f) => [f.key, f]));
+// Instrument panel layout keys (no registry setting, not in the URL). They
+// follow the registry fields in the document.
+export const READOUT_TILE_IDS = Object.freeze(READOUT_TILES.map((t) => t.key));
+export const CHART_STRIP_IDS = Object.freeze(CHART_STRIPS.map((s) => s.key));
+export const PANEL_LAYOUT_FIELDS = [
+  { key: 'readout_tiles', ids: READOUT_TILE_IDS },
+  { key: 'readout_columns', max: READOUT_TILE_IDS.length },
+  { key: 'chart_strips', ids: CHART_STRIP_IDS },
+  { key: 'chart_columns', max: CHART_STRIP_IDS.length },
+];
+
+export const DEV_CONFIG_KEYS = DEV_TOML_FIELDS.map((f) => f.key).concat(PANEL_LAYOUT_FIELDS.map((f) => f.key));
+const KNOWN_KEYS = new Set(DEV_CONFIG_KEYS);
 const FIELD_BY_ID = new Map(DEV_TOML_FIELDS.map((f) => [f.id, f]));
 
 // Plot tokens in the TOML, in #plotSelect index order. The URL keeps the
@@ -117,6 +141,10 @@ const HEADER = [
   '# layline_upwind_corr_deg / layline_downwind_corr_deg (default 0, −30..30): degrees added to the drawn layline half-angle (50° upwind / 20° downwind) to offset the boat wake shifting local wind. Drawn guides only; Rule 13 close-hauled 40° is unchanged.',
   '# rudder_max_deg: manual helm hard-over each side, 10..90 degrees (default 60). The autopilot uses the same limit; penalty turns stay at 50 or less.',
   '# rudder_max_force_n: rudder blade load limit in newtons, 0..5000 (default 200, 0 = none). Over it, the blade takes the nearest angle within the stop whose load is within it.',
+  '# readout_tiles / chart_strips: the Readout tiles and Chart strips in order; leave an id out to hide it. Unknown ids are ignored.',
+  '#   tiles: ' + READOUT_TILE_IDS.join(', '),
+  '#   strips: ' + CHART_STRIP_IDS.join(', '),
+  '# readout_columns / chart_columns: 0 = automatic (default), N = N columns on desktop and tablet; phones keep two rows.',
   '# autopilot_holdoff_ms: after Left / Right is released, heading hold engages on the then-current heading after this many ms (default 500; 0 = at once, -1 = never). Up / Down never disengage the autopilot.',
   '',
 ].join('\n');
@@ -128,8 +156,35 @@ function defaultValue(field) {
 }
 
 export const DEV_CONFIG_DEFAULTS = Object.freeze(Object.fromEntries(
-  DEV_TOML_FIELDS.map((f) => [f.key, defaultValue(f)]),
+  DEV_TOML_FIELDS.map((f) => [f.key, defaultValue(f)])
+    .concat(PANEL_LAYOUT_FIELDS.map((f) => [f.key, f.ids ? f.ids : 0])),
 ));
+
+/** Equal dev values: plain === or, for the layout lists, the same ids in order. */
+export function sameDevValue(a, b) {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => v === b[i]);
+  }
+  return a === b;
+}
+
+// One layout key → value, or throws the error text. Unknown and repeated
+// ids are dropped into warnings.
+function validateLayoutValue(field, v, warnings) {
+  if (field.ids) {
+    const what = field.key + ' must be a list of ids (' + field.ids.join(', ') + ')';
+    if (!Array.isArray(v) || !v.every((x) => typeof x === 'string')) throw what;
+    const out = [];
+    for (const id of v) {
+      if (!field.ids.includes(id)) warnings.push(field.key + ': unknown id "' + id + '" ignored');
+      else if (out.includes(id)) warnings.push(field.key + ': repeated id "' + id + '" ignored');
+      else out.push(id);
+    }
+    return out;
+  }
+  if (!Number.isInteger(v) || v < 0 || v > field.max) throw field.key + ' must be 0 (auto) or an integer 1..' + field.max;
+  return v;
+}
 
 export const DEV_CONFIG_KEY = 'fields.devConfig';
 
@@ -223,7 +278,7 @@ export function parseDevConfigToml(text) {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
     return { error: 'TOML must be a table of keys' };
   }
-  const unknown = Object.keys(raw).filter((k) => !FIELD_BY_KEY.has(k));
+  const unknown = Object.keys(raw).filter((k) => !KNOWN_KEYS.has(k));
   if (unknown.length) return { error: 'unknown key(s): ' + unknown.join(', ') };
   const config = { ...DEV_CONFIG_DEFAULTS };
   for (const key of DEV_CONFIG_KEYS) if (key in raw) config[key] = raw[key];
@@ -236,9 +291,10 @@ export function parseDevConfigToml(text) {
  */
 export function validateDevConfig(cfg) {
   if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) return { error: 'config must be an object' };
-  const unknown = Object.keys(cfg).filter((k) => !FIELD_BY_KEY.has(k) && !k.startsWith('_'));
+  const unknown = Object.keys(cfg).filter((k) => !KNOWN_KEYS.has(k) && !k.startsWith('_'));
   if (unknown.length) return { error: 'unknown key(s): ' + unknown.join(', ') };
   const out = {};
+  const warnings = [];
   try {
     for (const field of DEV_TOML_FIELDS) {
       const v = cfg[field.key];
@@ -269,10 +325,11 @@ export function validateDevConfig(cfg) {
       }
       throw field.key + ' is not a dev setting';
     }
+    for (const field of PANEL_LAYOUT_FIELDS) out[field.key] = validateLayoutValue(field, cfg[field.key], warnings);
   } catch (msg) {
     return { error: typeof msg === 'string' ? msg : String(msg) };
   }
-  return { config: out };
+  return warnings.length ? { config: out, warnings } : { config: out };
 }
 
 export function parseAndValidateDevConfig(text) {
@@ -341,6 +398,12 @@ export function devClientEffects(cfg) {
     trailSize: cfg.trail_size_m,
     ghost: cfg.ghost_boat,
     ghostAhead: cfg.ghost_ahead_s,
+    panelLayout: {
+      readoutTiles: [...cfg.readout_tiles],
+      readoutColumns: cfg.readout_columns,
+      chartStrips: [...cfg.chart_strips],
+      chartColumns: cfg.chart_columns,
+    },
   };
 }
 

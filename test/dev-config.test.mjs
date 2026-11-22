@@ -63,7 +63,7 @@ test('defaults round-trip through TOML', () => {
   const text = stringifyDevConfig(DEV_CONFIG_DEFAULTS);
   const p = parseAndValidateDevConfig(text);
   assert.equal(p.error, undefined);
-  for (const key of DEV_CONFIG_KEYS) assert.equal(p.config[key], DEV_CONFIG_DEFAULTS[key], key);
+  for (const key of DEV_CONFIG_KEYS) assert.deepEqual(p.config[key], DEV_CONFIG_DEFAULTS[key], key);
   assert.equal(stringifyDevConfig(p.config), text);
   assert.match(text, /autopilot_ki = 0/);
   assert.match(text, /tracer_count = 0/);
