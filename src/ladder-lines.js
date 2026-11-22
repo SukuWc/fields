@@ -25,19 +25,24 @@
 // mark (side −1). With no `toward` at all (no boat yet) it counts as an
 // upwind mark.
 //
-// Laylines (fixed angles, boat-draw.js best-VMG constants): two rays on
-// the approach side, to the map edge. From a single mark both start at
-// the mark. At a gate (anchors.gate, the two mark centres; the anchor is
-// its mid), and at the finish line (anchors.gate = its two ends, pin and
-// committee, also when the start line doubles as the finish; the anchor is
-// the line mid), each starts at its own mark: judged across the wind, the left
-// mark gets the left layline and the right mark the right one, so they
-// open outward and the zone between them holds the whole gate. The wind
-// direction and the side are still taken at the gate mid.
-//   upwind mark:   ±BEST_VMG_UPWIND_DEG (50°) from dead downwind, i.e. the
-//                  close-hauled courses into the mark, extending downwind;
-//   downwind mark: ±(180° − BEST_VMG_DOWNWIND_DEG) (20°) from dead upwind,
-//                  the running courses into the mark, extending upwind.
+// Laylines (boat-draw.js best-VMG angles ± optional Dev TOML corrections):
+// two rays on the approach side, to the map edge. From a single mark both
+// start at the mark. At a gate (anchors.gate, the two mark centres; the
+// anchor is its mid), and at the finish line (anchors.gate = its two ends,
+// pin and committee, also when the start line doubles as the finish; the
+// anchor is the line mid), each starts at its own mark: judged across the
+// wind, the left mark gets the left layline and the right mark the right
+// one, so they open outward and the zone between them holds the whole gate.
+// The wind direction and the side are still taken at the gate mid.
+//   upwind mark:   ±(BEST_VMG_UPWIND_DEG + upwindCorr) from dead downwind
+//                  (default 50°); the close-hauled courses into the mark,
+//                  extending downwind;
+//   downwind mark: ±(180° − BEST_VMG_DOWNWIND_DEG + downwindCorr) from dead
+//                  upwind (default 20°); the running courses into the mark,
+//                  extending upwind.
+// Corrections (laylineCorr { upwind, downwind } degrees, default 0) are
+// Dev TOML only and change drawn guides. Rule 13's CLOSE_HAULED_TWA_DEG
+// (40°) in rules.js is a separate constant and is never read here.
 //
 // Ladder lines: perpendicular to the wind at offsets k · LADDER_SPACING_M
 // (10 m) from the anchor along the wind, k = 1, 2, … on the approach side
@@ -108,19 +113,32 @@ function boundsOr(bounds, ox, oy) {
   };
 }
 
+// Normalise optional { upwind, downwind } degree corrections (NaN/absent → 0).
+export function laylineCorrOf(corr) {
+  const c = corr && typeof corr === 'object' ? corr : null;
+  return {
+    upwind: c && Number.isFinite(c.upwind) ? c.upwind : 0,
+    downwind: c && Number.isFinite(c.downwind) ? c.downwind : 0,
+  };
+}
+
 // Layline half angle, degrees: from dead downwind for an upwind mark
-// (side +1), from dead upwind for a downwind mark (side −1).
-export function laylineHalfAngleDeg(side) {
-  return side < 0 ? 180 - BEST_VMG_DOWNWIND_DEG : BEST_VMG_UPWIND_DEG;
+// (side +1), from dead upwind for a downwind mark (side −1). Optional
+// corr = { upwind, downwind } adds degrees to that base (drawn guides only).
+export function laylineHalfAngleDeg(side, corr = null) {
+  const c = laylineCorrOf(corr);
+  return side < 0
+    ? 180 - BEST_VMG_DOWNWIND_DEG + c.downwind
+    : BEST_VMG_UPWIND_DEG + c.upwind;
 }
 
 // Approach axis (unit, pointing away from the mark toward the boats),
 // cross-axis and half angle for downwind direction dirDeg and side.
-function frame(dirDeg, side) {
+function frame(dirDeg, side, corr = null) {
   const th = dirDeg * Math.PI / 180;
   const sgn = side < 0 ? -1 : 1;
   const ax = sgn * Math.cos(th), ay = sgn * Math.sin(th);
-  return { ax, ay, nx: -ay, ny: ax, half: laylineHalfAngleDeg(side) * Math.PI / 180 };
+  return { ax, ay, nx: -ay, ny: ax, half: laylineHalfAngleDeg(side, corr) * Math.PI / 180 };
 }
 
 // Upwind (+1) or downwind (−1) mark for these anchors and downwind
@@ -156,10 +174,10 @@ function isGatePair(g) {
 // axis), each ending on the map edge. Single mark: both from (ox, oy).
 // Gate (gate = [a, b] mark centres; (ox, oy) is its mid): each from its
 // own mark, on its outer side (gateEnds).
-export function laylineLines(ox, oy, dirDeg, bounds = null, side = 1, gate = null) {
+export function laylineLines(ox, oy, dirDeg, bounds = null, side = 1, gate = null, corr = null) {
   if (!Number.isFinite(ox) || !Number.isFinite(oy) || !Number.isFinite(dirDeg)) return [];
   const b = boundsOr(bounds, ox, oy);
-  const f = frame(dirDeg, side);
+  const f = frame(dirDeg, side, corr);
   const ends = gateEnds(ox, oy, f, gate);
   const out = [];
   for (const sign of [-1, 1]) {
@@ -183,10 +201,10 @@ export function laylineLines(ox, oy, dirDeg, bounds = null, side = 1, gate = nul
 // wind whose mark sits farther out than the rung: that end stops level
 // with the mark's cross-wind position instead of crossing the layline
 // before it starts.
-export function ladderLines(ox, oy, dirDeg, bounds = null, side = 1, spacing = LADDER_SPACING_M, maxOffset = Infinity, gate = null) {
+export function ladderLines(ox, oy, dirDeg, bounds = null, side = 1, spacing = LADDER_SPACING_M, maxOffset = Infinity, gate = null, corr = null) {
   if (!Number.isFinite(ox) || !Number.isFinite(oy) || !Number.isFinite(dirDeg) || !(spacing > 0)) return [];
   const b = boundsOr(bounds, ox, oy);
-  const f = frame(dirDeg, side);
+  const f = frame(dirDeg, side, corr);
   const ends = gateEnds(ox, oy, f, gate);
   let smax = -Infinity;
   for (const [x, y] of [[b.xmin, b.ymin], [b.xmax, b.ymin], [b.xmin, b.ymax], [b.xmax, b.ymax]]) {
@@ -411,25 +429,26 @@ export function ladderOriginFromState(state, statics, opts) {
 // each a list of flat [x0, y0, x1, y1] segments (ladder in ascending
 // offset from the mark; layline the two rays from the mark). Wind sampled
 // once at the anchor; opts.bounds is the map rectangle (mapBoundsFromLat).
-export function ladderGeometry(getWind, anchors, { bounds = null } = {}) {
+export function ladderGeometry(getWind, anchors, { bounds = null, laylineCorr = null } = {}) {
   const o = anchors && anchors.origin;
   const dir = o ? ladderWindDeg(getWind, o.x, o.y) : null;
   if (dir === null) return { ladder: [], layline: [] };
   const side = ladderSide(anchors, dir);
+  const corr = laylineCorrOf(laylineCorr);
   const flat = (l) => [l.pts[0][0], l.pts[0][1], l.pts[1][0], l.pts[1][1]];
   return {
-    ladder: ladderLines(o.x, o.y, dir, bounds, side, LADDER_SPACING_M, ladderMaxOffset(anchors, dir), anchors.gate).map(flat),
-    layline: laylineLines(o.x, o.y, dir, bounds, side, anchors.gate).map(flat),
+    ladder: ladderLines(o.x, o.y, dir, bounds, side, LADDER_SPACING_M, ladderMaxOffset(anchors, dir), anchors.gate, corr).map(flat),
+    layline: laylineLines(o.x, o.y, dir, bounds, side, anchors.gate, corr).map(flat),
   };
 }
 
 // Laylines only, same geometry as ladderGeometry(...).layline (one wind
 // sample at the anchor); for the minimap when the frame carries none.
-export function laylineGeometry(getWind, anchors, { bounds = null } = {}) {
+export function laylineGeometry(getWind, anchors, { bounds = null, laylineCorr = null } = {}) {
   const o = anchors && anchors.origin;
   const dir = o ? ladderWindDeg(getWind, o.x, o.y) : null;
   if (dir === null) return [];
-  return laylineLines(o.x, o.y, dir, bounds, ladderSide(anchors, dir), anchors.gate)
+  return laylineLines(o.x, o.y, dir, bounds, ladderSide(anchors, dir), anchors.gate, laylineCorrOf(laylineCorr))
     .map((l) => [l.pts[0][0], l.pts[0][1], l.pts[1][0], l.pts[1][1]]);
 }
 
@@ -447,8 +466,8 @@ export function ladderMaxOffset(anchors, dirDeg) {
 
 // Ladder segments only, for an anchor point; opts.toward picks the side
 // (absent: upwind mark).
-export function ladderState(getWind, ox, oy, { bounds = null, toward = null } = {}) {
-  return ladderGeometry(getWind, { origin: { x: ox, y: oy }, toward }, { bounds }).ladder;
+export function ladderState(getWind, ox, oy, { bounds = null, toward = null, laylineCorr = null } = {}) {
+  return ladderGeometry(getWind, { origin: { x: ox, y: oy }, toward }, { bounds, laylineCorr }).ladder;
 }
 
 // One-entry memo for ladderState: callers pass a key array (rounded
@@ -487,11 +506,12 @@ export function ladderWindKey(getWind, anchors) {
 // line count cap (floor of ladderMaxOffset / spacing, null for the map
 // edge). The boat moving does not rebuild unless it flips the side; a
 // drifting previous mark only when it changes the count.
-export function ladderBuildKey(getWind, anchors) {
+export function ladderBuildKey(getWind, anchors, laylineCorr = null) {
   const dir = ladderWindKey(getWind, anchors);
-  if (dir === null) return [...ladderAnchorKey(anchors), null, null, null];
+  const corr = laylineCorrOf(laylineCorr);
+  if (dir === null) return [...ladderAnchorKey(anchors), null, null, null, corr.upwind, corr.downwind];
   const cap = ladderMaxOffset(anchors, dir);
-  return [...ladderAnchorKey(anchors), dir, ladderSide(anchors, dir), Number.isFinite(cap) ? Math.floor(cap / LADDER_SPACING_M + 1e-9) : null];
+  return [...ladderAnchorKey(anchors), dir, ladderSide(anchors, dir), Number.isFinite(cap) ? Math.floor(cap / LADDER_SPACING_M + 1e-9) : null, corr.upwind, corr.downwind];
 }
 
 // Guides from state.ladder / state.layline (scene-build.js), drawn under

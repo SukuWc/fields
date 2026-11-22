@@ -144,5 +144,6 @@ export function plainView(v) {
   return v ? {
     camera_position_x: v.camera_position_x, camera_position_y: v.camera_position_y,
     camera_zoom: v.camera_zoom, show_forces: v.show_forces, show_fields: v.show_fields, show_ladder: v.show_ladder,
+    layline_upwind_corr_deg: v.layline_upwind_corr_deg, layline_downwind_corr_deg: v.layline_downwind_corr_deg,
   } : null;
 }

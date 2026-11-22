@@ -431,8 +431,12 @@ function startClient() {
         const bounds = mapBoundsFromLat(frame.statics && frame.statics.lat);
         const bkey = bounds ? [bounds.xmin, bounds.xmax, bounds.ymin, bounds.ymax] : [null, null, null, null];
         const getWind = (x, y) => vectorFieldWind(field, x, y);
-        const geo = remoteLadderCache([...bkey, ...ladderBuildKey(getWind, anchors)], () => (
-          ladderGeometry(getWind, anchors, { bounds })
+        const laylineCorr = {
+          upwind: Number.isFinite(view.layline_upwind_corr_deg) ? view.layline_upwind_corr_deg : 0,
+          downwind: Number.isFinite(view.layline_downwind_corr_deg) ? view.layline_downwind_corr_deg : 0,
+        };
+        const geo = remoteLadderCache([...bkey, ...ladderBuildKey(getWind, anchors, laylineCorr)], () => (
+          ladderGeometry(getWind, anchors, { bounds, laylineCorr })
         ));
         frame.state.ladder = geo.ladder;
         frame.state.layline = geo.layline;

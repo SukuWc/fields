@@ -60,7 +60,7 @@ export function cameraRect(view, aspect) {
 // outer side; upwind/downwind from the previous point), using the shown
 // boat's true wind direction twdDeg (compass, wind from) as the wind at
 // the mark, clipped to the mapW × mapH map. Nothing before the start.
-export function minimapLaylines(state, statics, { ownId = null, twdDeg = NaN, mapW, mapH } = {}) {
+export function minimapLaylines(state, statics, { ownId = null, twdDeg = NaN, mapW, mapH, laylineCorr = null } = {}) {
   if (state && Array.isArray(state.layline)) return state.layline;
   if (!Number.isFinite(twdDeg)) return [];
   const anchors = ladderAnchorsFromState(state, statics, { ownId });
@@ -69,7 +69,7 @@ export function minimapLaylines(state, statics, { ownId = null, twdDeg = NaN, ma
   const b = (twdDeg + 180) * Math.PI / 180;
   const w = { vx: Math.sin(b), vy: Math.cos(b) };
   const bounds = mapBoundsFromLat({ width: mapW, height: mapH });
-  return laylineGeometry(() => w, anchors, { bounds });
+  return laylineGeometry(() => w, anchors, { bounds, laylineCorr });
 }
 
 // Room wind indicator from a frame's state.rw ([from compass °, m/s],
@@ -220,7 +220,11 @@ export function setupMinimap({ view, getMapSize, remote = false, lockstep = () =
       const next = s.course && s.course.view ? s.course.view.index : null;
       const me = lastState ? instrumentBoat(lastState.boats, { ownId, remote, lockstep: lockstep() }) : null;
       const twd = me && Number.isFinite(me.twd_deg) ? me.twd_deg : (s.boats && s.boats[0] && Number.isFinite(s.boats[0].twd_deg) ? s.boats[0].twd_deg : NaN);
-      const segs = lastState ? minimapLaylines(lastState, st, { ownId: ownId != null ? ownId : (me ? me.id : null), twdDeg: twd, mapW: mw, mapH: mh }) : [];
+      const laylineCorr = view ? {
+        upwind: Number.isFinite(view.layline_upwind_corr_deg) ? view.layline_upwind_corr_deg : 0,
+        downwind: Number.isFinite(view.layline_downwind_corr_deg) ? view.layline_downwind_corr_deg : 0,
+      } : null;
+      const segs = lastState ? minimapLaylines(lastState, st, { ownId: ownId != null ? ownId : (me ? me.id : null), twdDeg: twd, mapW: mw, mapH: mh, laylineCorr }) : [];
       ctx.strokeStyle = 'rgba(255,204,51,0.7)'; ctx.lineWidth = 1;
       for (const f of segs) { ctx.beginPath(); ctx.moveTo(...P([f[0], f[1]])); ctx.lineTo(...P([f[2], f[3]])); ctx.stroke(); }
       marks.forEach((m, i) => {

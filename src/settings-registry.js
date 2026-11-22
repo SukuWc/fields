@@ -67,6 +67,12 @@ export const RUDDER_MAX_FORCE_N_LIMITS = Object.freeze({ min: 0, max: 5000 });
 // AUTOPILOT_HOLDOFF_MS / _MIN / _MAX (test/autopilot-holdoff.test.mjs checks).
 export const AUTOPILOT_HOLDOFF_MS_DEFAULT = 500;
 export const AUTOPILOT_HOLDOFF_MS_LIMITS = Object.freeze({ min: -1, max: 10000 });
+// Layline half-angle corrections (degrees) for drawn laylines only.
+// Added to BEST_VMG_UPWIND_DEG (50) / (180 − BEST_VMG_DOWNWIND_DEG) (20).
+// Does not touch Rule 13's CLOSE_HAULED_TWA_DEG (40) in rules.js.
+export const LAYLINE_UPWIND_CORR_DEG_DEFAULT = 0;
+export const LAYLINE_DOWNWIND_CORR_DEG_DEFAULT = 0;
+export const LAYLINE_CORR_DEG_LIMITS = Object.freeze({ min: -30, max: 30 });
 
 export const SETTINGS = [
   // Player panel. Trails, ghost and the autopilot holdoff live in the Dev TOML.
@@ -87,6 +93,9 @@ export const SETTINGS = [
   // the URL keys (?show_field, ?boat_trails, ?autopilot_holdoff_ms, …).
   { id: 'show_field', scope: 'player', panel: 'dev', control: false, type: 'bool', default: true, subscription: 'flow' },
   { id: 'ladder', scope: 'player', panel: 'dev', control: false, type: 'bool', default: true },
+  // Drawn-layline half-angle corrections (degrees). Client draw only; Rule 13 untouched.
+  { id: 'laylineUpwindCorr', scope: 'player', panel: 'dev', control: false, type: 'number', default: LAYLINE_UPWIND_CORR_DEG_DEFAULT, min: LAYLINE_CORR_DEG_LIMITS.min, max: LAYLINE_CORR_DEG_LIMITS.max },
+  { id: 'laylineDownwindCorr', scope: 'player', panel: 'dev', control: false, type: 'number', default: LAYLINE_DOWNWIND_CORR_DEG_DEFAULT, min: LAYLINE_CORR_DEG_LIMITS.min, max: LAYLINE_CORR_DEG_LIMITS.max },
   { id: 'tracers', scope: 'player', panel: 'dev', control: false, type: 'number', default: null, nullable: true, min: 10, max: 20000 },
   { id: 'tracerLife', scope: 'player', panel: 'dev', control: false, type: 'number', default: 6, min: 0.5, max: 30 },
   { id: 'tracerTail', scope: 'player', panel: 'dev', control: false, type: 'number', default: 1.5, min: 0, max: 10 },
