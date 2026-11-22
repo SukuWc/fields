@@ -62,14 +62,16 @@
 // schedule is switched off (or re-seeded mid-run) and, with wind_ramp, manual
 // changes.
 // Seed: room config wind_schedule_seed = [mean, sd] (or a plain integer, sd
-// 0). The room config draws the seed for a game from N(mean, sd²) with real
-// randomness (drawWindSeed, Math.random: not a seeded stream), rounded to
-// an integer, absolute value (|n|, not clamped at 0, so N(1, 100²) spreads
-// over 0..~300 without piling up at 0), every time a config is applied (room start,
-// Reset, Apply); sd 0 gives exactly the mean, so a game can be replayed by
-// setting wind_schedule_seed = [<drawn seed>, 0]. The spec keeps both: `seed`
-// is the drawn seed every stream above uses, `seedSpec` the configured
-// [mean, sd] (round-trip, room settings).
+// 0). The room config draws the room seed for a game from N(mean, sd²) with
+// real randomness (drawWindSeed, Math.random: not a seeded stream), rounded
+// to an integer, absolute value (|n|, not clamped at 0, so N(1, 100²) spreads
+// over 0..~300 without piling up at 0). That integer also seeds the gust PRNG
+// (room-config / Room), so one seed replays wind oscillations and gusts.
+// Drawn every time a config is applied (room start, Reset, Apply); sd 0 gives
+// exactly the mean, so a game can be replayed by setting
+// wind_schedule_seed = [<drawn seed>, 0]. The spec keeps both: `seed` is the
+// drawn seed every stream above uses, `seedSpec` the configured [mean, sd]
+// (round-trip, room settings).
 // Defaults: the room config default (DEFAULT_WIND_SCHEDULE) is on with seed
 // [1, 100]; a bare Sim with no room config (scenario checks, unit tests)
 // starts with the schedule off (SIM_WIND_SCHEDULE), a steady wind.
