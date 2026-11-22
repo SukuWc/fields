@@ -137,7 +137,7 @@
       #scenario_card_body {
         margin: 8px 0 0;
       }
-      /* Settings drawer tabs: Player | Dev | Room, one pane at a time.
+      /* Settings drawer tabs: Preferences | Dev | Room, one pane at a time.
          Dev is always available; it does not require dev view. */
       #settings_tabs { position: sticky; top: 0; z-index: calc(var(--sz-z-base) + 1); margin-bottom: 8px; }
       #settings_tabs .sz-tab { min-width: 0; white-space: nowrap; }
@@ -160,7 +160,6 @@
       #settings .pref-group > .setting-field label { display: inline-block; margin-right: 6px; }
       #settings .pref-group > .setting-field br { display: none; }
       #settings .pref-group > .setting-row[hidden] { display: none; }
-      #settings #own_boat_panel { margin: 8px 6px; }
       #settings .pref-footer { display: flex; align-items: center; gap: 8px; margin: 6px; }
       /* Input mapping (Player tab): a compact grid, one row per device
          (rows are display: contents radiogroups), option columns Split /
@@ -906,7 +905,7 @@
       #instrument_panel .instr-player [hidden] { display: none !important; }
       #instrument_panel:not(.spectating) .pm-spectating { display: none !important; }
       #instrument_panel .instr-player .sz-btn { flex: none; white-space: nowrap; }
-      #instrument_panel #player_menu_name { flex: 1 1 140px; min-width: 0; max-width: 240px; box-sizing: border-box; font: inherit; padding: 4px 8px; color: #fff; background: var(--sz-navy); border: 1px solid rgba(255,255,255,0.25); border-radius: var(--sz-r-sm); }
+      #instrument_panel #boat_name { flex: 1 1 140px; min-width: 0; max-width: 240px; box-sizing: border-box; font: inherit; padding: 4px 8px; color: #fff; background: var(--sz-navy); border: 1px solid rgba(255,255,255,0.25); border-radius: var(--sz-r-sm); }
       #instrument_panel .pm-join { --sz-btn-bg: var(--sz-yellow); --sz-btn-border: var(--sz-yellow); color: var(--sz-navy); font-weight: 700; }
       #instrument_panel .pm-hint { flex: 1 1 160px; font-size: var(--sz-fs-xs); color: #ffd98a; }
       #instrument_panel .pm-status { flex: 1 1 160px; min-width: 0; font-size: var(--sz-fs-xs); opacity: 0.85; }
@@ -1242,10 +1241,7 @@
       /* bp-touch */
       .bp-touch #scenario_card_toggle { min-width: 44px; min-height: 28px; margin: 0; font-size: var(--sz-fs-sm); padding: 0 8px; }
       .bp-touch #chat_toggle { min-width: 64px; min-height: var(--sz-tap); font-size: var(--sz-fs-lg); }
-      /* Player form: the saved name (Join / Leave live in the Player menu tab). */
-      .bp-touch #settings #own_boat_panel { flex-wrap: wrap; gap: 8px; padding: 6px 0; cursor: default; }
-      .bp-touch #settings #own_boat_panel[hidden], .bp-touch #settings .setting-row[hidden] { display: none; }
-      .bp-touch #settings #boat_name { flex: 1 1 140px; min-width: 0; min-height: var(--sz-tap); box-sizing: border-box; font-size: var(--sz-fs-xl); padding: 4px 8px; }
+      .bp-touch #settings .setting-row[hidden] { display: none; }
       /* Checkbox rows are already 48 px tall labels; the box itself grows a little. */
       .bp-touch #settings input[type="checkbox"] { width: 28px; height: 28px; }
       .bp-touch #settings .toml-actions input[type="button"] { min-height: var(--sz-tap); padding: 0 12px; }
@@ -1467,9 +1463,9 @@
       /* Narrow landscape panel: one strip column fills it (header on one line). */
       .bp-phone-landscape #instrument_panel[data-mode="chart"] .instr-charts { grid-auto-columns: 100%; }
       .bp-phone #instrument_panel .instr-strip-svg { height: 26px; }
-      .bp-touch #instrument_panel #player_menu_name { min-height: var(--sz-tap); font-size: 16px; }
+      .bp-touch #instrument_panel #boat_name { min-height: var(--sz-tap); font-size: 16px; }
       .bp-phone #instrument_panel .pm-hint { display: none; }
-      .bp-phone #instrument_panel #player_menu_name { max-width: none; }
+      .bp-phone #instrument_panel #boat_name { max-width: none; }
       .bp-phone #instrument_panel .instr-player .sz-btn { padding: 0 10px; }
       /* One row on a phone: the status line truncates beside the buttons. */
       .bp-phone #instrument_panel:not(.spectating) .pm-status { flex: 1 1 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1630,7 +1626,7 @@
 
     </style>
   
-    <script type="module" crossorigin src="/fields/assets/index-ChJvOBJo.js"></script>
+    <script type="module" crossorigin src="/fields/assets/index-CvXAunAl.js"></script>
   </head>
   <body>
 
@@ -1706,7 +1702,7 @@
         <div class="instr-tiles"></div>
         <div class="instr-charts"></div>
         <div class="instr-player" role="group" aria-label="Player menu">
-          <input id="player_menu_name" class="pm-spectating" type="text" placeholder="Your name" maxlength="24" autocomplete="off" aria-label="Your name" title="Name shown on your boat (the same as Settings → Player → name)">
+          <input id="boat_name" type="text" placeholder="Your name" maxlength="24" autocomplete="off" aria-label="Your name" title="Name used when you join (saved in this browser). Edit it here before or after joining.">
           <button type="button" id="own_boat_join" class="sz-btn pm-join">Join with my boat</button>
           <button type="button" id="own_boat_leave" class="sz-btn" hidden>Leave</button>
           <span class="pm-hint pm-spectating">You are spectating. Join to sail your own boat.</span>
@@ -1762,28 +1758,18 @@
     <div id="settings_backdrop" hidden></div>
     <div id="settings" class="sz-panel" data-tab="player">
       <div id="settings_tabs" class="sz-tabs" role="tablist" aria-label="Settings">
-        <button type="button" id="settings_tab_player" class="settings-tab sz-tab" role="tab" data-tab="player" aria-controls="player_panel" aria-selected="true">Player</button>
+        <button type="button" id="settings_tab_player" class="settings-tab sz-tab" role="tab" data-tab="player" aria-controls="player_panel" aria-selected="true">Preferences</button>
         <button type="button" id="settings_tab_dev" class="settings-tab sz-tab" role="tab" data-tab="dev" aria-controls="dev_panel" aria-selected="false">Dev</button>
         <button type="button" id="settings_tab_room" class="settings-tab sz-tab" role="tab" data-tab="room" aria-controls="admin_panel" aria-selected="false">Room</button>
       </div>
       <div id="player_panel" class="settings-section settings-pane" role="tabpanel" aria-labelledby="settings_tab_player">
-      <div class="settings-heading" title="Your own view and controls: only this page. Saved in this browser.">Player</div>
-      <div id="own_boat_panel" class="setting-row" hidden>
-        <input id="boat_name" type="text" placeholder="Your name" maxlength="24" autocomplete="off" size="10" title="Name shown on your boat">
-      </div>
+      <div class="settings-heading" title="Your own view and controls: only this page. Saved in this browser.">Preferences</div>
       <fieldset class="pref-group"><legend>View</legend>
         <label class="setting-row" title="Opponents inside the 12 m rule gate get a 3 m circle: red = you keep clear, green = you have right of way, yellow = transitional (Rule 15, room, both keep clear). Hull colours do not change."><input id="show_row_outline" autocomplete="off" type="checkbox">Right-of-way circles</label>
         <label class="setting-row" title="Red/green line between two boats while a rule applies: green end has right of way, red end must keep clear"><input id="show_row_lines" autocomplete="off" type="checkbox">Right-of-way lines</label>
         <label class="setting-row" title="Rule number between two boats while a rule applies (e.g. Rule 10, Rule 15 blocks Rule 12)"><input id="show_rule_labels" autocomplete="off" type="checkbox">Rule labels</label>
         <label class="setting-row"><input id="camera_follow" autocomplete="off" type="checkbox">Camera Follow</label>
         <label class="setting-row" id="field_plane_row" hidden title="Server mode only: the speed colour plot of the vector field. Off hides the plane, but the server still sends the vector stream if flow tracers or ladder lines are on (they are computed on this page from that stream). Also ?field_plane=0. With ?field_mode=recv|freeze|nopaint, Off still hides the plane; On uses that experiment mode. Remote mode always paints speed; contrast is applied here (Dev TOML). Density / ux / uy / curl plots stay in the standalone webapp."><input id="field_plane" autocomplete="off" type="checkbox">Show field (server)</label>
-        <span class="setting-row setting-buttons"><input id="camera_zoom_in" type="button" value="+" title="Zoom in (W or =)"><input id="camera_zoom_out" type="button" value="-" title="Zoom out (S or -)">Zoom <span title="W / S zoom unless a second local boat is bound (then W / S steer it)">(W / S)</span></span>
-        <span class="setting-row setting-buttons">
-      <input id="camera_move_left" type="button" value="◄">
-      <input id="camera_move_right" type="button" value="►">
-      <input id="camera_move_up" type="button" value="▲">
-      <input id="camera_move_down" type="button" value="▼">
-      </span>
       </fieldset>
       <fieldset class="pref-group"><legend>Controls</legend>
         <label class="setting-row"><input id="touch" autocomplete="off" type="checkbox" title="Boat 1 Overlay touch buttons over the map. On by default on phones and touch screens. Also ?touch=1 / ?touch=0">Touch controls</label>
