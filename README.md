@@ -202,6 +202,7 @@ Last updated: 2026-11-18
 - [x] Mobile 11: drag-to-look: a one-finger drag on the race view pans the camera and pauses follow; on release it eases back to your boat in 300 ms. Pinch still zooms, drags on steer zones and buttons never pan, spectators keep a plain pan ([#172](https://github.com/SukuWc/fields/pull/172))
 - [ ] Double-tap the race view on phones and tablets toggles Camera Follow (same path as the settings checkbox and minimap Follow button; does not fight pan, edge-swipe or on-screen buttons; desktop unchanged)
 - [ ] Mobile 12: swipe to close the leaderboard and chat sheet: swipe down (bottom sheet, portrait) or right (side sheet, landscape); the sheet follows the finger and closes past 80 px or on a flick, otherwise springs back. Scrolling inside the sheet and drag-to-look work as before ([#174](https://github.com/SukuWc/fields/pull/174))
+- [ ] Top HUD merge: scenario name and description move into the minimap UI; on phones the navy top bar and the BSP / VMG / TWA / TWS quick-stats strip combine into one row with 🏁 / fullscreen / ☰ (desktop top bar keeps rank + ☰ only)
 - [x] Mobile fullscreen toggle: a 44 px enter/exit button on the phone and tablet top bar, immediately right of the 🏁 rank button and left of ☰. Fullscreen API on the document (not a video). Hidden when the browser cannot fullscreen the page (iPhone Safari); desktop layout unchanged: [#186](https://github.com/SukuWc/fields/pull/186)
 - [ ] Accessibility
 - [ ] Telemetry export
