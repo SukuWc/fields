@@ -19,7 +19,10 @@
 //                           which then replaces wind_angle_deg / wind_speed_mps.
 //                           On by default; wind_schedule_seed = [mean, sd]
 //                           (default [1, 100]) is drawn per applied config
-//                           (_windSeed), sd 0 = that exact seed
+//                           (_windSeed), sd 0 = that exact seed.
+//                           That drawn integer is the room seed: it also
+//                           seeds the gust PRNG (and any other SD draws),
+//                           so the same seed replays the whole race
 //   wind_ramp = true      → manual wind changes slew at 0.5°/s, 0.1 m/s per s
 //   scenario = "custom" + [custom] → marks / start / course / finish /
 //                           boundary from the TOML (custom-scenario.js)
@@ -175,14 +178,19 @@ export function meanSdToToml(mean, sd) {
   return [mean, sd > 0 ? sd : 0];
 }
 
-/** Flat gust spawner snapshot from a validated room config. */
+/**
+ * Flat gust spawner snapshot from a validated room config.
+ * seed is the room's drawn seed (_windSeed from wind_schedule_seed): same
+ * integer drives wind-schedule streams and the gust PRNG, so one seed
+ * replays the whole race. Absent only on a raw config before validation.
+ */
 export function gustSpawnerFromConfig(cfg) {
   const fg = parseMeanSd(cfg.gust_force_gain, 'gust_force_gain');
   const al = parseMeanSd(cfg.gust_along_sigma_m, 'gust_along_sigma_m');
   const cr = parseMeanSd(cfg.gust_cross_sigma_m, 'gust_cross_sigma_m');
   const life = parseMeanSd(cfg.gust_life_s, 'gust_life_s');
   const dir = parseMeanSd(cfg.gust_dir_deg, 'gust_dir_deg');
-  return {
+  const o = {
     enabled: !!cfg.gusts,
     ratePerMin: cfg.gust_rate_per_min,
     forceGain: fg.mean, forceGainSd: fg.sd,
@@ -192,6 +200,8 @@ export function gustSpawnerFromConfig(cfg) {
     dirDeg: dir.mean, dirDegSd: dir.sd,
     rampS: cfg.gust_ramp_s,
   };
+  if (cfg._windSeed !== undefined) o.seed = cfg._windSeed >>> 0;
+  return o;
 }
 
 /**
@@ -716,7 +726,11 @@ export function commandsFromConfig(cfg, prev = null) {
     'gusts', 'gust_rate_per_min', 'gust_force_gain', 'gust_along_sigma_m',
     'gust_cross_sigma_m', 'gust_life_s', 'gust_dir_deg', 'gust_ramp_s',
   ];
-  if (!prev || gustKeys.some((k) => {
+  // Also when the room seed (_windSeed) changes: gusts share that seed with
+  // the wind schedule, so a new game reseeds the gust PRNG even if the gust
+  // knobs are unchanged.
+  const seedChanged = !prev || prev._windSeed !== cfg._windSeed;
+  if (!prev || seedChanged || gustKeys.some((k) => {
     const a = prev[k], b = cfg[k];
     if (Array.isArray(a) || Array.isArray(b)) return JSON.stringify(a) !== JSON.stringify(b);
     return a !== b;

@@ -151,7 +151,7 @@ export function heldCommands() {
   return out;
 }
 
-// Input mapping (Settings → Player → Input mapping, src/input-map.js): which
+// Input mapping (Settings → Preferences → Input mapping, src/input-map.js): which
 // boat each input device drives when two boats are bound (a second local
 // player, or a second own boat in a server room). Boat indices are the
 // binding's (0 = player 1, 1 = player 2; the server maps them to the
@@ -394,8 +394,8 @@ export function setWindCeiling(mps) {
 }
 let _windCeiling = windCeilingMps('2f');
 
-// Every size: the card starts collapsed into the top bar (plan M4 on
-// phones, standardization PR 8 on desktop); Show drops it down.
+// Every size: the card starts collapsed on the minimap (Group 5 top HUD);
+// Show expands the scenario description.
 let scenarioCardCollapsed = true;
 let _appliedConfig = null;
 let _roomTomlHighlight = null;
@@ -651,12 +651,6 @@ export function setupControls(host, view, getCamera) {
     view.input_camera_follow(document.getElementById("camera_follow").checked);
   });
 
-  document.getElementById("camera_zoom_in").addEventListener("click", () => { view.input_camera_zoom_relative(-2); });
-  document.getElementById("camera_zoom_out").addEventListener("click", () => { view.input_camera_zoom_relative(+2); });
-  document.getElementById("camera_move_left").addEventListener("click", () => { view.input_camera_move_relative(-5, 0); });
-  document.getElementById("camera_move_right").addEventListener("click", () => { view.input_camera_move_relative(5, 0); });
-  document.getElementById("camera_move_up").addEventListener("click", () => { view.input_camera_move_relative(0, 5); });
-  document.getElementById("camera_move_down").addEventListener("click", () => { view.input_camera_move_relative(0, -5); });
 
   document.addEventListener("mousemove", mouse_monitor);
 

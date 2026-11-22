@@ -1,8 +1,8 @@
 // Player menu tab (instrument panel, server rooms only): every own-boat
 // control. Selected while the page spectates (name + Join), Readout is
-// selected once it joins but the tab stays (Leave, second player, status).
-// The old "Spectating · open ☰ …" overlay over the touch controls is gone,
-// and the ☰ drawer keeps only the saved name.
+// selected once it joins but the tab stays (name, Leave, second player,
+// status). The Preferences settings drawer no longer holds the name, zoom
+// or pan controls.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -65,22 +65,41 @@ test('markup: Player menu is the first instrument tab and holds every own-boat c
   const tab = panel.indexOf('data-mode="player" hidden');
   assert.ok(tab > 0 && tab < panel.indexOf('class="instr-mode sz-tab" data-mode="readout"'));
   assert.match(panel, /data-mode="player" hidden[^>]*>Player menu<\/button>/);
-  for (const id of ['player_menu_name', 'own_boat_join', 'own_boat_leave', 'own_boat_add', 'own_boat_remove2', 'own_boat_status']) {
+  for (const id of ['boat_name', 'own_boat_join', 'own_boat_leave', 'own_boat_add', 'own_boat_remove2', 'own_boat_status']) {
     assert.match(panel, new RegExp(`id="${id}"`), id);
     assert.equal((html.match(new RegExp(`id="${id}"`, 'g')) || []).length, 1, id + ' once');
   }
+  assert.ok(!html.includes('player_menu_name'));
   assert.match(html, /#instrument_panel\[data-mode="player"\] \.instr-player \{ display: flex;/);
   assert.match(html, /#instrument_panel\[data-mode="player"\] \.instr-tiles,\n\s*#instrument_panel\[data-mode="player"\] \.instr-charts \{ display: none !important; \}/);
+  // Add / Remove second player sit after Leave + status and take their own row.
+  assert.match(html, /#instrument_panel \.instr-player #own_boat_add,\n\s*#instrument_panel \.instr-player #own_boat_remove2 \{ flex-basis: 100%; \}/);
+  const addAt = panel.indexOf('id="own_boat_add"');
+  const remAt = panel.indexOf('id="own_boat_remove2"');
+  const statusAt = panel.indexOf('id="own_boat_status"');
+  const leaveAt = panel.indexOf('id="own_boat_leave"');
+  assert.ok(leaveAt > 0 && statusAt > leaveAt && addAt > statusAt && remAt > addAt,
+    'Leave, status, Add second player, Remove player 2 order');
   assert.ok(!html.includes('join_tab_name') && !html.includes('data-mode="join"'));
 });
 
-test('markup: the legacy spectating overlay is gone; the drawer keeps only the saved name', () => {
+test('markup: Preferences drawer has no name, zoom or pan; Camera Follow stays', () => {
   assert.ok(!html.includes('Spectating · open ☰'));
   assert.ok(!html.includes('tc-spectating'));
   assert.ok(!html.includes('spectating_note'));
-  const at = html.indexOf('<div id="own_boat_panel"');
-  const drawer = html.slice(at, html.indexOf('</div>', at));
-  assert.match(drawer, /id="boat_name"/);
+  assert.ok(!html.includes('own_boat_panel'));
+  assert.ok(!html.includes('camera_zoom_in'));
+  assert.ok(!html.includes('camera_zoom_out'));
+  assert.ok(!html.includes('camera_move_left'));
+  assert.ok(!html.includes('camera_move_right'));
+  assert.ok(!html.includes('camera_move_up'));
+  assert.ok(!html.includes('camera_move_down'));
+  assert.match(html, /id="settings_tab_player"[^>]*>Preferences<\/button>/);
+  const at = html.indexOf('<div id="player_panel"');
+  const drawer = html.slice(at, html.indexOf('id="dev_panel"', at));
+  assert.ok(!drawer.includes('id="boat_name"'), 'name is not in the Preferences pane');
+  assert.match(drawer, /id="camera_follow"/);
+  assert.match(drawer, /Camera Follow/);
   for (const id of ['own_boat_join', 'own_boat_leave', 'own_boat_add', 'own_boat_remove2', 'own_boat_status']) assert.ok(!drawer.includes(id), id);
 });
 
@@ -122,9 +141,8 @@ test('instrument panel: local / worker mode never shows Player menu', () => {
 });
 
 function ownHarness({ saved = '' } = {}) {
-  const ids = ['own_boat_panel', 'own_boat_join', 'own_boat_leave', 'own_boat_add', 'own_boat_remove2', 'boat_name', 'own_boat_status', 'player_menu_name', 'touch_controls', 'camera_follow'];
+  const ids = ['own_boat_join', 'own_boat_leave', 'own_boat_add', 'own_boat_remove2', 'boat_name', 'own_boat_status', 'touch_controls', 'camera_follow'];
   const els = Object.fromEntries(ids.map((id) => [id, fakeEl({ id })]));
-  els.own_boat_panel.hidden = true;
   els.boat_name.value = saved;
   const doc = { body: fakeEl(), getElementById: (id) => els[id] || null };
   const hostListeners = [];
@@ -140,42 +158,39 @@ function ownHarness({ saved = '' } = {}) {
 }
 
 
-test('own boat: name mirrors the saved Player name; Join spawns; joined shows Leave / second player / status', async () => {
+test('own boat: name lives in Player menu; stays visible after join; Join spawns', async () => {
   const h = ownHarness({ saved: 'Ann' });
   const calls = [];
   let saves = 0;
   setupOwnBoat(h.host, (ids) => calls.push(ids), { savePrefs: () => saves++ }, h.doc);
   assert.deepEqual(calls.at(-1), []);
-  assert.equal(h.els.own_boat_panel.hidden, false);
-  assert.equal(h.els.player_menu_name.value, 'Ann');
-  assert.equal(h.els.player_menu_name.hidden, false);
+  assert.equal(h.els.boat_name.value, 'Ann');
+  assert.equal(h.els.boat_name.hidden, false);
   assert.equal(h.els.own_boat_join.hidden, false);
   for (const id of ['own_boat_leave', 'own_boat_add', 'own_boat_remove2']) assert.equal(h.els[id].hidden, true, id);
   assert.ok(h.doc.body.classList.contains('spectating'));
-  h.els.player_menu_name.value = 'Bea';
-  h.els.player_menu_name.dispatchEvent({ type: 'input' });
-  assert.equal(h.els.boat_name.value, 'Bea');
-  assert.equal(saves, 1);
-  h.els.boat_name.value = 'Cy';
+  h.els.boat_name.value = 'Bea';
   h.els.boat_name.dispatchEvent({ type: 'input' });
-  assert.equal(h.els.player_menu_name.value, 'Cy');
+  assert.equal(saves, 1);
   h.els.own_boat_join.click();
   assert.equal(h.commands.at(-1).type, 'spawnBoat');
-  assert.equal(h.commands.at(-1).name, 'Cy');
-  h.emit([{ id: 'b1', name: 'Cy' }]);
+  assert.equal(h.commands.at(-1).name, 'Bea');
+  h.emit([{ id: 'b1', name: 'Bea' }]);
   assert.deepEqual(calls.at(-1), ['b1']);
   assert.equal(h.els.own_boat_join.hidden, true);
-  assert.equal(h.els.player_menu_name.hidden, true);
+  assert.equal(h.els.boat_name.hidden, false, 'name stays editable after join');
   assert.equal(h.els.own_boat_leave.hidden, false);
   assert.equal(h.els.own_boat_add.hidden, false);
   assert.equal(h.els.own_boat_remove2.hidden, true);
-  assert.match(h.els.own_boat_status.textContent, /^Sailing Cy/);
-  // second boat
+  assert.match(h.els.own_boat_status.textContent, /^Sailing Bea/);
+  // second boat uses the current name field
+  h.els.boat_name.value = 'Cy';
   h.els.own_boat_add.click();
   assert.equal(h.commands.at(-1).name, 'Cy 2');
-  h.emit([{ id: 'b1', name: 'Cy' }, { id: 'b2', name: 'Cy 2' }]);
+  h.emit([{ id: 'b1', name: 'Bea' }, { id: 'b2', name: 'Cy 2' }]);
   assert.equal(h.els.own_boat_add.hidden, true);
   assert.equal(h.els.own_boat_remove2.hidden, false);
+  assert.equal(h.els.boat_name.hidden, false);
   h.els.own_boat_remove2.click();
   assert.deepEqual(h.commands.at(-1), { type: 'removeBoat', id: 'b2' });
   h.els.own_boat_leave.click();
@@ -194,7 +209,7 @@ test('own boat: a refused join shows its error in the status line; Enter joins',
   h.els.own_boat_join.click();
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(h.els.own_boat_status.textContent, 'Cannot join: room full');
-  h.els.player_menu_name.dispatchEvent({ type: 'keydown', key: 'Enter' });
+  h.els.boat_name.dispatchEvent({ type: 'keydown', key: 'Enter' });
   assert.equal(h.commands.length, 2);
 });
 

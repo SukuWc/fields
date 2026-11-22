@@ -52,6 +52,7 @@ export { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps };
 // step() (held: rudder and heading-target keys, applied once per tick).
 //   { type: 'helm', boat, dir: -1 (left) | +1 (right) }        held
 //   { type: 'headingTarget', boat, dir: +1 (increase) | -1 }    held
+//   { type: 'headingSet', boat, aht }  absolute signed target (−TWA °)
 //   { type: 'autopilot', boat }        toggle
 //   { type: 'tack', boat }             autopilot tack toggle
 //   { type: 'penaltyTurn', boat, dir: 'ccw' | 'cw' }
@@ -96,6 +97,8 @@ export { SIM_RES_MODES, DEFAULT_SIM_RES, windCeilingMps };
 export const BOAT_ACTIONS = {
   helm: (b, c) => b.input_helm(c.dir),
   headingTarget: (b, c) => (c.dir > 0 ? b.input_autopilot_heading_increase() : b.input_autopilot_heading_decrease()),
+  // Absolute signed target (−TWA). Client drag handle; not a held key.
+  headingSet: (b, c) => b.input_autopilot_heading_set(c.aht),
   autopilot: (b) => b.input_autopilot_enabled_toggle(),
   tack: (b) => b.input_autopilot_tack_toggle(),
   penaltyTurn: (b, c) => (c.dir === 'cw' ? b.input_penalty_turn_cw() : b.input_penalty_turn_ccw()),

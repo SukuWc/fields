@@ -65,8 +65,8 @@ test('phone and tablet devices keep their layout classes', () => {
 });
 
 test('HUD zones: one grid with left / middle / right zones and a chat slot', () => {
-  const grid = html.slice(html.indexOf('<div id="hud_grid"'), html.indexOf('<div id="mobile_strip"'));
-  for (const id of ['hud_top', 'hud_rcol', 'hud_right', 'hud_toasts', 'hud_chat', 'chat_panel', 'chat_placeholder', 'hud_instruments', 'instrument_panel', 'hud_minimap', 'minimap', 'mm_toggle']) {
+  const grid = html.slice(html.indexOf('<div id="hud_grid"'), html.indexOf('<div id="top_hud"'));
+  for (const id of ['hud_top', 'hud_rcol', 'hud_right', 'hud_toasts', 'hud_chat', 'chat_panel', 'chat_placeholder', 'hud_instruments', 'instrument_panel', 'hud_minimap', 'scenario_card', 'minimap', 'mm_toggle']) {
     assert.ok(grid.includes(`id="${id}"`), id);
   }
   const rcol = grid.slice(grid.indexOf('id="hud_rcol"'), grid.indexOf('id="hud_instruments"'));
@@ -184,7 +184,7 @@ test('compact desktop: the Map button expands / collapses the minimap column and
   const again = fakeDoc(['mm_toggle', 'hud_instruments']);
   setupDesktopHud(again, win);
   assert.equal(again.body.classList.contains('mm-expanded'), true);
-  assert.match(html, /\.bp-desktop-compact body:not\(\.mm-expanded\) #hud_grid #minimap \{ display: none; \}/);
+  assert.match(html, /\.bp-desktop-compact body:not\(\.mm-expanded\) #hud_grid #minimap,\n\s+\.bp-desktop-compact body:not\(\.mm-expanded\) #hud_grid #scenario_card \{ display: none; \}/);
 });
 
 test('settings drawer: closed on load, Escape closes it on desktop', async () => {

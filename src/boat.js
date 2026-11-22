@@ -1247,4 +1247,14 @@ export class Boat{
     }
   }
 
+  // Absolute autopilot target (−TWA, degrees). Used by the Camera-Follow
+  // drag handle so the target can swing through head-to-wind and dead
+  // downwind (unlike Up / Down, which stay on the current tack).
+  input_autopilot_heading_set(aht){
+    if (!Number.isFinite(aht)) return;
+    this._cancelPenaltyTurn();
+    this.autopilot_heading_target = wrapDeg180(aht);
+    this.autopilot_enabled = true;
+  }
+
 }

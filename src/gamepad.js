@@ -1,6 +1,6 @@
 // Gamepad input (PlayStation pad, standard mapping), behind the "Gamepad"
 // checkbox (?gamepad=1, default off). Each pad drives the boat chosen for it
-// in Settings → Player → Input mapping (controls.js setPadAction / the input
+// in Settings → Preferences → Input mapping (controls.js setPadAction / the input
 // map: pad 1 → boat 1, pad 2 → boat 2 by default; with one boat bound both
 // drive it). Pads send boat actions, not keyboard keys, so a pad keeps its
 // boat whatever the keyboard is mapped to.

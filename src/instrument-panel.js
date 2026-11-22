@@ -13,6 +13,12 @@
 // Room wind (state.rw): ROOM WD / ROOM WS tiles beside TWD / TWS, and dashed
 // lines on the TWD and TWS / AWS strips; shown while spectating too.
 // Chart hover (mouse; touch press and hold): instrument-chart-hover.js.
+// Layout (Dev TOML readout_tiles / readout_columns / chart_strips /
+// chart_columns, src/dev-config.js): setLayout puts the listed tiles and
+// strips in that order and takes the others out of the grid; a column count
+// over 0 sets data-cols and --instr-cols on the grid (index.html: desktop and
+// tablet only, phones keep their two rows). Only the Readout and Chart grids
+// change: the tab bar and the panel height are left alone.
 import { READOUT_TILES, readoutValues, roomWindValues, formatReadout, compassPoint } from './instrument-readout.js';
 import { ChartBuffer, CHART_STRIPS, CHART_WINDOWS, CHART_DEFAULT_WINDOW, stripPolylines, formatChartValue, chartHoverAt } from './instrument-chart.js';
 import { bindChartHover } from './instrument-chart-hover.js';
@@ -28,7 +34,7 @@ const UPDATE_MS = 200;
 
 export function setupInstrumentPanel({ remote = false, lockstep = () => false } = {}, doc = document) {
   const root = doc.getElementById('instrument_panel');
-  if (!root) return { onFrame() {}, setOwnId() {}, setSpectating() {} };
+  if (!root) return { onFrame() {}, setOwnId() {}, setSpectating() {}, setLayout() {} };
   const buttons = Array.from(root.querySelectorAll('.instr-mode'));
   const tiles = new Map();
   const grid = root.querySelector('.instr-tiles');
@@ -82,7 +88,7 @@ export function setupInstrumentPanel({ remote = false, lockstep = () => false } 
     svg.append(zero, g);
     row.append(lab, svg);
     chartsEl.appendChild(row);
-    strips.push({ st, g, zero, svg, row, now: lab.querySelector('.instr-strip-now'), range: lab.querySelector('.instr-strip-range') });
+    strips.push({ st, g, zero, svg, row, shown: true, now: lab.querySelector('.instr-strip-now'), range: lab.querySelector('.instr-strip-range') });
   }
   const buf = new ChartBuffer({ windowS: Math.max(...CHART_WINDOWS) });
   const fmt = (st, k, v) => formatChartValue(st, v);
@@ -92,6 +98,7 @@ export function setupInstrumentPanel({ remote = false, lockstep = () => false } 
   const drawCharts = () => {
     if (root.dataset.mode !== 'chart') { if (hover) hover.hide(); return; }
     for (const s of strips) {
+      if (!s.shown) continue;
       const p = stripPolylines(buf, s.st, { windowS, w: SW, h: SH });
       const zv = p.mid !== null && p.mid !== undefined ? p.mid : s.st.min === 0 && s.st.max === 360 ? 180 : 0;
       const zy = p.hi > p.lo ? SH - ((zv - p.lo) / (p.hi - p.lo)) * SH : SH / 2;
@@ -158,7 +165,20 @@ export function setupInstrumentPanel({ remote = false, lockstep = () => false } 
     }
   };
   render();
+  const setLayout = (layout) => {
+    if (!layout) return;
+    if (grid && Array.isArray(layout.readoutTiles)) {
+      arrangeGrid(grid, layout.readoutTiles.map((k) => tiles.get(k)).filter(Boolean).map((t) => t.el), [...tiles.values()].map((t) => t.el), layout.readoutColumns);
+    }
+    if (chartsEl && Array.isArray(layout.chartStrips)) {
+      const shown = layout.chartStrips.map((k) => strips.find((s) => s.st.key === k)).filter(Boolean);
+      for (const s of strips) s.shown = shown.includes(s);
+      arrangeGrid(chartsEl, shown.map((s) => s.row), strips.map((s) => s.row), layout.chartColumns);
+      drawCharts();
+    }
+  };
   return {
+    setLayout,
     setOwnId(id) { ownId = id || null; buf.clear(); render(); drawCharts(); },
     // true while a server-room page has no boat: select the Player menu tab;
     // false once it has joined: select Readout
@@ -178,4 +198,19 @@ export function setupInstrumentPanel({ remote = false, lockstep = () => false } 
       render();
     },
   };
+}
+
+// Grid children in `shown` order; the rest of `all` taken out of the grid.
+// cols > 0: data-cols + --instr-cols (index.html sets the column count off
+// phones); 0 / missing: the breakpoint's own grid.
+export function arrangeGrid(container, shown, all, cols) {
+  for (const el of all) if (!shown.includes(el) && el.parentNode === container) container.removeChild(el);
+  for (const el of shown) container.appendChild(el);
+  if (Number.isInteger(cols) && cols > 0) {
+    container.dataset.cols = String(cols);
+    container.style.setProperty('--instr-cols', String(cols));
+  } else {
+    delete container.dataset.cols;
+    container.style.removeProperty('--instr-cols');
+  }
 }

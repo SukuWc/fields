@@ -26,6 +26,7 @@ import {
   LEGACY_STICKY_KEY,
   LEGACY_STICKY_STORAGE_KEY,
   parseAndValidateDevConfig,
+  sameDevValue,
   stringifyDevConfig,
 } from './dev-config.js';
 import { installTomlHighlight } from './toml-highlight.js';
@@ -94,7 +95,7 @@ function syncDevUrl(cfg) {
 }
 
 function isDefaultConfig(cfg) {
-  return DEV_CONFIG_KEYS.every((k) => cfg[k] === DEV_CONFIG_DEFAULTS[k]);
+  return DEV_CONFIG_KEYS.every((k) => sameDevValue(cfg[k], DEV_CONFIG_DEFAULTS[k]));
 }
 
 /**
@@ -153,8 +154,10 @@ export function installDevPrefs(doc, { host, applyLocal, storage } = {}) {
       check.classList.toggle('bad', !!v.error);
       check.dataset.line = line || '';
       const pending = !v.error && !changed && pidPending ? ' · autopilot PID waits for your boat' : '';
+      // Unknown / repeated panel layout ids: still valid, dropped on Apply.
+      const warn = !v.error && v.warnings ? ' · ' + v.warnings.join('; ') : '';
       check.textContent = v.error ? (line ? `Line ${line}: ` : '') + v.error
-        : changed ? 'Valid · not applied yet' : 'Valid · matches this page' + pending;
+        : (changed ? 'Valid · not applied yet' : 'Valid · matches this page' + pending) + warn;
     }
     const mode = modeEl();
     if (mode) mode.textContent = 'This page';
@@ -252,8 +255,9 @@ export function installDevPrefs(doc, { host, applyLocal, storage } = {}) {
 }
 
 /** Apply a validated config's client effects. main.js passes the real view and renderer. */
-export function applyDevEffects(effects, { view, host, setTracerParams, setBoatTrailsOn, setTrailParams, setGhostParams, setPerfOverlayOn } = {}) {
+export function applyDevEffects(effects, { view, host, setTracerParams, setBoatTrailsOn, setTrailParams, setGhostParams, setPerfOverlayOn, setPanelLayout } = {}) {
   if (!effects) return;
+  if (setPanelLayout && effects.panelLayout) setPanelLayout(effects.panelLayout);
   if (setTracerParams) setTracerParams({ count: effects.tracerCount, lifetime: effects.tracerLife, tail: effects.tracerTail });
   if (setBoatTrailsOn) setBoatTrailsOn(effects.boatTrails);
   if (setTrailParams) setTrailParams({ interval: effects.trailInterval, duration: effects.trailDuration, size: effects.trailSize });
