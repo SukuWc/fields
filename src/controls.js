@@ -338,6 +338,12 @@ function onSimEvent(ev) {
       }
     }
     if (Number.isFinite(ev.zoom)) _view.camera_zoom = ev.zoom;
+  } else if (ev.type === "raceLifecycle" && ev.phase === "restart" && !_remote) {
+    // Single player (local / worker): the race time limit or the finish
+    // countdown ran out. Re-commit the current config after this tick: the
+    // host validates it again and draws a new room seed (a server room does
+    // this itself, Room.newRace).
+    setTimeout(() => { commitRoomConfig(currentConfigFromHost()); }, 0);
   }
 }
 

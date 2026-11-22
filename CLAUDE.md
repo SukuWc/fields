@@ -55,6 +55,7 @@ src/wind-schedule.js  — Base-wind schedule (room config wind_schedule*, [wind_
 src/boltzmann.js      — Lattice Boltzmann Method (LBM) fluid simulator
 src/boat.js           — Sailboat physics, aerodynamics, autopilot
 src/mark.js           — Race mark: dynamic 1 m buoy (boat mass / 10) on an anchor spring + damper
+src/race-lifecycle.js — Race time limit (race_time_limit_s, default 600 s from the gun) and finish countdown (finish_countdown_s, default 30 s after every player boat finished): Sim emits raceLifecycle events, Room.newRace re-applies the room TOML (new seed); off in a bare Sim; hud.lc → race timer
 src/start.js          — StartSequence (RRS 26 signals on sim time), StartLine, OCS / individual recall (RRS 29.1), start times, start HUD + line overlay
 src/mark-touch.js     — Rule 31 boat-vs-mark touches: latched per boat/mark, charges a pending penalty (One-Turn, RRS 44.1) with a reason, red buoy flash
 src/leaderboard.js    — live leaderboard: distance-to-go per leg (beat max(u/cos 50°, d)), ranking with 1 s hysteresis, panel HTML

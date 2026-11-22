@@ -24,6 +24,10 @@
 //                           seeds the gust PRNG (and any other SD draws),
 //                           so the same seed replays the whole race
 //   wind_ramp = true      → manual wind changes slew at 0.5°/s, 0.1 m/s per s
+//   race_time_limit_s     → race time limit from the gun (default 600; 0 = off):
+//                           the room restarts with a new room seed
+//   finish_countdown_s    → after the last racer finishes, restart after this
+//                           many seconds (default 30) (race-lifecycle.js)
 //   scenario = "custom" + [custom] → marks / start / course / finish /
 //                           boundary from the TOML (custom-scenario.js)
 //
@@ -52,6 +56,7 @@ import {
   windScheduleBase,
   drawWindSeed,
 } from './wind-schedule.js';
+import { DEFAULT_RACE_LIFECYCLE, validateRaceLifecycle } from './race-lifecycle.js';
 import {
   CUSTOM_SCENARIO,
   customLayoutToToml,
@@ -88,6 +93,8 @@ export const ROOM_CONFIG_KEYS = [
   'wind_dir',
   'wind_speed',
   'wind_ramp',
+  'race_time_limit_s',
+  'finish_countdown_s',
   // Only with scenario = "custom": static layout table (custom-scenario.js).
   'custom',
 ];
@@ -141,6 +148,8 @@ export const ROOM_CONFIG_DEFAULTS = Object.freeze({
   wind_dir: DEFAULT_WIND_SCHEDULE.dir,
   wind_speed: DEFAULT_WIND_SCHEDULE.speed,
   wind_ramp: DEFAULT_WIND_SCHEDULE.ramp,
+  race_time_limit_s: DEFAULT_RACE_LIFECYCLE.timeLimitS,
+  finish_countdown_s: DEFAULT_RACE_LIFECYCLE.finishCountdownS,
   custom: DEFAULT_CUSTOM_COURSE,
 });
 
@@ -350,6 +359,8 @@ export function configFromRoomState(roomOrSettings, { scenarioIndex = 0, mapW, m
     budget_target,
     ...gustConfigFromSettings(st.gusts),
     ...windScheduleConfigFromSettings(st.windSchedule),
+    race_time_limit_s: st.raceLifecycle && Number.isFinite(st.raceLifecycle.timeLimitS) ? st.raceLifecycle.timeLimitS : ROOM_CONFIG_DEFAULTS.race_time_limit_s,
+    finish_countdown_s: st.raceLifecycle && Number.isFinite(st.raceLifecycle.finishCountdownS) ? st.raceLifecycle.finishCountdownS : ROOM_CONFIG_DEFAULTS.finish_countdown_s,
     ...(isCustom ? { custom: JSON.parse(JSON.stringify(st.custom)) } : {}),
   });
 }
@@ -618,6 +629,14 @@ export function validateRoomConfig(cfg, checks = {}) {
       out.wind_ramp = w.ramp;
     }
 
+    // Race time limit + finish countdown (race-lifecycle.js).
+    {
+      const v = validateRaceLifecycle({ timeLimitS: cfg.race_time_limit_s, finishCountdownS: cfg.finish_countdown_s });
+      need(!v.error, v.error);
+      out.race_time_limit_s = v.settings.timeLimitS;
+      out.finish_countdown_s = v.settings.finishCountdownS;
+    }
+
     // Custom layout: checked against the map it will run on (the live room
     // map when there is a core and no map change, else the config's map).
     const core = checks.core;
@@ -694,6 +713,10 @@ export function commandsFromConfig(cfg, prev = null) {
   const windKeys = ['wind_schedule', 'wind_schedule_seed', '_windSeed', 'wind_dir', 'wind_speed', 'wind_ramp'];
   if (!prev || windKeys.some((k) => JSON.stringify(prev[k]) !== JSON.stringify(cfg[k]))) {
     cmds.push({ type: 'windSchedule', ...windScheduleFromConfig(cfg) });
+  }
+
+  if (changed('race_time_limit_s') || changed('finish_countdown_s')) {
+    cmds.push({ type: 'raceLifecycle', timeLimitS: cfg.race_time_limit_s, finishCountdownS: cfg.finish_countdown_s });
   }
 
   const amr = cfg.refine_max_level > 0;

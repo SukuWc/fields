@@ -35,6 +35,22 @@ import {
   startStatusTextOf,
 } from './start.js';
 import { penaltyManeuverText, stateId } from './rules.js';
+
+// m:ss for a non-negative number of seconds (rounded up: "0:01" until 0).
+export function formatTimeLeft(s) {
+  const secs = Math.max(0, Math.ceil(s - 1e-9));
+  return Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
+}
+
+// Race lifecycle lines under the start clock (race-lifecycle.js hud):
+// lc = { tl: race time left, cd: finish countdown left }.
+export function raceLifecycleHtmlOf(lc) {
+  if (!lc) return '';
+  let h = '';
+  if (Number.isFinite(lc.cd)) h += '<div class="race-countdown">New race in ' + formatTimeLeft(lc.cd) + '</div>';
+  else if (Number.isFinite(lc.tl)) h += '<div class="race-time-left">Time left ' + formatTimeLeft(lc.tl) + '</div>';
+  return h;
+}
 import {
   basisCode,
   basisText,
@@ -86,6 +102,8 @@ export function hudState(sim, rec) {
   h.pt = rec.physTimes.slice(Math.max(0, k));
   const seq = sim.startSequence;
   if (seq) h.st = startHudState(seq, racing[0]);
+  const lc = sim.raceLifecycle && sim.raceLifecycle.hud(seq);
+  if (lc) h.lc = { ...(Number.isFinite(lc.tl) ? { tl: Math.round(lc.tl * 10) / 10 } : {}), ...(Number.isFinite(lc.cd) ? { cd: Math.round(lc.cd * 10) / 10 } : {}) };
   const course = sim.course;
   if (course && racing[0]) h.co = courseTextState(course.progressFor(racing[0]));
   if (course) h.lb = leaderboardState(sim.leaderboard);
@@ -143,8 +161,10 @@ export function hudFromState(h0, ownId = null, boats = null) {
   let info = h.tel ? telemetryHtmlOf(h.tel) : '';
   for (const t of h.pt || []) info += 'Phys Time: ' + t + '<br>';
   if (h.st) {
-    out.startHud = { html: startHudHtmlOf(h.st), flash: !!h.st.fl };
+    out.startHud = { html: startHudHtmlOf(h.st) + raceLifecycleHtmlOf(h.lc), flash: !!h.st.fl };
     if (h.st.st) info += 'Start: ' + startStatusTextOf(h.st.st, h.st.t0) + '<br>';
+  } else if (h.lc) {
+    out.startHud = { html: raceLifecycleHtmlOf(h.lc), flash: false };
   }
   if (h.co) info += courseTextOf(h.co) + '<br>';
   // Leaderboard component (leaderboard-view.js): own boat by id, else boat 0
