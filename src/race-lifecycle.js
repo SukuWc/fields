@@ -59,7 +59,7 @@ export class RaceLifecycle {
   step(dt, { startSeq, players, results }) {
     const s = this.settings;
     if (!s.enabled || this.done) return null;
-    const racers = (players || []).filter((b) => b && b.spawnId);
+    const racers = this.racers(players);
     if (!racers.length) return null;
     const raceTime = this.raceTime(startSeq, dt);
     if (s.timeLimitS > 0 && raceTime !== null && raceTime >= s.timeLimitS) {
@@ -81,6 +81,16 @@ export class RaceLifecycle {
       }
     }
     return null;
+  }
+
+  // Boats the lifecycle waits for: player boats (spawnId). Single player
+  // (soloAllBoats, set by a soloBoat SimCore) on a numbered scenario has no
+  // spawned boat (the page drives the scenario's own boats), so there every
+  // boat counts, and the race clock runs from the scenario start.
+  racers(players) {
+    const list = (players || []).filter((b) => b);
+    const spawned = list.filter((b) => b.spawnId);
+    return spawned.length || !this.soloAllBoats ? spawned : list;
   }
 
   raceTime(startSeq, dt = 0) {

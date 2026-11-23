@@ -12,6 +12,8 @@
 //   hud    readout / HUD values (hud.js hudState; marked exact: no rounding)
 //   boats  per racing boat: Boat.renderState (boat-draw.js); id (boat id),
 //          vx, vy, w (ghost prediction, 1e-3)
+//          gh: 1 on a finish ghost (finish-ghost.js: finished, no wake,
+//          no collisions, no rules), absent otherwise
 //   ts, ep sim time (Sim.rulesTime) and scenario epoch, for boat trails
 //   bc     own boat colours (spawnBoat color) or null per boat, when any
 //   aw     per boat: whole seconds until an absent owner's boat is removed
@@ -59,7 +61,8 @@
 //          and the rule overlays' stern marks
 //   start, finish  line geometry; course courseStatics; boundary { x, zone, yMin, yMax }
 //   bodies [{ id, kind, stroke, pts }] (static bodies: final outline) or
-//          { id, kind, stroke, r | v (local vertices), com? } (moving bodies)
+//          { id, kind, stroke, r | v (local vertices), com? } (moving bodies);
+//          b: the boat id on a boat hull (finish ghost outlines)
 import { lineState, startGuideState } from './start.js';
 import { courseStatics, courseGuideState } from './course.js';
 import { finishLineState, finishGuideState, finishPlaceState } from './finish.js';
@@ -144,6 +147,7 @@ export function bodyScene(world, ids) {
         if (moving) bt.push(body.getAngle(), c.x, c.y); else e.at = [body.getAngle(), c.x, c.y];
       }
       if (moving) e.mv = 1;
+      if (body.boatOf) e.b = body.boatOf.boatId;
       statics.push(e);
     }
   }
@@ -185,6 +189,7 @@ export function sceneState(sim, rec, view, nowMs, ids, bodies = bodyScene(sim.ma
   const map = sim.map, bm = sim.bm;
   const racing = sim.players;
   const s = { t: nowMs, boats: racing.map((b) => b.renderState(view)) };
+  racing.forEach((b, i) => { if (b.finishGhost) s.boats[i].gh = 1; });
   // Course distance (leaderboard.js legState, the same numbers the ranking
   // uses): next_mark_dist_m = legM (to the next rounding target / start line
   // mid / finish mid, upwind legs as beat distance), to_finish_m = toFinishM

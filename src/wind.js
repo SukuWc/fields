@@ -274,6 +274,8 @@ export function boatTrueWind(boat, k = _trueWindOwnForceK) {
   const m = boat.map;
   const raw = m.get_wind(boat.x, boat.y);
   if (!raw) return null;
+  // A finish ghost (finish-ghost.js) puts no wake into the field: nothing to undo.
+  if (boat.finishGhost) return raw;
   if (!trueWindForceCorrectActive(m)) return raw;
   const gain = Number.isFinite(m.sailWakeGain) ? m.sailWakeGain : TRUE_WIND_OWN_FORCE_GAIN_REF;
   let acc = boatSpeedAcc(boat);

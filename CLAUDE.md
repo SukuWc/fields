@@ -60,6 +60,7 @@ src/start.js          — StartSequence (RRS 26 signals on sim time), StartLine,
 src/mark-touch.js     — Rule 31 boat-vs-mark touches: latched per boat/mark, charges a pending penalty (One-Turn, RRS 44.1) with a reason, red buoy flash
 src/leaderboard.js    — live leaderboard: distance-to-go per leg (beat max(u/cos 50°, d)), ranking with 1 s hysteresis, panel HTML
 src/race-bot.js       — RaceBot scripted controller on the existing autopilot + scenario 17 test race layout/setup
+src/finish-ghost.js   — Finish ghosts: setFinishGhost (Sim.step on finish): planck filter (category FINISH_GHOST_CATEGORY, mask WALL_CATEGORY: walls only), no sail→lattice energy, raw boatTrueWind, racingBoats() drops ghosts from evaluateAllPairs / recordContacts / recordMarkTouches / race bots; state.boats[i].gh, statics.bodies[].b (hull boat id) → scene-build ghostGuide / markGhostBodies → renderer faded hull, boat-trails no dots
 src/finish.js         — finish place overlay (finishPlaceState → state.fp [[id, place]], finishPlaceGuidesFromState: stern badge, roles medal1–3 / place painted by renderer paintMedalTexture / paintLabelTexture), finish line, RaceResults (finish order/times, unserved penalty → time penalty or DSQ), results panel HTML, finish overlay, scenario 16 layout
 src/course.js         — Course (ordered marks and gates + rounding side) and per-boat rounding tracker (check angle; gate-line crossings for gates), minimal course overlay
 src/map.js            — Planck.js world container, wind queries, dev mode

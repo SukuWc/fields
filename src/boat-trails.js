@@ -92,6 +92,8 @@ export class BoatTrails {
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
       if (b.px !== null && Math.hypot(x - b.px, y - b.py) > TRAIL_JUMP_M) { b.len = 0; b.head = -1; b.next = null; }
       b.px = x; b.py = y;
+      // Finish ghost (finish-ghost.js): no new trail dots; old ones fade out.
+      if (q.gh) { b.next = null; continue; }
       if (b.next === null) b.next = time;
       if (time + 1e-9 >= b.next) {
         this._drop(b, x, y, time);

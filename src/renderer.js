@@ -9,6 +9,7 @@ import {
   ghostOutlines,
 } from './ghost-boat.js';
 import { boatColor } from './boat-colors.js';
+import { FINISH_GHOST_OPACITY, desaturate } from './finish-ghost.js';
 import {
   ORDER_FIELD, ORDER_TRACERS, ORDER_TRAILS, ORDER_HULL, ORDER_HULL_FILL, ORDER_ROW_CIRCLE,
   ORDER_GUIDE, ORDER_RIBBON, ORDER_ABEAM, ORDER_CONTACT, ORDER_LABEL, ORDER_LABEL_FILL, guideOrder,
@@ -122,7 +123,7 @@ let contactTexture = null;
 // buildBodies): { id, kind, stroke, pts: [x0, y0, x1, y1, ...] } in world coordinates.
 function createFixtureLine(body) {
   const pointCount = body.pts.length / 2;
-  const line = fatLine(pointCount, markOverlay(fatMaterial({ color: body.stroke })));
+  const line = fatLine(pointCount, markOverlay(fatMaterial({ color: body.stroke, transparent: true })));
   line.renderOrder = ORDER_HULL;
 
   updateFixtureLine(line, body);
@@ -131,6 +132,13 @@ function createFixtureLine(body) {
 
 function updateFixtureLine(line, body) {
   setFatPoints(line, body.pts, Math.min(body.pts.length / 2, fatCapacity(line)));
+  // Finish ghost hull (finish-ghost.js): faded, greyed outline.
+  const gh = !!body.gh;
+  if (line.userData.gh !== gh) {
+    line.userData.gh = gh;
+    line.material.color.setHex(gh ? desaturate(body.stroke) : body.stroke);
+    line.material.opacity = gh ? FINISH_GHOST_OPACITY : 1;
+  }
 }
 
 function ruleRibbon(index) {
@@ -794,9 +802,11 @@ function renderHullFills() {
     mesh.geometry.setDrawRange(0, o / 3);
     mesh.geometry.attributes.position.needsUpdate = true;
     // Palette colour either way. Right-of-way circles do not recolor hulls.
-    const rgb = trailColorOf(g.i);
+    // A finish ghost (finish-ghost.js) is greyed and faded.
+    const gh = !!(_ghostBoats[g.i] && _ghostBoats[g.i].gh);
+    const rgb = gh ? colorRgb(desaturate(boatColor(g.i))) : trailColorOf(g.i);
     mesh.material.color.setRGB(rgb[0], rgb[1], rgb[2]);
-    mesh.material.opacity = HULL_FILL_OPACITY;
+    mesh.material.opacity = gh ? HULL_FILL_OPACITY * FINISH_GHOST_OPACITY : HULL_FILL_OPACITY;
     mesh.visible = true;
     k++;
   }

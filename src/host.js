@@ -65,6 +65,9 @@ export class SimCore {
     this.bm = bm;
     this.map = map;
     this.sim = new Sim(map);
+    // Single player: the race time limit / finish countdown also run on the
+    // numbered scenarios' own boats (race-lifecycle.js racers).
+    this.sim.raceLifecycle.soloAllBoats = this.soloBoat;
     this._fixtureIds = new WeakMap();
     this.statics = null;
     this.staticsVersion = 0;

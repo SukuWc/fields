@@ -10,6 +10,7 @@
 import { unionMaskBorderLines, RefinementDomain } from './boltzmann.js';
 import { windArrowSegments } from './wind.js';
 import { boatGuides } from './boat-draw.js';
+import { ghostGuide } from './finish-ghost.js';
 import { markGuides } from './mark.js';
 import { startGuidesFromState } from './start.js';
 import { courseGuidesFromState } from './course.js';
@@ -139,6 +140,17 @@ export function buildBodies(list, bt) {
   return out;
 }
 
+// Mark the hull outlines of finish ghosts (state.boats[].gh) with gh: 1.
+// bodies: buildBodies(list, …) output, in list order; list[k].b is the boat
+// id of a boat hull (scene-state.js bodyScene).
+export function markGhostBodies(bodies, list, boats) {
+  const ghosts = new Set();
+  for (const b of boats || []) if (b && b.gh && b.id != null) ghosts.add(b.id);
+  if (!ghosts.size || !list) return bodies;
+  for (let k = 0; k < bodies.length && k < list.length; k++) if (list[k].b != null && ghosts.has(list[k].b)) bodies[k].gh = 1;
+  return bodies;
+}
+
 // Guides in the order the old present.js presentStep drew them. view: the
 // client's View (dev-mode wind arrow position).
 export function buildGuides(state, statics, view) {
@@ -146,7 +158,11 @@ export function buildGuides(state, statics, view) {
   const now = state.t || 0;
   const defs = statics.defs || [];
   const boats = state.boats || [];
-  for (let i = 0; i < boats.length; i++) guides.push(...boatGuides(boats[i], defs[i] || {}));
+  for (let i = 0; i < boats.length; i++) {
+    const g = boatGuides(boats[i], defs[i] || {});
+    // Finish ghost (finish-ghost.js): the whole boat faded and greyed.
+    guides.push(...(boats[i].gh ? g.map(ghostGuide) : g));
+  }
   const anchors = statics.marks || [];
   const mk = state.mk || [];
   for (let i = 0; i < mk.length; i++) {
@@ -212,7 +228,7 @@ export function buildGuides(state, statics, view) {
 // ownId: this client's player boat in a server room (its readout), or null.
 export function buildScene(state, statics, view, ownId = null) {
   if (!state || !statics) return { guides: [], bodies: [], hud: null };
-  const scene = { guides: buildGuides(state, statics, view), bodies: buildBodies(statics.bodies, state.bt), hud: state.hud ? hudFromState(state.hud, ownId, state.boats) : null };
+  const scene = { guides: buildGuides(state, statics, view), bodies: markGhostBodies(buildBodies(statics.bodies, state.bt), statics.bodies, state.boats), hud: state.hud ? hudFromState(state.hud, ownId, state.boats) : null };
   // Right-of-way circles: the player's boat by id (no owned boat: boat 0).
   // Hull colours stay as they are. Only opponents with an active rule pair
   // (inside the 12 m gate) are in the list.
