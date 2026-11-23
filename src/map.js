@@ -1,6 +1,7 @@
 import planck from 'planck-js';
 import { World } from 'planck-js'
 import { meanAngleDeg } from './utils.js';
+import { WALL_CATEGORY } from './finish-ghost.js';
 import {
 	ConstantWind,
 	FluidWind,
@@ -40,9 +41,12 @@ export class Map{
 	  
 		let ground = this.world.createBody(Vec2(0.0, 0.0));
 	  
+		// Walls have their own collision category so finish ghosts
+		// (finish-ghost.js) still bounce off them but pass through boats and marks.
 		let wallFD = {
 		  density: 0.0,
 		  restitution: 0.4,
+		  filterCategoryBits: WALL_CATEGORY,
 		};
 
 	  
