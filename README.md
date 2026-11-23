@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-11-22
+Last updated: 2026-11-23
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -131,6 +131,7 @@ Last updated: 2026-11-22
 - [ ] Course: start line, marks, finish, boundary (partial: [#27](https://github.com/SukuWc/fields/pull/27) adds anchored mark buoy physics and scenario 11; [#28](https://github.com/SukuWc/fields/pull/28) adds anticlockwise triangle course progress, mark rounding, and scenario 12; [#31](https://github.com/SukuWc/fields/pull/31) adds gate marks and windward-leeward scenario 13; [#33](https://github.com/SukuWc/fields/pull/33) adds start line, RRS 26 start sequence, and scenario 14; [#38](https://github.com/SukuWc/fields/pull/38) adds the finish line and scenario 16; [#45](https://github.com/SukuWc/fields/pull/45) adds SailGP-style virtual boundaries, boundary room, crossing penalty, and scenario 19; still open: wider course use of the boundary)
 - [x] Finish times and results list: [#38](https://github.com/SukuWc/fields/pull/38)
 - [ ] Finish ghosts: a boat that crosses the finish keeps sailing as a ghost that cannot interfere with boats still racing: no sail wake into the wind field (and her true wind is the raw field, with no own-wake undo), no collisions with boats or marks (the map walls still stop her, so she never leaves the map), no rules with racers (no pairs, contacts or mark touches), and no AMR refinement window of her own (the finer grid follows racers only). Drawn faded and greyed (hull fill, outline, sails, guides at 35 % opacity) with no trail dots; `state.boats[i].gh` carries it to every host. A new race clears ghosts: [#239](https://github.com/SukuWc/fields/pull/239)
+- [ ] Finish position overlay: every finished boat carries her place on the hull, at the stern where the penalty count badge sits, for the rest of the race: gold / silver / bronze medals for 1–3, a navy numbered badge (same shape as the penalty count) from 4 (`DSQ` in DSQ mode). Places are the results order: corrected time = finish time + 20 s per penalty still unserved at the finish (`FINISH_UNSERVED_PENALTY_S`; served penalty turns add nothing), ties by finish time, so they update live when a later finisher beats a penalised boat. The old 6 s `Finished P1 · +20 s` label over the boat is gone (it overlapped the badge; the leaderboard still shows the penalty). `state.fp = [[boat id, place]]`: [#240](https://github.com/SukuWc/fields/pull/240)
 - [x] Live leaderboard (distance only) and three-boat test race, scenario 17: [#39](https://github.com/SukuWc/fields/pull/39)
 - [x] Distance ladder lines: 20 m and 40 m downwind path-length contours from the first mark, traced through the local wind so sail wakes bend them (room setting, `?ladder=1`, scenario 21): [#100](https://github.com/SukuWc/fields/pull/100)
 - [x] Custom scenario statics from the room TOML (`scenario = "custom"` with a validated `[custom]` table for marks, start, course legs and laps, finish and boundary): [#118](https://github.com/SukuWc/fields/pull/118)

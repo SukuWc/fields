@@ -14,7 +14,7 @@ import { ghostGuide } from './finish-ghost.js';
 import { markGuides } from './mark.js';
 import { startGuidesFromState } from './start.js';
 import { courseGuidesFromState } from './course.js';
-import { finishGuidesFromState } from './finish.js';
+import { finishGuidesFromState, finishPlaceGuidesFromState } from './finish.js';
 import { boundaryGuides } from './boundary.js';
 import { rowCircles, rowOutlineColors, rowPovId } from './row-outline.js';
 import {
@@ -204,6 +204,7 @@ export function buildGuides(state, statics, view) {
   if (state.mt) guides.push(...markTouchGuidesFromState(state.mt));
   if (state.cf) guides.push(...contactGuidesFromState(state.cf));
   if (state.pen) guides.push(...penaltyGuidesFromState(state.pen, boats));
+  if (state.fp) guides.push(...finishPlaceGuidesFromState(state.fp, boats));
   if (state.amr && statics.lat) {
     const bm = { width: statics.lat.w, height: statics.lat.h, resolution: statics.lat.res, amrMode: state.amr.mode };
     pushRefinementGuides(guides, state.amr.d.map((d) => new DomainOutline(d)), bm);

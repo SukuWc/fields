@@ -254,16 +254,64 @@ function labelSignature(lines) {
   return sig;
 }
 
+// Finish place medals (finish.js finishPlaceGuidesFromState): ribbon and
+// disc, the place embossed on it.
+const MEDAL_COLORS = {
+  medal1: { fill: '#f5c518', light: '#fff1a8', rim: '#a87900', text: '#5a3d00' },
+  medal2: { fill: '#c3cbd3', light: '#f4f7fa', rim: '#6f7a85', text: '#2f3740' },
+  medal3: { fill: '#cd7f32', light: '#f3c08c', rim: '#7a4511', text: '#3d2006' },
+};
+
+function paintMedalTexture(line) {
+  const c = MEDAL_COLORS[line.role];
+  const width = 24, height = 32, r = 9.5, cx = width / 2, cy = height - r - 1.5;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(width * dpr);
+  canvas.height = Math.ceil(height * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  // Ribbon: two strips meeting behind the disc.
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
+  ctx.fillStyle = '#1f4fbf';
+  ctx.beginPath(); ctx.moveTo(3, 0.5); ctx.lineTo(10, 0.5); ctx.lineTo(cx + 2, cy - 4); ctx.lineTo(cx - 4, cy - 4); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#d32f2f';
+  ctx.beginPath(); ctx.moveTo(width - 3, 0.5); ctx.lineTo(width - 10, 0.5); ctx.lineTo(cx - 2, cy - 4); ctx.lineTo(cx + 4, cy - 4); ctx.closePath(); ctx.fill(); ctx.stroke();
+  // Disc.
+  const grad = ctx.createRadialGradient(cx - 3, cy - 3, 1, cx, cy, r);
+  grad.addColorStop(0, c.light);
+  grad.addColorStop(1, c.fill);
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = grad; ctx.fill();
+  ctx.lineWidth = 1.5; ctx.strokeStyle = c.rim; ctx.stroke();
+  ctx.font = '800 12px "Albert Sans", system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = c.text;
+  ctx.fillText(line.text, cx, cy + 0.5);
+  const texture = new THREE.CanvasTexture(canvas);
+  if (THREE.SRGBColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.generateMipmaps = false;
+  texture.needsUpdate = true;
+  return { texture, width, height };
+}
+
 function paintLabelTexture(lines) {
   const role0 = lines.length === 1 ? lines[0].role : '';
+  if (MEDAL_COLORS[role0]) return paintMedalTexture(lines[0]);
   const badge = role0 === 'badge';
+  // Finish place (finish.js): the penalty count badge's shape, in navy.
+  const place = role0 === 'place';
   const turn = role0 === 'turn';
   const cleared = role0 === 'cleared';
   // Course marks: the next mark, a rounded one, and a plain mark number.
   const next = role0 === 'next';
   const rounded = role0 === 'rounded';
   const markno = role0 === 'markno';
-  const compact = badge || turn || cleared || next || rounded || markno;
+  const compact = badge || place || turn || cleared || next || rounded || markno;
   const rule15 = lines.some((line) => line.id === '15' && line.role === 'final');
   const fontPx = compact ? 12 : 14;
   const font = '700 ' + fontPx + 'px "Albert Sans", system-ui, sans-serif';
@@ -295,6 +343,10 @@ function paintLabelTexture(lines) {
     ctx.fillStyle = 'rgba(160, 22, 22, 0.94)';
     ctx.fill();
     ctx.strokeStyle = '#ff8a80';
+  } else if (place) {
+    ctx.fillStyle = 'rgba(14, 34, 72, 0.94)';
+    ctx.fill();
+    ctx.strokeStyle = '#9ec9ff';
   } else if (turn) {
     ctx.fillStyle = 'rgba(72, 48, 0, 0.94)';
     ctx.fill();
@@ -333,7 +385,7 @@ function paintLabelTexture(lines) {
     const line = lines[i];
     const inhibited = line.role === 'inhibited';
     ctx.font = inhibited ? dimFont : font;
-    if (line.role === 'badge' || line.role === 'cleared' || line.role === 'next') ctx.fillStyle = '#ffffff';
+    if (line.role === 'badge' || line.role === 'place' || line.role === 'cleared' || line.role === 'next') ctx.fillStyle = '#ffffff';
     else if (line.role === 'rounded') ctx.fillStyle = '#c9d1da';
     else if (line.role === 'markno') ctx.fillStyle = '#ffd9a8';
     else if (line.role === 'turn') ctx.fillStyle = '#ffe7a3';

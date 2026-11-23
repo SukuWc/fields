@@ -112,7 +112,7 @@ const stringsOf = (v, path, out) => {
   return out;
 };
 const view = { camera_position_x: 0, camera_position_y: 0, camera_zoom: 20, show_forces: false, show_fields: false };
-const seen = { pair: 0, sm: 0, k15: 0, kb: 0, pen: 0, penIc: 0, hudIc: 0, mr: 0, br: 0, fin: 0, finPen: 0, lbPen: 0 };
+const seen = { pair: 0, sm: 0, k15: 0, kb: 0, pen: 0, penIc: 0, hudIc: 0, mr: 0, br: 0, lbPen: 0 };
 const bad = [];
 const wordy = [];
 let maxGeom = 0, maxRemote = 0, textSame = true, hostSame = true, badgeSame = true, reasonSame = true;
@@ -166,7 +166,6 @@ for (const [n, ticks, fin] of [[8, 300], [9, 300], [15, 300], [19, 450], [16, 15
         for (const m of s[k] || []) { seen[k]++; if (!Array.isArray(m) || m.length !== 2 || !isId(m[0], s.boats) || !isId(m[1], s.boats)) bad.push([k, n, t, m]); }
         for (const m of s.hud[k] || []) if (!isId(m[0], s.boats) || !isId(m[1], s.boats) || !(m[2] === null || ['o', 'a', 'e', 'w'].includes(m[2]) || m[2][0] === '=') || ![0, 1].includes(m[3])) bad.push(['hud.' + k, n, t, m]);
       }
-      for (const l of (s.finish && s.finish.labels) || []) { seen.fin++; if (l.unserved.length) seen.finPen++; if (!l.unserved.every(validPen)) bad.push(['finish', n, t, l]); }
       for (const r of (s.hud.lb || [])) if (r.entry && r.entry.unserved.length) { seen.lbPen++; if (!r.entry.unserved.every(validPen)) bad.push(['lb', n, t, r.entry]); }
       for (const [path, str] of stringsOf(s, 's', [])) if (RULE_WORDS.test(str)) wordy.push(n + ' ' + path + ' ' + str);
       // Client geometry vs the host's own (from the boat objects).
@@ -203,7 +202,7 @@ for (const [n, ticks, fin] of [[8, 300], [9, 300], [15, 300], [19, 450], [16, 15
   });
 }
 check('rule data shapes', bad.length === 0, bad.length ? JSON.stringify(bad.slice(0, 3)) : JSON.stringify(seen));
-check('covered: pairs, stern marks, Rule 15, penalties with codes, mark-room, boundary room, finish penalties', seen.pair > 100 && seen.sm > 50 && seen.k15 > 0 && seen.penIc > 0 && seen.hudIc > 0 && seen.mr > 0 && seen.br > 0 && seen.finPen > 0 && seen.lbPen > 0, JSON.stringify(seen));
+check('covered: pairs, stern marks, Rule 15, penalties with codes, mark-room, boundary room, finish penalties', seen.pair > 100 && seen.sm > 50 && seen.k15 > 0 && seen.penIc > 0 && seen.hudIc > 0 && seen.mr > 0 && seen.br > 0 && seen.lbPen > 0, JSON.stringify(seen));
 check('no rule text in the state', wordy.length === 0, wordy.slice(0, 3).join(' | '));
 check('pair overlays: client geometry = host geometry', hostSame, 'max ' + maxGeom.toExponential(2));
 check('FAULT badges: client text = host text', badgeSame);
