@@ -333,6 +333,8 @@ function startClient() {
     getBoat: () => handleBoat,
     command: (c) => host.command(c),
     boatIndex: () => 0,
+    // Preferences → Autopilot drag circle (default on).
+    enabled: () => { const b = document.getElementById('autopilot_drag'); return !b || b.checked; },
   });
   installUrlSettings(undefined, { ids: urlSettingIds({ remote }) });
   // After the URL: saved player prefs fill what the query string leaves unset.
