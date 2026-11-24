@@ -100,22 +100,21 @@ function sail(s, lead, length, boomAngle, fat) {
 // Best-VMG true-wind angles for the autopilot snap. The sim has no runtime
 // polar: nothing searches boat speed × cos(TWA) for an optimum. 50° is the
 // measured upwind VMG angle in dev mode (leaderboard.js BEAT_ANGLE_DEG).
-// 160° is the downwind angle this autopilot has always snapped to. 90° is
-// a beam reach.
+// 160° is the downwind angle this autopilot has always snapped to. There is
+// no beam-reach (90°) snap: only the two best-VMG angles are offered.
 export const BEST_VMG_UPWIND_DEG = 50;
 export const BEST_VMG_DOWNWIND_DEG = 160;
-export const AUTOPILOT_BEAM_DEG = 90;
 
 // Space snap. t is the signed autopilot angle (−TWA; + = starboard tack).
-// The lock is the nearest of {upwind best-VMG, beam, downwind best-VMG} on
-// the same tack. A tie (exactly halfway) goes to the larger absolute angle,
-// the downwind side of the pair. Defaults are the constants above; a boat
+// The lock is the nearer of {upwind best-VMG, downwind best-VMG} on the
+// same tack (with the defaults, below 105° → 50°, from 105° → 160°). A tie
+// (exactly halfway) goes to the larger absolute angle, the downwind side. Defaults are the constants above; a boat
 // can pass its own best-VMG angles. t = 0 (and any non-negative) is starboard.
 export function autopilotSnapTarget(t, bv1 = BEST_VMG_UPWIND_DEG, bv2 = BEST_VMG_DOWNWIND_DEG) {
   if (!Number.isFinite(t)) return t;
   const sg = t < 0 ? -1 : 1;
   const a = Math.abs(t);
-  const cands = [Math.abs(bv1), AUTOPILOT_BEAM_DEG, Math.abs(bv2)];
+  const cands = [Math.abs(bv1), Math.abs(bv2)];
   let best = cands[0], bestD = Math.abs(a - best);
   for (let i = 1; i < cands.length; i++) {
     const c = cands[i], d = Math.abs(a - c);
@@ -257,8 +256,7 @@ export function boatGuides(s, d) {
   a.type = "autopilot";
   graphics.push(a);
   // Dashed guide, longer than the solid target line: the snap nearest the
-  // current autopilot angle (upwind best-VMG, beam, or downwind best-VMG on
-  // this tack). Space locks that same angle. The solid line is the current
+  // current autopilot angle (upwind or downwind best-VMG on this tack). Space locks that same angle. The solid line is the current
   // angle, so the two differ unless she is already on the snap. World angle
   // wd + target is the bow heading for that −TWA (bow = wd − TWA).
   // During a Q/E circle this is still the nearest snap of the live angle,
