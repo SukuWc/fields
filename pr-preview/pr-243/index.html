@@ -412,23 +412,38 @@
         z-index: var(--sz-z-canvas-ui);
         overflow: hidden;
       }
-      /* Autopilot heading handle (src/autopilot-handle.js): a plain round
-         button a fixed CSS-pixel distance from the boat along the autopilot
-         target heading, at every zoom. Over the canvas and rule labels,
-         under every HUD panel, sheet and drawer. */
-      :root { --ap-handle-dist: 120px; --ap-handle-size: 36px; }
-      .bp-touch { --ap-handle-dist: 110px; --ap-handle-size: var(--sz-tap); }
+      /* Autopilot heading handle (src/autopilot-handle.js): a round button
+         styled like the overlay steering buttons (.sz-btn colours, pressed
+         state and shadow), a fixed CSS-pixel distance from the boat along
+         the autopilot target heading at every zoom. While dragging it
+         follows the pointer and the best-VMG drop zone shows 1.5 × that
+         distance out on the dashed preview line. Over the canvas and rule
+         labels, under every HUD panel, sheet and drawer. */
+      :root { --ap-handle-dist: 120px; --ap-handle-size: 40px; --ap-zone-size: 52px; }
+      .bp-touch { --ap-handle-dist: 110px; --ap-handle-size: var(--sz-tap); --ap-zone-size: 60px; }
       #autopilot_handle {
-        position: fixed; left: 0; top: 0; z-index: calc(var(--sz-z-canvas-ui) + 1);
+        --sz-btn-bg: rgba(18, 28, 48, 0.55); --sz-btn-border: rgba(255, 255, 255, 0.35);
+        display: flex; align-items: center; justify-content: center;
+        position: fixed; left: 0; top: 0; z-index: calc(var(--sz-z-canvas-ui) + 2);
         width: var(--ap-handle-size); height: var(--ap-handle-size); min-width: 0; min-height: 0;
         margin: 0; padding: 0; box-sizing: border-box; border-radius: 50%;
-        background: rgba(18, 28, 48, 0.7); border: 2px solid rgba(255, 255, 255, 0.85);
-        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
         cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
-        -webkit-tap-highlight-color: transparent; will-change: transform;
+        -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; will-change: transform;
       }
-      #autopilot_handle[hidden] { display: none; }
-      #autopilot_handle.dragging { cursor: grabbing; border-color: var(--sz-yellow); background: rgba(18, 28, 48, 0.85); }
+      #autopilot_handle small, #autopilot_vmg_zone small {
+        font: 700 var(--sz-fs-xs)/1 var(--sz-font-ui); letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.9; pointer-events: none;
+      }
+      #autopilot_handle[hidden], #autopilot_vmg_zone[hidden] { display: none; }
+      #autopilot_handle.dragging { cursor: grabbing; }
+      #autopilot_vmg_zone {
+        display: flex; align-items: center; justify-content: center;
+        position: fixed; left: 0; top: 0; z-index: calc(var(--sz-z-canvas-ui) + 1); pointer-events: none;
+        width: var(--ap-zone-size); height: var(--ap-zone-size); box-sizing: border-box; border-radius: 50%;
+        color: #fff; background: rgba(18, 28, 48, 0.22); border: 2px dashed rgba(255, 255, 255, 0.8);
+        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25); will-change: transform;
+      }
+      #autopilot_vmg_zone.hot { background: var(--sz-yellow-35); border-style: solid; border-color: var(--sz-yellow); }
       .rule-label {
         position: absolute;
         transform: translate(-50%, -150%);
@@ -1715,13 +1730,14 @@
 
     </style>
   
-    <script type="module" crossorigin src="/fields/pr-preview/pr-243/assets/index-d2d87LEm.js"></script>
+    <script type="module" crossorigin src="/fields/pr-preview/pr-243/assets/index-DKDuYYAt.js"></script>
   </head>
   <body>
 
     <div id="info" class="dev-only"></div>
     <div id="rule_labels"></div>
-    <button type="button" id="autopilot_handle" class="ap-handle" tabindex="-1" hidden title="Drag to set the autopilot heading" aria-label="Autopilot heading: drag to steer"></button>
+    <div id="autopilot_vmg_zone" class="ap-vmg-zone" aria-hidden="true" hidden><small>VMG</small></div>
+    <button type="button" id="autopilot_handle" class="sz-btn ap-handle" tabindex="-1" hidden title="Drag to set the autopilot heading; drop on VMG for best VMG" aria-label="Autopilot heading: drag to steer"><small>AP</small></button>
     <!-- Desktop (bp-desktop) three-column HUD grid: left = minimap, middle =
          start HUD (top) + instrument panel (bottom), right = leaderboard
          (top), rule toasts, chat (bottom). Elsewhere every wrapper here is
@@ -1865,6 +1881,7 @@
         <label class="setting-row"><input id="touch" autocomplete="off" type="checkbox" title="Boat 1 Overlay touch buttons over the map. On by default on phones and touch screens. Also ?touch=1 / ?touch=0">Touch controls</label>
         <label class="setting-row"><input id="gamepad" autocomplete="off" type="checkbox" title="Use PlayStation gamepads (up to two; Input mapping below picks each pad's boat). Cross: autopilot (best VMG), Circle: ease sails (depower), Square: tack, L1 / R1: zoom in / out, left stick: helm and heading target. Press a button once so the browser sees the pad. Also ?gamepad=1">Gamepad</label>
         <label class="setting-row"><input id="vibrate" autocomplete="off" type="checkbox" title="A short buzz when your boat tacks and a double buzz on a new penalty. Phones that support vibration only (not iPhone). On by default; saved in this browser. Also ?vibrate=0">Vibrate</label>
+        <label class="setting-row"><input id="autopilot_drag" autocomplete="off" type="checkbox" title="While the autopilot is on (with Camera Follow), a round AP button ahead of your boat: drag it to set the heading, drop it on the VMG circle to lock best VMG. On by default; saved in this browser. Also ?autopilot_drag=0">Autopilot drag circle</label>
       </fieldset>
       <fieldset class="pref-group" id="input_map_group" title="Which boat each input device drives when you sail two boats (a second player). Saved in this browser."><legend>Input mapping</legend>
         <div class="input-map-grid">
