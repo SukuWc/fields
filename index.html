@@ -412,6 +412,23 @@
         z-index: var(--sz-z-canvas-ui);
         overflow: hidden;
       }
+      /* Autopilot heading handle (src/autopilot-handle.js): a plain round
+         button a fixed CSS-pixel distance from the boat along the autopilot
+         target heading, at every zoom. Over the canvas and rule labels,
+         under every HUD panel, sheet and drawer. */
+      :root { --ap-handle-dist: 120px; --ap-handle-size: 36px; }
+      .bp-touch { --ap-handle-dist: 110px; --ap-handle-size: var(--sz-tap); }
+      #autopilot_handle {
+        position: fixed; left: 0; top: 0; z-index: calc(var(--sz-z-canvas-ui) + 1);
+        width: var(--ap-handle-size); height: var(--ap-handle-size); min-width: 0; min-height: 0;
+        margin: 0; padding: 0; box-sizing: border-box; border-radius: 50%;
+        background: rgba(18, 28, 48, 0.7); border: 2px solid rgba(255, 255, 255, 0.85);
+        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+        cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
+        -webkit-tap-highlight-color: transparent; will-change: transform;
+      }
+      #autopilot_handle[hidden] { display: none; }
+      #autopilot_handle.dragging { cursor: grabbing; border-color: var(--sz-yellow); background: rgba(18, 28, 48, 0.85); }
       .rule-label {
         position: absolute;
         transform: translate(-50%, -150%);
@@ -1703,6 +1720,7 @@
 
     <div id="info" class="dev-only"></div>
     <div id="rule_labels"></div>
+    <button type="button" id="autopilot_handle" class="ap-handle" tabindex="-1" hidden title="Drag to set the autopilot heading" aria-label="Autopilot heading: drag to steer"></button>
     <!-- Desktop (bp-desktop) three-column HUD grid: left = minimap, middle =
          start HUD (top) + instrument panel (bottom), right = leaderboard
          (top), rule toasts, chat (bottom). Elsewhere every wrapper here is

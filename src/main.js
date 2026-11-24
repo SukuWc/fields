@@ -1,7 +1,6 @@
 import './layout.js';
 import { setupDragLook } from './drag-look.js';
 import { setupAutopilotHandle } from './autopilot-handle.js';
-import { autopilotHandleGuides } from './boat-draw.js';
 import * as THREE from 'three';
 import { FixedStepLoop } from './loop.js';
 
@@ -326,7 +325,10 @@ function startClient() {
   setupWheelZoom(view);
   // One-finger drag on the race view looks around, then eases back (plan M11).
   setupDragLook(view);
-  setupAutopilotHandle(view, {
+  // Round HTML button over the canvas (index.html #autopilot_handle),
+  // placed after each drawn frame (startAnimation afterRender below).
+  let handleBoat = null; // render-state for the autopilot drag handle
+  const apHandle = setupAutopilotHandle(view, {
     getCamera,
     getBoat: () => handleBoat,
     command: (c) => host.command(c),
@@ -369,7 +371,7 @@ function startClient() {
     guides: currentGuides,
     rowCircles: frameRowCircles,
     devMode,
-  }), { loop: !remoteDriven });
+  }), { loop: !remoteDriven, afterRender: () => { if (apHandle) apHandle.update(); } });
 
   const distInfoEl = document.getElementById('dist_info');
   const startHud = document.getElementById('start_hud');
@@ -427,7 +429,6 @@ function startClient() {
   let followTarget;
   let ownBoatId = null;
   let ownBoatIds = [];
-  let handleBoat = null; // render-state for the autopilot drag handle
   // Instrument panel (zone C): own boat by id.
   const instruments = setupInstrumentPanel({ remote: host.kind === 'remote', lockstep: () => host.mode === 'client' });
   instrumentPanel = instruments;
@@ -490,11 +491,8 @@ function startClient() {
         if (ownBoatId != null) handleBoat = boats.find((b) => b && b.id === ownBoatId) || null;
         else handleBoat = host.kind === 'remote' ? null : (boats[0] || null);
       }
-      // Yellow AP handle: Camera Follow on, and a boat this client can steer
-      // (own boat in a room; boat 0 locally). Spectators get none.
-      if (view.camera_follow && handleBoat) {
-        scene.guides.push(...autopilotHandleGuides(handleBoat));
-      }
+      // handleBoat feeds the HTML autopilot button: own boat in a room,
+      // boat 0 locally; spectators get none.
       if (scene.hud) applyHud(scene.hud);
       currentGuides = scene.guides;
       frameBodies = scene.bodies;

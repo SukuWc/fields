@@ -152,24 +152,6 @@ export function autopilotGuideTarget(s) {
 }
 export const AUTOPILOT_PREVIEW_LENGTH = 14;
 
-// Draggable autopilot handle (Camera Follow on): sits on the target-heading
-// ray ahead of the boat. Fixed distance so the grab target stays useful
-// when the solid line is short (autopilot off).
-export const AUTOPILOT_HANDLE_DIST_M = 7;
-export const AUTOPILOT_HANDLE_HIT_M = 2.4;
-export const AUTOPILOT_HANDLE_SIZE_M = 1.35;
-export const AUTOPILOT_HANDLE_COLOR = 0x66eeff;
-export const AUTOPILOT_HANDLE_OUTLINE = 0x0b1747;
-
-// World position of the handle on the autopilot target ray (boat origin).
-export function autopilotHandlePos(s, dist = AUTOPILOT_HANDLE_DIST_M) {
-  if (!s || !Number.isFinite(s.wd) || !Number.isFinite(s.aht) || !Number.isFinite(dist)) return null;
-  const o = wp(s, 0);
-  if (!Number.isFinite(o.x) || !Number.isFinite(o.y)) return null;
-  const ang = (s.wd + s.aht) / 180 * Math.PI;
-  return { x: o.x + Math.cos(ang) * dist, y: o.y + Math.sin(ang) * dist };
-}
-
 // Signed autopilot target (−TWA) for a world point relative to the boat.
 // Wraps through head-to-wind and dead downwind (−180..180).
 export function autopilotHeadingFromWorld(s, wx, wy) {
@@ -178,46 +160,6 @@ export function autopilotHeadingFromWorld(s, wx, wy) {
   const ang = Math.atan2(wy - o.y, wx - o.x) * 180 / Math.PI;
   return wrap180(ang - s.wd);
 }
-
-export function autopilotHandleHit(s, wx, wy, hitM = AUTOPILOT_HANDLE_HIT_M) {
-  const p = autopilotHandlePos(s);
-  if (!p || !Number.isFinite(wx) || !Number.isFinite(wy) || !(hitM > 0)) return false;
-  return Math.hypot(wx - p.x, wy - p.y) <= hitM;
-}
-
-// Diamond grab affordance at the handle (cyan over navy outline so it
-// stays readable on the yellow speed field).
-export function autopilotHandleGuides(s) {
-  const p = autopilotHandlePos(s);
-  if (!p) return [];
-  const r = AUTOPILOT_HANDLE_SIZE_M;
-  const diamond = [
-    [p.x, p.y - r, p.x + r, p.y],
-    [p.x + r, p.y, p.x, p.y + r],
-    [p.x, p.y + r, p.x - r, p.y],
-    [p.x - r, p.y, p.x, p.y - r],
-  ];
-  const out = [];
-  // Slightly larger navy outline drawn first.
-  const ro = r + 0.12;
-  const outline = [
-    [p.x, p.y - ro, p.x + ro, p.y],
-    [p.x + ro, p.y, p.x, p.y + ro],
-    [p.x, p.y + ro, p.x - ro, p.y],
-    [p.x - ro, p.y, p.x, p.y - ro],
-  ];
-  for (const [x1, y1, x2, y2] of outline) {
-    out.push({ color: AUTOPILOT_HANDLE_OUTLINE, type: 'guide', role: 'ap-handle', opacity: 1, x1, y1, x2, y2 });
-  }
-  for (const [x1, y1, x2, y2] of diamond) {
-    out.push({ color: AUTOPILOT_HANDLE_COLOR, type: 'guide', role: 'ap-handle', opacity: 1, x1, y1, x2, y2 });
-  }
-  const m = r * 0.5;
-  out.push({ color: AUTOPILOT_HANDLE_COLOR, type: 'guide', role: 'ap-handle', opacity: 1, x1: p.x - m, y1: p.y, x2: p.x + m, y2: p.y });
-  out.push({ color: AUTOPILOT_HANDLE_COLOR, type: 'guide', role: 'ap-handle', opacity: 1, x1: p.x, y1: p.y - m, x2: p.x, y2: p.y + m });
-  return out;
-}
-
 
 // Per-sail force overlay. Distinct from the green generic arrows, the
 // magenta rig CE, the cyan CLR and the blue hull-drag cross.
