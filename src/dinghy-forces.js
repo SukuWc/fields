@@ -402,7 +402,10 @@ export function residuaryDragArea(speedMs) {
   const fn = speedMs / Math.sqrt(G * LASER_HULL.lwl);
   const fnHump = PLANING_HUMP_MPS / Math.sqrt(G * LASER_HULL.lwl);
   const x = Math.max(fn / fnHump, 0);
-  const major = RESIDUARY_HUMP_M2 * x ** 4;
+  // x² · x², not x ** 4: V8 and SpiderMonkey / JSC round x ** 4 differently
+  // in the last bit, which breaks replay determinism (docs/replay-determinism.md).
+  const x2 = x * x;
+  const major = RESIDUARY_HUMP_M2 * (x2 * x2);
   const fnSmall = (3.5 * KN_TO_MPS) / Math.sqrt(G * LASER_HULL.lwl);
   const z = (fn - fnSmall) / 0.06;
   const small = 0.0015 * Math.exp(-0.5 * z * z);
