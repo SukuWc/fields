@@ -1,5 +1,6 @@
 // Landing admin helpers: default TOML for Reset (same as in-game room panel)
-// and list reconciliation that keeps textarea focus across room refreshes.
+// and list reconciliation that keeps textarea focus across room refreshes,
+// plus the per-room replay links (GET /api/replays, apps/server/replays.js).
 // Bundled by build-app.mjs into dist-app/room-admin.js as an IIFE on
 // window.LandingRoomAdmin.
 import { defaultRoomConfig, stringifyRoomConfig } from '../../src/room-config.js';
@@ -72,6 +73,58 @@ export function syncListChildren(parent, next) {
   return true;
 }
 
+/** Max replay links per room card (the server keeps the last three races). */
+export const REPLAY_LINKS_MAX = 3;
+
+function clockOf(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+/**
+ * Replay links for one room card from the /api/replays list (newest first):
+ * up to REPLAY_LINKS_MAX of this room's races as { id, href, text }, e.g.
+ * "Replay 12:50 · 66 s · suku" (start time in the viewer's time zone).
+ * api: the ?api= server prefix ('' = same origin). clock(iso): the time label.
+ */
+export function replayLinksFor(replays, roomId, { api = '', clock = clockOf } = {}) {
+  const out = [];
+  for (const r of Array.isArray(replays) ? replays : []) {
+    if (!r || r.room !== roomId || typeof r.id !== 'string') continue;
+    const parts = ['Replay'];
+    const at = clock(r.startedAt);
+    if (at) parts[0] += ' ' + at;
+    if (Number.isFinite(r.durationS)) parts.push(Math.round(r.durationS) + ' s');
+    if (Array.isArray(r.players) && r.players.length) parts.push(r.players.join(', '));
+    out.push({ id: r.id, href: api + '/play/?replay=' + encodeURIComponent(r.id), text: parts.join(' · ') });
+    if (out.length >= REPLAY_LINKS_MAX) break;
+  }
+  return out;
+}
+
+/**
+ * Fill a card's replay box with links (anchors with class "replay"). Leaves
+ * the DOM alone when the links are unchanged (data-key), so the 5 s room
+ * poll does not touch it; hidden when there are none. Returns true if it
+ * changed the DOM.
+ */
+export function syncReplayLinks(box, links, doc = document) {
+  const key = links.map((l) => l.id + '|' + l.text).join('\n');
+  if (box.dataset.key === key) return false;
+  box.dataset.key = key;
+  const nodes = links.map((l) => {
+    const a = doc.createElement('a');
+    a.className = 'replay';
+    a.href = l.href;
+    a.textContent = l.text;
+    return a;
+  });
+  box.replaceChildren(...nodes);
+  box.hidden = links.length === 0;
+  return true;
+}
+
 if (typeof window !== 'undefined') {
-  window.LandingRoomAdmin = { defaultToml, mapDimsFromToml, syncListChildren };
+  window.LandingRoomAdmin = { defaultToml, mapDimsFromToml, syncListChildren, replayLinksFor, syncReplayLinks };
 }

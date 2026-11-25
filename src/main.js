@@ -33,6 +33,9 @@ import { buildScene } from './scene-build.js';
 import { WorkerHost } from './worker-host.js';
 import { RemoteHost } from './remote-host.js';
 import { hostChoice } from './host-choice.js';
+import { ReplayHost } from './replay-host.js';
+import { replayIdFromQuery } from './replay-host.js';
+import { setupReplayBanner } from './replay-banner.js';
 import { setupOwnBoat } from './own-boat.js';
 import { View, cameraTarget } from './view.js';
 import { installUrlSettings } from './url-settings.js';
@@ -189,8 +192,12 @@ function clientToken(server) {
 let host = null;
 // Client ladder / layline memo (remote rooms): rebuilt when the anchor moves, the wind direction at it changes or the side flips.
 const remoteLadderCache = createLadderCache();
+// ?replay=<id>: watch a recorded race (replay-host.js) instead of playing.
+const _replayId = replayIdFromQuery(location.search);
 try {
-  if (_hostChoice.kind === 'worker') {
+  if (_replayId) {
+    host = new ReplayHost(_replayId, { texture: dataTextureMaterial, oversampling: texture_oversampling });
+  } else if (_hostChoice.kind === 'worker') {
     host = new WorkerHost(_hostOpts, dataTextureMaterial, { maxInFlight: Number.isInteger(_workerQueue) && _workerQueue >= 0 && _query.has('workerQueue') ? _workerQueue : 4 });
   } else if (_hostChoice.kind === 'remote') {
     // scenario: loaded by the server only if this page creates the room.
@@ -208,7 +215,11 @@ if (typeof window !== 'undefined') window.__simHost = host;
 // after the worker's or server's first message. A host that fails before
 // that is dropped for a LocalHost (the client has not attached to it yet).
 if (host.kind === 'local') startClient();
-else host.ready.then(startClient, (e) => {
+else if (host.kind === 'replay') {
+  // No fallback: a replay that cannot load says so in its banner.
+  setupReplayBanner(host);
+  host.ready.then(startClient, (e) => console.warn('replay failed to load', e && (e.message || e)));
+} else host.ready.then(startClient, (e) => {
   console.warn('sim ' + host.kind + ' host failed to start, running on the main thread', e && (e.message || e));
   if (host.terminate) host.terminate();
   host = makeLocalHost();
@@ -223,7 +234,7 @@ function startClient() {
   if (hudFromQuery(location.search)) {
     setupClientPerfHud({ host, getFieldMode: () => fieldModeFromQuery(location.search) });
   }
-  if (remote && (host.info.mapW !== map_w || host.info.mapH !== map_h)) {
+  if ((remote || host.kind === 'replay') && (host.info.mapW !== map_w || host.info.mapH !== map_h)) {
     map_w = host.info.mapW;
     map_h = host.info.mapH;
     dataTextureMaterial = makeTexture(map_w, map_h);
@@ -491,7 +502,7 @@ function startClient() {
       {
         const boats = frame.state.boats || [];
         if (ownBoatId != null) handleBoat = boats.find((b) => b && b.id === ownBoatId) || null;
-        else handleBoat = host.kind === 'remote' ? null : (boats[0] || null);
+        else handleBoat = host.kind === 'remote' || host.kind === 'replay' ? null : (boats[0] || null);
       }
       // handleBoat feeds the HTML autopilot button: own boat in a room,
       // boat 0 locally; spectators get none.

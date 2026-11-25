@@ -231,11 +231,37 @@ server; a Node restart forgets them).
   hash on the default room) and at the end, the room TOML and seed, and the
   finish results.
 - `resimulate(record)` re-runs a record on a fresh SimCore and reports the
-  first hash that differs; `test/replay-recorder.test.mjs` checks a recorded
+  first hash that differs (the stepping is `src/replay-stepper.js`, shared
+  with the browser player below); `test/replay-recorder.test.mjs` checks a recorded
   race reproduces its hashes and results, and that the list keeps three.
 
 `GET /api/replays` lists them (no logs), `GET /api/replays/:id` returns one
-record. There is no player UI yet.
+record.
+
+## Browser replay player (basic)
+
+The landing page lists, under each room card, that room's last (up to
+three) recorded races (`Replay 11:50 · 66 s · suku`, start time in the
+viewer's time zone). A link opens the game page at `/play/?replay=<id>`:
+`src/replay-host.js` (`ReplayHost`, a SimHost like LocalHost) fetches
+`/api/replays/<id>`, builds a SimCore on the main thread from the record's
+start options and steps it one recorded tick per 30 Hz page tick with
+`ReplayStepper` (`src/replay-stepper.js`), the same code the server's
+`resimulate()` runs. The normal game view draws it; the camera follows the
+first player boat. The page's keys, view and commands are ignored (only the
+field colours pass), so nothing on the page can change the race. The
+recorded `present` flag is replayed as recorded: it changes the state hash
+(scene state building touches sim state), while the view does not.
+
+A banner shows the position, `hashes OK n/66`, or `MISMATCH at tick N (want,
+got)` at the first stored hash that differs, then `Replay finished`; Pause /
+Play and a link back to the rooms. No seeking or speed control; a slow
+device plays slower than real time (the loop drops time, never ticks).
+
+`node scripts/replay-player-browser.mjs [--engine chromium|firefox|webkit]`
+(after `npm run build:app && npm run build:server`) serves the recorded live
+race `test/fixtures/replay-europe-1-mww066n9-1.json` to the browser, follows
+the landing link and waits for `66/66 hashes OK`.
 
 ## Running it
 
@@ -245,6 +271,7 @@ REPLAY_TICKS=1800 node --test --import ./test/register.mjs test/replay-determini
 npx playwright install chromium firefox webkit                     # once
 npm run determinism:browsers -- --ticks 1800                       # quick check, all engines
 npm run determinism:browsers -- --ticks 18000                      # 10 min, hash every tick
+node scripts/replay-player-browser.mjs --engine webkit                # replay page plays a live record
 node scripts/determinism/math-probe.mjs    # per-function engine differences
 ```
 

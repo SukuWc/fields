@@ -15,12 +15,14 @@
 // REPLAY_KEEP finished races of the whole server, oldest dropped first. A
 // restart of the Node process forgets them.
 import fs from 'node:fs';
-import { SimCore } from '../../src/host.js';
 import { hashCoreState } from '../../src/state-hash.js';
+import { ReplayStepper } from '../../src/replay-stepper.js';
+import { REPLAY_TICK_DT as STEP_TICK_DT } from '../../src/replay-stepper.js';
+import { REPLAY_HASH_EVERY as STEP_HASH_EVERY } from '../../src/replay-stepper.js';
 
 export const REPLAY_KEEP = 3;
-export const REPLAY_HASH_EVERY = 30;
-export const REPLAY_TICK_DT = 1 / 30;
+export const REPLAY_HASH_EVERY = STEP_HASH_EVERY;
+export const REPLAY_TICK_DT = STEP_TICK_DT;
 // A race with no player boat on the water for this many ticks (60 s) ends
 // (Room._compute): an idle persistent room does not grow a log forever, and
 // the next join starts a new race (Room._command spawnBoat).
@@ -213,41 +215,13 @@ export function clearReplays() {
 }
 
 /**
- * Re-run a record on a fresh SimCore in this process. Returns { hashes (at
+ * Re-run a record on a fresh SimCore in this process (src/replay-stepper.js,
+ * the same stepping the browser replay player uses). Returns { hashes (at
  * the record's hash ticks), finalHash, results, firstMismatch } where
  * firstMismatch is the first stored hash that differs ({ t, want, got }) or null.
  */
 export function resimulate(record) {
-  const core = new SimCore({ ...record.start.opts, texture: undefined });
-  core.sim._nextSpawn = record.start.nextSpawn;
-  const want = new Map(record.hashes.map((h) => [h.t, h.all]));
-  const log = record.log;
-  const hashes = [];
-  let firstMismatch = null;
-  let held = [];
-  let present = false;
-  let view = null;
-  let li = 0;
-  const every = record.hashEvery || REPLAY_HASH_EVERY;
-  for (let t = 0; t <= record.ticks; t++) {
-    let dt = REPLAY_TICK_DT;
-    while (li < log.length && log[li].t === t) {
-      const e = log[li++];
-      if ('c' in e) { core.command(clone(e.c)); continue; }
-      if ('dt' in e) dt = e.dt;
-      if ('held' in e) held = e.held;
-      if ('present' in e) present = e.present;
-      if ('view' in e) view = e.view;
-    }
-    if (t === record.ticks) break;
-    core.tick({ dt, held: clone(held), present, view: clone(view) });
-    if ((t + 1) % every === 0 && want.has(t + 1)) {
-      const h = { t: t + 1, ...hashCoreState(core) };
-      hashes.push(h);
-      if (!firstMismatch && h.all !== want.get(t + 1)) firstMismatch = { t: t + 1, want: want.get(t + 1), got: h.all };
-    }
-  }
-  const finalHash = { t: record.ticks, ...hashCoreState(core) };
-  if (!firstMismatch && record.finalHash && finalHash.all !== record.finalHash.all) firstMismatch = { t: record.ticks, want: record.finalHash.all, got: finalHash.all };
-  return { hashes, finalHash, results: raceResultsOf(core), firstMismatch };
+  const stepper = new ReplayStepper(record);
+  const r = stepper.run();
+  return { ...r, results: raceResultsOf(stepper.core) };
 }

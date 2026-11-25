@@ -13,6 +13,9 @@
      Commit / Reset show directly, no Login / Logout, no Bearer header.
      Room-list refresh reuses card nodes (syncListChildren) so editing the
      TOML keeps focus and scroll across the 5 s poll.
+     Under the Join row each card links to that room's last (up to three)
+     recorded races from /api/replays: /play/?replay=<id> re-simulates the
+     race in the browser (src/replay-host.js). Hidden when there are none.
      ?api=https://host points it at another server (CORS is open). -->
 <html lang="en">
 <head>
@@ -30,6 +33,9 @@
   li.room .row { display: flex; align-items: center; gap: 12px; }
   li.room .name { font-weight: 600; flex: 1; }
   li.room .count { color: #567; }
+  .replays { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; font-size: 13px; }
+  .replays[hidden] { display: none; }
+  .replays a.replay { color: #1565c0; }
   a.join { background: #1565c0; color: #fff; text-decoration: none; padding: 8px 14px; border-radius: 6px; font-weight: 600; }
   .perf { margin-top: 10px; }
   .perf .meta { font-size: 12px; color: #567; margin: 0 0 4px; display: flex; justify-content: space-between; }
@@ -182,6 +188,7 @@
     const join = document.createElement('a'); join.className = 'join'; join.textContent = 'Join room';
     join.href = api + '/play/?room=' + encodeURIComponent(room.id);
     row.append(name, count, join);
+    const replays = document.createElement('div'); replays.className = 'replays'; replays.hidden = true;
     const perf = document.createElement('div'); perf.className = 'perf';
     const meta = document.createElement('div'); meta.className = 'meta';
     meta.innerHTML = '<span>Frame time (physics + field)</span><span class="latest">—</span>';
@@ -203,7 +210,7 @@
     actions.append(login, logout, commit, reset, status);
     const hint = document.createElement('p'); hint.className = 'room-config-hint';
     wrap.append(ta, actions, hint);
-    li.append(row, perf, wrap);
+    li.append(row, replays, perf, wrap);
 
     login.addEventListener('click', () => {
       const secret = promptAndStoreSecret();
@@ -281,6 +288,9 @@
     return li;
   }
 
+  // Last finished races of the server (newest first), from /api/replays.
+  let replayList = [];
+
   function updateRoomCard(li, room) {
     li.dataset.admin = room.admin ? '1' : '0';
     li.dataset.open = room.adminOpen ? '1' : '0';
@@ -288,14 +298,21 @@
     if (count) count.textContent = room.players + (room.players === 1 ? ' player' : ' players');
     const join = li.querySelector('a.join');
     if (join) join.href = api + '/play/?room=' + encodeURIComponent(room.id);
+    const replays = li.querySelector('.replays');
+    if (replays) window.LandingRoomAdmin.syncReplayLinks(replays, window.LandingRoomAdmin.replayLinksFor(replayList, room.id, { api }));
     bindConfigEditors(li, room);
   }
 
   async function refreshRooms() {
     try {
-      const r = await fetch(api + '/api/rooms', { cache: 'no-store' });
+      const [r, rl] = await Promise.all([
+        fetch(api + '/api/rooms', { cache: 'no-store' }),
+        // An older server without /api/replays: no links.
+        fetch(api + '/api/replays', { cache: 'no-store' }).then((x) => (x.ok ? x.json() : []), () => []),
+      ]);
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const rooms = await r.json();
+      replayList = Array.isArray(rl) ? rl : [];
       const keep = new Set(rooms.map((x) => x.id));
       for (const id of [...charts.keys()]) {
         if (!keep.has(id)) { charts.get(id).destroy(); charts.delete(id); }
