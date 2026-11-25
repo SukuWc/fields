@@ -134,34 +134,43 @@ Transcendental calls in the sim path (`Math.*(` per file):
 | scenarios.js | 11 | 11 | | | | | | | | | |
 | utils.js | 1 | 1 | 1 | | | | | | | | |
 
-planck-js reads `Math` through `Object.create(Math)` and calls `sqrt` and
-`pow`. The `**` operator in the sim path is `x ** 2` (exact everywhere),
-`2 ** n` (exact) and one `x ** 4` in `dinghy-forces.js` `residuaryDragArea`.
-That one is now `x2 * x2`: a last-bit change, and the only change to sim code
-in this PR. The lattice step itself (collide / stream / bounce) is plain
-arithmetic and is deterministic.
+planck-js reads `Math` through its own `Object.create(Math)` object and
+calls `sin`, `cos` and `atan2` there (`Rot.setAngle` / `getAngle`) plus
+`pow(x, 2)` for two constants. The `**` operator in the sim path is `x ** 2`
+(exact everywhere), `2 ** n` (exact) and one `x ** 4` in `dinghy-forces.js`
+`residuaryDragArea` (now `x2 * x2`). The lattice step itself (collide /
+stream / bounce) is plain arithmetic and is deterministic.
 
-### Fix direction (prototype)
+### Fix: deterministic math in the sim path
 
-`scripts/determinism/det-math.mjs` ports the fdlibm functions to pure JS:
-sin, cos, tan, atan, atan2, asin, acos, exp, log, log10, log2 and pow, plus a
-scaled hypot. They use only `+ − × ÷` and `Math.sqrt`, all correctly rounded
-in IEEE-754, so every engine returns the same bits. sin, cos, atan, atan2,
-asin, acos, exp, log, log10 and hypot match Node's own bit for bit. pow is
-within 1 ulp, and tan and log2 within 2 ulp (`test/det-math.test.mjs`).
-`--det-math` installs them on the global `Math` before the run (prototype
-only, not wired into the app).
+`src/det-math.js` ports the fdlibm functions to pure JS: sin, cos, tan, atan,
+atan2, asin, acos, exp, log, log10, log2 and pow, plus a scaled hypot. They
+use only `+ − × ÷` and `Math.sqrt`, all correctly rounded in IEEE-754, so
+every engine returns the same bits. sin, cos, atan, atan2, asin, acos, exp,
+log, log10 and hypot match Node's own bit for bit. pow is within 1 ulp, and
+tan and log2 within 2 ulp (`test/det-math.test.mjs`).
+
+Sim code (server and client) calls them as `DMath.sin(…)` etc. instead of
+`Math.sin(…)`, and `2 ** k` became `DMath.pow(2, k)` (exact for every
+integer k). `src/planck-det.js`, loaded by `map.js`, gives planck's private
+`Math` object the same functions; the global `Math` is never patched, so
+rendering code keeps the native functions. `test/det-math-guard.test.mjs`
+fails when a sim-path file (everything the server bundle or the headless
+harness imports, minus a short display-only list) calls a built-in
+transcendental `Math.*` function or uses `x ** n` with n ≠ 2, and when a new
+file joins that import graph without being classified.
 
 Cost: none measurable. 1 800 ticks, hashing only at the end, all four engines
-in parallel:
+in parallel, `main` and this branch run back to back:
 
 | ms/tick | Node | Chromium | Firefox | WebKit |
 |---|---|---|---|---|
-| Native | 18.6 | 17.5 | 18.1 | 11.0 |
-| Deterministic math | 18.5 | 17.2 | 18.4 | 10.5 |
+| Native `Math` (main) | 16.9 | 14.8 | 16.2 | 9.1 |
+| `DMath` | 16.3 | 14.8 | 16.0 | 9.3 |
 
-The 10-minute run with a hash on every tick took 14.7–21.2 ms/tick (about
-6 ms of that is the hash) and 6.5 minutes of wall time.
+With native `Math` all three browsers diverge from Node; with `DMath` all four
+end on the same hash. The 10-minute run (18 000 ticks, a hash on every tick)
+is bit-identical in Node, Chromium, Firefox and WebKit.
 
 ### Caveats
 
@@ -171,8 +180,9 @@ The 10-minute run with a hash on every tick took 14.7–21.2 ms/tick (about
   hold, but it has not been run on a device.
 - x64 only. IEEE basic operations are identical on ARM64, and JS engines do
   not fuse multiply-adds, but this was not measured.
-- The `**` operator cannot be patched at run time; a lint or test rule must
-  keep integer powers other than 2 out of the sim path.
+- The guard test only sees direct `Math.<fn>(` calls and `**`. Aliasing
+  (`const { sin } = Math`) or a new dependency with its own transcendental
+  calls would slip past it; the browser check would catch the divergence.
 
 ## Recommendation
 
@@ -185,10 +195,7 @@ minutes at no measurable cost.
 
 Before milestone 3:
 
-1. Move the sim path onto a deterministic math module: import `det-math`
-   functions in sim code (server and client) instead of patching the global
-   `Math`, and add a test that fails on `x ** n` (n ≠ 2) and new
-   transcendental `Math.*` calls in sim files.
+1. Done: the sim path uses `src/det-math.js` (see above).
 2. Store the build version with each race and keep its bundle (deterministic
    math also makes results independent of the server's Node version).
 3. Still record a cheap state hash every N ticks (for example every 30 ticks,
@@ -201,11 +208,11 @@ Before milestone 3:
 ## Running it
 
 ```bash
-npm test                                   # milestone 1 (150 ticks) + det-math checks
+npm test                                   # milestone 1 (150 ticks) + det-math checks + sim-path guard
 REPLAY_TICKS=1800 node --test --import ./test/register.mjs test/replay-determinism.test.mjs
 npx playwright install chromium firefox webkit                     # once
-npm run determinism:browsers -- --ticks 1800                       # native math: diverges
-npm run determinism:browsers -- --ticks 18000 --det-math           # 10 min, deterministic math
+npm run determinism:browsers -- --ticks 1800                       # quick check, all engines
+npm run determinism:browsers -- --ticks 18000                      # 10 min, hash every tick
 node scripts/determinism/math-probe.mjs    # per-function engine differences
 ```
 

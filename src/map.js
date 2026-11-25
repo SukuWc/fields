@@ -1,5 +1,6 @@
 import planck from 'planck-js';
 import { World } from 'planck-js'
+import './planck-det.js';
 import { meanAngleDeg } from './utils.js';
 import { WALL_CATEGORY } from './finish-ghost.js';
 import {

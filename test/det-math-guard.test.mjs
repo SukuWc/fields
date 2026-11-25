@@ -15,7 +15,10 @@ import { dirname } from 'node:path';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import planck from 'planck-js';
 import { scanSimMath } from './sim-math-scan.mjs';
+import { DMath } from '../src/det-math.js';
+import '../src/map.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -38,8 +41,9 @@ const DISPLAY_FILES = [
   'src/scene-state.js', 'src/svg-chart.js',
 ];
 
-// The deterministic math itself (built-ins only in its large-argument fallback).
-const EXEMPT = ['src/det-math.js'];
+// The deterministic math itself (built-ins only in its large-argument
+// fallback) and the planck-js hook.
+const EXEMPT = ['src/det-math.js', 'src/planck-det.js'];
 
 test('scanner finds Math calls and non-2 powers outside comments and strings', () => {
   const src = [
@@ -71,4 +75,12 @@ test('every file the sim host and the server room import is listed as sim or dis
   const known = new Set([...SIM_FILES, ...DISPLAY_FILES, ...EXEMPT]);
   const missing = inGraph.filter((f) => !known.has(f));
   assert.deepEqual(missing, [], 'add to SIM_FILES (affects sim state) or DISPLAY_FILES (drawing / transport only):\n' + missing.join('\n'));
+});
+
+test('planck-js rotations use DMath (src/planck-det.js, loaded by map.js)', () => {
+  for (const k of ['sin', 'cos', 'atan2']) assert.equal(planck.Math[k], DMath[k], k);
+  assert.notEqual(Math.sin, DMath.sin, 'the global Math stays untouched');
+  const r = planck.Rot(1.234);
+  assert.equal(r.s, DMath.sin(1.234));
+  assert.equal(r.getAngle(), DMath.atan2(r.s, r.c));
 });
