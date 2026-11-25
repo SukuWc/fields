@@ -205,6 +205,38 @@ Before milestone 3:
 4. Run the browser check on a real iPhone (Safari) and an ARM Mac before
    relying on it.
 
+## Recording races (in memory)
+
+`apps/server/replays.js` records every race a server room runs, in RAM only
+(a module-level ring buffer: the last three finished races of the whole
+server; a Node restart forgets them).
+
+- **Race start**: a fresh SimCore. A room builds one when it is created, and
+  `Room.newRace()` (time limit, finish countdown, restart vote) now builds a
+  new core too (`Room._freshCore`, as a map resize already did) before it
+  re-applies the room TOML, so every race replays from a known start.
+  Player boats are kept as before; the spawn id counter carries over.
+- **Race end**: the next race start (`timeLimit`, `finished`, `vote`,
+  `resize`, `join`), the room being dropped (`closed`), 60 s with no player
+  boat on the water (`idle`; the next boat to join starts a new race), or
+  2 h of sim time (`truncated`). A race no player boat joined is not kept.
+- **Record**: room, build version (`/api/version` sha, else
+  `SOURCE_COMMIT` / `COMMIT_SHA` / `GIT_COMMIT` / `GIT_SHA`, else the
+  package version), SimCore constructor options, start time, every
+  top-level `SimCore.command` stamped with the number of ticks done (room
+  config applies expanded into their commands with the drawn seed, restarts,
+  spawn / remove, per-player Dev gains and rudder limits, autopilot, tack,
+  penalty turns, ...), the tick inputs whenever they change (held helm /
+  heading commands, dt, view), a state hash every 30 ticks (about 1 ms per
+  hash on the default room) and at the end, the room TOML and seed, and the
+  finish results.
+- `resimulate(record)` re-runs a record on a fresh SimCore and reports the
+  first hash that differs; `test/replay-recorder.test.mjs` checks a recorded
+  race reproduces its hashes and results, and that the list keeps three.
+
+`GET /api/replays` lists them (no logs), `GET /api/replays/:id` returns one
+record. There is no player UI yet.
+
 ## Running it
 
 ```bash
