@@ -97,7 +97,7 @@ if (process.argv.includes('--restore')) {
       while ((await page.evaluate(() => window.__restore.step())) !== -1) { /* chunks of 300 ticks */ }
       const res = await page.evaluate(() => window.__restore.result());
       rows.push({ engine: name, version: browser.version(), msPerTick: Math.round(res.full.msPerTick * 100) / 100, full: res.full.firstMismatch ? 'MISMATCH ' + res.full.firstMismatch.t : 'OK ' + res.full.finalHash });
-      for (const r of res.restores) rows.push({ engine: name, restoreAt: r.t, snapshotMs: r.snapshotMs, restoreMs: r.restoreMs, hashesChecked: r.checked, result: r.firstMismatch ? 'MISMATCH ' + r.firstMismatch.t : 'OK' + (r.finalHash ? ' ' + r.finalHash : '') });
+      for (const r of res.restores) rows.push({ engine: name, restoreAt: r.t, snapshotMs: r.snapshotMs, restoreMs: r.restoreMs, msPerTick: r.msPerTick, hashesChecked: r.checked, result: r.firstMismatch ? 'MISMATCH ' + r.firstMismatch.t : 'OK' + (r.finalHash ? ' ' + r.finalHash : '') });
     } finally {
       await browser.close();
     }

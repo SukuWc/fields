@@ -24,8 +24,10 @@ function* run(record, at, after) {
     const restoreMs = performance.now() - a;
     const checked0 = s.checked;
     const until = after > 0 ? t + after : Infinity;
-    while (!s.done && s.t < until) { s.step(); if (s.t % 300 === 0) yield s.t; }
-    restores.push({ t, snapshotMs: Math.round(ms), restoreMs: Math.round(restoreMs), checked: s.checked - checked0, firstMismatch: s.firstMismatch, finalHash: s.finalHash ? s.finalHash.all : null });
+    const b = performance.now();
+    let n = 0;
+    while (!s.done && s.t < until) { s.step(); n++; if (s.t % 300 === 0) yield s.t; }
+    restores.push({ t, snapshotMs: Math.round(ms), restoreMs: Math.round(restoreMs), msPerTick: Math.round(((performance.now() - b) / Math.max(1, n)) * 100) / 100, checked: s.checked - checked0, firstMismatch: s.firstMismatch, finalHash: s.finalHash ? s.finalHash.all : null });
   }
   return { full, restores };
 }

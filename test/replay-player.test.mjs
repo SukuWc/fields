@@ -43,8 +43,20 @@ test('a changed control is caught at the next hash check', () => {
   assert.ok(mismatch.t > e.t && mismatch.t <= e.t + 60, 'at the first check after the change: ' + mismatch.t);
 });
 
+// The replay runs behind a message channel (on the page here: Node has no
+// Worker), so ticks answer asynchronously: tick, then let the messages through.
+const turn = () => new Promise((r) => setTimeout(r, 0));
+async function ticks(host, n, req = { dt: 1 / 30 }) {
+  for (let i = 0; i < n; i++) {
+    const t = host.status().t;
+    if (!host.tick(req)) { await turn(); continue; }
+    for (let k = 0; k < 200 && host.inFlight > 0; k++) await turn();
+    if (host.status().t === t && host.status().done) break;
+  }
+}
+
 test('ReplayHost plays the record, ignores page input and commands, pauses', async () => {
-  const host = new ReplayHost('europe-1-mww066n9-1', { fetchRecord: async (id) => { assert.equal(id, 'europe-1-mww066n9-1'); return RECORD; } });
+  const host = new ReplayHost('europe-1-mww066n9-1', { scan: false, fetchRecord: async (id) => { assert.equal(id, 'europe-1-mww066n9-1'); return RECORD; } });
   assert.equal(host.kind, 'replay');
   const info = await mute(() => host.ready);
   assert.equal(info.mapW, 100);
@@ -58,12 +70,13 @@ test('ReplayHost plays the record, ignores page input and commands, pauses', asy
   assert.equal(await host.command({ type: 'restart', scenario: 3 }), undefined);
   assert.equal(host.commandSync({ type: 'autopilotGains', kp: 9 }), undefined);
   const req = { dt: 1 / 30, held: [{ type: 'helm', dir: 1 }], present: true, view: { camera_position_x: 40, show_fields: true } };
+  await turn();
   host.setPaused(true);
   assert.equal(host.tick(req), null);
   assert.equal(host.status().t, 0);
   host.setPaused(false);
   assert.equal(host.tick({ ...req, dt: undefined }), null, 'extra passes do nothing');
-  mute(() => { for (let i = 0; i < RECORD.ticks + 5; i++) host.tick(req); });
+  await mute(() => ticks(host, RECORD.ticks + 5, req));
   const st = host.status();
   assert.equal(st.done, true);
   assert.equal(st.mismatch, null);
@@ -73,7 +86,6 @@ test('ReplayHost plays the record, ignores page input and commands, pauses', asy
   assert.equal(st.total, RECORD.hashes.length + 1);
   assert.equal(frames, RECORD.ticks);
   assert.equal(withState, RECORD.ticks);
-  assert.equal(host.stepper.finalHash.all, RECORD.finalHash.all);
   assert.match(replayStatusText(st), /Replay finished · 66\/66 hashes OK/);
   assert.ok(statuses.some((s) => s.paused));
 });
@@ -128,7 +140,7 @@ test('landing length and size formats', () => {
   assert.equal(formatBytes(undefined), '');
 });
 
-test('ReplayHost shows the recorded chat at its ticks, held back while paused', async () => {
+test('ReplayHost shows the recorded chat at its ticks, held back while paused; a seek replaces the history', async () => {
   const rec = structuredClone(RECORD);
   assert.equal(rec.chat, undefined, 'the fixture predates chat');
   rec.chat = [
@@ -136,21 +148,30 @@ test('ReplayHost shows the recorded chat at its ticks, held back while paused', 
     { t: 40, seq: 3, at: 3, text: 'GG', from: { name: 'suku', boatId: 'b1', n: 0, color: 0xd81b60 } },
     { t: 12, seq: 2, at: 2, text: 'hello', from: { name: 'suku', boatId: 'b1', n: 0, color: 0xd81b60 } },
   ];
-  const host = new ReplayHost('x', { fetchRecord: async () => rec });
+  const host = new ReplayHost('x', { scan: false, fetchRecord: async () => rec });
   await mute(() => host.ready);
-  assert.deepEqual(host.chat, [], 'no history up front');
+  // Lines of tick 0 are there from the start (host.chat, for the chat panel).
+  assert.deepEqual(host.chat.map((m) => m.text), ['Room seed 30']);
   const seen = [];
-  host.on((ev) => { if (ev.type === 'chat') seen.push([host.stepper.t, ev.msg.text]); });
-  const req = { dt: 1 / 30 };
-  mute(() => { for (let i = 0; i < 12; i++) host.tick(req); });
-  assert.deepEqual(seen, [[1, 'Room seed 30'], [12, 'hello']]);
+  const history = [];
+  host.on((ev) => {
+    if (ev.type === 'chat') seen.push([host.status().t, ev.msg.text]);
+    if (ev.type === 'chatHistory') history.push([host.status().t, ev.chat.map((m) => m.text)]);
+  });
+  await mute(() => ticks(host, 12));
+  assert.deepEqual(seen, [[12, 'hello']]);
   host.setPaused(true);
-  mute(() => { for (let i = 0; i < 50; i++) host.tick(req); });
-  assert.equal(seen.length, 2, 'nothing while paused');
+  await mute(() => ticks(host, 50));
+  assert.equal(seen.length, 1, 'nothing while paused');
   host.setPaused(false);
-  mute(() => { for (let i = 0; i < 28; i++) host.tick(req); });
-  assert.deepEqual(seen, [[1, 'Room seed 30'], [12, 'hello'], [40, 'GG']]);
-  assert.equal(host.stepper.firstMismatch, null, 'chat does not touch the sim');
+  await mute(() => ticks(host, 28));
+  assert.deepEqual(seen, [[12, 'hello'], [40, 'GG']]);
+  // Back to tick 20: the chat shows what was said by then.
+  host.seek(20);
+  for (let k = 0; k < 500 && !(host.status().t === 20 && !host.status().seeking); k++) await mute(() => turn());
+  assert.equal(host.status().t, 20);
+  assert.deepEqual(history.at(-1), [20, ['Room seed 30', 'hello']]);
+  assert.equal(host.status().mismatch, null, 'chat does not touch the sim');
 });
 
 test('landing replay links: DOM untouched while unchanged, hidden when empty', () => {

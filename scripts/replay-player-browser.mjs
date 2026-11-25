@@ -55,7 +55,7 @@ await page.waitForSelector('#replay_banner', { timeout: 15000 });
 const t0 = Date.now();
 await page.waitForFunction(() => {
   const b = document.getElementById('replay_banner');
-  return b && b.dataset.state === 'playing' && window.__simHost && window.__simHost.stepper && window.__simHost.stepper.t > 300;
+  return b && b.dataset.state === 'playing' && window.__simHost && window.__simHost.status && window.__simHost.status().t > 300;
 }, null, { timeout: 60000 }).catch(() => {});
 if (shots) await page.screenshot({ path: join(shots, 'replay-playing.png') });
 console.log('mid-race:', await page.textContent('#replay_status'));
@@ -63,6 +63,25 @@ const chatLog = await page.textContent('#chat_log');
 console.log('chat:', JSON.stringify(chatLog));
 if (!/hello from the replay/.test(chatLog) || !/Room seed 30/.test(chatLog)) await fail('recorded chat not shown');
 if (!(await page.isDisabled('#chat_input'))) await fail('chat input enabled in a replay');
+// Seeking (src/replay-engine.js, in the replay worker), paused: forward to
+// 50 s, back to 15 s; each lands on its tick with the hashes still OK and the chat
+// history cut to the new position.
+const seekTo = async (t) => {
+  const s0 = Date.now();
+  const before = await page.evaluate(() => window.__simHost.status());
+  console.log(`before seek to ${t}: at ${before.t}, look-ahead simulated to ${before.simulatedTo}, keyframes ${before.keyframes.join(',')}`);
+  await page.evaluate((x) => window.__simHost.seek(x), t);
+  await page.waitForFunction((x) => { const st = window.__simHost.status(); return st.t === x && !st.seeking; }, t, { timeout: 120000, polling: 50 });
+  const st = await page.evaluate(() => window.__simHost.status());
+  console.log(`seek to ${t}: ${Date.now() - s0} ms wall (worker ${st.lastSeekMs} ms), keyframes ${st.keyframes.join(',')}, simulated to ${st.simulatedTo}`);
+  if (st.mismatch) await fail('mismatch after a seek: ' + JSON.stringify(st.mismatch));
+};
+await page.evaluate(() => window.__simHost.setPaused(true));
+await seekTo(1500);
+await seekTo(450);
+await page.evaluate(() => window.__simHost.setPaused(false));
+const chatAfter = await page.textContent('#chat_log');
+if (!/hello from the replay/.test(chatAfter)) await fail('chat history lost after seeking back');
 await page.waitForFunction(() => {
   const b = document.getElementById('replay_banner');
   return b && b.dataset.state !== 'playing';
