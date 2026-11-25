@@ -15,6 +15,7 @@
     "serve:app": "npm run build:app && npm run build:server && node dist-server/server.mjs --static dist-app",
     "smoke:server": "node scripts/server-smoke.mjs",
     "check:all": "node scripts/check-all.mjs",
+    "determinism:browsers": "node --import ./test/register.mjs scripts/determinism/browsers.mjs",
     "bench:transport": "node --import ./test/register.mjs scripts/transport/bench.mjs"
   },
   "repository": {
@@ -35,6 +36,7 @@
   },
   "devDependencies": {
     "esbuild": "^0.27.3",
+    "playwright": "^1.65.1",
     "vite": "^7.3.1"
   }
 }
