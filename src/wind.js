@@ -17,13 +17,15 @@
 // the boat's sail model, unchanged. WIND_UNIT_MPS is one such unit in true
 // m/s: Default lattice U × 1 m × 30 steps/s / 100 = 0.3 m/s. Every external
 // wind (UI, Boltzmann, Map, ConstantWind, sample.speed) is in m/s.
+import { DMath } from './det-math.js';
+
 const FIELD_TO_WIND_SPEED = 100 * 4;
 export const WIND_UNIT_MPS = 0.3;
 export const FIELD_TO_MPS = FIELD_TO_WIND_SPEED * WIND_UNIT_MPS;
 
 export function windSample(vx, vy) {
   const speed = Math.sqrt(vx * vx + vy * vy) * FIELD_TO_MPS;
-  const direction = Math.atan2(vy, vx) / Math.PI * 180 + 180;
+  const direction = DMath.atan2(vy, vx) / Math.PI * 180 + 180;
   return { speed, direction, vx, vy };
 }
 
@@ -40,7 +42,7 @@ export function ringWindSample(getWind, x, y, r = BOAT_WIND_RING_R, n = BOAT_WIN
   let sx = 0, sy = 0, k = 0, first = null, same = true;
   for (let i = 0; i < n; i++) {
     const a = 2 * Math.PI * i / n;
-    const w = getWind(x + r * Math.cos(a), y + r * Math.sin(a));
+    const w = getWind(x + r * DMath.cos(a), y + r * DMath.sin(a));
     if (!w || !Number.isFinite(w.vx) || !Number.isFinite(w.vy)) continue;
     if (first === null) first = w;
     else if (w.vx !== first.vx || w.vy !== first.vy) same = false;
@@ -76,8 +78,8 @@ export class ConstantWind {
     // +180 in windSample brings the reported direction back to uiAngle.
     const rad = (this.angleDeg + 180) * Math.PI / 180;
     const mag = this.speed / FIELD_TO_MPS;
-    let vx = Math.cos(rad) * mag;
-    let vy = Math.sin(rad) * mag;
+    let vx = DMath.cos(rad) * mag;
+    let vy = DMath.sin(rad) * mag;
     if (Math.abs(vx) < 1e-12) vx = 0;
     if (Math.abs(vy) < 1e-12) vy = 0;
     this._sample = windSample(vx, vy);
@@ -186,7 +188,7 @@ export function boatSpeedAcc(boat, hz = TRUE_WIND_ACC_HZ) {
   const body = boat && boat.physics_model;
   const v = body && body.m_linearVelocity;
   if (!v || !Number.isFinite(v.x) || !Number.isFinite(v.y)) return 0;
-  const speed = Math.hypot(v.x, v.y);
+  const speed = DMath.hypot(v.x, v.y);
   const step = boat.map && Number.isFinite(boat.map._trueWindUndoStep)
     ? boat.map._trueWindUndoStep : null;
   let st = _boatAccState.get(boat);
@@ -209,7 +211,7 @@ export function correctWindOwnForce(sample, forceOnBoat, k = _trueWindOwnForceK,
   if (!Number.isFinite(fx) || !Number.isFinite(fy)) return sample;
   if (fx === 0 && fy === 0) return sample;
   if (Number.isFinite(fCap) && fCap > 0) {
-    const mag = Math.hypot(fx, fy);
+    const mag = DMath.hypot(fx, fy);
     if (mag > fCap) { fx *= fCap / mag; fy *= fCap / mag; }
   }
   return windSample(sample.vx + k * fx, sample.vy + k * fy);
@@ -291,14 +293,14 @@ export function boatTrueWind(boat, k = _trueWindOwnForceK) {
 // atan2(vy, vx), not windSample.direction (that one is 180° off, upwind).
 export function windArrowSegments(x, y, directionDeg, length) {
   const ang = directionDeg / 180 * Math.PI;
-  const x2 = x + Math.cos(ang) * length;
-  const y2 = y + Math.sin(ang) * length;
+  const x2 = x + DMath.cos(ang) * length;
+  const y2 = y + DMath.sin(ang) * length;
   const back = length * 0.22;
   const flank = length * 0.14;
-  const px = Math.cos(ang + Math.PI / 2) * flank;
-  const py = Math.sin(ang + Math.PI / 2) * flank;
-  const bx = x2 - Math.cos(ang) * back;
-  const by = y2 - Math.sin(ang) * back;
+  const px = DMath.cos(ang + Math.PI / 2) * flank;
+  const py = DMath.sin(ang + Math.PI / 2) * flank;
+  const bx = x2 - DMath.cos(ang) * back;
+  const by = y2 - DMath.sin(ang) * back;
   return [
     { x1: x, y1: y, x2, y2 },
     { x1: x2, y1: y2, x2: bx + px, y2: by + py },

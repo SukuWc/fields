@@ -13,6 +13,7 @@
 //   200 × 400      4 m root,  4.7k:            13.7 ms (x2: 14.8, 1 m: 26.7)
 // 100 × 200 keeps the 1 m root so the field behaves as on the old map.
 
+import { DMath } from './det-math.js';
 import { DEFAULT_SIM_RES, DEFAULT_MAP_SIZE } from './settings-registry.js';
 
 // simRes: the size's default root cell (the registry default, from
@@ -145,7 +146,7 @@ export function fitMapSize(n, key) {
 // Camera: pan limits keep a 7.5 m margin as on the 75 m map (±30), and the
 // zoom-out limit shows the whole length with the 70° vertical FOV.
 export function cameraLimits(w, h) {
-  const zoomAll = (h / 2) / Math.tan((70 / 2) * Math.PI / 180) * 1.4;
+  const zoomAll = (h / 2) / DMath.tan((70 / 2) * Math.PI / 180) * 1.4;
   return {
     xMax: Math.max(0, w / 2 - 7.5),
     yMax: Math.max(0, h / 2 - 7.5),

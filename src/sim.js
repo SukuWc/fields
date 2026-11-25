@@ -6,6 +6,7 @@
 //
 // One step() is one 30 Hz tick, run right after world.step(dt) (loop.js).
 // The order of work inside a step is the order of the old main.js simPass.
+import { DMath } from './det-math.js';
 import { SAIL_LATTICE_COUPLING, SAIL_WAKE_GAIN } from './boat.js';
 import { boatTrueWind } from './wind.js';
 import { trackBoats, resetTracking } from './domainTrack.js';
@@ -427,13 +428,13 @@ export class Sim {
     }
     const others = [...this.players, ...this.marks];
     const free = (x, y) => Math.abs(x) <= map.width / 2 - MARGIN && Math.abs(y) <= map.height / 2 - MARGIN
-      && others.every((o) => Math.hypot(o.x - x, o.y - y) >= CLEAR);
+      && others.every((o) => DMath.hypot(o.x - x, o.y - y) >= CLEAR);
     for (let ring = 0; ring < 12; ring++) {
       const n = ring === 0 ? 1 : ring * 8;
       for (let i = 0; i < n; i++) {
         const a = ring === 0 ? 0 : (i / n) * 2 * Math.PI;
         // Along the line first (east, then west), then behind it.
-        const x = base.x + Math.cos(a) * ring * STEP, y = base.y - Math.abs(Math.sin(a)) * ring * STEP;
+        const x = base.x + DMath.cos(a) * ring * STEP, y = base.y - Math.abs(DMath.sin(a)) * ring * STEP;
         if (free(x, y)) return { x, y };
       }
     }

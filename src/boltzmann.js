@@ -1,3 +1,4 @@
+import { DMath } from './det-math.js';
 import { DEFAULT_MAX_LEVEL, DEFAULT_BOAT_REFINE_RADIUS } from './sim-modes.js';
 
 // No DOM here: plot type and contrast come from the client's FieldPainter
@@ -490,7 +491,7 @@ function depositBilinear(iCont, jCont, fx, fy, accept, push, noFallback = false)
 			for (let i = iCenter - r; i <= iCenter + r; i++) {
 				if (Math.max(Math.abs(i - iCenter), Math.abs(j - jCenter)) !== r) continue;
 				if (!accept(i, j)) continue;
-				band.push([i, j, 1 / Math.max(Math.hypot(i - iCont, j - jCont), 1e-3)]);
+				band.push([i, j, 1 / Math.max(DMath.hypot(i - iCont, j - jCont), 1e-3)]);
 			}
 		}
 		if (!band.length) continue;
@@ -1415,8 +1416,8 @@ export class RefinementDomain {
 		for (let i = 0; i < n; i++) {
 			const a0 = (i / n) * Math.PI * 2;
 			const a1 = ((i + 1) / n) * Math.PI * 2;
-			const p0 = toWorld(ccx + Math.cos(a0) * rr, ccy + Math.sin(a0) * rr);
-			const p1 = toWorld(ccx + Math.cos(a1) * rr, ccy + Math.sin(a1) * rr);
+			const p0 = toWorld(ccx + DMath.cos(a0) * rr, ccy + DMath.sin(a0) * rr);
+			const p1 = toWorld(ccx + DMath.cos(a1) * rr, ccy + DMath.sin(a1) * rr);
 			segs.push({ x1: p0.x, y1: p0.y, x2: p1.x, y2: p1.y, dim: false });
 		}
 		if (this.mask) {
@@ -1879,7 +1880,7 @@ export class RefinementDomain {
 		if (!cell || cell.barrier) return;
 		let s = 1 / this.dx;
 		let capped = false;
-		const speed = Math.hypot(cell.ux, cell.uy);
+		const speed = DMath.hypot(cell.ux, cell.uy);
 		if (speed > 0.32) {
 			s *= 0.32 / speed;
 			capped = true;
@@ -2391,8 +2392,8 @@ export class Boltzmann {
 	// Initialize all cells to global equilibrium at the configured wind velocity.
 	// Eq. 3: sets f_i = f_i^eq(rho=1, u=u_wind) everywhere.
 	initFluid() {
-		const hspeed = Math.cos(this.direction / 180 * Math.PI) * this.speed;
-		const vspeed = Math.sin(this.direction / 180 * Math.PI) * this.speed;
+		const hspeed = DMath.cos(this.direction / 180 * Math.PI) * this.speed;
+		const vspeed = DMath.sin(this.direction / 180 * Math.PI) * this.speed;
 
 		// Amazingly, if I nest the y loop inside the x loop, Firefox slows down by a factor of 20
 		for (var y = 0; y < this.height; y++) {
@@ -2409,8 +2410,8 @@ export class Boltzmann {
 	// the base-wind schedule starts (Sim windSchedule) so the field starts at
 	// the scheduled wind. Fine levels share the lattice velocity units.
 	refillUniform() {
-		const hspeed = Math.cos(this.direction / 180 * Math.PI) * this.speed;
-		const vspeed = Math.sin(this.direction / 180 * Math.PI) * this.speed;
+		const hspeed = DMath.cos(this.direction / 180 * Math.PI) * this.speed;
+		const vspeed = DMath.sin(this.direction / 180 * Math.PI) * this.speed;
 		const fill = (cells) => {
 			for (let k = 0; k < cells.length; k++) {
 				const c = cells[k];
@@ -2528,8 +2529,8 @@ export class Boltzmann {
 	// Enforce Dirichlet inlet/outlet BCs on all four edges: f_i = f_i^eq(rho=1, u=u_wind).
 	// Eq. 3: equilibrium distribution used to prescribe the boundary state each step.
 	setBoundaries() {
-		const hspeed = Math.cos(this.direction / 180 * Math.PI) * this.speed;
-		const vspeed = Math.sin(this.direction / 180 * Math.PI) * this.speed;
+		const hspeed = DMath.cos(this.direction / 180 * Math.PI) * this.speed;
+		const vspeed = DMath.sin(this.direction / 180 * Math.PI) * this.speed;
 
 		for (var x = 0; x < this.width; x++) {
 			this.cells[x + 0                     * this.width].setEquil(hspeed, vspeed, 1);
@@ -2570,7 +2571,7 @@ export class Boltzmann {
 		const cx = this.width / 2 + wx * this.resolution;
 		const cy = this.height / 2 + wy * this.resolution;
 		const level = this._finestLevel(cx, cy);
-		const dx = level === 0 ? 1 : 2 ** -level;
+		const dx = level === 0 ? 1 : DMath.pow(2, -level);
 		return dx / this.resolution;
 	}
 

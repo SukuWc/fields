@@ -11,6 +11,8 @@
 //
 // No DOM. Units: world metres, wind m/s, sim time in seconds (30 Hz ticks).
 
+import { DMath } from './det-math.js';
+
 /** Along-wind Gaussian σ (m). Thin axis of the ellipse. */
 export const GUST_ALONG_SIGMA_M = 2.5;
 /** Cross-wind Gaussian σ (m). Long axis ⊥ gust wind. Aspect = 5. */
@@ -92,15 +94,15 @@ function clamp01(x) {
 export function gustEnvelope(ageS, lifeS, rampS) {
   if (!(lifeS > 0) || ageS < 0 || ageS > lifeS) return 0;
   const r = Math.max(0, Math.min(rampS, lifeS / 2));
-  if (ageS < r) return 0.5 - 0.5 * Math.cos(Math.PI * ageS / r);
-  if (ageS > lifeS - r) return 0.5 - 0.5 * Math.cos(Math.PI * (lifeS - ageS) / r);
+  if (ageS < r) return 0.5 - 0.5 * DMath.cos(Math.PI * ageS / r);
+  if (ageS > lifeS - r) return 0.5 - 0.5 * DMath.cos(Math.PI * (lifeS - ageS) / r);
   return 1;
 }
 
 /** Unit vector of free-stream flow (downwind) from UI wind-from angle (°). */
 export function flowUnitFromWind(windFromDeg) {
   const rad = (windFromDeg + 180) * Math.PI / 180;
-  return { x: Math.cos(rad), y: Math.sin(rad) };
+  return { x: DMath.cos(rad), y: DMath.sin(rad) };
 }
 
 /** Along (flow) and cross (long-axis) units for a column / map wind. */
@@ -141,15 +143,15 @@ export function gustGuidesFromState(gust) {
     if (!e || e.length < 6) continue;
     const cx = e[0], cy = e[1], sa = e[2], sc = e[3], ax = e[4], ay = e[5];
     if (!(sa > 0) || !(sc > 0)) continue;
-    const mag = Math.hypot(ax, ay);
+    const mag = DMath.hypot(ax, ay);
     if (!(mag > 1e-12)) continue;
     const ux = ax / mag, uy = ay / mag;
     const vx = -uy, vy = ux;
     for (let i = 0; i < steps; i++) {
       const a0 = (i / steps) * 2 * Math.PI;
       const a1 = ((i + 1) / steps) * 2 * Math.PI;
-      const c0 = Math.cos(a0), s0 = Math.sin(a0);
-      const c1 = Math.cos(a1), s1 = Math.sin(a1);
+      const c0 = DMath.cos(a0), s0 = DMath.sin(a0);
+      const c1 = DMath.cos(a1), s1 = DMath.sin(a1);
       guides.push({
         color: GUST_OUTLINE_COLOR,
         opacity: GUST_OUTLINE_OPACITY,
@@ -216,7 +218,7 @@ export function injectEllipticalKernel(bm, cx, cy, fx, fy, along, cross, alongSi
       const da = dx * ax + dy * ay;
       const dc = dx * cxu + dy * cyu;
       if (Math.abs(da) > halfA || Math.abs(dc) > halfC) continue;
-      const w = Math.exp(-0.5 * ((da / alongSigma) ** 2 + (dc / crossSigma) ** 2));
+      const w = DMath.exp(-0.5 * ((da / alongSigma) ** 2 + (dc / crossSigma) ** 2));
       if (w < WEIGHT_EPS) continue;
       const wx = cx + dx, wy = cy + dy;
       if (wx < minX || wx > maxX || wy < minY || wy > maxY) continue;
@@ -351,7 +353,7 @@ export function sampleNormal(mean, sd, rng) {
   let u = 0, v = 0;
   while (u === 0) u = rng();
   while (v === 0) v = rng();
-  const z = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  const z = Math.sqrt(-2 * DMath.log(u)) * DMath.cos(2 * Math.PI * v);
   return mean + z * sd;
 }
 
@@ -359,7 +361,7 @@ export function sampleNormal(mean, sd, rng) {
 export function samplePoisson(lambda, rng) {
   if (!(lambda > 0)) return 0;
   if (lambda > 100) lambda = 100;
-  const L = Math.exp(-lambda);
+  const L = DMath.exp(-lambda);
   let k = 0, p = 1;
   do {
     k++;

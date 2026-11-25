@@ -29,6 +29,7 @@
 // sailForceToNewtons dividing it back out for heel. Those were not the
 // same force. sail_efficiency is gone.
 
+import { DMath } from './det-math.js';
 import { DINGHY_DEFAULTS, G, RHO_AIR } from './heel.js';
 
 export { RHO_AIR };
@@ -136,8 +137,8 @@ export function hydroToInternal(area, windUnit, forcePasses) {
 // "from" vector the sail angle uses).
 export function apparentWindMs(boatVel, windFromRad, twsMs) {
   return {
-    x: boatVel.x + Math.cos(windFromRad) * twsMs,
-    y: boatVel.y + Math.sin(windFromRad) * twsMs,
+    x: boatVel.x + DMath.cos(windFromRad) * twsMs,
+    y: boatVel.y + DMath.sin(windFromRad) * twsMs,
   };
 }
 
@@ -182,8 +183,8 @@ export const SAIL_CE_CHORD_FRACTION = 1 / 3;
 // boom angle swings the clew toward −X (the formula the sail drawing uses).
 export function clewOffset(boomLength, boomRad) {
   return {
-    x: -Math.sin(boomRad) * boomLength,
-    y: Math.cos(boomRad) * boomLength,
+    x: -DMath.sin(boomRad) * boomLength,
+    y: DMath.cos(boomRad) * boomLength,
   };
 }
 
@@ -251,7 +252,7 @@ export function jibBoomForceLocal(mastY, tackY, boomLength, boomRad) {
 // the bow. `aw` is the from-vector from apparentWindMs. `hullAngleRad` is
 // the wrapped hull angle boat.js uses for this.awa.
 export function apparentWindAngleDeg(aw, hullAngleRad) {
-  let awa = Math.atan2(aw.y, aw.x) * 180 / Math.PI - hullAngleRad * 180 / Math.PI + 90;
+  let awa = DMath.atan2(aw.y, aw.x) * 180 / Math.PI - hullAngleRad * 180 / Math.PI + 90;
   if (awa > 180) awa -= 360;
   if (awa < -180) awa += 360;
   return awa;
@@ -371,13 +372,13 @@ export function jibBackwindStep(prev, sample) {
 export function sailLiftDrag(hullAngleRad, awaDeg, sailK, cl, cd) {
   const awaRad = awaDeg * Math.PI / 180;
   const drag = {
-    x: Math.cos(hullAngleRad + awaRad + Math.PI / 2) * sailK * cd,
-    y: Math.sin(hullAngleRad + awaRad + Math.PI / 2) * sailK * cd,
+    x: DMath.cos(hullAngleRad + awaRad + Math.PI / 2) * sailK * cd,
+    y: DMath.sin(hullAngleRad + awaRad + Math.PI / 2) * sailK * cd,
   };
   const sgn = Math.sign(awaDeg);
   const lift = {
-    x: -sgn * Math.cos(hullAngleRad + awaRad) * sailK * cl,
-    y: -sgn * Math.sin(hullAngleRad + awaRad) * sailK * cl,
+    x: -sgn * DMath.cos(hullAngleRad + awaRad) * sailK * cl,
+    y: -sgn * DMath.sin(hullAngleRad + awaRad) * sailK * cl,
   };
   return { lift, drag };
 }
@@ -385,7 +386,7 @@ export function sailLiftDrag(hullAngleRad, awaDeg, sailK, cl, cd) {
 export function frictionalDragArea(speedMs) {
   const v = Math.max(speedMs, 0.05);
   const rn = v * LASER_HULL.lwl * LASER_HULL.reynoldsLengthFactor / NU_WATER;
-  const cf = 0.075 / (Math.log10(rn) - 2) ** 2;
+  const cf = 0.075 / (DMath.log10(rn) - 2) ** 2;
   return cf * LASER_HULL.wetted;
 }
 
@@ -408,7 +409,7 @@ export function residuaryDragArea(speedMs) {
   const major = RESIDUARY_HUMP_M2 * (x2 * x2);
   const fnSmall = (3.5 * KN_TO_MPS) / Math.sqrt(G * LASER_HULL.lwl);
   const z = (fn - fnSmall) / 0.06;
-  const small = 0.0015 * Math.exp(-0.5 * z * z);
+  const small = 0.0015 * DMath.exp(-0.5 * z * z);
   return major + small;
 }
 

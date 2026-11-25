@@ -4,6 +4,7 @@
 // them below the start line). World metres, origin at the map centre, +Y up
 // (wind_angle_deg = 90 is wind from +Y). Validation is pure (no Sim) so the
 // page, SimCore and the server run the same checks (room-config.js).
+import { DMath } from './det-math.js';
 import { Mark, DEFAULT_MARK_MASS } from './mark.js';
 import {
   Course,
@@ -89,11 +90,11 @@ export function validateCustomLayout(raw, mapW, mapH) {
       throw 'mark ' + id + ' (' + fmt(x) + ', ' + fmt(y) + ') is outside this ' + mapW + ' x ' + mapH + ' m room (|x| ≤ ' + fmt(xMax) + ', |y| ≤ ' + fmt(yMax) + ')';
     }
     for (const o of MAP_OBSTACLES) {
-      const d = Math.hypot(x - o.x, y - o.y) - o.r;
+      const d = DMath.hypot(x - o.x, y - o.y) - o.r;
       if (d < CUSTOM_OBSTACLE_GAP_M) throw 'mark ' + id + ' is ' + fmt(Math.max(0, d)) + ' m from the fixed obstacle at (' + o.x + ', ' + o.y + ') (min ' + CUSTOM_OBSTACLE_GAP_M + ' m)';
     }
     for (const m of out.marks) {
-      const d = Math.hypot(x - m.x, y - m.y);
+      const d = DMath.hypot(x - m.x, y - m.y);
       if (d < CUSTOM_MARK_MIN_GAP_M) throw 'marks ' + m.id + ' and ' + id + ' are ' + fmt(d) + ' m apart (min ' + CUSTOM_MARK_MIN_GAP_M + ' m)';
     }
     const m = { id, x, y };
@@ -113,7 +114,7 @@ export function validateCustomLayout(raw, mapW, mapH) {
     if (!prev) roles.set(id, { role, group });
     return byId.get(id);
   };
-  const lineLen = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const lineLen = (a, b) => DMath.hypot(a.x - b.x, a.y - b.y);
 
   if (raw.start !== undefined) {
     const s = raw.start;

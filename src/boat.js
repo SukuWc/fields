@@ -1,3 +1,4 @@
+import { DMath } from './det-math.js';
 import planck from 'planck-js';
 import { aeroCoefficients } from './utils.js';
 import {
@@ -119,7 +120,7 @@ const N = LEGACY_PASSES_PER_TICK;
 // Ghost prediction inputs are sent at 1 mm/s, 1 mrad/s (small frames).
 const r3 = (x) => Math.round(x * 1000) / 1000;
 // Per-pass exponential blend a, applied N times: 1 - (1 - a)^N.
-const blendN = (a) => 1 - Math.pow(1 - a, N);
+const blendN = (a) => 1 - DMath.pow(1 - a, N);
 export const WIND_SMOOTH_ALPHA = blendN(0.2);          // 0.488
 export const PENALTY_RUDDER_BLEND = blendN(0.45);      // 0.834
 export const AUTOPILOT_RUDDER_BLEND = blendN(0.1);     // 0.271 (was /10 per pass)
@@ -138,7 +139,7 @@ export const AUTOPILOT_KD = 0;
 export const AUTOPILOT_KP = 2;
 // Integral gain stays 0 unless a dev-config Apply sets autopilot_ki.
 export const AUTOPILOT_KI = 0;
-export const AUTOPILOT_SUM_DECAY = Math.pow(0.85, N);
+export const AUTOPILOT_SUM_DECAY = DMath.pow(0.85, N);
 // Forces (applyForce accumulates until world.step) and impulses per tick.
 export const FORCE_PASSES = N;
 
@@ -481,7 +482,7 @@ export class Boat{
       this.wind_vy_smooth = alpha * wind_raw.vy + (1 - alpha) * this.wind_vy_smooth;
     }
     this.wind_speed     = Math.sqrt(this.wind_vx_smooth**2 + this.wind_vy_smooth**2) * 100 * 4;
-    this.wind_direction = Math.atan2(this.wind_vy_smooth, this.wind_vx_smooth) / Math.PI * 180 + 180;
+    this.wind_direction = DMath.atan2(this.wind_vy_smooth, this.wind_vx_smooth) / Math.PI * 180 + 180;
 
     var angle = this.physics_model.getAngle();
     this.angle = angle;
@@ -498,10 +499,10 @@ export class Boat{
     }
 
     // direct (forward) component of velocity vector
-    let d = this.physics_model.m_linearVelocity.x*Math.cos(angle-Math.PI/2) + this.physics_model.m_linearVelocity.y*Math.sin(angle-Math.PI/2) 
+    let d = this.physics_model.m_linearVelocity.x*DMath.cos(angle-Math.PI/2) + this.physics_model.m_linearVelocity.y*DMath.sin(angle-Math.PI/2) 
     
     // quadrature (sideways) component of velocity vector
-    let q = this.physics_model.m_linearVelocity.x*Math.cos(angle) + this.physics_model.m_linearVelocity.y*Math.sin(angle) 
+    let q = this.physics_model.m_linearVelocity.x*DMath.cos(angle) + this.physics_model.m_linearVelocity.y*DMath.sin(angle) 
 
     // Centreboard: NACA 0012 finite wing (foil.js). Inflow is the hull
     // velocity at the board. Lift ⟂ inflow, drag ∥ inflow, in newtons,
@@ -544,7 +545,7 @@ export class Boat{
     // boat speed as one internal unit (0.3 m/s of wind) and under-stated AWS.
     const twsMsNow = this.wind_speed * WIND_UNIT_MPS;
     const awMs = apparentWindMs(this.physics_model.m_linearVelocity, wind_rad, twsMsNow);
-    const awsMs = Math.hypot(awMs.x, awMs.y);
+    const awsMs = DMath.hypot(awMs.x, awMs.y);
     // aws stays in the internal unit for telemetry and the flap amplitude.
     // It is now awsMs / WIND_UNIT_MPS, a true conversion, not the mixed sum.
     let aw_vector = awMs;
@@ -625,7 +626,7 @@ export class Boat{
         dmod = -1
       }
 
-      this.rudder_angle = this.rudder_angle * Math.pow(0.98 - dmod / 80, (this.autopilot_enabled ? 1 : RUDDER_RETURN_SPEEDUP) * N)
+      this.rudder_angle = this.rudder_angle * DMath.pow(0.98 - dmod / 80, (this.autopilot_enabled ? 1 : RUDDER_RETURN_SPEEDUP) * N)
 
     }
     
@@ -729,7 +730,7 @@ export class Boat{
     // Calculate boat speed and velocity made good
 
     let bs = Math.sqrt(this.physics_model.m_linearVelocity.x*this.physics_model.m_linearVelocity.x + this.physics_model.m_linearVelocity.y*this.physics_model.m_linearVelocity.y)
-    let vmg = Math.cos(twa/180*Math.PI)*bs
+    let vmg = DMath.cos(twa/180*Math.PI)*bs
 
     tel.bs = bs;
     tel.vmg = vmg;
@@ -830,8 +831,8 @@ export class Boat{
     this._jibAoaDeg = jib.aoa;
 
     const mainsail_f = { x: main.total.x + jib.total.x, y: main.total.y + jib.total.y };
-    const wm = Math.hypot(main.total.x, main.total.y);
-    const wj = Math.hypot(jib.total.x, jib.total.y);
+    const wm = DMath.hypot(main.total.x, main.total.y);
+    const wj = DMath.hypot(jib.total.x, jib.total.y);
     const wt = wm + wj;
     // Combined CE for the magenta marker: force-weighted, so it sits
     // between the two boom points. Both already carry the leeward walk.
@@ -856,7 +857,7 @@ export class Boat{
     tel.jibAoa = jib.aoa;
 
     this.power = Math.sqrt(mainsail_f.x * mainsail_f.x + mainsail_f.y * mainsail_f.y);
-    this.power_direction = Math.atan2(mainsail_f.y, mainsail_f.x) / Math.PI * 180;
+    this.power_direction = DMath.atan2(mainsail_f.y, mainsail_f.x) / Math.PI * 180;
     // Body vector (newtons / FORCE_PASSES), the sum. Heel divides by perN.
     this._bodySailForce = { x: mainsail_f.x, y: mainsail_f.y };
     this._sailForcePerN = perN;
@@ -874,9 +875,9 @@ export class Boat{
     // +X) in N drives the roll DOF. Each sail's moment is that sail's side
     // force times the shared ceHeight; stepHeel applies the sum.
     // Forward (bow, local −Y) for the drive component, same axis as `d`.
-    const fwdX = Math.sin(angle), fwdY = -Math.cos(angle);
+    const fwdX = DMath.sin(angle), fwdY = -DMath.cos(angle);
     const fScale = 1 / perN;
-    const sideOf = (f) => (f.x * Math.cos(angle) + f.y * Math.sin(angle)) * fScale;
+    const sideOf = (f) => (f.x * DMath.cos(angle) + f.y * DMath.sin(angle)) * fScale;
     const driveOf = (f) => (f.x * fwdX + f.y * fwdY) * fScale;
     if (this.heel && Number.isFinite(mainsail_f.x) && Number.isFinite(mainsail_f.y)) {
       this.main_side_force_n = sideOf(main.total);
@@ -1017,7 +1018,7 @@ export class Boat{
     const s = {
       x: this.x, y: this.y, px: p.x, py: p.y, pa: body.getAngle(), ha: this.hull_angle,
       id: this.boatId, vx: r3(lv.x), vy: r3(lv.y), w: r3(body.getAngularVelocity()),
-      awa: this.awa, tw: Math.atan2(this.wind_vy_smooth, this.wind_vx_smooth),
+      awa: this.awa, tw: DMath.atan2(this.wind_vy_smooth, this.wind_vx_smooth),
       ap: this.autopilot_enabled ? 1 : 0, wd: this.wind_direction, aht: this.autopilot_heading_target,
       twa: this.twa, bv1: this.autopilot_heading_best_vmg_1, bv2: this.autopilot_heading_best_vmg_2,
       ra: this.rudderAngleShown(), mba: this.mainsail_boom_angle_actual, jba: this.jib_boom_angle_actual,
@@ -1096,8 +1097,8 @@ export class Boat{
       const mast = this.physics_model.getWorldPoint(planck.Vec2(0.0, this.mainsail_leading_edge_position));
       segments.push({
         x0: bow.x, y0: bow.y,
-        x1: mast.x + Math.cos(angle + Math.PI/2 + boomRad) * this.mainsail_boom_length,
-        y1: mast.y + Math.sin(angle + Math.PI/2 + boomRad) * this.mainsail_boom_length,
+        x1: mast.x + DMath.cos(angle + Math.PI/2 + boomRad) * this.mainsail_boom_length,
+        y1: mast.y + DMath.sin(angle + Math.PI/2 + boomRad) * this.mainsail_boom_length,
         fx: -this.mainsail_force.x,
         fy: -this.mainsail_force.y,
       });

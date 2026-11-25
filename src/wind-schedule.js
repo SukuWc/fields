@@ -76,6 +76,7 @@
 // [1, 100]; a bare Sim with no room config (scenario checks, unit tests)
 // starts with the schedule off (SIM_WIND_SCHEDULE), a steady wind.
 // No DOM: runs in the Sim on the server, worker and tests.
+import { DMath } from './det-math.js';
 import { mulberry32, sampleNormal } from './gusts.js';
 
 // Frequency unit of the TOML terms: cycles per hour. Change it here only.
@@ -155,7 +156,7 @@ export function parseWindSeed(raw) {
 export function drawWindSeed([mean, sd], rand = Math.random) {
   if (!(sd > 0)) return mean;
   const u = 1 - rand(), v = rand(); // u in (0, 1]
-  const z = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  const z = Math.sqrt(-2 * DMath.log(u)) * DMath.cos(2 * Math.PI * v);
   return Math.min(MAX_SEED, Math.abs(Math.round(mean + sd * z)));
 }
 
@@ -328,9 +329,9 @@ export function windSchedulePhases(s) {
 }
 
 // Direction term A (sin(2π f t + φ) − sin φ): exactly 0 at t = 0.
-const dirTerm = (a, f, ph, t) => a * (Math.sin(TAU * f * t + ph) - Math.sin(ph));
+const dirTerm = (a, f, ph, t) => a * (DMath.sin(TAU * f * t + ph) - DMath.sin(ph));
 // Speed term B sin(2π f t + φ): B sin φ at t = 0.
-const speedTerm = (a, f, ph, t) => a * Math.sin(TAU * f * t + ph);
+const speedTerm = (a, f, ph, t) => a * DMath.sin(TAU * f * t + ph);
 
 // Offset of realised terms (sampleWindSchedule(s).osc) at time t (s): { dirDeg,
 // speedFactor }. dirDeg adds to the base angle, speedFactor multiplies the

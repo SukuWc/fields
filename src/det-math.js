@@ -1,15 +1,17 @@
-// PROTOTYPE (replay determinism spike, docs/replay-determinism.md): pure-JS
-// ports of the fdlibm functions the sim calls, built from + - * / and
-// Math.sqrt only (all IEEE-754 correctly rounded), so every engine returns
-// the same bits. Not wired into the app; installDeterministicMath() swaps
-// them onto the global Math for the harness (planck-js reads Math through
-// Object.create(Math), so it picks them up too).
+// Deterministic math for the sim path (docs/replay-determinism.md): pure-JS
+// ports of the fdlibm functions, built from + - * / and Math.sqrt only (all
+// IEEE-754 correctly rounded), so Node and every browser engine return the
+// same bits and a race replays exactly from its seed and commands. Sim code
+// calls DMath.sin(…) etc. instead of the built-in Math ones, and writes
+// integer powers as x * x or DMath.pow (the ** operator rounds differently
+// in V8 and in SpiderMonkey / JSC for exponents other than 2).
+// test/det-math-guard.test.mjs keeps built-in transcendental Math and ** out
+// of the sim-path files.
 //
-// Covered: sin, cos, tan, atan, atan2, acos, asin, exp, log, log10, log2,
-// pow, hypot. The ** operator cannot be patched: Firefox and WebKit compute
-// an integer power by repeated multiplication, V8 does not, so the sim's
-// x ** n with n other than 2 (exact everywhere) must become pow() / x*x*x. sin/cos/tan of |x| > 2^19·π/2
-// fall back to native (no Payne-Hanek reduction; the sim never gets there).
+// sin, cos, atan, atan2, asin, acos, exp, log, log10 and hypot give the same
+// bits as Node's V8; pow is within 1 ulp, tan and log2 within 2 ulp.
+// sin / cos / tan of |x| > 2^19·π/2 fall back to the built-in functions (no
+// Payne-Hanek reduction; the sim never gets there).
 const F = new Float64Array(1);
 const W = new Int32Array(F.buffer); // little-endian: W[0] low, W[1] high
 const hi = (x) => { F[0] = x; return W[1]; };
@@ -17,10 +19,8 @@ const lo = (x) => { F[0] = x; return W[0]; };
 const withHi = (x, h) => { F[0] = x; W[1] = h; return F[0]; };
 const withLo = (x, l) => { F[0] = x; W[0] = l; return F[0]; };
 
-const native = {
-  sin: Math.sin, cos: Math.cos, tan: Math.tan, atan: Math.atan, atan2: Math.atan2, acos: Math.acos, asin: Math.asin,
-  exp: Math.exp, log: Math.log, log10: Math.log10, log2: Math.log2, pow: Math.pow, hypot: Math.hypot,
-};
+// Built-ins for the |x| > 2^19·π/2 fallback only.
+const native = { sin: Math.sin, cos: Math.cos };
 
 // ---- argument reduction (e_rem_pio2.c, small and medium |x|) ----
 const invpio2 = 6.36619772367581382433e-01;
@@ -517,12 +517,5 @@ export function hypot(...v) {
   return m * Math.sqrt(s);
 }
 
-export const DET_MATH = { sin, cos, tan, atan, atan2, acos, asin, exp, log, log10, log2, pow, hypot };
-
-// Swap the deterministic versions onto the global Math (harness only).
-export function installDeterministicMath() {
-  for (const [k, f] of Object.entries(DET_MATH)) Math[k] = f;
-}
-export function restoreNativeMath() {
-  for (const [k, f] of Object.entries(native)) Math[k] = f;
-}
+// The sim's namespace: DMath.sin(x) where the built-in would be Math.sin(x).
+export const DMath = Object.freeze({ sin, cos, tan, atan, atan2, acos, asin, exp, log, log10, log2, pow, hypot });

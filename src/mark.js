@@ -1,3 +1,4 @@
+import { DMath } from './det-math.js';
 import planck from 'planck-js';
 import { dinghyTotalMass, LEGACY_DENSITY_MASS_KG } from './dinghy-forces.js';
 
@@ -97,7 +98,7 @@ export class Mark {
 
   // Distance from the anchor, metres.
   displacement() {
-    return Math.hypot(this.x - this.anchor.x, this.y - this.anchor.y);
+    return DMath.hypot(this.x - this.anchor.x, this.y - this.anchor.y);
   }
 
   // Call once per world.step, before it. Planck clears forces after a step.
@@ -136,7 +137,7 @@ export function markGuides(ax, ay, px, py) {
   const s = 0.3;
   g.push({ color: MARK_ANCHOR_COLOR, type: 'guide', x1: ax - s, y1: ay - s, x2: ax + s, y2: ay + s });
   g.push({ color: MARK_ANCHOR_COLOR, type: 'guide', x1: ax - s, y1: ay + s, x2: ax + s, y2: ay - s });
-  if (Math.hypot(px - ax, py - ay) > MARK_LINE_MIN_M) {
+  if (DMath.hypot(px - ax, py - ay) > MARK_LINE_MIN_M) {
     g.push({ color: MARK_ANCHOR_COLOR, opacity: 0.8, type: 'guide', x1: ax, y1: ay, x2: px, y2: py });
   }
   return g;

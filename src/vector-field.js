@@ -16,6 +16,7 @@
 //   so 0 is −π (downwind toward −X). Unused (0) on barrier / hidden cells.
 // Quantization bounds: speed at most SPEED_MAX_MPS / (2·253) ≈ 0.0316 m/s;
 // direction at most 180/256 ≈ 0.703°.
+import { DMath } from './det-math.js';
 import { ROLE_FLUID } from './boltzmann.js';
 import { FIELD_TO_MPS } from './wind.js';
 
@@ -38,7 +39,7 @@ export function speedFromByte(b, vmax = SPEED_MAX_MPS) {
 }
 
 export function dirToByte(u, v) {
-  return Math.round((Math.atan2(v, u) + Math.PI) * 256 / TWO_PI) & 255;
+  return Math.round((DMath.atan2(v, u) + Math.PI) * 256 / TWO_PI) & 255;
 }
 
 export function dirFromByte(b) {
@@ -49,7 +50,7 @@ export function uvFromBytes(speedByte, dirByte, vmax = SPEED_MAX_MPS) {
   const speed = speedFromByte(speedByte, vmax);
   if (speed == null) return null;
   const a = dirFromByte(dirByte);
-  return { u: speed * Math.cos(a), v: speed * Math.sin(a) };
+  return { u: speed * DMath.cos(a), v: speed * DMath.sin(a) };
 }
 
 function cellWorld(rootW, rootH, resolution, cx, cy) {
@@ -67,7 +68,7 @@ function sampleMps(bm, wx, wy) {
 }
 
 function encodeCell(u, v, vmax) {
-  const speed = Math.hypot(u, v);
+  const speed = DMath.hypot(u, v);
   return { speed: speedToByte(speed, vmax), dir: speed > 1e-12 ? dirToByte(u, v) : 0 };
 }
 
@@ -207,7 +208,7 @@ export function vectorFieldBounds(msg) {
 // above 1 saturate the palette the way the old speed plot did.
 export function speedByteToColorIndex(speedByte, contrastExp, nColors) {
   if (speedByte >= VECTOR_BARRIER) return null;
-  const contrast = Math.pow(1.2, Number(contrastExp) || 0);
+  const contrast = DMath.pow(1.2, Number(contrastExp) || 0);
   const t = Math.max(0, Math.min(1, (speedByte / SPEED_BYTE_MAX) * contrast));
   return Math.round(t * nColors);
 }

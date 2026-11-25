@@ -37,6 +37,7 @@
 // reason text: course marks "mark n", gate marks "gate n", start-line ends
 // "RC" and "pin"; anything else is "mark".
 
+import { DMath } from './det-math.js';
 import {
   activeRulesState,
   chargePendingPenalty,
@@ -104,7 +105,7 @@ function segDist(p, a, b) {
   const l2 = dx * dx + dy * dy;
   let t = l2 > 0 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2 : 0;
   t = Math.max(0, Math.min(1, t));
-  return Math.hypot(p.x - a.x - dx * t, p.y - a.y - dy * t);
+  return DMath.hypot(p.x - a.x - dx * t, p.y - a.y - dy * t);
 }
 
 function inside(p, poly) {
@@ -122,7 +123,7 @@ export function hullMarkClearance(boat, mark) {
   const hull = Array.isArray(boat.hull) ? boat.hull : hullVerticesWorld(boat);
   const c = markCentre(mark);
   const r = mark.radius || 0.5;
-  if (!hull.length) return Math.hypot(boat.x - c.x, boat.y - c.y) - r;
+  if (!hull.length) return DMath.hypot(boat.x - c.x, boat.y - c.y) - r;
   let d = Infinity;
   for (let i = 0; i < hull.length; i++) d = Math.min(d, segDist(c, hull[i], hull[(i + 1) % hull.length]));
   return (hull.length > 2 && inside(c, hull) ? -d : d) - r;
@@ -223,7 +224,7 @@ export function markTouchGuidesFromState(flashes) {
     for (let k = 0; k < 24; k++) {
       const a0 = k / 24 * 2 * Math.PI;
       const a1 = (k + 1) / 24 * 2 * Math.PI;
-      g.push({ type: 'guide', color: MARK_TOUCH_COLOR, opacity, x1: f.x + f.r * Math.cos(a0), y1: f.y + f.r * Math.sin(a0), x2: f.x + f.r * Math.cos(a1), y2: f.y + f.r * Math.sin(a1) });
+      g.push({ type: 'guide', color: MARK_TOUCH_COLOR, opacity, x1: f.x + f.r * DMath.cos(a0), y1: f.y + f.r * DMath.sin(a0), x2: f.x + f.r * DMath.cos(a1), y2: f.y + f.r * DMath.sin(a1) });
     }
   }
   return g;

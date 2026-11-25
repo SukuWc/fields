@@ -41,6 +41,7 @@
 // after the signal. A boat that has not started after the gun shows as not
 // started. Once started she stays started (no general recall yet).
 
+import { DMath } from './det-math.js';
 import { LAYER_COURSE } from './draw-order.js';
 import { BOAT_LENGTH_M, hullVerticesWorld } from './rules.js';
 
@@ -73,7 +74,7 @@ export class StartLine {
     this.pin = pin;
     const a = anchorOf(pin);
     const b = anchorOf(committee);
-    this.len = Math.hypot(b.x - a.x, b.y - a.y);
+    this.len = DMath.hypot(b.x - a.x, b.y - a.y);
     if (!(this.len > 0)) throw new Error('Start line needs two separate ends');
     this.tx = (b.x - a.x) / this.len;
     this.ty = (b.y - a.y) / this.len;
@@ -114,8 +115,8 @@ export function boatStartGeometry(boat) {
   let bow = boat.bow || null;
   if (!bow && hull.length) {
     const h = boat.hull_angle || 0;
-    const fx = Math.sin(h);
-    const fy = -Math.cos(h);
+    const fx = DMath.sin(h);
+    const fy = -DMath.cos(h);
     let best = -Infinity;
     for (const p of hull) {
       const d = p.x * fx + p.y * fy;
@@ -335,7 +336,7 @@ export function startHudHtmlOf(h) {
 
 function dashed(a, b, color, opacity, dash = 1.2, gap = 0.8) {
   const out = [];
-  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  const len = DMath.hypot(b.x - a.x, b.y - a.y);
   if (len < 1e-6) return out;
   const ux = (b.x - a.x) / len;
   const uy = (b.y - a.y) / len;
@@ -382,7 +383,7 @@ export function startGuidesFromState(L, s, boat, nowMs = 0) {
   let role = 'markno';
   if (st === 'notStarted') {
     color = START_NEXT_COLOR;
-    opacity = 0.65 + 0.35 * (0.5 + 0.5 * Math.sin(nowMs / 250));
+    opacity = 0.65 + 0.35 * (0.5 + 0.5 * DMath.sin(nowMs / 250));
     text = 'NEXT START';
     role = 'next';
   } else if (st === 'ocs') {

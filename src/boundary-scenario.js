@@ -14,6 +14,7 @@
 // exonerated. Boat 1 then tacks onto port and bears away to a beam reach,
 // the boats separate, boundary room ends and nobody crosses the line.
 
+import { DMath } from './det-math.js';
 import { Boat } from './boat.js';
 import { Boundary } from './boundary.js';
 import { trueWindAngleDeg, pendingPenaltyCount } from './rules.js';
@@ -42,8 +43,8 @@ function headingForTwa(twa, windFromDeg) {
   // (port tack: wind on the port side, sailing to the right of the wind).
   const courseDeg = windFromDeg - twa; // math angle of the velocity
   const c = courseDeg * Math.PI / 180;
-  const vx = Math.cos(c), vy = Math.sin(c);
-  return Math.atan2(vx, -vy);
+  const vx = DMath.cos(c), vy = DMath.sin(c);
+  return DMath.atan2(vx, -vy);
 }
 
 class ScriptBot {
@@ -79,7 +80,7 @@ export function setupBoundaryTest(map) {
   for (const p of L.boats) {
     const h = headingForTwa(p.twa, wind);
     const boat = new Boat(map, p.x, p.y, h);
-    boat.physics_model.setLinearVelocity({ x: Math.sin(h) * L.speed, y: -Math.cos(h) * L.speed });
+    boat.physics_model.setLinearVelocity({ x: DMath.sin(h) * L.speed, y: -DMath.cos(h) * L.speed });
     boats.push(boat);
     bots.push(new ScriptBot(boat, p.twa));
   }

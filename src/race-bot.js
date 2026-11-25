@@ -24,6 +24,7 @@
 // If the user takes the helm (rudder keys turn the autopilot off, or the
 // target is changed), the bot stops for that boat.
 
+import { DMath } from './det-math.js';
 import { trueWindAngleDeg } from './rules.js';
 import { Boat } from './boat.js';
 import { Mark, markMassForBoat } from './mark.js';
@@ -55,7 +56,7 @@ function wrap180(d) {
 
 // Signed TWA of sailing from p toward t (positive = port tack).
 function twaToward(p, t, windFromDeg) {
-  const h = Math.atan2(t.x - p.x, -(t.y - p.y));
+  const h = DMath.atan2(t.x - p.x, -(t.y - p.y));
   return trueWindAngleDeg(h, windFromDeg);
 }
 
@@ -95,13 +96,13 @@ export class RaceBot {
   // Another boat within KEEP_CLEAR_M in front of her (±60° of her bow).
   boatAhead(others) {
     const b = this.boat;
-    const fx = Math.sin(b.hull_angle);
-    const fy = -Math.cos(b.hull_angle);
+    const fx = DMath.sin(b.hull_angle);
+    const fy = -DMath.cos(b.hull_angle);
     for (const o of others) {
       if (o === b) continue;
       const dx = o.x - b.x;
       const dy = o.y - b.y;
-      const d = Math.hypot(dx, dy);
+      const d = DMath.hypot(dx, dy);
       if (d < KEEP_CLEAR_M && (dx * fx + dy * fy) / (d || 1) > 0.5) return o;
     }
     return null;
@@ -125,15 +126,15 @@ export class RaceBot {
       const port = (this.target === null ? 1 : -this.target) > 0;
       // Bearing of the mark from the wind: + east of upwind (port side of
       // the course seen from below), − west.
-      const brg = wrap180(Math.atan2(m.x - p.x, m.y - p.y) * 180 / Math.PI - (90 - windFromDeg));
+      const brg = wrap180(DMath.atan2(m.x - p.x, m.y - p.y) * 180 / Math.PI - (90 - windFromDeg));
       const ahead = this.boatAhead(boats);
       if (port) {
         if (brg <= -(LAY_DEG + this.margin) && !ahead) this.tacks++, this.set(-BEAT_TWA);
         else this.set(ahead ? PINCH_TWA : BEAT_TWA);
       } else {
         // Abaft the beam on starboard: rounded to port, bear away.
-        const fx = Math.sin(b.hull_angle);
-        const fy = -Math.cos(b.hull_angle);
+        const fx = DMath.sin(b.hull_angle);
+        const fy = -DMath.cos(b.hull_angle);
         if ((m.x - p.x) * fx + (m.y - p.y) * fy < 0 && p.y > m.y) this.phase = 'run';
         else this.set(ahead ? -PINCH_TWA : -BEAT_TWA);
       }
@@ -158,7 +159,7 @@ export class RaceBot {
       if (!spot) return this.set(-PARK_TWA);
       const dx = spot.x - p.x;
       const dy = spot.y - p.y;
-      if (Math.hypot(dx, dy) < PARK_R_M || dy < 0) return this.set(0);
+      if (DMath.hypot(dx, dy) < PARK_R_M || dy < 0) return this.set(0);
       let twa = twaToward(p, spot, windFromDeg);
       if (Math.abs(twa) < PARK_TWA) twa = (dx < 0 ? -1 : 1) * PARK_TWA;
       this.set(twa);
@@ -203,7 +204,7 @@ export function setupTestRace(map, L = TEST_RACE_LAYOUT) {
     // Port broad reach (TWA 110) toward the turn-up point.
     const h = 70 * Math.PI / 180;
     const b = new Boat(map, q.x, q.y, h);
-    b.physics_model.setLinearVelocity({ x: Math.sin(h) * 2.4, y: -Math.cos(h) * 2.4 });
+    b.physics_model.setLinearVelocity({ x: DMath.sin(h) * 2.4, y: -DMath.cos(h) * 2.4 });
     return b;
   });
   const mass = markMassForBoat(boats[0].physics_model);

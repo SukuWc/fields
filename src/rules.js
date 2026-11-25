@@ -180,6 +180,7 @@
 // the 12 m pair gate with one boat in the zone (pairs further apart are not
 // evaluated); "rounding" a gate mark ends at the gate line.
 
+import { DMath } from './det-math.js';
 import {
   incidentCode,
   incidentLabel,
@@ -327,11 +328,11 @@ function pointSegmentDistance(p, a, b) {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const len2 = dx * dx + dy * dy;
-  if (len2 < 1e-18) return Math.hypot(p.x - a.x, p.y - a.y);
+  if (len2 < 1e-18) return DMath.hypot(p.x - a.x, p.y - a.y);
   let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2;
   if (t < 0) t = 0;
   else if (t > 1) t = 1;
-  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+  return DMath.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
 }
 
 function polygonsOverlap(polyA, polyB) {
@@ -364,7 +365,7 @@ function polygonsOverlap(polyA, polyB) {
 export function polygonClearance(polyA, polyB) {
   if (!polyA.length || !polyB.length) return Infinity;
   if (polyA.length === 1 && polyB.length === 1) {
-    return Math.hypot(polyA[0].x - polyB[0].x, polyA[0].y - polyB[0].y);
+    return DMath.hypot(polyA[0].x - polyB[0].x, polyA[0].y - polyB[0].y);
   }
   if (polygonsOverlap(polyA, polyB)) return 0;
 
@@ -372,7 +373,7 @@ export function polygonClearance(polyA, polyB) {
   const consider = (p, poly) => {
     const n = poly.length;
     if (n === 1) {
-      min = Math.min(min, Math.hypot(p.x - poly[0].x, p.y - poly[0].y));
+      min = Math.min(min, DMath.hypot(p.x - poly[0].x, p.y - poly[0].y));
       return;
     }
     for (let i = 0; i < n; i++) {
@@ -385,13 +386,13 @@ export function polygonClearance(polyA, polyB) {
 }
 
 function centerDistance(boatA, boatB) {
-  return Math.hypot(boatA.x - boatB.x, boatA.y - boatB.y);
+  return DMath.hypot(boatA.x - boatB.x, boatA.y - boatB.y);
 }
 
 // Unit course vector. Local bow is −Y, so forward is (sin θ, −cos θ).
 export function headingForward(headingRad) {
   if (!Number.isFinite(headingRad)) return null;
-  return { x: Math.sin(headingRad), y: -Math.cos(headingRad) };
+  return { x: DMath.sin(headingRad), y: -DMath.cos(headingRad) };
 }
 
 // True when every vertex of asternPoly is strictly behind the line through
@@ -450,10 +451,10 @@ export function sameTackGeometry(boatA, boatB) {
 function windSourceUnit(fromA, fromB) {
   const ar = fromA * Math.PI / 180;
   const br = fromB * Math.PI / 180;
-  let x = Math.cos(ar) + Math.cos(br);
-  let y = Math.sin(ar) + Math.sin(br);
-  const m = Math.hypot(x, y);
-  if (m < 1e-9) return { x: Math.cos(ar), y: Math.sin(ar) };
+  let x = DMath.cos(ar) + DMath.cos(br);
+  let y = DMath.sin(ar) + DMath.sin(br);
+  const m = DMath.hypot(x, y);
+  if (m < 1e-9) return { x: DMath.cos(ar), y: DMath.sin(ar) };
   return { x: x / m, y: y / m };
 }
 
@@ -667,7 +668,7 @@ export function sternAbeamPoint(boat) {
 // computed as planck's getWorldPoint does.
 export function sternAbeamPointOf(bs, hv) {
   if (!bs || !Array.isArray(hv)) return null;
-  const c = Math.cos(bs.pa), s = Math.sin(bs.pa);
+  const c = DMath.cos(bs.pa), s = DMath.sin(bs.pa);
   const pts = [];
   for (let i = 0; i + 1 < hv.length; i += 2) {
     const vx = hv[i], vy = hv[i + 1];
@@ -896,8 +897,8 @@ function tackChanged(before, after, getWind) {
 
 // Positive when `after` is closer to where the other boat was than `before` was.
 function closingAmount(before, after, otherBefore) {
-  const then = Math.hypot(before.x - otherBefore.x, before.y - otherBefore.y);
-  const now = Math.hypot(after.x - otherBefore.x, after.y - otherBefore.y);
+  const then = DMath.hypot(before.x - otherBefore.x, before.y - otherBefore.y);
+  const now = DMath.hypot(after.x - otherBefore.x, after.y - otherBefore.y);
   return then - now;
 }
 
@@ -1002,7 +1003,7 @@ function evaluateRule15(ctx, state) {
 
 function hullDistanceTo(boat, p) {
   const hull = hullVerticesWorld(boat);
-  if (!hull.length) return Math.hypot(boat.x - p.x, boat.y - p.y);
+  if (!hull.length) return DMath.hypot(boat.x - p.x, boat.y - p.y);
   let d = Infinity;
   for (let i = 0; i < hull.length; i++) {
     const a = hull[i];
@@ -1012,7 +1013,7 @@ function hullDistanceTo(boat, p) {
     const l2 = dx * dx + dy * dy;
     let t = l2 > 0 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2 : 0;
     t = Math.max(0, Math.min(1, t));
-    d = Math.min(d, Math.hypot(p.x - a.x - dx * t, p.y - a.y - dy * t));
+    d = Math.min(d, DMath.hypot(p.x - a.x - dx * t, p.y - a.y - dy * t));
   }
   return d;
 }
@@ -1067,7 +1068,7 @@ function evaluateRule18(ctx, state) {
       const fb = headingForward(B.hull_angle) || fa;
       let fx = fa.x + fb.x;
       let fy = fa.y + fb.y;
-      const fl = Math.hypot(fx, fy);
+      const fl = DMath.hypot(fx, fy);
       if (fl < 1e-9) { fx = fa.x; fy = fa.y; } else { fx /= fl; fy /= fl; }
       const off = (b) => fx * (at.y - b.y) - fy * (at.x - b.x);
       // Required side when the provider gives it (+1: mark to port, on
@@ -2119,10 +2120,10 @@ function pushArc(guides, cx, cy, radius, a0, sweep, color, opacity) {
       color,
       opacity,
       z: 0.36,
-      x1: cx + Math.cos(t0) * radius,
-      y1: cy + Math.sin(t0) * radius,
-      x2: cx + Math.cos(t1) * radius,
-      y2: cy + Math.sin(t1) * radius,
+      x1: cx + DMath.cos(t0) * radius,
+      y1: cy + DMath.sin(t0) * radius,
+      x2: cx + DMath.cos(t1) * radius,
+      y2: cy + DMath.sin(t1) * radius,
     });
   }
 }

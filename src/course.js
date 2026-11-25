@@ -99,6 +99,7 @@
 // finish itself. progress.seed(k) puts a boat straight at rounding k (all
 // earlier ones done) for scenarios that start partway round.
 
+import { DMath } from './det-math.js';
 import { LAYER_COURSE } from './draw-order.js';
 import { BOAT_LENGTH_M } from './rules.js';
 
@@ -134,7 +135,7 @@ export function wrap360(deg) {
 }
 
 export function bearingDeg(from, to) {
-  return Math.atan2(to.y - from.y, to.x - from.x) * DEG;
+  return DMath.atan2(to.y - from.y, to.x - from.x) * DEG;
 }
 
 // Rays and thresholds at one mark. prev/at/next are {x, y}; side is PORT or
@@ -228,7 +229,7 @@ export class Course {
     if (isGate(mark)) {
       const a = anchorOf(mark.gate[0]);
       const b = anchorOf(mark.gate[1]);
-      const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      const len = DMath.hypot(b.x - a.x, b.y - a.y) || 1;
       const tx = (b.x - a.x) / len;
       const ty = (b.y - a.y) / len;
       // Normal pointing to the far side (away from prev).
@@ -346,7 +347,7 @@ export class CourseProgress {
       }
       const c = centreOf(r.mark);
       const b = bearingDeg(c, boat);
-      t.distance = Math.hypot(x - c.x, y - c.y);
+      t.distance = DMath.hypot(x - c.x, y - c.y);
       t.bearing = b;
       t.inside = t.distance <= COURSE_ACTIVATION_RADIUS_M;
       if (t.inside) {
@@ -435,7 +436,7 @@ function updateGate(r, t, x, y) {
   t.lastSigned = s;
   t.lastPos = { x, y };
   t.signed = s;
-  t.distance = Math.min(Math.hypot(x - r.a.x, y - r.a.y), Math.hypot(x - r.b.x, y - r.b.y));
+  t.distance = Math.min(DMath.hypot(x - r.a.x, y - r.a.y), DMath.hypot(x - r.b.x, y - r.b.y));
   t.inside = t.distance <= COURSE_ACTIVATION_RADIUS_M;
   t.entered = t.entered || t.inside;
   if (!t.rounded && t.crossings >= 1 && s >= GATE_PASS_HYST_M) t.rounded = true;
@@ -469,8 +470,8 @@ export function markRoomTarget(course, boat) {
     let ref = { x: boat.x, y: boat.y };
     const h = boat.hull_angle;
     if (Number.isFinite(h)) {
-      const fx = Math.sin(h);
-      const fy = -Math.cos(h);
+      const fx = DMath.sin(h);
+      const fy = -DMath.cos(h);
       const gx = pb.x - pa.x;
       const gy = pb.y - pa.y;
       const den = fx * gy - fy * gx;
@@ -479,15 +480,15 @@ export function markRoomTarget(course, boat) {
         if (t > 0) ref = { x: boat.x + fx * t, y: boat.y + fy * t };
       }
     }
-    const nearA = Math.hypot(ref.x - pa.x, ref.y - pa.y) <= Math.hypot(ref.x - pb.x, ref.y - pb.y);
+    const nearA = DMath.hypot(ref.x - pa.x, ref.y - pa.y) <= DMath.hypot(ref.x - pb.x, ref.y - pb.y);
     const near = nearA ? a : b;
     const pn = nearA ? pa : pb;
     const po = nearA ? pb : pa;
     // She passes between: this mark is on the side away from the other one.
     let side;
     if (Number.isFinite(h)) {
-      const fx = Math.sin(h);
-      const fy = -Math.cos(h);
+      const fx = DMath.sin(h);
+      const fy = -DMath.cos(h);
       side = Math.sign(fx * (pn.y - po.y) - fy * (pn.x - po.x)) || undefined;
     }
     return { key: near, at: pn, done, gate: true, side };
@@ -511,7 +512,7 @@ function circleSegments(cx, cy, r, color, opacity, steps = 48, dashed = false, l
     if (dashed && i % 2) continue;
     const a0 = (i / steps) * 2 * Math.PI;
     const a1 = ((i + 1) / steps) * 2 * Math.PI;
-    const g = { type: 'guide', color, opacity, x1: cx + r * Math.cos(a0), y1: cy + r * Math.sin(a0), x2: cx + r * Math.cos(a1), y2: cy + r * Math.sin(a1) };
+    const g = { type: 'guide', color, opacity, x1: cx + r * DMath.cos(a0), y1: cy + r * DMath.sin(a0), x2: cx + r * DMath.cos(a1), y2: cy + r * DMath.sin(a1) };
     if (layer) g.layer = layer;
     out.push(g);
   }
@@ -523,7 +524,7 @@ function circleSegments(cx, cy, r, color, opacity, steps = 48, dashed = false, l
 // the gate lines. All of it draws under the flow tracers (LAYER_COURSE).
 function dashedLine(a, b, color, opacity, dash = 2, gap = 2) {
   const out = [];
-  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  const len = DMath.hypot(b.x - a.x, b.y - a.y);
   if (len < 1e-6) return out;
   const ux = (b.x - a.x) / len;
   const uy = (b.y - a.y) / len;
@@ -535,7 +536,7 @@ function dashedLine(a, b, color, opacity, dash = 2, gap = 2) {
 }
 
 function ray(c, deg, len) {
-  return { x: c.x + Math.cos(deg / DEG) * len, y: c.y + Math.sin(deg / DEG) * len };
+  return { x: c.x + DMath.cos(deg / DEG) * len, y: c.y + DMath.sin(deg / DEG) * len };
 }
 
 // Course overlay for one boat's progress. Deliberately minimal:
@@ -607,7 +608,7 @@ export function courseGuidesFromState(cs, s, nowMs = 0) {
     const c = s.c[i];
     if (i === view.index) {
       const side = cs.sides[i] === PORT ? 'port' : 'stbd';
-      const pulse = 0.5 + 0.5 * Math.sin(nowMs / 250);
+      const pulse = 0.5 + 0.5 * DMath.sin(nowMs / 250);
       g.push(...circleSegments(c.x, c.y, 1.1 + 0.6 * pulse, COURSE_NEXT_COLOR, 0.6 + 0.4 * pulse, 32));
       g.push(...circleSegments(c.x, c.y, COURSE_ACTIVATION_RADIUS_M, COURSE_ZONE_COLOR, 0.25, 72, true, LAYER_COURSE));
       const from = ray(c, view.midDeg, 2);
@@ -640,7 +641,7 @@ function gateGuides(ends, centres, i, view, passed, nowMs) {
   let text;
   let role;
   if (view) {
-    const pulse = 0.5 + 0.5 * Math.sin(nowMs / 250);
+    const pulse = 0.5 + 0.5 * DMath.sin(nowMs / 250);
     g.push(...dashedLine(a, b, COURSE_MID_COLOR, 0.9, 1.2, 0.8));
     for (const c of [ca, cb]) {
       g.push(...circleSegments(c.x, c.y, 1.1 + 0.6 * pulse, COURSE_NEXT_COLOR, 0.6 + 0.4 * pulse, 32));
@@ -717,8 +718,8 @@ export const MARK_ROOM_LAYOUT = (() => {
   const D = Math.PI / 180;
   const hIn = -30 * D;
   const hOut = -34 * D;
-  const fx = Math.sin(hIn);
-  const fy = -Math.cos(hIn);
+  const fx = DMath.sin(hIn);
+  const fy = -DMath.cos(hIn);
   const aim = { x: gate[0].x + 2.5, y: gate[0].y };
   // Boat 0 starts 19 m up the course from the aim point, boat 1 2.8 m to
   // leeward (24 m / 3 m before #86). At the 3-level / 3 m refinement default

@@ -1,14 +1,14 @@
-// Deterministic math prototype (scripts/determinism/det-math.mjs): fdlibm
-// ports stay within 1 ulp of the engine's own functions (within 2 for the
-// non-fdlibm tan / log2), keep the special values, and install / restore.
+// Deterministic math (src/det-math.js): the fdlibm ports stay within 1 ulp of
+// the engine's own functions (2 for the non-fdlibm tan / log2), keep the
+// special values, and give exact powers of two.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import * as D from '../scripts/determinism/det-math.mjs';
+import { DMath as D } from '../src/det-math.js';
 
 let seed = 7;
 const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
 const ulp = (x) => (x === 0 || !Number.isFinite(x) ? Number.MIN_VALUE : 2 ** (Math.floor(Math.log2(Math.abs(x))) - 52));
-const native = { ...Object.fromEntries(Object.keys(D.DET_MATH).map((k) => [k, Math[k]])) };
+const native = Object.fromEntries(Object.keys(D).map((k) => [k, Math[k]]));
 
 const CASES = {
   sin: [[(r) => r * 200 - 100], 1], cos: [[(r) => r * 200 - 100], 1], tan: [[(r) => r * 3 - 1.5], 2],
@@ -47,14 +47,6 @@ test('special values', () => {
   assert.equal(D.hypot(NaN, Infinity), Infinity);
 });
 
-test('install swaps Math functions and restore puts the natives back', () => {
-  D.installDeterministicMath();
-  try {
-    assert.equal(Math.sin, D.sin);
-    assert.equal(Math.pow, D.pow);
-  } finally {
-    D.restoreNativeMath();
-  }
-  assert.equal(Math.sin, native.sin);
-  assert.equal(Math.pow, native.pow);
+test('powers of two are exact (sim code writes 2 ** k as DMath.pow(2, k))', () => {
+  for (let k = -1074; k <= 1023; k++) assert.equal(D.pow(2, k), 2 ** k, `2^${k}`);
 });
