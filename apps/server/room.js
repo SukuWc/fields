@@ -344,6 +344,13 @@ export class Room {
       texture: undefined,
     });
     core.sim._nextSpawn = nextSpawn;
+    // Statics versions stay increasing across cores: _publish skips a client
+    // whose last sent version equals the current one, so a new core counting
+    // from 0 again would collide with the old core's versions (a frame
+    // computed on the old core can still be published, and its statics
+    // recorded as sent, after _freshCore cleared staticsSent) and the client
+    // would keep stale statics: boats and marks of the new race not drawn.
+    if (this.core) core.staticsVersion = this.core.staticsVersion;
     this._recorder = new RaceRecorder({ room: this.name, core, opts: { mapW, mapH, windAngle, windSpeed, simRes }, nextSpawn });
     core.sim.on((ev) => {
       // Events from a core replaced by _resize are dropped.
@@ -660,7 +667,16 @@ export class Room {
       // records the one new boat.
       // First boat into a room whose race already ended (idle, see
       // _endRace): start a new race so the recording begins here.
-      if (!this._recorder && !this._respawn && !this.core.sim.players.some((b) => b.spawnId)) this.newRace('join');
+      // The boat waits for the restart's respawn pass like any kept boat
+      // (_respawnDue, from the scenario's third tick): spawned at once on the
+      // fresh core it would land before the scenario set up its start line,
+      // so in the middle of the map instead of below the line.
+      if (!this._recorder && !this._respawn && !this.core.sim.players.some((b) => b.spawnId)) {
+        this.newRace('join');
+        if (!this._respawn) this._respawn = new Map();
+        // "<name> joined" is posted when the boat is spawned (_respawnDue).
+        this._joinChat = client;
+      }
       if (this._respawn) {
         const pending = this._respawn.get(client) || [];
         if (pending.length === 0) this._respawn.set(client, [{ name, color }]);
@@ -1001,7 +1017,11 @@ export class Room {
       }
       if (!this.clients.has(key)) continue;
       this.owned.set(key, []);
-      for (const sp of specs) this._spawn(key, sp);
+      for (const sp of specs) {
+        const r = this._spawn(key, sp);
+        if (this._joinChat === key && r && r.id) { const who = this._chatBoat({ id: r.id, name: r.name, color: sp.color }); this._chatSystem(`${who.name} joined (boat ${who.n})`); }
+      }
+      if (this._joinChat === key) this._joinChat = null;
       this._sendOwn(key);
     }
   }
