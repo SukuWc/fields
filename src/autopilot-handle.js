@@ -11,8 +11,9 @@
 // dashed preview line (autopilotGuideTarget, the angle Space locks).
 // Releasing on the zone locks that best-VMG angle; releasing anywhere else
 // sets the heading from the release direction, and the circle springs back
-// to its resting distance. While the pointer is over the zone the heading is
-// held (no headingSet), so the target and the zone do not jitter.
+// to its resting distance. The heading keeps following the pointer while it
+// is over the zone; the zone freezes in place while hovered (the target's
+// own best-VMG direction can change under it) so it can still be landed on.
 // The button is not part of the canvas, so its drags never reach
 // drag-to-look, pinch zoom or the double-tap Camera Follow toggle.
 
@@ -329,8 +330,9 @@ export function setupAutopilotHandle(view, {
     if (!drag || e.pointerId !== drag.id) return;
     drag.x = e.clientX; drag.y = e.clientY;
     drag.inZone = zoneHit(drag.zone, drag.x, drag.y, zoneRadius(), drag.type);
-    // Over the zone the heading holds: no jitter, and the zone stays put.
-    if (!drag.inZone) sendHeading(headingAt(drag.x, drag.y));
+    // The heading follows the pointer for the whole drag, zone or not.
+    // Over the zone only the zone itself holds still (refreshZone).
+    sendHeading(headingAt(drag.x, drag.y));
     place(el, drag, shown);
     refreshZone();
     if (e.cancelable) e.preventDefault();

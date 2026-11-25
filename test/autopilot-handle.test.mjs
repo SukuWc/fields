@@ -337,7 +337,7 @@ test('release elsewhere sets the heading from the release point and springs back
   r.ctl.dispose();
 });
 
-test('drop on the zone locks the best-VMG angle; heading holds while over it', () => {
+test('drop on the zone locks the best-VMG angle; heading follows the pointer over it', () => {
   const s = boatState({ ap: 1, wd: 0, aht: 20 });
   const r = rig({ boat: s });
   r.ctl.update();
@@ -347,17 +347,39 @@ test('drop on the zone locks the best-VMG angle; heading holds while over it', (
   // Near the zone but not on it: heading follows.
   r.el.fire('pointermove', ev({ clientX: z.x + 80, clientY: z.y + 80 }));
   assert.equal(r.cmds.length, 1);
-  // On the zone (off-centre, inside the touch slack): no heading change.
+  // On the zone (off-centre, inside the touch slack): heading still follows.
   r.el.fire('pointermove', ev({ clientX: z.x + 30, clientY: z.y + 20 }));
-  assert.equal(r.cmds.length, 1);
-  assert.equal(r.zone.classList.contains('hot'), true);
-  r.el.fire('pointermove', ev({ clientX: z.x - 10, clientY: z.y + 5 }));
-  assert.equal(r.cmds.length, 1);
-  r.el.fire('pointerup', ev({ clientX: z.x - 10, clientY: z.y + 5 }));
   assert.equal(r.cmds.length, 2);
-  assert.deepEqual(r.cmds[1], { type: 'headingSet', aht: autopilotGuideTarget(s), boat: 0 });
-  assert.equal(r.cmds[1].aht, 50);
+  let w = clientToWorld(r.cam, r.canvas, z.x + 30, z.y + 20);
+  assert.ok(Math.abs(r.cmds[1].aht - autopilotHeadingFromWorld(s, w.x, w.y)) < 1e-9);
+  assert.equal(r.zone.classList.contains('hot'), true);
+  // The zone stays frozen while hovered, even if the best-VMG direction
+  // changes under it (target swung to the downwind side).
+  r.setBoat(boatState({ ap: 1, wd: 0, aht: 120 }));
+  r.el.fire('pointermove', ev({ clientX: z.x - 10, clientY: z.y + 5 }));
+  assert.equal(r.cmds.length, 3);
+  assert.deepEqual(xy(r.zone.style.transform), { x: +z.x.toFixed(1), y: +z.y.toFixed(1) });
+  r.el.fire('pointerup', ev({ clientX: z.x - 10, clientY: z.y + 5 }));
+  assert.equal(r.cmds.length, 4);
+  assert.deepEqual(r.cmds[3], { type: 'headingSet', aht: autopilotGuideTarget(s), boat: 0 });
+  assert.equal(r.cmds[3].aht, 50);
   assert.equal(r.zone.hidden, true);
+  r.ctl.dispose();
+});
+
+test('leaving the zone lets it follow the dashed line again', () => {
+  const s = boatState({ ap: 1, wd: 0, aht: 20 });
+  const r = rig({ boat: s });
+  r.el.fire('pointerdown', ev({ clientX: 0, clientY: 0 }));
+  const z = autopilotZoneClientPos(r.cam, r.canvas, s, AP_HANDLE_DIST_PX);
+  r.el.fire('pointermove', ev({ clientX: z.x, clientY: z.y }));
+  const s2 = boatState({ ap: 1, wd: 0, aht: 120 });
+  r.setBoat(s2);
+  r.el.fire('pointermove', ev({ clientX: 400, clientY: 560 }));
+  const z2 = autopilotZoneClientPos(r.cam, r.canvas, s2, AP_HANDLE_DIST_PX);
+  assert.equal(z2.aht, 160);
+  assert.deepEqual(xy(r.zone.style.transform), { x: +z2.x.toFixed(1), y: +z2.y.toFixed(1) });
+  r.el.fire('pointercancel', ev());
   r.ctl.dispose();
 });
 
