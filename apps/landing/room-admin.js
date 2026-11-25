@@ -82,10 +82,27 @@ function clockOf(iso) {
   return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
 }
 
+/** Race length as m:ss (h:mm:ss from an hour), e.g. 65.6 → "1:06". */
+export function formatRaceLength(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '';
+  const total = Math.round(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = String(total % 60).padStart(2, '0');
+  return h ? h + ':' + String(m).padStart(2, '0') + ':' + sec : m + ':' + sec;
+}
+
+/** Bytes with thousands separators, e.g. 14599 → "14,599 B". */
+export function formatBytes(n) {
+  if (!Number.isFinite(n) || n < 0) return '';
+  return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' B';
+}
+
 /**
  * Replay links for one room card from the /api/replays list (newest first):
- * up to REPLAY_LINKS_MAX of this room's races as { id, href, text }, e.g.
- * "Replay 12:50 · 66 s · suku" (start time in the viewer's time zone).
+ * up to REPLAY_LINKS_MAX of this room's races as { id, href, text, title }, e.g.
+ * "Replay 12:50 · 1:06 · 14,599 B · suku" (start time in the viewer's time
+ * zone, race length, record size).
  * api: the ?api= server prefix ('' = same origin). clock(iso): the time label.
  */
 export function replayLinksFor(replays, roomId, { api = '', clock = clockOf } = {}) {
@@ -95,9 +112,13 @@ export function replayLinksFor(replays, roomId, { api = '', clock = clockOf } = 
     const parts = ['Replay'];
     const at = clock(r.startedAt);
     if (at) parts[0] += ' ' + at;
-    if (Number.isFinite(r.durationS)) parts.push(Math.round(r.durationS) + ' s');
+    const len = formatRaceLength(r.durationS);
+    if (len) parts.push(len);
+    const size = formatBytes(r.bytes);
+    if (size) parts.push(size);
     if (Array.isArray(r.players) && r.players.length) parts.push(r.players.join(', '));
-    out.push({ id: r.id, href: api + '/play/?replay=' + encodeURIComponent(r.id), text: parts.join(' · ') });
+    const title = [len && 'length ' + len, size && 'size ' + size].filter(Boolean).join(', ');
+    out.push({ id: r.id, href: api + '/play/?replay=' + encodeURIComponent(r.id), text: parts.join(' · '), title });
     if (out.length >= REPLAY_LINKS_MAX) break;
   }
   return out;
@@ -110,7 +131,7 @@ export function replayLinksFor(replays, roomId, { api = '', clock = clockOf } = 
  * changed the DOM.
  */
 export function syncReplayLinks(box, links, doc = document) {
-  const key = links.map((l) => l.id + '|' + l.text).join('\n');
+  const key = links.map((l) => l.id + '|' + l.text + '|' + (l.title || '')).join('\n');
   if (box.dataset.key === key) return false;
   box.dataset.key = key;
   const nodes = links.map((l) => {
@@ -118,6 +139,7 @@ export function syncReplayLinks(box, links, doc = document) {
     a.className = 'replay';
     a.href = l.href;
     a.textContent = l.text;
+    if (l.title) a.title = l.title;
     return a;
   });
   box.replaceChildren(...nodes);

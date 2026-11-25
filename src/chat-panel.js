@@ -17,6 +17,8 @@ import { chatTimeOf } from './chat-log.js';
 // mode. Local and worker games have no one to talk to: the panel still shows
 // as a log of those rule lines, with the input disabled, the quick messages
 // hidden and a short note (#chat_note); #chat_placeholder stays hidden.
+// A replay (?replay=<id>) is the same read-only log, plus the recorded
+// race chat, which the ReplayHost sends as chat events at their ticks.
 const STOP_EVENTS = ['pointerdown', 'pointermove', 'pointerup', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'mousemove', 'mouseup', 'wheel', 'click', 'keydown', 'keyup'];
 const MAX_LINES = 50;
 // Quick messages (one tap sends): part of the chat shell on every size
@@ -53,6 +55,11 @@ export function setupChat(host, doc = document, { desktop = isDesktop() } = {}) 
     input.placeholder = 'Chat is available in multiplayer rooms';
     if (send) send.disabled = true;
     if (quick) quick.hidden = true;
+  }
+  // Replay (replay-host.js): the race's chat plays back here; nothing is sent.
+  if (host.kind === 'replay') {
+    if (note) note.textContent = 'Replay: the race chat appears as the replay reaches it. Penalties and clears are logged here too.';
+    if (input) input.placeholder = 'Replay: chat is read-only';
   }
   if (remote && quick && !quick.childElementCount) {
     for (const text of QUICK_MESSAGES) {

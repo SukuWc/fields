@@ -542,6 +542,8 @@ export class Room {
     const seq = this.core && this.core.sim && this.core.sim.startSequence;
     if (seq && Number.isFinite(seq.clock)) msg.rc = seq.clock;
     this.chat.push(msg);
+    // The race's replay keeps its chat (replays.js RaceRecorder.chat).
+    if (this._recorder) this._recorder.chat(msg);
     if (this.chat.length > CHAT_HISTORY) this.chat.splice(0, this.chat.length - CHAT_HISTORY);
     this.broadcast({ type: 'event', ev: { type: 'chat', msg } });
     return msg;

@@ -29,8 +29,14 @@ export const REPLAY_TICK_DT = STEP_TICK_DT;
 export const REPLAY_IDLE_TICKS = 60 * 30;
 // Longest recording (2 h of sim time); past it the race is kept as truncated.
 export const REPLAY_MAX_TICKS = 2 * 3600 * 30;
+// Most chat lines kept per race (the room rate-limits chat; this only bounds
+// a pathological race).
+export const REPLAY_MAX_CHAT = 2000;
 
 const finished = [];
+// Size of each kept record: UTF-8 bytes of its JSON (what GET
+// /api/replays/:id sends), measured once when it is saved.
+const sizes = new WeakMap();
 let seq = 0;
 let buildVersion = null;
 
@@ -88,6 +94,7 @@ export class RaceRecorder {
     this.startedAt = now();
     this.start = { opts: clone(opts), nextSpawn };
     this.log = [];
+    this.chatLines = [];
     this.hashes = [];
     this.t = 0;
     this.simTime = 0;
@@ -153,6 +160,21 @@ export class RaceRecorder {
     else if (this.t - this._lastRacer >= REPLAY_IDLE_TICKS) this.stopped = 'idle';
   }
 
+  /**
+   * A chat line of this race (Room._chatPush: player messages and system
+   * lines). Kept apart from the sim log (no state, not hashed) as
+   * { t: ticks done in this race, seq, at, rc?, text, sys?, from? }; the
+   * player shows it when the replay reaches t.
+   */
+  chat(msg) {
+    if (this.stopped || !msg || this.chatLines.length >= REPLAY_MAX_CHAT) return;
+    const line = { t: this.t, seq: msg.seq, at: msg.at, text: String(msg.text) };
+    if (Number.isFinite(msg.rc)) line.rc = msg.rc;
+    if (msg.sys) line.sys = true;
+    if (msg.from) line.from = clone(msg.from);
+    this.chatLines.push(line);
+  }
+
   /** Why the room should end this race now ('truncated' | 'idle'), or null. */
   get due() { return this.stopped; }
 
@@ -186,23 +208,31 @@ export class RaceRecorder {
       inTickCommands: this.inTickCommands,
       hashes: this.hashes,
       finalHash,
+      chat: this.chatLines,
       results: raceResultsOf(this.core),
     };
   }
 }
 
+/** UTF-8 bytes of a record's JSON (chat included). */
+export function recordBytes(record) {
+  return new TextEncoder().encode(JSON.stringify(record)).length;
+}
+
 /** Keep a finished race (ring of REPLAY_KEEP, server-wide). */
 export function saveReplay(record) {
   if (!record) return;
+  sizes.set(record, recordBytes(record));
   finished.push(record);
   while (finished.length > REPLAY_KEEP) finished.shift();
 }
 
-/** Newest first: { id, room, startedAt, endedAt, durationS, ticks, players, buildVersion, endReason, seed }. */
+/** Newest first: { id, room, startedAt, endedAt, durationS, ticks, players, buildVersion, endReason, seed, bytes (record JSON size) }. */
 export function listReplays() {
   return finished.slice().reverse().map((r) => ({
     id: r.id, room: r.room, startedAt: r.startedAt, endedAt: r.endedAt, durationS: r.durationS, ticks: r.ticks,
     players: r.players, buildVersion: r.buildVersion, endReason: r.endReason, seed: r.seed,
+    bytes: sizes.has(r) ? sizes.get(r) : recordBytes(r),
   }));
 }
 

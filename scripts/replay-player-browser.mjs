@@ -20,7 +20,13 @@ const arg = (name, def) => {
 const engine = arg('engine', 'chromium');
 const shots = arg('shots', null);
 const record = JSON.parse(readFileSync(new URL('../test/fixtures/replay-europe-1-mww066n9-1.json', import.meta.url), 'utf8'));
-const summary = (({ id, room, startedAt, endedAt, durationS, ticks, players, buildVersion, endReason, seed }) => ({ id, room, startedAt, endedAt, durationS, ticks, players, buildVersion, endReason, seed }))(record);
+// The fixture predates recorded chat: add two lines for the chat panel.
+record.chat = [
+  { t: 0, seq: 1, at: Date.parse(record.startedAt), sys: true, text: 'Room seed 30' },
+  { t: 60, seq: 2, at: Date.parse(record.startedAt) + 2000, text: 'hello from the replay', from: { name: 'suku', boatId: 'b1', n: 0, color: 0xd81b60 } },
+];
+const bytes = Buffer.byteLength(JSON.stringify(record));
+const summary = (({ id, room, startedAt, endedAt, durationS, ticks, players, buildVersion, endReason, seed }) => ({ id, room, startedAt, endedAt, durationS, ticks, players, buildVersion, endReason, seed, bytes }))(record);
 
 const port = 8700 + Math.floor(Math.random() * 200);
 const srv = spawn(process.execPath, ['dist-server/server.mjs', '--port', String(port), '--static', 'dist-app'], { stdio: ['ignore', 'pipe', 'inherit'] });
@@ -42,6 +48,7 @@ await link.first().waitFor({ timeout: 15000 }).catch(() => fail('no replay link 
 const text = await link.first().textContent();
 const href = await link.first().getAttribute('href');
 console.log('landing link:', JSON.stringify(text), href);
+if (!/ · 1:06 · [\d,]+ B · /.test(text)) await fail('landing link without length and size: ' + text);
 if (shots) { mkdirSync(shots, { recursive: true }); await page.screenshot({ path: join(shots, 'landing.png'), fullPage: true }); }
 await link.first().click();
 await page.waitForSelector('#replay_banner', { timeout: 15000 });
@@ -52,6 +59,10 @@ await page.waitForFunction(() => {
 }, null, { timeout: 60000 }).catch(() => {});
 if (shots) await page.screenshot({ path: join(shots, 'replay-playing.png') });
 console.log('mid-race:', await page.textContent('#replay_status'));
+const chatLog = await page.textContent('#chat_log');
+console.log('chat:', JSON.stringify(chatLog));
+if (!/hello from the replay/.test(chatLog) || !/Room seed 30/.test(chatLog)) await fail('recorded chat not shown');
+if (!(await page.isDisabled('#chat_input'))) await fail('chat input enabled in a replay');
 await page.waitForFunction(() => {
   const b = document.getElementById('replay_banner');
   return b && b.dataset.state !== 'playing';
