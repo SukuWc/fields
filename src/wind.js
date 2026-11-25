@@ -178,11 +178,11 @@ export function setTrueWindOwnForceCoeffsOverride(c) {
   };
 }
 
-// Per-boat |v| finite-difference state. Keyed by boat; stepped with
-// map._trueWindUndoStep (bumped once per Sim.step) so HUD/rules re-entry
-// in the same tick reuses the same acc.
-const _boatAccState = new WeakMap();
-export function resetTrueWindAccState() { /* WeakMap has no clear; drop refs by replacing */ }
+// Per-boat |v| finite-difference state, on the boat itself (non-enumerable
+// _speedAcc, so boat hashes and frames do not see it, and a sim snapshot
+// copies it with the boat); stepped with map._trueWindUndoStep (bumped once
+// per Sim.step) so HUD/rules re-entry in the same tick reuses the same acc.
+export function resetTrueWindAccState() { /* the state lives on each boat */ }
 
 export function boatSpeedAcc(boat, hz = TRUE_WIND_ACC_HZ) {
   const body = boat && boat.physics_model;
@@ -191,10 +191,10 @@ export function boatSpeedAcc(boat, hz = TRUE_WIND_ACC_HZ) {
   const speed = DMath.hypot(v.x, v.y);
   const step = boat.map && Number.isFinite(boat.map._trueWindUndoStep)
     ? boat.map._trueWindUndoStep : null;
-  let st = _boatAccState.get(boat);
+  let st = boat._speedAcc;
   if (!st) {
     st = { prevSpeed: speed, acc: 0, step };
-    _boatAccState.set(boat, st);
+    Object.defineProperty(boat, '_speedAcc', { value: st, writable: true, configurable: true, enumerable: false });
     return 0;
   }
   if (step != null && st.step === step) return st.acc;

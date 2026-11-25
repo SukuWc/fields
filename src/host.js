@@ -43,6 +43,7 @@ import { sceneFrame } from './scene-state.js';
 import { eventForClient } from './host-protocol.js';
 import { sampleFlowGrid, FLOW_GRID_EVERY } from './flow-tracers.js';
 import { CUSTOM_SCENARIO, customLayoutToToml } from './custom-scenario.js';
+import { copySimState } from './sim-snapshot.js';
 
 // The Sim and everything around it that a host runs (shared by LocalHost and
 // the worker). texture: the painter target, a three.js DataTexture or a plain
@@ -292,6 +293,43 @@ export class SimCore {
 
   bodies() { return bodyOutlines(this.map.world, this._fixtureIds); }
   perfStats() { return perfStats(this.bm, this.map); }
+
+  /**
+   * In-memory copy of the sim state (src/sim-snapshot.js): lattice, map and
+   * planck world, Sim (boats, course, rules, gusts, wind schedule, race) and
+   * the room settings. The painter and texture are shared, not copied.
+   * restore(snapshot) makes this core continue exactly from it (the same
+   * snapshot can be restored any number of times).
+   */
+  snapshot() {
+    return { state: copySimState(this._snapshotParts(), this._snapshotKeep()) };
+  }
+
+  restore(snapshot) {
+    const s = copySimState(snapshot.state, this._snapshotKeep());
+    this.bm = s.bm;
+    this.map = s.map;
+    this.sim = s.sim;
+    this.settings = s.settings;
+    this.soloBoat = s.soloBoat;
+    // Presentation caches: the next presented frame resends the statics.
+    this._fixtureIds = new WeakMap();
+    this.statics = null;
+    this._staticsKey = '';
+    this._flowTick = 0;
+    if (this.bm.painter) this.bm.painter.resize(this.bm);
+  }
+
+  _snapshotParts() {
+    return { bm: this.bm, map: this.map, sim: this.sim, settings: this.settings, soloBoat: this.soloBoat };
+  }
+
+  _snapshotKeep() {
+    const keep = new Set();
+    if (this.painter) keep.add(this.painter);
+    if (this.texture) keep.add(this.texture);
+    return keep;
+  }
 }
 
 // The Sim on the main thread. Ticks run synchronously inside tick() and the

@@ -5,6 +5,13 @@
 //
 //   npx playwright install chromium firefox webkit   (once)
 //   npm run determinism:browsers -- [--ticks 18000] [--every 1] [--engines chromium,firefox,webkit] [--out dir]
+//   npm run determinism:browsers -- --restore [--record file] [--at 1,450,1200,1500] [--after 90] [--engines ...]
+//
+// --restore: snapshot / restore (src/sim-snapshot.js) instead. Each engine
+// replays a recorded race (default: the live race in test/fixtures), takes a
+// snapshot at each --at tick, then restores every snapshot and steps on
+// --after ticks (0 = to the end), checking each recorded hash; exits 1 on any
+// mismatch.
 //
 // 18000 ticks = 10 simulated minutes at 30 Hz. Engines run in parallel.
 // Writes <out>/<engine>.json (default out: $TMPDIR/fields-determinism) (hashes) and <out>/summary.json, prints a table,
@@ -66,6 +73,38 @@ async function runBrowser(name, bundle) {
   } finally {
     await browser.close();
   }
+}
+
+if (process.argv.includes('--restore')) {
+  const recordFile = arg('record', join(root, 'test', 'fixtures', 'replay-europe-1-mww066n9-1.json'));
+  const record = JSON.parse(readFileSync(recordFile, 'utf8'));
+  const at = String(arg('at', '1,450,1200,1500')).split(',').map(Number);
+  const after = Number(arg('after', 90));
+  const entry = await build({
+    entryPoints: [join(here, 'restore-entry.mjs')],
+    bundle: true, format: 'iife', write: false, platform: 'browser', target: 'es2020', logLevel: 'warning',
+  });
+  const code = entry.outputFiles[0].text;
+  const rows = [];
+  for (const name of engines) {
+    const pw = await import('playwright');
+    const browser = await pw[name].launch();
+    try {
+      const page = await browser.newPage();
+      await page.goto('about:blank');
+      await page.addScriptTag({ content: code });
+      await page.evaluate((o) => window.__restore.start(o.record, o.at, o.after), { record, at, after });
+      while ((await page.evaluate(() => window.__restore.step())) !== -1) { /* chunks of 300 ticks */ }
+      const res = await page.evaluate(() => window.__restore.result());
+      rows.push({ engine: name, version: browser.version(), msPerTick: Math.round(res.full.msPerTick * 100) / 100, full: res.full.firstMismatch ? 'MISMATCH ' + res.full.firstMismatch.t : 'OK ' + res.full.finalHash });
+      for (const r of res.restores) rows.push({ engine: name, restoreAt: r.t, snapshotMs: r.snapshotMs, restoreMs: r.restoreMs, hashesChecked: r.checked, result: r.firstMismatch ? 'MISMATCH ' + r.firstMismatch.t : 'OK' + (r.finalHash ? ' ' + r.finalHash : '') });
+    } finally {
+      await browser.close();
+    }
+  }
+  writeFileSync(join(outDir, 'restore-summary.json'), JSON.stringify(rows, null, 2));
+  console.table(rows);
+  process.exit(rows.some((r) => String(r.result || r.full).startsWith('MISMATCH')) ? 1 : 0);
 }
 
 const bundled = await build({

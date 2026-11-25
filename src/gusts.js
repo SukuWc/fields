@@ -323,16 +323,29 @@ export function defaultGustSpawner() {
   };
 }
 
-/** Mulberry32: deterministic [0,1) from a 32-bit state. */
-export function mulberry32(seed) {
-  let a = seed >>> 0;
-  return function next() {
-    a = (a + 0x6D2B79F5) >>> 0;
-    let t = a;
+/**
+ * Mulberry32 with its 32-bit state on a plain object (`a`), so a sim
+ * snapshot (SimCore.snapshot) copies it with the rest of the sim state.
+ */
+export class Mulberry32 {
+  constructor(seed) {
+    this.a = seed >>> 0;
+  }
+
+  /** Next deterministic [0,1). */
+  next() {
+    this.a = (this.a + 0x6D2B79F5) >>> 0;
+    let t = this.a;
     t = Math.imul(t ^ (t >>> 15), t | 1);
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+  }
+}
+
+/** Mulberry32: deterministic [0,1) from a 32-bit state (a function form for one-off draws). */
+export function mulberry32(seed) {
+  const g = new Mulberry32(seed);
+  return () => g.next();
 }
 
 /** Hash a string to a uint32 seed. */
@@ -380,12 +393,19 @@ export class GustField {
   constructor() {
     this.columns = [];
     this.spawner = defaultGustSpawner();
-    this._rng = mulberry32(this.spawner.seed);
+    this.rngState = new Mulberry32(this.spawner.seed);
     this._tick = 0;
   }
 
   clear() {
     this.columns.length = 0;
+  }
+
+  // A draw function over rngState (made per use, so no closure lives in the
+  // sim state).
+  _rng() {
+    const g = this.rngState;
+    return () => g.next();
   }
 
   /**
@@ -411,7 +431,7 @@ export class GustField {
     s.maxLive = Number.isFinite(s.maxLive) && s.maxLive > 0 ? Math.floor(s.maxLive) : GUST_MAX_LIVE;
     s.seed = (Number.isFinite(s.seed) ? s.seed : d.seed) >>> 0;
     this.spawner = s;
-    this._rng = mulberry32(s.seed);
+    this.rngState = new Mulberry32(s.seed);
     this._tick = 0;
     if (clearColumns) this.clear();
   }
@@ -431,7 +451,7 @@ export class GustField {
 
   _spawnOne(map) {
     const s = this.spawner;
-    const rng = this._rng;
+    const rng = this._rng();
     const w = map && Number.isFinite(map.width) ? map.width : 100;
     const h = map && Number.isFinite(map.height) ? map.height : 200;
     // WALL_INSET_M = 2 (map-size.js); keep spawns inside open water.
@@ -463,7 +483,7 @@ export class GustField {
     const s = this.spawner;
     if (!s.enabled || !(s.ratePerMin > 0) || !(dt > 0)) return;
     const lambda = (s.ratePerMin / 60) * dt;
-    const n = samplePoisson(lambda, this._rng);
+    const n = samplePoisson(lambda, this._rng());
     for (let i = 0; i < n; i++) {
       if (this.columns.length >= s.maxLive) break;
       this._spawnOne(map);

@@ -203,7 +203,8 @@ export class Course {
     this.startSequence = options.startSequence || null;
     this.laps = Number.isFinite(options.laps) && options.laps >= 1 ? Math.floor(options.laps) : Infinity;
     this.finish = options.finish || null;
-    this.progress = new WeakMap();
+    // Map, not WeakMap: a sim snapshot copies it (one course per race).
+    this.progress = new Map();
   }
 
   // Roundings in the whole course (laps · marks), Infinity when it loops.

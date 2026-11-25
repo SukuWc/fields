@@ -271,6 +271,54 @@ device plays slower than real time (the loop drops time, never ticks).
 race `test/fixtures/replay-europe-1-mww066n9-1.json` to the browser, follows
 the landing link and waits for `66/66 hashes OK`.
 
+## Sim snapshots (for seeking)
+
+`SimCore.snapshot()` returns an in-memory copy of the whole sim state
+(lattice and every refinement level, map and planck world, Sim with boats,
+course, rules, gusts, wind schedule and race, room settings);
+`core.restore(snapshot)` makes the core continue from it, and the same
+snapshot can be restored any number of times. `ReplayStepper.snapshot()` /
+`restore()` add the stepping cursor, so a replay restored at tick t steps on
+to the recorded hashes. The copy is `src/sim-snapshot.js` `deepCopy`
+(prototypes, shared references and cycles, typed arrays, Map / Set, hidden
+fields, key order). It is not a file format: a snapshot is valid only for the
+build that made it, and none is stored in a record.
+
+What it took (found in the seek spike, 2026-11-25):
+
+- State a copy cannot see moved into the sim objects: the gust random
+  generator (`gusts.js` `Mulberry32`, state on a plain object instead of a
+  closure); the true-wind speed derivative (`boat._speedAcc`, was a
+  module-level WeakMap in `wind.js`); each boat's refinement window and the
+  lattice's field-island holds (`boat._amrDomain`, `bm._trackState`, were
+  module-level WeakMaps in `domainTrack.js`); the rules engine's boat ids
+  (`boat._ruleId`); course progress is a Map. The new fields are
+  non-enumerable, so frames and boat hashes do not see them.
+- planck-js keeps three things in functions: `World.addPair` and
+  `BroadPhase.queryCallback` are bound and the dynamic tree's node pool is a
+  closure; they are rebuilt on the copy, found by shape. Nothing matches
+  constructor or function names: esbuild renames them in the browser bundle
+  (`World` → `World2`).
+- Copies must keep V8 fast properties: filling an empty object through
+  computed keys made every lattice cell a dictionary-mode object and the sim
+  ran about five times slower on the copies (and slower on fresh cores in the
+  same process). `deepCopy` compiles one copier per (prototype, key list)
+  with named stores and swaps references in a last pass; a restored race
+  steps about 15 % slower than a fresh one in Node.
+- Hash version 2 (`hashVersion: 2` in new records, `src/state-hash.js`)
+  leaves out the drawing-only boat fields `Boat.renderState()` advances when a
+  frame is presented (boom smoothing, sail flap), so a replay can skip
+  presenting while it fast-forwards (`step({ draw: false })`, about 10 %
+  faster). Records without `hashVersion` (version 1, such as the live
+  fixture) keep presenting as recorded and still verify.
+
+Cost (live fixture, 1 boat, about 14 500 cells): snapshot 55–130 ms,
+restore 65–140 ms in Node, Chromium, Firefox and WebKit; about 10 MB of heap
+each (about 40 MB with six boats). `test/sim-snapshot.test.mjs` restores at
+ticks 1, 450, 1200 and 1500 and checks every recorded hash after each;
+`npm run determinism:browsers -- --restore` does the same in Chromium,
+Firefox and WebKit.
+
 ## Running it
 
 ```bash
@@ -279,6 +327,7 @@ REPLAY_TICKS=1800 node --test --import ./test/register.mjs test/replay-determini
 npx playwright install chromium firefox webkit                     # once
 npm run determinism:browsers -- --ticks 1800                       # quick check, all engines
 npm run determinism:browsers -- --ticks 18000                      # 10 min, hash every tick
+npm run determinism:browsers -- --restore                          # snapshot / restore in every engine
 node scripts/replay-player-browser.mjs --engine webkit                # replay page plays a live record
 node scripts/determinism/math-probe.mjs    # per-function engine differences
 ```
