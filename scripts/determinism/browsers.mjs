@@ -4,9 +4,7 @@
 // hash against Node.
 //
 //   npx playwright install chromium firefox webkit   (once)
-//   npm run determinism:browsers -- [--ticks 18000] [--every 1] [--engines chromium,firefox,webkit] [--out dir] [--det-math]
-// --det-math: every engine (Node too) runs with the pure-JS math prototype
-// (det-math.mjs) swapped onto Math.
+//   npm run determinism:browsers -- [--ticks 18000] [--every 1] [--engines chromium,firefox,webkit] [--out dir]
 //
 // 18000 ticks = 10 simulated minutes at 30 Hz. Engines run in parallel.
 // Writes <out>/<engine>.json (default out: $TMPDIR/fields-determinism) (hashes) and <out>/summary.json, prints a table,
@@ -33,13 +31,12 @@ const every = Number(arg('every', 1));
 const engines = String(arg('engines', 'chromium,firefox,webkit')).split(',').filter(Boolean);
 const outDir = arg('out', join(tmpdir(), 'fields-determinism'));
 const CHUNK = 300;
-const detMath = process.argv.includes('--det-math');
 mkdirSync(outDir, { recursive: true });
 
 function runNode() {
   const out = join(outDir, 'node.json');
   return new Promise((resolve, reject) => {
-    const p = spawn(process.execPath, ['--import', './test/register.mjs', 'scripts/determinism/node-run.mjs', '--ticks', String(ticks), '--every', String(every), '--out', out, ...(detMath ? ['--det-math'] : [])], { cwd: root, stdio: ['ignore', 'ignore', 'pipe'] });
+    const p = spawn(process.execPath, ['--import', './test/register.mjs', 'scripts/determinism/node-run.mjs', '--ticks', String(ticks), '--every', String(every), '--out', out], { cwd: root, stdio: ['ignore', 'ignore', 'pipe'] });
     p.stderr.on('data', (d) => { const s = String(d).trim(); if (/^node \d/.test(s)) console.log(s.split('\n').pop()); });
     p.on('exit', (code) => (code === 0 ? resolve(JSON.parse(readFileSync(out, 'utf8'))) : reject(new Error('node run exited ' + code))));
   });
@@ -55,7 +52,7 @@ async function runBrowser(name, bundle) {
     await page.goto('about:blank');
     await page.addScriptTag({ content: bundle });
     if (errors.length) throw new Error(name + ': ' + errors.join('; '));
-    await page.evaluate((o) => window.__determinism.start(o), { ticks, every, detMath });
+    await page.evaluate((o) => window.__determinism.start(o), { ticks, every });
     let t = 0;
     while (t < ticks) {
       t = await page.evaluate((n) => window.__determinism.step(n), CHUNK);
@@ -81,7 +78,7 @@ const t0 = Date.now();
 const results = await Promise.all([runNode(), ...engines.map((e) => runBrowser(e, bundle))]);
 const ref = results[0];
 const summary = {
-  detMath, ticks, every, simulatedSeconds: ticks / 30, wallSeconds: Math.round((Date.now() - t0) / 1000),
+  ticks, every, simulatedSeconds: ticks / 30, wallSeconds: Math.round((Date.now() - t0) / 1000),
   engines: results.map((r) => {
     const d = r === ref ? null : firstDivergence(ref.hashes, r.hashes);
     return {

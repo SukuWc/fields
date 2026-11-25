@@ -28,6 +28,7 @@
 // drag. alpha > 0 means the point is sliding toward +X; positive Cl then
 // pushes back toward −X.
 
+import { DMath } from './det-math.js';
 import { RHO_WATER } from './dinghy-forces.js';
 
 export const RHO_FOIL = RHO_WATER;
@@ -114,13 +115,13 @@ export function finiteWingCoefficients(alphaRad, aspectRatio, e = OSWALD_E) {
 // positive toward +X (the sim's positive rudder, clockwise yaw).
 // Returns lift and drag in that frame, newtons.
 export function foilForceNewtons({ vBodyX, vBodyY, bladeRad = 0, area, aspectRatio }) {
-  const speed = Math.hypot(vBodyX, vBodyY);
+  const speed = DMath.hypot(vBodyX, vBodyY);
   const zero = { x: 0, y: 0 };
   if (!(speed > 1e-6) || !(area > 0)) {
     return { lift: zero, drag: zero, alpha: 0, cl: 0, cd: 0, speed: 0 };
   }
   const forward = -vBodyY;
-  const flowFromCenterline = Math.atan2(vBodyX, forward);
+  const flowFromCenterline = DMath.atan2(vBodyX, forward);
   const alpha = flowFromCenterline - bladeRad;
   const { cl, cd } = finiteWingCoefficients(alpha, aspectRatio);
   const qA = 0.5 * RHO_FOIL * speed * speed * area;

@@ -24,11 +24,12 @@
 // has been ahead for LEADERBOARD_SWAP_S of sim time; a change of group or of
 // legs done swaps at once.
 
+import { DMath } from './det-math.js';
 import { penaltyNameText, unservedCodes } from './rule-text.js';
 
 export const BEAT_ANGLE_DEG = 50;
 export const LEADERBOARD_SWAP_S = 1;
-const COS_BEAT = Math.cos(BEAT_ANGLE_DEG * Math.PI / 180);
+const COS_BEAT = DMath.cos(BEAT_ANGLE_DEG * Math.PI / 180);
 
 function anchorOf(m) {
   return m.anchor ? m.anchor : { x: m.x, y: m.y };
@@ -36,16 +37,16 @@ function anchorOf(m) {
 
 export function upwindVector(windFromDeg) {
   const a = windFromDeg * Math.PI / 180;
-  return { x: Math.cos(a), y: Math.sin(a) };
+  return { x: DMath.cos(a), y: DMath.sin(a) };
 }
 
 // { dist, kind: 'beat' | 'run' | 'reach' }.
 export function legDistance(p, t, w) {
   const dx = t.x - p.x;
   const dy = t.y - p.y;
-  const d = Math.hypot(dx, dy);
+  const d = DMath.hypot(dx, dy);
   const u = dx * w.x + dy * w.y;
-  const off = d > 1e-9 ? Math.acos(Math.max(-1, Math.min(1, u / d))) * 180 / Math.PI : 0;
+  const off = d > 1e-9 ? DMath.acos(Math.max(-1, Math.min(1, u / d))) * 180 / Math.PI : 0;
   const kind = off < 60 ? 'beat' : off > 120 ? 'run' : 'reach';
   return { dist: u > 0 ? Math.max(u / COS_BEAT, d) : d, kind };
 }

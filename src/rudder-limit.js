@@ -22,6 +22,7 @@
 // range is within the limit, the least loaded scanned angle, refined
 // between its neighbours, is used.
 
+import { DMath } from './det-math.js';
 import { foilForceNewtons, RUDDER_BLADE } from './foil.js';
 
 export const SCAN_STEP_DEG = 0.5;
@@ -36,7 +37,7 @@ export function rudderForceN(deg, vBodyX, vBodyY, blade = RUDDER_BLADE) {
     area: blade.area,
     aspectRatio: blade.effectiveAspect,
   });
-  return Math.hypot(r.lift.x + r.drag.x, r.lift.y + r.drag.y);
+  return DMath.hypot(r.lift.x + r.drag.x, r.lift.y + r.drag.y);
 }
 
 // commandedDeg: the angle the helm or autopilot asks for. maxForceN: the

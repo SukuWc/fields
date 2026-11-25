@@ -4,6 +4,7 @@
 // pass units, three per 30 Hz tick). The scripts only touch the Sim; view
 // hints (camera follow, zoom) and "bind the helm controls now" go out as
 // sim events for the client.
+import { DMath } from './det-math.js';
 import { Boat } from './boat.js';
 import { Mark, markMassForBoat } from './mark.js';
 import {
@@ -99,7 +100,7 @@ export function buildScenarios(sim) {
   scenarios[3].frames[0] = () => {
     // Already under way. From rest the 139 kg hull has not got steerage by
     // the scripted tack (frame 350), so the tack never passes head to wind.
-    const way = (h, v) => ({ x: Math.sin(h) * v, y: -Math.cos(h) * v });
+    const way = (h, v) => ({ x: DMath.sin(h) * v, y: -DMath.cos(h) * v });
     const h0 = 3 * Math.PI / 4, h1 = 5 * Math.PI / 4;
     const a = new Boat(sim.map, -3, -3, h0);
     // Starboard boat starts at (17.5, -8), was (18, -11.5): the P-only
@@ -121,7 +122,7 @@ export function buildScenarios(sim) {
     "A port-tack boat and a starboard-tack boat start on autopilot, in the same kind of layout as scenario 3. The port boat's heading target is reversed so she tacks, and then the other boat heads up by three degrees. The script removes both boats later."
   );
   scenarios[4].frames[0] = () => {
-    const way = (h, v) => ({ x: Math.sin(h) * v, y: -Math.cos(h) * v });
+    const way = (h, v) => ({ x: DMath.sin(h) * v, y: -DMath.cos(h) * v });
     const h0 = 3 * Math.PI / 4, h1 = 5 * Math.PI / 4;
     const a = new Boat(sim.map, -3, -4, h0);
     const b = new Boat(sim.map, 18, -11.5, h1);
@@ -163,8 +164,8 @@ export function buildScenarios(sim) {
     // starts inside the 12 m gate and overlapped (Rule 11) without the hulls
     // touching. A closer start was bouncing them through head to wind.
     const heading = 5 * Math.PI / 4;
-    const fx = Math.sin(heading);
-    const fy = -Math.cos(heading);
+    const fx = DMath.sin(heading);
+    const fy = -DMath.cos(heading);
     const abeam = 8;
     sim.players.push(new Boat(sim.map, 0, 0, heading));
     sim.players.push(new Boat(sim.map, fy * abeam, -fx * abeam, heading));
@@ -250,8 +251,8 @@ export function buildScenarios(sim) {
   );
   scenarios[8].frames[0] = () => {
     const heading = 5 * Math.PI / 4;
-    const fx = Math.sin(heading);
-    const fy = -Math.cos(heading);
+    const fx = DMath.sin(heading);
+    const fy = -DMath.cos(heading);
     // Astern along -forward, and to leeward (lower Y) so she draws alongside
     // instead of into the transom. 4.4 m along-track leaves her bow behind
     // the stern line; 2.5 m abeam keeps about a metre of water when she overlaps.
@@ -288,8 +289,8 @@ export function buildScenarios(sim) {
   );
   scenarios[9].frames[0] = () => {
     const heading = 5 * Math.PI / 4;
-    const fx = Math.sin(heading);
-    const fy = -Math.cos(heading);
+    const fx = DMath.sin(heading);
+    const fy = -DMath.cos(heading);
     // (Opens on Rule 12. At 0.5 m abeam she overlaps from leeward at
     // ~0.95 s without touching; the luff below brings her bow onto the
     // leader inside the 1 s Rule 15 window. History: at 0.1 m the bow hit
@@ -365,8 +366,8 @@ export function buildScenarios(sim) {
     // About 5° below the 45° the autopilot holds, so she does not luff
     // before the hit. Way on at close-hauled speed so the hit comes early.
     const heading = 5 * Math.PI / 4 + 5 * Math.PI / 180;
-    const fx = Math.sin(heading);
-    const fy = -Math.cos(heading);
+    const fx = DMath.sin(heading);
+    const fy = -DMath.cos(heading);
     const boat = new Boat(sim.map, 12, -10, heading);
     sim.players.push(boat);
     boat.physics_model.setLinearVelocity({ x: fx * 1.9, y: fy * 1.9 });
@@ -396,7 +397,7 @@ export function buildScenarios(sim) {
     const heading = L.startHeading;
     const boat = new Boat(sim.map, L.start.x, L.start.y, heading);
     sim.players.push(boat);
-    boat.physics_model.setLinearVelocity({ x: Math.sin(heading) * 1.5, y: -Math.cos(heading) * 1.5 });
+    boat.physics_model.setLinearVelocity({ x: DMath.sin(heading) * 1.5, y: -DMath.cos(heading) * 1.5 });
     const mass = markMassForBoat(boat.physics_model);
     for (const p of L.marks) sim.marks.push(new Mark(sim.map, p.x, p.y, { mass }));
     sim.course = new Course(sim.marks, { start: L.start });
@@ -424,7 +425,7 @@ export function buildScenarios(sim) {
     const heading = L.startHeading;
     const boat = new Boat(sim.map, L.start.x, L.start.y, heading);
     sim.players.push(boat);
-    boat.physics_model.setLinearVelocity({ x: Math.sin(heading) * 1.5, y: -Math.cos(heading) * 1.5 });
+    boat.physics_model.setLinearVelocity({ x: DMath.sin(heading) * 1.5, y: -DMath.cos(heading) * 1.5 });
     const mass = markMassForBoat(boat.physics_model);
     const windward = new Mark(sim.map, L.windward.x, L.windward.y, { mass });
     const gateA = new Mark(sim.map, L.gate[0].x, L.gate[0].y, { mass });
@@ -455,7 +456,7 @@ export function buildScenarios(sim) {
     const L = START_COURSE_LAYOUT;
     const boat = new Boat(sim.map, L.boat.x, L.boat.y, L.boatHeading);
     sim.players.push(boat);
-    boat.physics_model.setLinearVelocity({ x: Math.sin(L.boatHeading) * 1.5, y: -Math.cos(L.boatHeading) * 1.5 });
+    boat.physics_model.setLinearVelocity({ x: DMath.sin(L.boatHeading) * 1.5, y: -DMath.cos(L.boatHeading) * 1.5 });
     const mass = markMassForBoat(boat.physics_model);
     const rc = new Mark(sim.map, L.committee.x, L.committee.y, { mass });
     const pin = new Mark(sim.map, L.pin.x, L.pin.y, { mass });
@@ -491,7 +492,7 @@ export function buildScenarios(sim) {
     const L = MARK_ROOM_LAYOUT;
     for (const p of [L.inside, L.outside]) {
       const boat = new Boat(sim.map, p.x, p.y, p.heading);
-      boat.physics_model.setLinearVelocity({ x: Math.sin(p.heading) * 2, y: -Math.cos(p.heading) * 2 });
+      boat.physics_model.setLinearVelocity({ x: DMath.sin(p.heading) * 2, y: -DMath.cos(p.heading) * 2 });
       sim.players.push(boat);
     }
     const mass = markMassForBoat(sim.players[0].physics_model);
@@ -533,7 +534,7 @@ export function buildScenarios(sim) {
     const L = FINISH_COURSE_LAYOUT;
     for (const p of L.boats) {
       const boat = new Boat(sim.map, p.x, p.y, p.heading);
-      boat.physics_model.setLinearVelocity({ x: Math.sin(p.heading) * 1.5, y: -Math.cos(p.heading) * 1.5 });
+      boat.physics_model.setLinearVelocity({ x: DMath.sin(p.heading) * 1.5, y: -DMath.cos(p.heading) * 1.5 });
       sim.players.push(boat);
     }
     const mass = markMassForBoat(sim.players[0].physics_model);

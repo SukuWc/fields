@@ -37,6 +37,7 @@
 //   Simplification: RRS says she stops racing once clear of the line and
 //   marks; here it is the moment she finishes.
 
+import { DMath } from './det-math.js';
 import { LAYER_COURSE } from './draw-order.js';
 import { boatStartGeometry } from './start.js';
 import { finishBoatPenalties, penaltyCode, headingForward, stateId, boatsById } from './rules.js';
@@ -59,7 +60,7 @@ export class FinishLine {
     this.pin = pin;
     const a = this.a;
     const b = this.b;
-    this.len = Math.hypot(b.x - a.x, b.y - a.y);
+    this.len = DMath.hypot(b.x - a.x, b.y - a.y);
     if (!(this.len > 0)) throw new Error('Finish line needs two separate ends');
     this.tx = (b.x - a.x) / this.len;
     this.ty = (b.y - a.y) / this.len;
@@ -239,7 +240,7 @@ export function finishGuidesFromState(line, s, nowMs = 0) {
   const next = s.next;
   const a = line.a;
   const len = line.len;
-  const pulse = 0.5 + 0.5 * Math.sin(nowMs / 250);
+  const pulse = 0.5 + 0.5 * DMath.sin(nowMs / 250);
   const color = next ? FINISH_NEXT_COLOR : FINISH_LINE_COLOR;
   for (let k = 0; k < len; k += 2) {
     const e = Math.min(len, k + 1.2);

@@ -56,6 +56,8 @@
 // zeroed) and capsized = true; the flag clears once heel drops back below
 // HEEL_CAPSIZE_CLEAR_DEG. Flag only: no righting manoeuvre.
 
+import { DMath } from './det-math.js';
+
 export const DEG = Math.PI / 180;
 export const G = 9.81;
 export const RHO_AIR = 1.225;
@@ -115,25 +117,25 @@ export function gz(phi, table = DINGHY_DEFAULTS.gzTable) {
 }
 
 export function heelForceFactor(phi) {
-  const c = Math.cos(phi);
+  const c = DMath.cos(phi);
   return c * c;
 }
 
 // Top-down leeward walk (m, body-local +X) added to each sail's boom
 // station. φ > 0 → +X (leeward). Not the roll lever: heelMoment uses ceHeight.
 export function sailCeOffsetX(phi, p = DINGHY_DEFAULTS) {
-  return p.ceLateralHeight * Math.sin(phi);
+  return p.ceLateralHeight * DMath.sin(phi);
 }
 
 // Top-down windward CLR offset (m, body-local +X): centreboard force
 // application point moves to −z_CLR·sin(φ). φ > 0 → −X (windward).
 export function clrOffsetX(phi, p = DINGHY_DEFAULTS) {
-  return -p.clrDepth * Math.sin(phi);
+  return -p.clrDepth * DMath.sin(phi);
 }
 
 // Top-down leeward offset of hull drag (m, body-local +X). φ > 0 → +X.
 export function hullDragOffsetX(phi, p = DINGHY_DEFAULTS) {
-  return p.hullDragLateral * Math.sin(phi);
+  return p.hullDragLateral * DMath.sin(phi);
 }
 
 export function createHeelState() {
@@ -141,20 +143,20 @@ export function createHeelState() {
 }
 
 export function heelMoment(fSideN, phi, p = DINGHY_DEFAULTS) {
-  return fSideN * p.ceHeight * Math.cos(phi);
+  return fSideN * p.ceHeight * DMath.cos(phi);
 }
 export function hullMoment(phi, p = DINGHY_DEFAULTS) {
   return p.boatMass * G * gz(phi, p.gzTable);
 }
 export function crewMoment(hike, phi, p = DINGHY_DEFAULTS) {
-  return p.crewMass * G * p.hikeArm * hike * Math.cos(phi);
+  return p.crewMass * G * p.hikeArm * hike * DMath.cos(phi);
 }
 
 // Hike the crew aims for (signed, |·| ≤ 1, on the windward side).
 export function crewTarget(mHeel, phi, p = DINGHY_DEFAULTS, omega = 0) {
   const side = mHeel >= 0 ? 1 : -1;
   const phiT = side * p.targetHeelDeg * DEG;
-  const full = p.crewMass * G * p.hikeArm * Math.max(0.2, Math.cos(phi));
+  const full = p.crewMass * G * p.hikeArm * Math.max(0.2, DMath.cos(phi));
   let h = (mHeel - hullMoment(phiT, p)) / full + p.crewGain * (phi - phiT) + p.crewRateGain * omega;
   h *= side;                       // magnitude on the windward side
   h = Math.max(0, Math.min(1, h));
