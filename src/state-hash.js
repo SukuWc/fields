@@ -90,7 +90,9 @@ export function hashField(bm) {
 
 // Boat.uid comes from a process-wide counter (boat.js _nextBoatUid): an
 // identity, not sim state, and it differs between two cores in one process.
-const BOAT_SKIP = new Set(['uid']);
+// awayUntil is the reconnect-grace countdown (Room._markAway), a wall-clock
+// display value, not sim state.
+const BOAT_SKIP = new Set(['uid', 'awayUntil']);
 
 export function hashBoats(sim) {
   const h = new StateHasher();

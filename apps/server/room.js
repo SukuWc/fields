@@ -56,6 +56,8 @@ import { encodeVectorGrids } from '../../src/vector-field.js';
 import { encodeFieldText } from '../../src/field-codec.js';
 import { encodeWire, fieldForWire } from '../../src/wire-codec.js';
 import { FrameTimeHistory } from './frame-times.js';
+import { RaceRecorder } from './replays.js';
+import { saveReplay } from './replays.js';
 import { ClientTx, rtcSignal } from './transport.js';
 export { FRAME_TIME_WINDOW_S, FRAME_TIME_HZ, FRAME_TIME_CAP } from './frame-times.js';
 import {
@@ -330,13 +332,19 @@ export class Room {
   // A SimCore wired to this room (events broadcast). Gusts are seeded from
   // the room's drawn wind_schedule_seed (_windSeed) when a config is applied;
   // until then the default gust seed (1) stands.
-  _makeCore({ mapW, mapH, windAngle, windSpeed, simRes }) {
+  // Every core is one race for the replay recorder (apps/server/replays.js):
+  // the race on the core being replaced ends with `reason`. nextSpawn carries
+  // the spawn id counter over, so boat ids never repeat within a room.
+  _makeCore({ mapW, mapH, windAngle, windSpeed, simRes }, { nextSpawn = 1, reason = 'resize' } = {}) {
+    if (this.core) this._endRace(reason);
     const core = new SimCore({
       mapW, mapH, windAngle, windSpeed, simRes,
       // No texture: the server never paints RGBA (the painter is inert);
       // field messages are encoded from the lattice when due (_fieldMessages).
       texture: undefined,
     });
+    core.sim._nextSpawn = nextSpawn;
+    this._recorder = new RaceRecorder({ room: this.name, core, opts: { mapW, mapH, windAngle, windSpeed, simRes }, nextSpawn });
     core.sim.on((ev) => {
       // Events from a core replaced by _resize are dropped.
       if (this.core !== core) return;
@@ -359,6 +367,13 @@ export class Room {
   // The caller applies the config on the new core and restarts, which
   // respawns the kept player boats as any restart does (_restart).
   _resize(mapW, mapH) {
+    this._freshCore(mapW, mapH, 'resize');
+  }
+
+  // A new core (new race, see _makeCore) at mapW × mapH with the old core's
+  // base wind and resolution; player boats are kept for the restart that
+  // follows (the caller applies a config).
+  _freshCore(mapW, mapH, reason) {
     const old = this.core;
     const keep = new Map();
     for (const [client, list] of this.owned) if (list.length) keep.set(client, list.map((b) => ({ name: b.name, color: b.color })));
@@ -366,7 +381,7 @@ export class Room {
     for (const e of this.parked.values()) if (e.boats.length) keep.set(e, e.boats.map((b) => ({ name: b.name, color: b.color })));
     const st = old.roomState().settings;
     // The base wind, not the scheduled one: the config applied next restarts the schedule.
-    this._makeCore({ mapW, mapH, windAngle: old.sim.windBase.angle, windSpeed: old.sim.windBase.speed, simRes: st.simRes });
+    this._makeCore({ mapW, mapH, windAngle: old.sim.windBase.angle, windSpeed: old.sim.windBase.speed, simRes: st.simRes }, { nextSpawn: old.sim._nextSpawn, reason });
     // Old boat ids are gone with the old core; _restart respawns from _respawn.
     for (const key of keep.keys()) { if (key.parked) key.boats = []; else this.owned.set(key, []); }
     this._respawn = keep.size ? keep : null;
@@ -499,6 +514,7 @@ export class Room {
     if (this._emptyTimer) clearTimeout(this._emptyTimer);
     this._emptyTimer = null;
     if (this.clients.size > 0 || this.persistent) return;
+    this._endRace('closed');
     for (const e of this.parked.values()) clearTimeout(e.timer);
     this.parked.clear();
     this.stop();
@@ -640,6 +656,9 @@ export class Room {
       // re-join: leave the queue alone (appending duplicates a kept boat;
       // replacing would drop a second one). A spectator with nothing queued
       // records the one new boat.
+      // First boat into a room whose race already ended (idle, see
+      // _endRace): start a new race so the recording begins here.
+      if (!this._recorder && !this._respawn && !this.core.sim.players.some((b) => b.spawnId)) this.newRace('join');
       if (this._respawn) {
         const pending = this._respawn.get(client) || [];
         if (pending.length === 0) this._respawn.set(client, [{ name, color }]);
@@ -730,9 +749,24 @@ export class Room {
   }
 
   _newRaceDue() {
-    if (!this._newRacePending) return;
+    const reason = this._newRacePending;
+    if (!reason) return;
     this._newRacePending = null;
-    this.newRace();
+    this.newRace(reason);
+  }
+
+  // Replay recorder (apps/server/replays.js): end the race on the current
+  // core and keep it in the in-memory ring (races no player joined are
+  // dropped). Reasons: 'timeLimit' | 'finished' (race lifecycle), 'vote',
+  // 'join' (first boat into an idle room), 'resize', 'idle' (no player boat
+  // for REPLAY_IDLE_TICKS), 'truncated', 'closed' (room dropped).
+  _endRace(reason) {
+    const rec = this._recorder;
+    this._recorder = null;
+    if (!rec || !this.core) return null;
+    const r = rec.finish(reason, { config: this.tomlConfig(), seed: this.windSeed() });
+    saveReplay(r);
+    return r;
   }
 
   // Vote to restart. Voters are connected clients racing a player boat
@@ -791,7 +825,7 @@ export class Room {
     if (total > 0 && cast === total) {
       this._chatSystem(total === 1 ? 'Restart vote · new race' : `Restart vote passed (${cast}/${total}) · new race`);
       this.restartVotes.clear();
-      this.newRace();
+      this.newRace('vote');
       ({ cast, total, voters } = this._voteState());
     }
     for (const c of this.clients) {
@@ -804,13 +838,17 @@ export class Room {
   }
 
   /**
-   * New race: apply the room's current TOML again, so validation draws a new
+   * New race: a fresh core (_freshCore, so the race replays from its start)
+   * with the room's current TOML applied again, so validation draws a new
    * room seed from wind_schedule_seed = [mean, sd] (sd 0: the same seed), the
    * scenario restarts with the player boats kept, and "Room seed N" is posted.
+   * reason: why the previous race ended (_endRace).
    */
-  newRace() {
+  newRace(reason = 'newRace') {
     if (!this.core) return { error: 'room not ready' };
-    const r = this.applyTomlConfig(this.tomlConfig());
+    const toml = this.tomlConfig();
+    this._freshCore(this.core.map.width, this.core.map.height, reason);
+    const r = this.applyTomlConfig(toml);
     if (this.onNewRace) this.onNewRace(this, r);
     return r;
   }
@@ -1058,6 +1096,7 @@ export class Room {
     this._respawnDue();
     this._newRaceDue();
     this._voteTick();
+    if (this._recorder && this._recorder.due) this._endRace(this._recorder.due);
     frame.fieldReady = false;
     // Per-client extras go to their subscribers only (_publish).
     const flow = null, perf = frame.perf || null;

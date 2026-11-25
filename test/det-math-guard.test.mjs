@@ -24,6 +24,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 export const SIM_FILES = [
   'apps/server/room.js',
+  'apps/server/replays.js',
+  'src/state-hash.js',
   'src/boat-colors.js', 'src/boat-draw.js', 'src/boat.js', 'src/boltzmann.js', 'src/boundary-scenario.js',
   'src/boundary.js', 'src/course.js', 'src/custom-scenario.js', 'src/dev-config.js', 'src/dinghy-forces.js',
   'src/domainTrack.js', 'src/draw-order.js', 'src/finish-ghost.js', 'src/finish.js', 'src/foil.js', 'src/gusts.js',
