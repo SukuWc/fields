@@ -14,6 +14,11 @@
 // Client commands other than plot (the field colours) are dropped, so
 // nothing on the page can change the replayed race.
 //
+// Chat: the record's chat lines (record.chat, { t, seq, at, rc?, text, sys?,
+// from? }; older records have none) go to on() listeners as live chat
+// events ({ type: 'chat', msg }) once the replay has played t ticks, so the
+// chat panel shows them as in the room; pausing holds them back too.
+//
 // onStatus(fn): fn({ id, room, players, t, ticks, checked, total, mismatch,
 // done, paused, error }) after every played tick and on pause / errors.
 import { ReplayStepper } from './replay-stepper.js';
@@ -53,6 +58,9 @@ export class ReplayHost {
     this.error = null;
     this.lastFrame = null;
     this.record = null;
+    this.chat = [];
+    this._chatLines = [];
+    this._chatNext = 0;
     this.stepper = null;
     this.core = null;
     this.info = null;
@@ -70,6 +78,7 @@ export class ReplayHost {
       throw new Error('not a replay record');
     }
     this.record = record;
+    this._chatLines = Array.isArray(record.chat) ? record.chat.filter((m) => m && Number.isFinite(m.t)).sort((a, b) => a.t - b.t || (a.seq || 0) - (b.seq || 0)) : [];
     this.stepper = new ReplayStepper(record, { texture: this.texture, oversampling: this.oversampling });
     this.core = this.stepper.core;
     this.core.sim.on((ev) => {
@@ -111,6 +120,15 @@ export class ReplayHost {
     };
   }
 
+  // Chat lines up to the ticks played, as live chat events.
+  _emitChat() {
+    const t = this.stepper ? this.stepper.t : 0;
+    while (this._chatNext < this._chatLines.length && this._chatLines[this._chatNext].t <= t) {
+      const msg = { ...this._chatLines[this._chatNext++] };
+      for (const fn of this._listeners) fn({ type: 'chat', msg });
+    }
+  }
+
   _emitStatus() {
     const st = this.status();
     for (const fn of this._statusListeners) fn(st);
@@ -147,6 +165,7 @@ export class ReplayHost {
       this.lastFrame = frame;
       for (const fn of this._frameListeners) fn(frame);
     }
+    this._emitChat();
     this._emitStatus();
     return frame;
   }

@@ -13,6 +13,7 @@ import { resimulate } from '../apps/server/replays.js';
 import { REPLAY_KEEP } from '../apps/server/replays.js';
 import { REPLAY_HASH_EVERY } from '../apps/server/replays.js';
 import { saveReplay } from '../apps/server/replays.js';
+import { recordBytes } from '../apps/server/replays.js';
 import { startServer } from '../apps/server/index.js';
 import { parseServerMessage } from '../src/wire-codec.js';
 
@@ -111,6 +112,39 @@ test('a race is recorded, listed, fetched and replays to the same hashes and res
   room.leave(b);
 });
 
+test('a race keeps its chat with race ticks, outside the sim log and hashes', (t) => {
+  clearReplays();
+  const { room, a } = mkRoom('chat');
+  t.after(() => closeRoom(room));
+  cmd(room, a, { type: 'spawnBoat', name: 'Ann' });
+  tick(room, 10);
+  send(room, a, { type: 'chat', id: 2, text: 'hello  ' });
+  tick(room, 25);
+  send(room, a, { type: 'chat', id: 3, text: 'GG' });
+  tick(room, 5);
+  mute(() => room.newRace('vote'));
+  const s = listReplays()[0];
+  const rec = getReplay(s.id);
+  assert.ok(Array.isArray(rec.chat));
+  const said = rec.chat.filter((m) => !m.sys);
+  assert.deepEqual(said.map((m) => [m.t, m.text, m.from.name]), [[10, 'hello', 'Ann'], [35, 'GG', 'Ann']]);
+  assert.ok(said.every((m) => Number.isFinite(m.seq) && Number.isFinite(m.at)));
+  assert.ok(rec.chat.some((m) => m.sys && /Ann joined/.test(m.text)), JSON.stringify(rec.chat));
+  assert.ok(rec.chat.every((m) => m.t >= 0 && m.t <= rec.ticks));
+  // The next race starts with its own chat (its room seed line), not these.
+  const next = room._recorder.chatLines;
+  assert.ok(next.every((m) => m.t === 0 && m.sys), JSON.stringify(next));
+  assert.ok(!rec.log.some((e) => e.c && e.c.type === 'chat'), 'chat is not in the sim log');
+  // Chat does not change the replay: same hashes with the chat dropped.
+  const again = resimulate({ ...JSON.parse(JSON.stringify(rec)), chat: undefined });
+  assert.equal(again.firstMismatch, null, JSON.stringify(again.firstMismatch));
+  assert.equal(again.finalHash.all, rec.finalHash.all);
+  // The list carries the record's size (JSON bytes, chat included).
+  assert.equal(s.bytes, recordBytes(rec));
+  assert.equal(s.bytes, Buffer.byteLength(JSON.stringify(rec)));
+  room.leave(a);
+});
+
 test('the list keeps the last three races, oldest dropped; empty races are not kept', (t) => {
   clearReplays();
   const { room, a } = mkRoom('ring');
@@ -152,6 +186,8 @@ test('GET /api/replays lists them, /api/replays/:id returns one', async (t) => {
   const list = await get('/api/replays');
   assert.deepEqual(list.body.map((r) => r.id), ['r4', 'r3', 'r2']);
   assert.equal(list.body[0].log, undefined, 'the list has no logs');
+  const r3 = await fetch(`http://127.0.0.1:${srv.port}/api/replays/r3`);
+  assert.equal(list.body[1].bytes, Buffer.byteLength(await r3.text()), 'bytes = size of the record response');
   const one = await get('/api/replays/r3');
   assert.equal(one.status, 200);
   assert.deepEqual(one.body.log, []);

@@ -19,7 +19,7 @@
 //   PUT|POST /api/rooms/:id/config   apply room TOML (Authorization: Bearer <ADMIN_SECRET>
 //                    when ADMIN_SECRET is set; no auth when it is unset = open editing)
 //                    body: raw TOML (text/plain) or JSON { "toml": "..." } / { "config": "..." }
-//   GET /api/replays  last three finished races (RAM): [{ id, room, startedAt, endedAt, durationS, ticks, players, buildVersion, endReason, seed }]
+//   GET /api/replays  last three finished races (RAM): [{ id, room, startedAt, endedAt, durationS, ticks, players, buildVersion, endReason, seed, bytes }]
 //   GET /api/replays/:id  one race: start options, tick-stamped command log, state hash every 30 ticks, results
 //   GET /api/perf    { rooms: [{ id, players, sampleHz, windowS, endAt, times, latestMs }] }
 //                    last ~180 s of frameMs (physics + field encode) per room (CORS *)

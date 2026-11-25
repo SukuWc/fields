@@ -228,8 +228,12 @@ server; a Node restart forgets them).
   spawn / remove, per-player Dev gains and rudder limits, autopilot, tack,
   penalty turns, ...), the tick inputs whenever they change (held helm /
   heading commands, dt, view), a state hash every 30 ticks (about 1 ms per
-  hash on the default room) and at the end, the room TOML and seed, and the
-  finish results.
+  hash on the default room) and at the end, the room TOML and seed, the
+  finish results, and the race's chat (`chat`: every line the room posted
+  during the race, player messages and system lines such as joins, the room
+  seed and the vote, as `{ t (race tick), seq, at, rc?, text, sys?, from? }`;
+  kept apart from the sim log and not hashed). `GET /api/replays` entries
+  carry `bytes`, the UTF-8 size of the record's JSON.
 - `resimulate(record)` re-runs a record on a fresh SimCore and reports the
   first hash that differs (the stepping is `src/replay-stepper.js`, shared
   with the browser player below); `test/replay-recorder.test.mjs` checks a recorded
@@ -255,7 +259,11 @@ recorded `present` flag is replayed as recorded: it changes the state hash
 
 A banner shows the position, `hashes OK n/66`, or `MISMATCH at tick N (want,
 got)` at the first stored hash that differs, then `Replay finished`; Pause /
-Play and a link back to the rooms. No seeking or speed control; a slow
+Play and a link back to the rooms. The recorded chat appears in the normal
+chat panel when the replay reaches each line's tick (live chat events from
+the ReplayHost, so Pause holds them too); the chat input stays disabled.
+Older records without `chat` play as before. The landing links show start
+time, race length (m:ss) and record size in bytes. No seeking or speed control; a slow
 device plays slower than real time (the loop drops time, never ticks).
 
 `node scripts/replay-player-browser.mjs [--engine chromium|firefox|webkit]`

@@ -16,6 +16,8 @@ import { replayStatusText } from '../src/replay-host.js';
 import { replayLinksFor } from '../apps/landing/room-admin.js';
 import { syncReplayLinks } from '../apps/landing/room-admin.js';
 import { REPLAY_LINKS_MAX } from '../apps/landing/room-admin.js';
+import { formatRaceLength } from '../apps/landing/room-admin.js';
+import { formatBytes } from '../apps/landing/room-admin.js';
 
 const RECORD = JSON.parse(fs.readFileSync(new URL('./fixtures/replay-europe-1-mww066n9-1.json', import.meta.url), 'utf8'));
 const mute = (f) => { const l = console.log; const i = console.info; console.log = () => {}; console.info = () => {}; try { return f(); } finally { console.log = l; console.info = i; } };
@@ -95,7 +97,7 @@ test('replay id and record URL', () => {
 
 test('landing replay links: this room, newest first, at most three', () => {
   const list = [
-    { id: 'e-4', room: 'europe-1', startedAt: '2026-11-25T11:50:51Z', durationS: 65.6, players: ['suku'] },
+    { id: 'e-4', room: 'europe-1', startedAt: '2026-11-25T11:50:51Z', durationS: 65.6, players: ['suku'], bytes: 14599 },
     { id: 'x-1', room: 'us-1', startedAt: '2026-11-25T11:40:00Z', durationS: 10, players: [] },
     { id: 'e-3', room: 'europe-1', startedAt: '2026-11-25T11:30:00Z', durationS: 120.2, players: ['a', 'b'] },
     { id: 'e-2', room: 'europe-1', startedAt: 'bad', players: [] },
@@ -105,13 +107,50 @@ test('landing replay links: this room, newest first, at most three', () => {
   const links = replayLinksFor(list, 'europe-1', { clock });
   assert.equal(links.length, REPLAY_LINKS_MAX);
   assert.deepEqual(links.map((l) => l.id), ['e-4', 'e-3', 'e-2']);
-  assert.equal(links[0].text, 'Replay 11:50 · 66 s · suku');
+  assert.equal(links[0].text, 'Replay 11:50 · 1:06 · 14,599 B · suku');
+  assert.equal(links[0].title, 'length 1:06, size 14,599 B');
   assert.equal(links[0].href, '/play/?replay=e-4');
-  assert.equal(links[1].text, 'Replay 11:30 · 120 s · a, b');
+  assert.equal(links[1].text, 'Replay 11:30 · 2:00 · a, b');
   assert.equal(links[2].text, 'Replay');
   assert.equal(replayLinksFor(list, 'us-1', { api: 'https://x.app', clock })[0].href, 'https://x.app/play/?replay=x-1');
   assert.deepEqual(replayLinksFor(null, 'europe-1'), []);
   assert.deepEqual(replayLinksFor(list, 'asia-1'), []);
+});
+
+test('landing length and size formats', () => {
+  assert.equal(formatRaceLength(65.6), '1:06');
+  assert.equal(formatRaceLength(5), '0:05');
+  assert.equal(formatRaceLength(3725), '1:02:05');
+  assert.equal(formatRaceLength(undefined), '');
+  assert.equal(formatBytes(14599), '14,599 B');
+  assert.equal(formatBytes(512), '512 B');
+  assert.equal(formatBytes(1234567), '1,234,567 B');
+  assert.equal(formatBytes(undefined), '');
+});
+
+test('ReplayHost shows the recorded chat at its ticks, held back while paused', async () => {
+  const rec = structuredClone(RECORD);
+  assert.equal(rec.chat, undefined, 'the fixture predates chat');
+  rec.chat = [
+    { t: 0, seq: 1, at: 1, sys: true, text: 'Room seed 30' },
+    { t: 40, seq: 3, at: 3, text: 'GG', from: { name: 'suku', boatId: 'b1', n: 0, color: 0xd81b60 } },
+    { t: 12, seq: 2, at: 2, text: 'hello', from: { name: 'suku', boatId: 'b1', n: 0, color: 0xd81b60 } },
+  ];
+  const host = new ReplayHost('x', { fetchRecord: async () => rec });
+  await mute(() => host.ready);
+  assert.deepEqual(host.chat, [], 'no history up front');
+  const seen = [];
+  host.on((ev) => { if (ev.type === 'chat') seen.push([host.stepper.t, ev.msg.text]); });
+  const req = { dt: 1 / 30 };
+  mute(() => { for (let i = 0; i < 12; i++) host.tick(req); });
+  assert.deepEqual(seen, [[1, 'Room seed 30'], [12, 'hello']]);
+  host.setPaused(true);
+  mute(() => { for (let i = 0; i < 50; i++) host.tick(req); });
+  assert.equal(seen.length, 2, 'nothing while paused');
+  host.setPaused(false);
+  mute(() => { for (let i = 0; i < 28; i++) host.tick(req); });
+  assert.deepEqual(seen, [[1, 'Room seed 30'], [12, 'hello'], [40, 'GG']]);
+  assert.equal(host.stepper.firstMismatch, null, 'chat does not touch the sim');
 });
 
 test('landing replay links: DOM untouched while unchanged, hidden when empty', () => {
