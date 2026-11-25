@@ -416,11 +416,11 @@
          styled like the overlay steering buttons (.sz-btn colours, pressed
          state and shadow), a fixed CSS-pixel distance from the boat along
          the autopilot target heading at every zoom. While dragging it
-         follows the pointer and the best-VMG drop zone shows 1.5 × that
-         distance out on the dashed preview line. Over the canvas and rule
+         follows the pointer and the best-VMG drop zone shows
+         --ap-zone-dist out on the dashed preview line (separate var). Over the canvas and rule
          labels, under every HUD panel, sheet and drawer. */
-      :root { --ap-handle-dist: 120px; --ap-handle-size: 40px; --ap-zone-size: 52px; }
-      .bp-touch { --ap-handle-dist: 110px; --ap-handle-size: var(--sz-tap); --ap-zone-size: 60px; }
+      :root { --ap-handle-dist: 180px; --ap-zone-dist: 180px; --ap-handle-size: 40px; --ap-zone-size: 52px; }
+      .bp-touch { --ap-handle-dist: 165px; --ap-zone-dist: 165px; --ap-handle-size: var(--sz-tap); --ap-zone-size: 60px; }
       #autopilot_handle {
         --sz-btn-bg: rgba(18, 28, 48, 0.55); --sz-btn-border: rgba(255, 255, 255, 0.35);
         display: flex; align-items: center; justify-content: center;

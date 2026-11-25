@@ -3,12 +3,18 @@
 // the autopilot is engaged, Camera Follow is on, this client has a boat it
 // can steer and the Preferences "Autopilot drag circle" box is on (opt-in). At rest it
 // sits a fixed number of CSS pixels (--ap-handle-dist) from the boat's
-// on-screen position along the autopilot target heading, whatever the zoom.
+// on-screen position along the autopilot target heading, whatever the zoom;
+// pulled in along that line if it would leave the race view (hidden only
+// when even AP_MIN_DIST_PX does not fit).
 //
 // Drag: the circle follows the pointer freely and the target heading follows
 // the boat → pointer direction (headingSet). While dragging, a best-VMG drop
-// zone (#autopilot_vmg_zone) shows 1.5 × the resting distance out along the
-// dashed preview line (autopilotGuideTarget, the angle Space locks).
+// zone (#autopilot_vmg_zone) shows --ap-zone-dist out along the dashed
+// preview line (autopilotGuideTarget, the angle Space locks), pulled in the
+// same way to stay on the usable view. Rest and zone
+// distances are separate CSS vars (both 180 px desktop / 165 px touch now),
+// so at best VMG the resting circle sits on the zone's spot. A tap without a
+// drag (under AP_TAP_PX) changes nothing.
 // Releasing on the zone locks that best-VMG angle; releasing anywhere else
 // sets the heading from the release direction, and the circle springs back
 // to its resting distance. The heading keeps following the pointer while it
@@ -21,9 +27,13 @@ import * as THREE from 'three';
 import { autopilotGuideTarget, autopilotHeadingFromWorld } from './boat-draw.js';
 
 // Fallbacks when the CSS custom properties are missing (tests, old pages).
-export const AP_HANDLE_DIST_PX = 120;
-// Drop zone distance = this × the resting distance.
-export const AP_ZONE_DIST_FACTOR = 1.5;
+export const AP_HANDLE_DIST_PX = 180;
+// Drop zone distance from the boat (CSS px), independent of the rest distance.
+export const AP_ZONE_DIST_PX = 180;
+// Resting circle pulled in to fit the view, but never closer than this.
+export const AP_MIN_DIST_PX = 70;
+// A press that moves less than this is a tap: no heading change on release.
+export const AP_TAP_PX = 6;
 // Extra hit slack around the drop zone's drawn radius (CSS px).
 export const AP_ZONE_SLACK_PX = { mouse: 12, touch: 20 };
 // Distance along the target ray used only to find the on-screen direction.
@@ -99,14 +109,50 @@ export function autopilotButtonClientPos(camera, canvas, s, distPx = AP_HANDLE_D
   return p ? { x: p.x, y: p.y, boatX: o.x, boatY: o.y } : null;
 }
 
+// Largest distance ≤ want from o towards p that keeps the point inside rect
+// inset by margin (all client px). o outside the inset rect → 0.
+export function fitAlongRay(o, p, rect, want, margin = 0) {
+  if (!o || !p || !rect || !(want > 0)) return 0;
+  const l = rect.left + margin, t = rect.top + margin;
+  const r = rect.left + rect.width - margin, b = rect.top + rect.height - margin;
+  if (o.x < l || o.x > r || o.y < t || o.y > b) return 0;
+  const dx = p.x - o.x, dy = p.y - o.y;
+  const len = Math.hypot(dx, dy);
+  if (!(len > 1e-6)) return 0;
+  const ux = dx / len, uy = dy / len;
+  let d = want;
+  if (ux > 1e-9) d = Math.min(d, (r - o.x) / ux);
+  if (ux < -1e-9) d = Math.min(d, (l - o.x) / ux);
+  if (uy > 1e-9) d = Math.min(d, (b - o.y) / uy);
+  if (uy < -1e-9) d = Math.min(d, (t - o.y) / uy);
+  return Math.max(0, d);
+}
+
+// Usable race-view area (client px): the canvas, with the bottom cut at the
+// top of the overlay touch controls (Head up / Bear away, steer zones, the
+// action row) so the circle and zone never sit under a button they can't
+// be grabbed through. Controls in the top half are ignored.
+export function raceViewBounds(canvas, doc = typeof document !== 'undefined' ? document : null) {
+  const c = canvas.getBoundingClientRect();
+  let bottom = c.top + c.height;
+  if (doc && doc.querySelectorAll) {
+    for (const b of doc.querySelectorAll('#touch_controls .tc-btn')) {
+      const r = b.getBoundingClientRect();
+      if (!(r.width > 0) || !(r.height > 0)) continue;
+      if (r.top > c.top + c.height / 2 && r.top < bottom) bottom = r.top;
+    }
+  }
+  return { left: c.left, top: c.top, width: c.width, height: Math.max(0, bottom - c.top) };
+}
+
 // Best-VMG drop zone: the dashed preview's angle (what Space locks), placed
-// AP_ZONE_DIST_FACTOR × the resting distance from the boat. { x, y, aht }.
-export function autopilotZoneClientPos(camera, canvas, s, distPx = AP_HANDLE_DIST_PX) {
+// distPx (--ap-zone-dist) from the boat. { x, y, aht }.
+export function autopilotZoneClientPos(camera, canvas, s, distPx = AP_ZONE_DIST_PX) {
   if (!s) return null;
   const aht = autopilotGuideTarget(s);
   if (!Number.isFinite(aht)) return null;
-  const p = autopilotButtonClientPos(camera, canvas, s, distPx * AP_ZONE_DIST_FACTOR, aht);
-  return p ? { x: p.x, y: p.y, aht } : null;
+  const p = autopilotButtonClientPos(camera, canvas, s, distPx, aht);
+  return p ? { x: p.x, y: p.y, aht, boatX: p.boatX, boatY: p.boatY } : null;
 }
 
 // Pointer (client px) over the zone centre within radius + slack.
@@ -181,6 +227,7 @@ export function setupAutopilotHandle(view, {
   command,
   boatIndex = () => 0,
   enabled = () => true,
+  getBounds = () => raceViewBounds(canvas, doc),
 } = {}) {
   if (!canvas || !view || typeof getCamera !== 'function' || typeof getBoat !== 'function' || typeof command !== 'function') {
     return null;
@@ -189,9 +236,11 @@ export function setupAutopilotHandle(view, {
   if (!el) return null;
   const zoneEl = zone || (doc && doc.getElementById('autopilot_vmg_zone')) || (doc ? createZone(doc) : null);
 
-  let drag = null; // { id, type, x, y, zone: {x,y,aht}|null, inZone }
+  let drag = null; // { id, type, x, y, sx, sy, moved, zone: {x,y,aht}|null, inZone }
   let lastAht = null;
   let distPx = null;
+  let zoneDistPx = null;
+  let btnR = null;
   let zoneR = null;
   let shown = { x: NaN, y: NaN };
   let zoneShown = { x: NaN, y: NaN };
@@ -200,12 +249,20 @@ export function setupAutopilotHandle(view, {
     if (distPx == null) distPx = cssPx(el, '--ap-handle-dist', AP_HANDLE_DIST_PX);
     return distPx;
   };
+  const zoneDist = () => {
+    if (zoneDistPx == null) zoneDistPx = cssPx(zoneEl || el, '--ap-zone-dist', AP_ZONE_DIST_PX);
+    return zoneDistPx;
+  };
+  const btnRadius = () => {
+    if (btnR == null) btnR = cssPx(el, '--ap-handle-size', 40) / 2;
+    return btnR;
+  };
   // Drawn radius of the drop zone (half its CSS size).
   const zoneRadius = () => {
     if (zoneR == null) zoneR = zoneEl ? cssPx(zoneEl, '--ap-zone-size', 56) / 2 : 28;
     return zoneR;
   };
-  const onResize = () => { distPx = null; zoneR = null; };
+  const onResize = () => { distPx = null; zoneDistPx = null; btnR = null; zoneR = null; };
   if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('resize', onResize);
 
   const isOn = () => { try { return enabled() !== false; } catch (_) { return true; } };
@@ -247,8 +304,19 @@ export function setupAutopilotHandle(view, {
   }
 
   function inRect(p) {
-    const r = canvas.getBoundingClientRect();
+    const r = getBounds();
     return p.x >= r.left && p.x <= r.left + r.width && p.y >= r.top && p.y <= r.top + r.height;
+  }
+
+  // p pulled in along boat → p to fit the usable view with radius r of
+  // margin; null when even AP_MIN_DIST_PX does not fit.
+  function fitted(p, want, r) {
+    if (!p) return null;
+    const o = { x: p.boatX, y: p.boatY };
+    const fit = fitAlongRay(o, p, getBounds(), want, r + 2);
+    if (fit < Math.min(AP_MIN_DIST_PX, want)) return null;
+    if (fit >= want - 0.01) return p;
+    return { ...p, ...pointAtPixels(o, p, fit) };
   }
 
   // Zone follows the dashed preview, except while the pointer is on it
@@ -256,8 +324,7 @@ export function setupAutopilotHandle(view, {
   function refreshZone() {
     if (!drag) return;
     if (!drag.inZone || !drag.zone) {
-      const z = autopilotZoneClientPos(getCamera(), canvas, getBoat(), dist());
-      drag.zone = z && inRect(z) ? z : null;
+      drag.zone = fitted(autopilotZoneClientPos(getCamera(), canvas, getBoat(), zoneDist()), zoneDist(), zoneRadius());
     }
     if (!zoneEl) return;
     if (!drag.zone) { hideZone(); return; }
@@ -277,10 +344,11 @@ export function setupAutopilotHandle(view, {
       return;
     }
     hideZone();
-    const p = autopilotButtonClientPos(getCamera(), canvas, boat, dist());
-    // Off the race view (boat at the map edge): hide rather than float over
-    // the top bar or the touch panel.
-    if (!p || !inRect(p)) { hide(); return; }
+    // Keep the whole circle on the usable race view (above the overlay touch
+    // controls): pull it in along the heading line; hide only when even
+    // AP_MIN_DIST_PX won't fit. The drop zone is fitted the same way.
+    const p = fitted(autopilotButtonClientPos(getCamera(), canvas, boat, dist()), dist(), btnRadius());
+    if (!p) { hide(); return; }
     if (el.hidden) el.hidden = false;
     place(el, p, shown);
     if (el.dataset) el.dataset.boatPx = `${p.boatX.toFixed(1)},${p.boatY.toFixed(1)}`;
@@ -295,7 +363,9 @@ export function setupAutopilotHandle(view, {
     _dragging = false;
     try { el.releasePointerCapture(d.id); } catch (_) {}
     if (el.classList) { el.classList.remove('dragging'); el.classList.remove('pressed'); }
-    if (e) {
+    // A tap (no real drag) changes nothing, even when the resting circle
+    // sits on the zone (heading already at best VMG).
+    if (e && d.moved) {
       const x = e.clientX, y = e.clientY;
       if (d.zone && zoneHit(d.zone, x, y, zoneRadius(), d.type)) {
         // The angle the dashed line shows = what Space locks (best VMG).
@@ -315,7 +385,7 @@ export function setupAutopilotHandle(view, {
     if (drag) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     if (!getBoat() || !isOn()) return;
-    drag = { id: e.pointerId, type: e.pointerType || 'mouse', x: e.clientX, y: e.clientY, zone: null, inZone: false };
+    drag = { id: e.pointerId, type: e.pointerType || 'mouse', x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, zone: null, inZone: false };
     _dragging = true;
     _grabs++;
     lastAht = null;
@@ -329,6 +399,12 @@ export function setupAutopilotHandle(view, {
   function onMove(e) {
     if (!drag || e.pointerId !== drag.id) return;
     drag.x = e.clientX; drag.y = e.clientY;
+    if (!drag.moved && Math.hypot(drag.x - drag.sx, drag.y - drag.sy) < AP_TAP_PX) {
+      if (e.cancelable) e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    drag.moved = true;
     drag.inZone = zoneHit(drag.zone, drag.x, drag.y, zoneRadius(), drag.type);
     // The heading follows the pointer for the whole drag, zone or not.
     // Over the zone only the zone itself holds still (refreshZone).
