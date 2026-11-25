@@ -302,13 +302,17 @@ export class ReplayHost {
   terminate() { if (this.worker) this.worker.terminate(); }
 }
 
-/** One status line for the replay banner. */
-export function replayStatusText(st) {
+/**
+ * One status line for the replay banner. position: false leaves out the
+ * time (the timeline shows it).
+ */
+export function replayStatusText(st, { position = true } = {}) {
   if (st.error) return 'Replay unavailable: ' + st.error;
   if (!st.ticks && !st.done) return 'Loading replay…';
   const secs = (n) => (n / 30).toFixed(1) + ' s';
   const pos = secs(st.t) + ' / ' + secs(st.ticks);
   if (st.mismatch) return `Replay ${pos} · MISMATCH at tick ${st.mismatch.t} (want ${st.mismatch.want}, got ${st.mismatch.got})`;
   if (st.done) return `Replay finished · ${st.checked}/${st.total} hashes OK`;
+  if (!position) return `hashes OK ${st.checked}/${st.total}${st.paused ? ' · paused' : ''}`;
   return `Replay ${pos} · hashes OK ${st.checked}/${st.total}${st.paused ? ' · paused' : ''}`;
 }

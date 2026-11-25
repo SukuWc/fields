@@ -63,28 +63,54 @@ const chatLog = await page.textContent('#chat_log');
 console.log('chat:', JSON.stringify(chatLog));
 if (!/hello from the replay/.test(chatLog) || !/Room seed 30/.test(chatLog)) await fail('recorded chat not shown');
 if (!(await page.isDisabled('#chat_input'))) await fail('chat input enabled in a replay');
-// Seeking (src/replay-engine.js, in the replay worker), paused: forward to
-// 50 s, back to 15 s; each lands on its tick with the hashes still OK and the chat
-// history cut to the new position.
-const seekTo = async (t) => {
+// Seeking through the timeline (src/replay-banner.js; src/replay-engine.js in
+// the replay worker), paused: click the scrub bar near 50 s, then set it to
+// 15 s; each lands on its tick with the hashes still OK and the chat history
+// cut to the new position. Then 4x speed to the end.
+const seekTo = async (t, how) => {
   const s0 = Date.now();
   const before = await page.evaluate(() => window.__simHost.status());
   console.log(`before seek to ${t}: at ${before.t}, look-ahead simulated to ${before.simulatedTo}, keyframes ${before.keyframes.join(',')}`);
-  await page.evaluate((x) => window.__simHost.seek(x), t);
-  await page.waitForFunction((x) => { const st = window.__simHost.status(); return st.t === x && !st.seeking; }, t, { timeout: 120000, polling: 50 });
+  if (how === 'click') {
+    const box = await page.locator('#replay_timeline').boundingBox();
+    // A range input maps x to value over its width less the (invisible) thumb: aim, then read it back.
+    await page.mouse.click(box.x + (box.width * t) / before.ticks, box.y + box.height / 2);
+  } else await page.locator('#replay_scrub').fill(String(t));
+  const target = await page.evaluate(() => Number(document.getElementById('replay_scrub').value));
+  await page.waitForFunction(() => document.getElementById('replay_banner').dataset.state === 'seeking', null, { timeout: 5000, polling: 20 }).then(async () => {
+    if (shots && how === 'click') await page.screenshot({ path: join(shots, 'replay-seeking.png') });
+    console.log('while seeking:', await page.textContent('#replay_seek_text'));
+  }, () => {});
+  await page.waitForFunction((x) => { const st = window.__simHost.status(); return st.t === x && !st.seeking; }, target, { timeout: 120000, polling: 50 });
   const st = await page.evaluate(() => window.__simHost.status());
-  console.log(`seek to ${t}: ${Date.now() - s0} ms wall (worker ${st.lastSeekMs} ms), keyframes ${st.keyframes.join(',')}, simulated to ${st.simulatedTo}`);
+  console.log(`seek to ${target}: ${Date.now() - s0} ms wall (worker ${st.lastSeekMs} ms), keyframes ${st.keyframes.join(',')}, simulated to ${st.simulatedTo}; timeline ${await page.textContent('#replay_time')} / ${await page.textContent('#replay_total')}`);
   if (st.mismatch) await fail('mismatch after a seek: ' + JSON.stringify(st.mismatch));
+  return target;
 };
-await page.evaluate(() => window.__simHost.setPaused(true));
-await seekTo(1500);
-await seekTo(450);
-await page.evaluate(() => window.__simHost.setPaused(false));
+await page.click('#replay_pause');
+await page.waitForFunction(() => document.getElementById('replay_banner').dataset.state === 'paused', null, { timeout: 5000 }).catch(() => fail('Pause did not pause'));
+await seekTo(1500, 'click');
+const chatFwd = await page.textContent('#chat_log');
+if (!/hello from the replay/.test(chatFwd)) await fail('chat history lost after seeking forward');
+if (shots) await page.screenshot({ path: join(shots, 'replay-after-seek.png') });
+await seekTo(450, 'fill');
 const chatAfter = await page.textContent('#chat_log');
 if (!/hello from the replay/.test(chatAfter)) await fail('chat history lost after seeking back');
+await seekTo(30, 'fill');
+const chatEarly = await page.textContent('#chat_log');
+console.log('chat at 0:01:', JSON.stringify(chatEarly));
+if (/hello from the replay/.test(chatEarly) || !/Room seed 30/.test(chatEarly)) await fail('chat does not follow a seek back before its line');
+await page.click('#replay_speed button[data-speed="4"]');
+await page.click('#replay_pause');
+const s4 = await page.evaluate(() => window.__simHost.status().t);
+const w4 = Date.now();
+await page.waitForTimeout(3000);
+const st4 = await page.evaluate(() => window.__simHost.status());
+console.log(`4x: ${((st4.t - s4) / ((Date.now() - w4) / 1000) / 30).toFixed(2)} race s per s (speed ${st4.speed})`);
+if (shots) await page.screenshot({ path: join(shots, 'replay-4x.png') });
 await page.waitForFunction(() => {
   const b = document.getElementById('replay_banner');
-  return b && b.dataset.state !== 'playing';
+  return b && ['done', 'mismatch', 'error'].includes(b.dataset.state);
 }, null, { timeout: 200000, polling: 500 });
 const state = await page.getAttribute('#replay_banner', 'data-state');
 const status = await page.textContent('#replay_status');
