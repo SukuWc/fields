@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { playerPrefIds } from '../src/player-prefs.js';
+import { SETTINGS } from '../src/settings-registry.js';
 import { SETTINGS_TABS } from '../src/settings-tabs.js';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
@@ -39,6 +40,7 @@ test('Preferences pane keeps useful view/controls prefs, drops zoom pan name', (
   assert.match(player, /id="touch"/);
   assert.match(player, /id="gamepad"/);
   assert.match(player, /id="vibrate"/);
+  assert.match(player, /id="autopilot_drag"/);
   assert.match(player, /id="input_map_group"/);
   assert.doesNotMatch(player, /id="boat_name"/);
   assert.doesNotMatch(player, /camera_zoom_|camera_move_/);
@@ -55,4 +57,13 @@ test('boat_name lives once, in the Player menu next to Join', () => {
   assert.match(block, /id="own_boat_leave"/);
   assert.ok(block.indexOf('id="boat_name"') < block.indexOf('id="own_boat_join"'));
   assert.equal((html.match(/id="boat_name"/g) || []).length, 1);
+});
+
+test('Autopilot drag circle preference: Controls group, saved, default off', () => {
+  const player = slice('player_panel');
+  assert.match(player, /<input id="autopilot_drag" autocomplete="off" type="checkbox"[^>]*>Autopilot drag circle<\/label>/);
+  assert.ok(playerPrefIds().includes('autopilot_drag'));
+  const s = SETTINGS.find((x) => x.id === 'autopilot_drag');
+  assert.equal(s.default, false);
+  assert.equal(s.panel, 'player');
 });

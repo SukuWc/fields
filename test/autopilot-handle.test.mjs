@@ -1,19 +1,33 @@
-// Autopilot drag handle: world heading math, visibility helpers, headingSet.
+// Autopilot drag handle: round HTML button a fixed pixel distance ahead of
+// the boat on the target heading, shown only while the autopilot is engaged.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  AUTOPILOT_HANDLE_COLOR,
-  AUTOPILOT_HANDLE_OUTLINE,
-  AUTOPILOT_HANDLE_DIST_M,
-  AUTOPILOT_HANDLE_HIT_M,
-  autopilotHandleGuides,
-  autopilotHandleHit,
-  autopilotHandlePos,
-  autopilotHeadingFromWorld,
-} from '../src/boat-draw.js';
+import fs from 'node:fs';
+import * as THREE from 'three';
+import * as boatDraw from '../src/boat-draw.js';
+import { autopilotGuideTarget, autopilotHeadingFromWorld } from '../src/boat-draw.js';
 import { wrapDeg180 } from '../src/boat.js';
 import { BOAT_ACTIONS } from '../src/sim.js';
-import { isAutopilotHandleDragging, setupAutopilotHandle } from '../src/autopilot-handle.js';
+import {
+  AP_HANDLE_DIST_PX,
+  AP_ZONE_DIST_PX,
+  AP_MIN_DIST_PX,
+  AP_TAP_PX,
+  fitAlongRay,
+  raceViewBounds,
+  AP_ZONE_SLACK_PX,
+  autopilotZoneClientPos,
+  zoneHit,
+  autopilotButtonClientPos,
+  autopilotButtonVisible,
+  autopilotHandleGrabCount,
+  autopilotRay,
+  clientToWorld,
+  isAutopilotHandleDragging,
+  pointAtPixels,
+  setupAutopilotHandle,
+  worldToClient,
+} from '../src/autopilot-handle.js';
 
 function boatState(over = {}) {
   return {
@@ -24,17 +38,73 @@ function boatState(over = {}) {
   };
 }
 
-test('handle sits on the target ray at a fixed distance', () => {
-  // wd+aht = 0 → +X in world maths used by the solid AP line.
-  const s = boatState({ wd: 0, aht: 0 });
-  const p = autopilotHandlePos(s);
-  assert.ok(p);
-  assert.equal(Math.round(p.x * 1000) / 1000, AUTOPILOT_HANDLE_DIST_M);
-  assert.ok(Math.abs(p.y) < 1e-9);
-  const up = autopilotHandlePos(boatState({ wd: 0, aht: 90 }));
-  assert.ok(Math.abs(up.x) < 1e-9);
-  assert.equal(Math.round(up.y * 1000) / 1000, AUTOPILOT_HANDLE_DIST_M);
-  assert.equal(AUTOPILOT_HANDLE_HIT_M > 1, true);
+// renderer.js camera: 70° perspective looking straight down from z = zoom.
+function camAt(x, y, zoom, w = 800, h = 600) {
+  const c = new THREE.PerspectiveCamera(70, w / h, 0.1, 1000);
+  c.position.set(x, y, zoom);
+  c.updateMatrixWorld();
+  return c;
+}
+function rectCanvas(w = 800, h = 600, left = 0, top = 0) {
+  return { getBoundingClientRect: () => ({ left, top, width: w, height: h }) };
+}
+
+test('canvas drawing is gone: boat-draw keeps only the heading maths', () => {
+  for (const k of ['autopilotHandleGuides', 'autopilotHandlePos', 'autopilotHandleHit', 'AUTOPILOT_HANDLE_COLOR', 'AUTOPILOT_HANDLE_DIST_M']) {
+    assert.equal(k in boatDraw, false, k);
+  }
+  const main = fs.readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  assert.equal(/autopilotHandleGuides|ap-handle/.test(main), false);
+});
+
+test('target ray starts at the boat origin along wd + aht', () => {
+  const r = autopilotRay(boatState({ px: 3, py: 4, wd: 0, aht: 90 }), 10);
+  assert.deepEqual(r.origin, { x: 3, y: 4 });
+  assert.ok(Math.abs(r.ahead.x - 3) < 1e-9 && Math.abs(r.ahead.y - 14) < 1e-9);
+  assert.equal(autopilotRay(boatState({ aht: NaN })), null);
+  assert.equal(autopilotRay(null), null);
+});
+
+test('pointAtPixels walks a fixed pixel distance', () => {
+  const p = pointAtPixels({ x: 10, y: 10 }, { x: 13, y: 14 }, 50);
+  assert.ok(Math.abs(p.x - 40) < 1e-9 && Math.abs(p.y - 50) < 1e-9);
+  assert.equal(pointAtPixels({ x: 1, y: 1 }, { x: 1, y: 1 }, 50), null);
+});
+
+test('world ↔ client round trip on the water plane', () => {
+  const cam = camAt(5, -3, 30);
+  const cv = rectCanvas(800, 600, 0, 52);
+  const c = worldToClient(cam, cv, 8, 1);
+  const w = clientToWorld(cam, cv, c.x, c.y);
+  assert.ok(Math.abs(w.x - 8) < 1e-6 && Math.abs(w.y - 1) < 1e-6);
+  // Camera centre → canvas centre.
+  const m = worldToClient(cam, cv, 5, -3);
+  assert.ok(Math.abs(m.x - 400) < 1e-6 && Math.abs(m.y - 352) < 1e-6);
+});
+
+test('button sits the same pixel distance from the boat at every zoom', () => {
+  const cv = rectCanvas();
+  const s = boatState({ px: 2, py: 1, wd: 30, aht: -50 });
+  const dists = [];
+  for (const zoom of [10, 18, 45, 80]) {
+    const cam = camAt(0, 0, zoom);
+    const p = autopilotButtonClientPos(cam, cv, s, 120);
+    assert.ok(p);
+    dists.push(Math.hypot(p.x - p.boatX, p.y - p.boatY));
+    // Direction on screen matches the target heading (screen y is down).
+    const ang = Math.atan2(-(p.y - p.boatY), p.x - p.boatX) * 180 / Math.PI;
+    assert.ok(Math.abs(wrapDeg180(ang - (s.wd + s.aht))) < 1e-6, String(ang));
+  }
+  for (const d of dists) assert.ok(Math.abs(d - 120) < 1e-6, String(d));
+  assert.equal(AP_HANDLE_DIST_PX, 180);
+});
+
+test('visible only with autopilot engaged, Camera Follow on, a boat and the preference on', () => {
+  assert.equal(autopilotButtonVisible({ camera_follow: true }, boatState({ ap: 1 }), false), false);
+  assert.equal(autopilotButtonVisible({ camera_follow: true }, boatState({ ap: 1 })), true);
+  assert.equal(autopilotButtonVisible({ camera_follow: true }, boatState({ ap: 0 })), false);
+  assert.equal(autopilotButtonVisible({ camera_follow: false }, boatState({ ap: 1 })), false);
+  assert.equal(autopilotButtonVisible({ camera_follow: true }, null), false);
 });
 
 test('heading from world wraps through head-to-wind and dead downwind', () => {
@@ -51,21 +121,6 @@ test('heading from world wraps through head-to-wind and dead downwind', () => {
   const s2 = boatState({ wd: 90 });
   assert.ok(Math.abs(autopilotHeadingFromWorld(s2, 0, 10)) < 1e-9);
   assert.ok(Math.abs(autopilotHeadingFromWorld(s2, -10, 0) - 90) < 1e-9);
-});
-
-test('handle hit test uses the grab radius', () => {
-  const s = boatState({ wd: 0, aht: 0 });
-  const p = autopilotHandlePos(s);
-  assert.equal(autopilotHandleHit(s, p.x, p.y), true);
-  assert.equal(autopilotHandleHit(s, p.x + AUTOPILOT_HANDLE_HIT_M + 0.2, p.y), false);
-});
-
-test('handle guides are a cyan diamond with role ap-handle', () => {
-  const g = autopilotHandleGuides(boatState());
-  assert.ok(g.length >= 4);
-  assert.ok(g.every((x) => x.role === 'ap-handle' && x.type === 'guide'));
-  assert.ok(g.some((x) => x.color === AUTOPILOT_HANDLE_COLOR));
-  assert.ok(g.some((x) => x.color === AUTOPILOT_HANDLE_OUTLINE));
 });
 
 test('headingSet engages autopilot and accepts any wrapped angle', () => {
@@ -111,66 +166,370 @@ test('Boat.input_autopilot_heading_set wraps and enables via headingSet command'
   assert.ok(Math.abs(b.autopilot_heading_target + 170) < 1e-9, String(b.autopilot_heading_target));
 });
 
-function fakeCanvas() {
+
+function fakeEl() {
   const h = {};
+  const cls = new Set();
   return {
-    style: { cursor: '' },
-    getBoundingClientRect: () => ({ left: 0, top: 0, width: 200, height: 200 }),
-    setPointerCapture() {},
-    releasePointerCapture() {},
-    addEventListener: (t, f, o) => { h[t] = { f, o }; },
+    hidden: true,
+    style: {},
+    dataset: {},
+    captured: null,
+    className: '',
+    classList: {
+      add: (c) => cls.add(c), remove: (c) => cls.delete(c), contains: (c) => cls.has(c),
+      toggle: (c, on) => { if (on) cls.add(c); else cls.delete(c); },
+    },
+    setPointerCapture(id) { this.captured = id; },
+    releasePointerCapture() { this.captured = null; },
+    addEventListener: (t, f) => { h[t] = f; },
     removeEventListener: (t) => { delete h[t]; },
-    fire(t, e) { if (h[t]) h[t].f(e); },
+    fire(t, e) { if (h[t]) { if (!e.type) e.type = t; h[t](e); } },
+    has: (t) => !!h[t],
   };
 }
+const ev = (over = {}) => ({
+  pointerId: 1, pointerType: 'touch', button: 0, clientX: 0, clientY: 0, cancelable: true,
+  prevented: false, stopped: false,
+  preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; },
+  ...over,
+});
+// Pin the event object so prevented/stopped can be read back after fire.
+function fireKeep(el, type, e) { e.type = type; el.fire(type, e); return e; }
+const xy = (t) => { const m = /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec(t || ''); return m ? { x: +m[1], y: +m[2] } : null; };
 
-test('pointer drag on the handle sends headingSet and blocks re-entry', () => {
-  const view = { camera_follow: true };
-  const canvas = fakeCanvas();
+function rig({ ap = 1, follow = true, boat, on = true } = {}) {
+  const view = { camera_follow: follow };
+  const cam = camAt(0, 0, 30);
+  const canvas = rectCanvas();
+  const el = fakeEl();
+  const zone = fakeEl();
   const cmds = [];
-  const boat = boatState({ wd: 0, aht: 50 });
-  // Camera looking straight down from z=30 over origin; unproject math needs a real-ish camera.
-  // Stub getCamera/clientToWorld path by placing the handle under a known client point:
-  // Instead of THREE camera, call the hit path by monkeypatching via world from a stub camera.
-  // We test setup wiring: without a real camera, worldAt returns null and drag does not start.
-  // So build a minimal camera mock with the fields clientToWorld needs.
-  const camera = {
-    position: { x: 0, y: 0, z: 30, clone() { return { x: 0, y: 0, z: 30 }; } },
-  };
-  // clientToWorld uses THREE Vector3 unproject — needs a full camera. Skip THREE path:
-  // verify isAutopilotHandleDragging starts false and dispose clears.
-  assert.equal(isAutopilotHandleDragging(), false);
+  let b = boat || boatState({ ap, wd: 0, aht: 0 });
+  const pref = { on };
   const ctl = setupAutopilotHandle(view, {
-    canvas,
-    getCamera: () => null,
-    getBoat: () => boat,
+    doc: null, canvas, button: el, zone,
+    getCamera: () => cam,
+    getBoat: () => b,
     command: (c) => cmds.push(c),
     boatIndex: () => 0,
+    enabled: () => pref.on,
   });
-  assert.ok(ctl);
-  canvas.fire('pointerdown', {
-    pointerId: 1, pointerType: 'mouse', button: 0, clientX: 100, clientY: 100,
-    cancelable: true, preventDefault() {}, stopImmediatePropagation() {},
-  });
-  assert.equal(isAutopilotHandleDragging(), false); // no camera → no hit
-  assert.equal(cmds.length, 0);
-  ctl.dispose();
+  return { view, cam, canvas, el, zone, cmds, ctl, pref, setBoat: (x) => { b = x; } };
+}
+
+test('update shows the button while the autopilot is on and hides it when off', () => {
+  const r = rig({ ap: 1 });
+  r.ctl.update();
+  assert.equal(r.el.hidden, false);
+  assert.equal(r.zone.hidden, true); // zone only while dragging
+  // Target ray along +X: button 180 px right of the canvas centre.
+  assert.match(r.el.style.transform, /^translate\(580\.0px, 300\.0px\) translate\(-50%, -50%\)$/);
+  r.setBoat(boatState({ ap: 0 }));
+  r.ctl.update();
+  assert.equal(r.el.hidden, true);
+  r.setBoat(boatState({ ap: 1, aht: 90 }));
+  r.view.camera_follow = false;
+  r.ctl.update();
+  assert.equal(r.el.hidden, true);
+  r.view.camera_follow = true;
+  r.ctl.update();
+  assert.equal(r.el.hidden, false);
+  assert.match(r.el.style.transform, /^translate\(400\.0px, 120\.0px\)/);
+  r.setBoat(null); // spectator
+  r.ctl.update();
+  assert.equal(r.el.hidden, true);
+  r.ctl.dispose();
 });
 
-test('handle ignored when Camera Follow is off', () => {
-  const view = { camera_follow: false };
-  const canvas = fakeCanvas();
-  const cmds = [];
-  setupAutopilotHandle(view, {
-    canvas,
-    getCamera: () => null,
-    getBoat: () => boatState(),
-    command: (c) => cmds.push(c),
-  });
-  canvas.fire('pointerdown', {
-    pointerId: 1, pointerType: 'mouse', button: 0, clientX: 100, clientY: 100,
-    cancelable: true, preventDefault() {}, stopImmediatePropagation() {},
-  });
-  assert.equal(cmds.length, 0);
+test('Preferences box off: the circle never shows and cannot be grabbed', () => {
+  const r = rig({ on: false });
+  r.ctl.update();
+  assert.equal(r.el.hidden, true);
+  r.el.fire('pointerdown', ev());
   assert.equal(isAutopilotHandleDragging(), false);
+  // Turned off mid-drag: the drag ends with no command and the circle hides.
+  r.pref.on = true;
+  r.el.fire('pointerdown', ev({ clientX: 580, clientY: 300 }));
+  assert.equal(isAutopilotHandleDragging(), true);
+  r.pref.on = false;
+  r.ctl.update();
+  assert.equal(isAutopilotHandleDragging(), false);
+  assert.equal(r.el.hidden, true);
+  assert.equal(r.zone.hidden, true);
+  assert.equal(r.cmds.length, 0);
+  r.ctl.dispose();
+});
+
+test('button off the race view is hidden', () => {
+  const r = rig({ boat: boatState({ ap: 1, px: 30, py: 0, aht: 0 }) });
+  r.ctl.update();
+  assert.equal(r.el.hidden, true);
+  r.ctl.dispose();
+});
+
+test('drop zone sits its own distance along the dashed best-VMG line', () => {
+  assert.equal(AP_ZONE_DIST_PX, 180);
+  const cv = rectCanvas();
+  for (const s of [boatState({ wd: 0, aht: 20 }), boatState({ wd: 75, aht: -130 }), boatState({ wd: 10, aht: 95 })]) {
+    for (const zoom of [12, 45]) {
+      const z = autopilotZoneClientPos(camAt(0, 0, zoom), cv, s, 165);
+      assert.equal(z.aht, autopilotGuideTarget(s));
+      const o = worldToClient(camAt(0, 0, zoom), cv, s.px, s.py);
+      assert.ok(Math.abs(Math.hypot(z.x - o.x, z.y - o.y) - 165) < 1e-6); // not scaled by the rest distance
+      const ang = Math.atan2(-(z.y - o.y), z.x - o.x) * 180 / Math.PI;
+      assert.ok(Math.abs(wrapDeg180(ang - (s.wd + z.aht))) < 1e-6);
+    }
+  }
+});
+
+test('zone hit test is generous, more so on touch', () => {
+  const z = { x: 100, y: 100 };
+  assert.equal(zoneHit(z, 100 + 28 + AP_ZONE_SLACK_PX.mouse, 100, 28, 'mouse'), true);
+  assert.equal(zoneHit(z, 100 + 28 + AP_ZONE_SLACK_PX.mouse + 1, 100, 28, 'mouse'), false);
+  assert.equal(zoneHit(z, 100 + 30 + AP_ZONE_SLACK_PX.touch, 100, 30, 'touch'), true);
+  assert.ok(AP_ZONE_SLACK_PX.touch > AP_ZONE_SLACK_PX.mouse);
+  assert.equal(zoneHit(null, 100, 100, 30), false);
+});
+
+test('drag: circle follows the pointer, heading follows boat → pointer, zone shows', () => {
+  const r = rig();
+  r.ctl.update();
+  const grabs = autopilotHandleGrabCount();
+  const down = fireKeep(r.el, 'pointerdown', ev({ clientX: 580, clientY: 300 }));
+  assert.equal(isAutopilotHandleDragging(), true);
+  assert.equal(r.el.captured, 1);
+  assert.equal(autopilotHandleGrabCount(), grabs + 1);
+  assert.ok(down.prevented && down.stopped);
+  assert.equal(r.cmds.length, 0); // a grab alone does not move the target
+  assert.equal(r.zone.hidden, false);
+  // Straight below the boat, far beyond the resting radius.
+  const mv = fireKeep(r.el, 'pointermove', ev({ clientX: 400, clientY: 560 }));
+  assert.ok(mv.prevented && mv.stopped);
+  assert.deepEqual(xy(r.el.style.transform), { x: 400, y: 560 });
+  assert.equal(r.cmds.length, 1);
+  assert.equal(r.cmds[0].type, 'headingSet');
+  assert.equal(r.cmds[0].boat, 0);
+  assert.ok(Math.abs(r.cmds[0].aht + 90) < 1e-6, String(r.cmds[0].aht));
+  // Tiny wobble (< 0.25°) is not resent.
+  r.el.fire('pointermove', ev({ clientX: 400.1, clientY: 560 }));
+  assert.equal(r.cmds.length, 1);
+  // Another pointer is ignored while one holds the button.
+  r.el.fire('pointermove', ev({ pointerId: 2, clientX: 400, clientY: 100 }));
+  assert.equal(r.cmds.length, 1);
+  r.ctl.dispose();
+});
+
+test('release elsewhere sets the heading from the release point and springs back', () => {
+  const r = rig();
+  r.ctl.update();
+  r.el.fire('pointerdown', ev({ clientX: 580, clientY: 300 }));
+  r.el.fire('pointermove', ev({ clientX: 300, clientY: 300 }));
+  r.el.fire('pointerup', ev({ clientX: 250, clientY: 450 }));
+  assert.equal(isAutopilotHandleDragging(), false);
+  assert.equal(r.el.captured, null);
+  const last = r.cmds[r.cmds.length - 1];
+  const w = clientToWorld(r.cam, r.canvas, 250, 450);
+  assert.ok(Math.abs(last.aht - autopilotHeadingFromWorld(boatState(), w.x, w.y)) < 1e-9);
+  assert.equal(r.zone.hidden, true);
+  // Back at the resting distance on the (unchanged here) target ray.
+  assert.deepEqual(xy(r.el.style.transform), { x: 580, y: 300 });
+  r.el.fire('pointermove', ev({ clientX: 400, clientY: 100 }));
+  const n = r.cmds.length;
+  r.el.fire('pointermove', ev({ clientX: 100, clientY: 100 }));
+  assert.equal(r.cmds.length, n);
+  r.ctl.dispose();
+});
+
+test('drop on the zone locks the best-VMG angle; heading follows the pointer over it', () => {
+  const s = boatState({ ap: 1, wd: 0, aht: 20 });
+  const r = rig({ boat: s });
+  r.ctl.update();
+  r.el.fire('pointerdown', ev({ clientX: 0, clientY: 0 }));
+  const z = autopilotZoneClientPos(r.cam, r.canvas, s, AP_HANDLE_DIST_PX);
+  assert.deepEqual(xy(r.zone.style.transform), { x: +z.x.toFixed(1), y: +z.y.toFixed(1) });
+  // Near the zone but not on it: heading follows.
+  r.el.fire('pointermove', ev({ clientX: z.x + 80, clientY: z.y + 80 }));
+  assert.equal(r.cmds.length, 1);
+  // On the zone (off-centre, inside the touch slack): heading still follows.
+  r.el.fire('pointermove', ev({ clientX: z.x + 30, clientY: z.y + 20 }));
+  assert.equal(r.cmds.length, 2);
+  let w = clientToWorld(r.cam, r.canvas, z.x + 30, z.y + 20);
+  assert.ok(Math.abs(r.cmds[1].aht - autopilotHeadingFromWorld(s, w.x, w.y)) < 1e-9);
+  assert.equal(r.zone.classList.contains('hot'), true);
+  // The zone stays frozen while hovered, even if the best-VMG direction
+  // changes under it (target swung to the downwind side).
+  r.setBoat(boatState({ ap: 1, wd: 0, aht: 120 }));
+  r.el.fire('pointermove', ev({ clientX: z.x - 10, clientY: z.y + 5 }));
+  assert.equal(r.cmds.length, 3);
+  assert.deepEqual(xy(r.zone.style.transform), { x: +z.x.toFixed(1), y: +z.y.toFixed(1) });
+  r.el.fire('pointerup', ev({ clientX: z.x - 10, clientY: z.y + 5 }));
+  assert.equal(r.cmds.length, 4);
+  assert.deepEqual(r.cmds[3], { type: 'headingSet', aht: autopilotGuideTarget(s), boat: 0 });
+  assert.equal(r.cmds[3].aht, 50);
+  assert.equal(r.zone.hidden, true);
+  r.ctl.dispose();
+});
+
+test('leaving the zone lets it follow the dashed line again', () => {
+  const s = boatState({ ap: 1, wd: 0, aht: 20 });
+  const r = rig({ boat: s });
+  r.el.fire('pointerdown', ev({ clientX: 0, clientY: 0 }));
+  const z = autopilotZoneClientPos(r.cam, r.canvas, s, AP_HANDLE_DIST_PX);
+  r.el.fire('pointermove', ev({ clientX: z.x, clientY: z.y }));
+  const s2 = boatState({ ap: 1, wd: 0, aht: 120 });
+  r.setBoat(s2);
+  r.el.fire('pointermove', ev({ clientX: 400, clientY: 560 }));
+  const z2 = autopilotZoneClientPos(r.cam, r.canvas, s2, AP_HANDLE_DIST_PX);
+  assert.equal(z2.aht, 160);
+  assert.deepEqual(xy(r.zone.style.transform), { x: +z2.x.toFixed(1), y: +z2.y.toFixed(1) });
+  r.el.fire('pointercancel', ev());
+  r.ctl.dispose();
+});
+
+test('pointercancel / lost capture ends the drag without a command', () => {
+  const r = rig();
+  r.el.fire('pointerdown', ev({ clientX: 580, clientY: 300 }));
+  r.el.fire('pointercancel', ev({ clientX: 100, clientY: 100 }));
+  assert.equal(isAutopilotHandleDragging(), false);
+  assert.equal(r.cmds.length, 0);
+  r.el.fire('pointerdown', ev({ clientX: 580, clientY: 300 }));
+  r.el.fire('lostpointercapture', ev({ clientX: 100, clientY: 100 }));
+  assert.equal(isAutopilotHandleDragging(), false);
+  assert.equal(r.cmds.length, 0);
+  r.ctl.dispose();
+});
+
+test('touches on the button never reach the page or the race view', () => {
+  const r = rig();
+  const t = fireKeep(r.el, 'touchstart', ev());
+  assert.ok(t.prevented && t.stopped);
+  const m = fireKeep(r.el, 'touchmove', ev());
+  assert.ok(m.prevented && m.stopped);
+  r.ctl.dispose();
+  assert.equal(r.el.has('pointerdown'), false);
+});
+
+test('mouse right button does not grab', () => {
+  const r = rig();
+  r.el.fire('pointerdown', ev({ pointerType: 'mouse', button: 2 }));
+  assert.equal(isAutopilotHandleDragging(), false);
+  r.ctl.dispose();
+});
+
+test('index.html: steering-button look, drop zone, z-order', () => {
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /<button type="button" id="autopilot_handle" class="sz-btn ap-handle"[^>]*tabindex="-1"[^>]*hidden[^>]*><\/button>/);
+  const main = fs.readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  assert.match(main, /enabled: \(\) => \{ const b = document\.getElementById\('autopilot_drag'\); return !!\(b && b\.checked\); \}/);
+  assert.match(html, /<div id="autopilot_vmg_zone"[^>]*hidden><small>VMG<\/small><\/div>/);
+  const css = html.slice(html.indexOf('#autopilot_handle {'), html.indexOf('#autopilot_handle small'));
+  // Same colours as the overlay steering / control buttons (body.tc-overlay .tc-btn).
+  assert.match(css, /--sz-btn-bg: rgba\(18, 28, 48, 0\.55\); --sz-btn-border: rgba\(255, 255, 255, 0\.35\)/);
+  assert.match(css, /border-radius: 50%/);
+  assert.match(css, /z-index: calc\(var\(--sz-z-canvas-ui\) \+ 2\)/);
+  assert.match(css, /touch-action: none/);
+  assert.match(html, /#autopilot_vmg_zone \{[^}]*pointer-events: none/);
+  assert.match(html, /#autopilot_vmg_zone \{[^}]*z-index: calc\(var\(--sz-z-canvas-ui\) \+ 1\)/);
+  assert.match(html, /\.bp-touch \{ --ap-handle-dist: 165px; --ap-zone-dist: 165px; --ap-handle-size: var\(--sz-tap\); --ap-zone-size: 60px; \}/);
+  assert.match(html, /:root \{ --ap-handle-dist: 180px; --ap-zone-dist: 180px; --ap-handle-size: 40px; --ap-zone-size: 52px; \}/);
+});
+
+test('fitAlongRay keeps a point inside the inset rect along the ray', () => {
+  const rect = { left: 0, top: 0, width: 390, height: 600 };
+  // Room for the full distance.
+  assert.equal(fitAlongRay({ x: 195, y: 300 }, { x: 195, y: 200 }, rect, 165, 24), 165);
+  // Towards the right edge: 390 - 24 - 195 = 171 ≥ 165 → full; from x 250 → 116.
+  assert.equal(fitAlongRay({ x: 195, y: 300 }, { x: 300, y: 300 }, rect, 165, 24), 165);
+  assert.equal(fitAlongRay({ x: 250, y: 300 }, { x: 300, y: 300 }, rect, 165, 24), 116);
+  // Diagonal: the nearer edge wins.
+  const d = fitAlongRay({ x: 300, y: 100 }, { x: 400, y: 0 }, rect, 165, 24);
+  assert.ok(Math.abs(d - 66 * Math.SQRT2) < 1e-9);
+  // Origin outside → 0.
+  assert.equal(fitAlongRay({ x: -5, y: 100 }, { x: 10, y: 100 }, rect, 165, 0), 0);
+});
+
+test('resting circle is pulled in to stay on the view, hidden only when too tight', () => {
+  // Boat 18 m right of centre (≈257 px): 400 + 257 + 180 would leave the 800 px canvas.
+  const r = rig({ boat: boatState({ ap: 1, px: 18, py: 0, aht: 0 }) });
+  r.ctl.update();
+  assert.equal(r.el.hidden, false);
+  const p = xy(r.el.style.transform);
+  assert.ok(p.x <= 800 - 20 - 2 + 1e-6 && p.x > 600, String(p.x));
+  const boatX = +r.el.dataset.boatPx.split(',')[0];
+  const d = p.x - boatX;
+  assert.ok(d >= AP_MIN_DIST_PX && d < 180, String(d));
+  // Pointing back towards the centre: full distance.
+  r.setBoat(boatState({ ap: 1, px: 18, py: 0, aht: 180 }));
+  r.ctl.update();
+  assert.ok(Math.abs(boatX - xy(r.el.style.transform).x - 180) < 0.2);
+  // Boat right at the edge, heading out: no room even for the minimum → hidden.
+  r.setBoat(boatState({ ap: 1, px: 25, py: 0, aht: 0 }));
+  r.ctl.update();
+  assert.equal(r.el.hidden, true);
+  r.ctl.dispose();
+});
+
+test('at best VMG the resting circle sits on the zone; a tap there changes nothing, a drag-and-drop locks', () => {
+  const s = boatState({ ap: 1, wd: 0, aht: 50 }); // already at upwind best VMG
+  const r = rig({ boat: s });
+  r.ctl.update();
+  const rest = xy(r.el.style.transform);
+  const z = autopilotZoneClientPos(r.cam, r.canvas, s, AP_ZONE_DIST_PX);
+  assert.ok(Math.hypot(rest.x - z.x, rest.y - z.y) < 0.2);
+  assert.equal(r.zone.hidden, true); // zone only while dragging
+  // Tap: down + jitter under AP_TAP_PX + up → no command.
+  r.el.fire('pointerdown', ev({ clientX: rest.x, clientY: rest.y }));
+  assert.equal(r.zone.hidden, false);
+  r.el.fire('pointermove', ev({ clientX: rest.x + AP_TAP_PX - 2, clientY: rest.y }));
+  r.el.fire('pointerup', ev({ clientX: rest.x + AP_TAP_PX - 2, clientY: rest.y }));
+  assert.equal(r.cmds.length, 0);
+  assert.equal(r.zone.hidden, true);
+  // Real drag that ends on the zone: locks best VMG.
+  r.el.fire('pointerdown', ev({ clientX: rest.x, clientY: rest.y }));
+  r.el.fire('pointermove', ev({ clientX: rest.x + 40, clientY: rest.y + 30 }));
+  r.el.fire('pointermove', ev({ clientX: z.x + 5, clientY: z.y - 5 }));
+  r.el.fire('pointerup', ev({ clientX: z.x + 5, clientY: z.y - 5 }));
+  assert.deepEqual(r.cmds.at(-1), { type: 'headingSet', aht: 50, boat: 0 });
+  r.ctl.dispose();
+});
+
+test('usable bounds stop above the overlay touch controls', () => {
+  const canvas = rectCanvas(390, 800, 0, 44);
+  const btn = (top, h = 44, w = 100) => ({ getBoundingClientRect: () => ({ top, height: h, width: w }) });
+  const doc = { querySelectorAll: () => [btn(600), btn(560), btn(700), btn(100), btn(300, 0, 0)] };
+  const b = raceViewBounds(canvas, doc);
+  // 560 is the highest control in the lower half; 100 (top half) and the
+  // zero-size one are ignored.
+  assert.deepEqual(b, { left: 0, top: 44, width: 390, height: 516 });
+  assert.deepEqual(raceViewBounds(canvas, null), { left: 0, top: 44, width: 390, height: 800 });
+  // The circle is pulled in above that line.
+  const view = { camera_follow: true };
+  const cam = camAt(0, 0, 30, 390, 800);
+  const el = fakeEl();
+  const ctl = setupAutopilotHandle(view, {
+    doc: null, canvas, button: el, zone: fakeEl(), getCamera: () => cam,
+    getBoat: () => boat, command: () => {},
+    getBounds: () => b,
+  });
+  let boat = boatState({ ap: 1, wd: 0, aht: -90 });
+  ctl.update();
+  const p = xy(el.style.transform);
+  assert.ok(p.y <= 560 - 22 + 1e-6, String(p.y));
+  // The drop zone (downwind best VMG) stays above the controls as well.
+  const zEl = ctl.zone;
+  el.fire('pointerdown', ev({ clientX: p.x, clientY: p.y }));
+  const zp = xy(zEl.style.transform);
+  assert.equal(zEl.hidden, false);
+  assert.ok(zp.y <= 560 - 28 + 1e-6, String(zp.y));
+  assert.ok(Math.hypot(zp.x - 195, zp.y - 444) <= 180 + 1e-6);
+  el.fire('pointercancel', ev());
+  // Downwind best VMG straight down (wind from +Y): zone pulled in above 560.
+  boat = boatState({ ap: 1, wd: 110, aht: 100 });
+  el.fire('pointerdown', ev({ clientX: p.x, clientY: p.y }));
+  const zd = xy(zEl.style.transform);
+  assert.equal(zEl.hidden, false);
+  assert.ok(Math.abs(zd.x - 195) < 0.2 && zd.y <= 560 - 30 + 1e-6 && zd.y - 444 >= AP_MIN_DIST_PX - 1e-6 && zd.y - 444 < 180, String(zd.y));
+  el.fire('pointercancel', ev());
+  ctl.dispose();
 });

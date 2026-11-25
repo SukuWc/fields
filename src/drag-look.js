@@ -13,7 +13,7 @@
 
 import { TOUCH_UI_QUERY, matches } from './layout.js';
 
-import { isAutopilotHandleDragging } from './autopilot-handle.js';
+import { autopilotHandleGrabCount, isAutopilotHandleDragging } from './autopilot-handle.js';
 
 export const SNAP_MS = 300;
 export const TAP_PX = 8;
@@ -91,6 +91,8 @@ export function setupDragLook(view, {
     // The autopilot handle claimed this pointer: no pan, and a handle grab
     // never counts as half of a double-tap.
     if (isAutopilotHandleDragging()) { lastTap = null; return; }
+    // The button was grabbed since the first tap: not a double-tap.
+    if (lastTap && lastTap.grabs !== autopilotHandleGrabCount()) lastTap = null;
     if (e.touches.length !== 1) {
       // Pinch: hand the gesture over and keep follow where the look left it.
       if (drag) { if (drag.follow) view.camera_follow = true; drag = null; }
@@ -137,7 +139,7 @@ export function setupDragLook(view, {
       setCameraFollow(view, !view.camera_follow, doc);
       return;
     }
-    lastTap = { t, x, y };
+    lastTap = { t, x, y, grabs: autopilotHandleGrabCount() };
   };
   canvas.addEventListener('touchend', end, { passive: true });
   canvas.addEventListener('touchcancel', end, { passive: true });

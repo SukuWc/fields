@@ -102,28 +102,22 @@ function sail(s, lead, length, boomAngle, fat) {
 // Best-VMG true-wind angles for the autopilot snap. The sim has no runtime
 // polar: nothing searches boat speed × cos(TWA) for an optimum. 50° is the
 // measured upwind VMG angle in dev mode (leaderboard.js BEAT_ANGLE_DEG).
-// 160° is the downwind angle this autopilot has always snapped to. 90° is
-// a beam reach.
+// 160° is the downwind angle this autopilot has always snapped to. There is
+// no beam-reach (90°) snap: only the two best-VMG angles are offered.
 export const BEST_VMG_UPWIND_DEG = 50;
 export const BEST_VMG_DOWNWIND_DEG = 160;
-export const AUTOPILOT_BEAM_DEG = 90;
 
 // Space snap. t is the signed autopilot angle (−TWA; + = starboard tack).
-// The lock is the nearest of {upwind best-VMG, beam, downwind best-VMG} on
-// the same tack. A tie (exactly halfway) goes to the larger absolute angle,
-// the downwind side of the pair. Defaults are the constants above; a boat
-// can pass its own best-VMG angles. t = 0 (and any non-negative) is starboard.
+// The lock is upwind best-VMG below a 90° TWA and downwind best-VMG from
+// 90° (exactly 90° goes downwind, the old tie rule's larger-angle side), on
+// the same tack. No beam-reach snap. Defaults are the constants above; a
+// boat can pass its own best-VMG angles. t = 0 (and any non-negative) is
+// starboard.
+export const AUTOPILOT_SNAP_SWITCH_DEG = 90;
 export function autopilotSnapTarget(t, bv1 = BEST_VMG_UPWIND_DEG, bv2 = BEST_VMG_DOWNWIND_DEG) {
   if (!Number.isFinite(t)) return t;
   const sg = t < 0 ? -1 : 1;
-  const a = Math.abs(t);
-  const cands = [Math.abs(bv1), AUTOPILOT_BEAM_DEG, Math.abs(bv2)];
-  let best = cands[0], bestD = Math.abs(a - best);
-  for (let i = 1; i < cands.length; i++) {
-    const c = cands[i], d = Math.abs(a - c);
-    if (d < bestD || (d === bestD && c > best)) { best = c; bestD = d; }
-  }
-  return sg * best;
+  return sg * (Math.abs(t) < AUTOPILOT_SNAP_SWITCH_DEG ? Math.abs(bv1) : Math.abs(bv2));
 }
 function wrap180(x) { x = ((x + 180) % 360 + 360) % 360 - 180; return x; }
 
@@ -154,24 +148,6 @@ export function autopilotGuideTarget(s) {
 }
 export const AUTOPILOT_PREVIEW_LENGTH = 14;
 
-// Draggable autopilot handle (Camera Follow on): sits on the target-heading
-// ray ahead of the boat. Fixed distance so the grab target stays useful
-// when the solid line is short (autopilot off).
-export const AUTOPILOT_HANDLE_DIST_M = 7;
-export const AUTOPILOT_HANDLE_HIT_M = 2.4;
-export const AUTOPILOT_HANDLE_SIZE_M = 1.35;
-export const AUTOPILOT_HANDLE_COLOR = 0x66eeff;
-export const AUTOPILOT_HANDLE_OUTLINE = 0x0b1747;
-
-// World position of the handle on the autopilot target ray (boat origin).
-export function autopilotHandlePos(s, dist = AUTOPILOT_HANDLE_DIST_M) {
-  if (!s || !Number.isFinite(s.wd) || !Number.isFinite(s.aht) || !Number.isFinite(dist)) return null;
-  const o = wp(s, 0);
-  if (!Number.isFinite(o.x) || !Number.isFinite(o.y)) return null;
-  const ang = (s.wd + s.aht) / 180 * Math.PI;
-  return { x: o.x + DMath.cos(ang) * dist, y: o.y + DMath.sin(ang) * dist };
-}
-
 // Signed autopilot target (−TWA) for a world point relative to the boat.
 // Wraps through head-to-wind and dead downwind (−180..180).
 export function autopilotHeadingFromWorld(s, wx, wy) {
@@ -180,46 +156,6 @@ export function autopilotHeadingFromWorld(s, wx, wy) {
   const ang = DMath.atan2(wy - o.y, wx - o.x) * 180 / Math.PI;
   return wrap180(ang - s.wd);
 }
-
-export function autopilotHandleHit(s, wx, wy, hitM = AUTOPILOT_HANDLE_HIT_M) {
-  const p = autopilotHandlePos(s);
-  if (!p || !Number.isFinite(wx) || !Number.isFinite(wy) || !(hitM > 0)) return false;
-  return DMath.hypot(wx - p.x, wy - p.y) <= hitM;
-}
-
-// Diamond grab affordance at the handle (cyan over navy outline so it
-// stays readable on the yellow speed field).
-export function autopilotHandleGuides(s) {
-  const p = autopilotHandlePos(s);
-  if (!p) return [];
-  const r = AUTOPILOT_HANDLE_SIZE_M;
-  const diamond = [
-    [p.x, p.y - r, p.x + r, p.y],
-    [p.x + r, p.y, p.x, p.y + r],
-    [p.x, p.y + r, p.x - r, p.y],
-    [p.x - r, p.y, p.x, p.y - r],
-  ];
-  const out = [];
-  // Slightly larger navy outline drawn first.
-  const ro = r + 0.12;
-  const outline = [
-    [p.x, p.y - ro, p.x + ro, p.y],
-    [p.x + ro, p.y, p.x, p.y + ro],
-    [p.x, p.y + ro, p.x - ro, p.y],
-    [p.x - ro, p.y, p.x, p.y - ro],
-  ];
-  for (const [x1, y1, x2, y2] of outline) {
-    out.push({ color: AUTOPILOT_HANDLE_OUTLINE, type: 'guide', role: 'ap-handle', opacity: 1, x1, y1, x2, y2 });
-  }
-  for (const [x1, y1, x2, y2] of diamond) {
-    out.push({ color: AUTOPILOT_HANDLE_COLOR, type: 'guide', role: 'ap-handle', opacity: 1, x1, y1, x2, y2 });
-  }
-  const m = r * 0.5;
-  out.push({ color: AUTOPILOT_HANDLE_COLOR, type: 'guide', role: 'ap-handle', opacity: 1, x1: p.x - m, y1: p.y, x2: p.x + m, y2: p.y });
-  out.push({ color: AUTOPILOT_HANDLE_COLOR, type: 'guide', role: 'ap-handle', opacity: 1, x1: p.x, y1: p.y - m, x2: p.x, y2: p.y + m });
-  return out;
-}
-
 
 // Per-sail force overlay. Distinct from the green generic arrows, the
 // magenta rig CE, the cyan CLR and the blue hull-drag cross.
@@ -317,8 +253,7 @@ export function boatGuides(s, d) {
   a.type = "autopilot";
   graphics.push(a);
   // Dashed guide, longer than the solid target line: the snap nearest the
-  // current autopilot angle (upwind best-VMG, beam, or downwind best-VMG on
-  // this tack). Space locks that same angle. The solid line is the current
+  // current autopilot angle (upwind or downwind best-VMG on this tack). Space locks that same angle. The solid line is the current
   // angle, so the two differ unless she is already on the snap. World angle
   // wd + target is the bow heading for that −TWA (bow = wd − TWA).
   // During a Q/E circle this is still the nearest snap of the live angle,

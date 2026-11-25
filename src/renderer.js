@@ -915,9 +915,13 @@ export function getCamera() {
 // getScene(): { bodies, guides, devMode } from the host (main.js).
 // options.loop false (remote mode): no animation loop; the caller draws with
 // renderNow() when a server frame arrives.
+// options.afterRender(): called after each drawn frame, once the camera has
+// moved (HTML overlays that track the scene, e.g. the autopilot button).
+let _afterRender = null;
 export function startAnimation(view, getScene, options = {}) {
   _view = view;
   _getScene = getScene;
+  _afterRender = typeof options.afterRender === 'function' ? options.afterRender : null;
   if (options.loop !== false) renderer.setAnimationLoop(animation);
 }
 
@@ -1045,6 +1049,7 @@ function animation(t) {
   renderTrails();
 
   renderer.render(scene, camera);
+  if (_afterRender) _afterRender();
 
   fpsFrameCount++;
   if (fpsFrameCount % 30 === 0) {

@@ -202,3 +202,31 @@ test('desktop (doubleTapEnabled false) ignores double-tap', () => {
   c.fire('touchend', []);
   assert.equal(view.camera_follow, false);
 });
+
+test('a grab on the autopilot button between taps is not a double-tap', async () => {
+  const { setupAutopilotHandle } = await import('../src/autopilot-handle.js');
+  const view = {
+    camera_follow: true, camera_follow_target: { x: 0, y: 0 }, camera_zoom: 30,
+    camera_position_x: 0, camera_position_y: 0,
+    input_camera_follow(v) { this.camera_follow = v; },
+  };
+  const c = fakeCanvas();
+  let t = 0;
+  setupDragLook(view, { canvas: c, now: () => t, raf: () => {}, doubleTapEnabled: () => true });
+  const h = {};
+  const btn = { hidden: true, style: {}, dataset: {}, setPointerCapture() {}, releasePointerCapture() {}, addEventListener: (k, f) => { h[k] = f; }, removeEventListener() {} };
+  const ctl = setupAutopilotHandle(view, {
+    doc: null, button: btn, canvas: { getBoundingClientRect: () => ({ left: 0, top: 0, width: 400, height: 700 }) },
+    getCamera: () => null, getBoat: () => ({ ap: 1 }), command: () => {},
+  });
+  const pe = { pointerId: 7, pointerType: 'touch', cancelable: true, preventDefault() {}, stopPropagation() {} };
+  c.fire('touchstart', [touch(120, 200)]);
+  c.fire('touchend', []);
+  t = 100;
+  h.pointerdown(pe); h.pointerup(pe);
+  t = 200;
+  c.fire('touchstart', [touch(122, 202)]);
+  c.fire('touchend', []);
+  assert.equal(view.camera_follow, true);
+  ctl.dispose();
+});
