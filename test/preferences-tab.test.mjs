@@ -59,11 +59,11 @@ test('boat_name lives once, in the Player menu next to Join', () => {
   assert.equal((html.match(/id="boat_name"/g) || []).length, 1);
 });
 
-test('Autopilot drag circle preference: Controls group, saved, default on', () => {
+test('Autopilot drag circle preference: Controls group, saved, default off', () => {
   const player = slice('player_panel');
   assert.match(player, /<input id="autopilot_drag" autocomplete="off" type="checkbox"[^>]*>Autopilot drag circle<\/label>/);
   assert.ok(playerPrefIds().includes('autopilot_drag'));
   const s = SETTINGS.find((x) => x.id === 'autopilot_drag');
-  assert.equal(s.default, true);
+  assert.equal(s.default, false);
   assert.equal(s.panel, 'player');
 });

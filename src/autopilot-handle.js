@@ -1,7 +1,7 @@
 // Draggable autopilot heading handle: a round HTML button (#autopilot_handle)
 // over the race canvas, styled like the overlay steering buttons. Shown while
 // the autopilot is engaged, Camera Follow is on, this client has a boat it
-// can steer and the Preferences "Autopilot drag circle" box is on. At rest it
+// can steer and the Preferences "Autopilot drag circle" box is on (opt-in). At rest it
 // sits a fixed number of CSS pixels (--ap-handle-dist) from the boat's
 // on-screen position along the autopilot target heading, whatever the zoom.
 //
@@ -147,7 +147,6 @@ function createButton(doc) {
   b.type = 'button';
   b.id = 'autopilot_handle';
   b.className = 'sz-btn ap-handle';
-  b.innerHTML = '<small>AP</small>';
   b.tabIndex = -1; // never steals Space / Enter from the race keys
   b.title = 'Drag to set the autopilot heading';
   b.setAttribute('aria-label', 'Autopilot heading: drag to steer');
@@ -169,7 +168,7 @@ function createZone(doc) {
 // getBoat(): latest render-state for the steered boat, or null.
 // command(c): host.command — sends { type: 'headingSet', boat?, aht }.
 // boatIndex(): local boat index for the command (0 when remote maps it).
-// enabled(): the Preferences "Autopilot drag circle" box (default on).
+// enabled(): the Preferences "Autopilot drag circle" box (default off).
 // Call update() once per drawn frame, after the camera has moved.
 export function setupAutopilotHandle(view, {
   doc = typeof document !== 'undefined' ? document : null,

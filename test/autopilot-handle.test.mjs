@@ -393,7 +393,9 @@ test('mouse right button does not grab', () => {
 
 test('index.html: steering-button look, drop zone, z-order', () => {
   const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  assert.match(html, /<button type="button" id="autopilot_handle" class="sz-btn ap-handle"[^>]*tabindex="-1"[^>]*hidden/);
+  assert.match(html, /<button type="button" id="autopilot_handle" class="sz-btn ap-handle"[^>]*tabindex="-1"[^>]*hidden[^>]*><\/button>/);
+  const main = fs.readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  assert.match(main, /enabled: \(\) => \{ const b = document\.getElementById\('autopilot_drag'\); return !!\(b && b\.checked\); \}/);
   assert.match(html, /<div id="autopilot_vmg_zone"[^>]*hidden><small>VMG<\/small><\/div>/);
   const css = html.slice(html.indexOf('#autopilot_handle {'), html.indexOf('#autopilot_handle small'));
   // Same colours as the overlay steering / control buttons (body.tc-overlay .tc-btn).

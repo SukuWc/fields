@@ -88,8 +88,8 @@ export const SETTINGS = [
   // Default off: PlayStation pads drive the boats chosen in Input mapping (gamepad.js, input-map.js).
   { id: 'gamepad', scope: 'player', panel: 'player', type: 'bool', default: false },
   { id: 'vibrate', scope: 'player', panel: 'player', type: 'bool', default: true },
-  // Round autopilot drag button over the race view (autopilot-handle.js).
-  { id: 'autopilot_drag', scope: 'player', panel: 'player', type: 'bool', default: true },
+  // Round autopilot drag button over the race view (autopilot-handle.js). Opt-in.
+  { id: 'autopilot_drag', scope: 'player', panel: 'player', type: 'bool', default: false },
   // touch_layout (Classic / Overlay) removed: Overlay is the only touch layout.
   // Dev tab: still this page only (scope player), one TOML document
   // (src/dev-config.js). control:false = no per-setting DOM. The ids stay

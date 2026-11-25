@@ -106,21 +106,16 @@ export const BEST_VMG_UPWIND_DEG = 50;
 export const BEST_VMG_DOWNWIND_DEG = 160;
 
 // Space snap. t is the signed autopilot angle (−TWA; + = starboard tack).
-// The lock is the nearer of {upwind best-VMG, downwind best-VMG} on the
-// same tack (with the defaults, below 105° → 50°, from 105° → 160°). A tie
-// (exactly halfway) goes to the larger absolute angle, the downwind side. Defaults are the constants above; a boat
-// can pass its own best-VMG angles. t = 0 (and any non-negative) is starboard.
+// The lock is upwind best-VMG below a 90° TWA and downwind best-VMG from
+// 90° (exactly 90° goes downwind, the old tie rule's larger-angle side), on
+// the same tack. No beam-reach snap. Defaults are the constants above; a
+// boat can pass its own best-VMG angles. t = 0 (and any non-negative) is
+// starboard.
+export const AUTOPILOT_SNAP_SWITCH_DEG = 90;
 export function autopilotSnapTarget(t, bv1 = BEST_VMG_UPWIND_DEG, bv2 = BEST_VMG_DOWNWIND_DEG) {
   if (!Number.isFinite(t)) return t;
   const sg = t < 0 ? -1 : 1;
-  const a = Math.abs(t);
-  const cands = [Math.abs(bv1), Math.abs(bv2)];
-  let best = cands[0], bestD = Math.abs(a - best);
-  for (let i = 1; i < cands.length; i++) {
-    const c = cands[i], d = Math.abs(a - c);
-    if (d < bestD || (d === bestD && c > best)) { best = c; bestD = d; }
-  }
-  return sg * best;
+  return sg * (Math.abs(t) < AUTOPILOT_SNAP_SWITCH_DEG ? Math.abs(bv1) : Math.abs(bv2));
 }
 function wrap180(x) { x = ((x + 180) % 360 + 360) % 360 - 180; return x; }
 
