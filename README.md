@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-11-25
+Last updated: 2026-11-26
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
