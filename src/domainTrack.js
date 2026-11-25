@@ -30,6 +30,7 @@
 // ≤ FIELD_CELL_CAP cells (≤ 160×4×2 = 1280 node-steps). Scenario 0's mean
 // Boltzmann step stays under 12 ms at these caps.
 
+import { DMath } from './det-math.js';
 import {
 	buildClosedDiskMask,
 	closeDiagonalContacts,
@@ -101,7 +102,7 @@ export const BUDGET_MAX_SCALE = 50;
 export const DEFAULT_CELL_UPDATE_TARGET = 50000;
 export function defaultCellUpdateTarget(bm) {
 	const depth = amrParams(bm).levels.length;
-	return DEFAULT_CELL_UPDATE_TARGET * 2 ** Math.max(0, depth - 3);
+	return DEFAULT_CELL_UPDATE_TARGET * DMath.pow(2, Math.max(0, depth - 3));
 }
 
 // Curl threshold multiplier for the tracking call in progress.
@@ -216,11 +217,11 @@ export function amrParams(bm) {
 	const key = `${k}|${spf}|${auto ? 'auto' : 'fixed'}|${ml}|${rr}`;
 	let p = paramCache.get(key);
 	if (p) return p;
-	const extra = Math.max(0, Math.round(Math.log2(k)));
+	const extra = Math.max(0, Math.round(DMath.log2(k)));
 	let stack = [];
 	// Outer rings, coarsest first: cell size k/2, k/4, … down to 1.
 	for (let e = extra; e >= 1; e--) {
-		const cell = 2 ** (e - 1);
+		const cell = DMath.pow(2, e - 1);
 		stack.push({ ...OUTER_RINGS[cell] || { R: 12 * cell, H: 24 * cell, A: 750 * cell * cell }, ring: true });
 	}
 	for (const lv of BOAT_LEVELS) stack.push({ ...lv, ring: false });
@@ -231,11 +232,11 @@ export function amrParams(bm) {
 	// ?boatRefineRadius: the finest disk's radius in metres (null = the
 	// level's own R, 2 m on a full stack). Fixed rings stay at least
 	// AUTO_SHELL own cells outside the next finer disk.
-	const finestR = clampBoatRefineRadius(rr, k / 2 ** (depth - 1));
+	const finestR = clampBoatRefineRadius(rr, k / DMath.pow(2, depth - 1));
 	if (finestR !== null) {
 		stack[depth - 1] = { ...stack[depth - 1], R: finestR };
 		if (!auto) for (let i = depth - 2; i >= 0; i--) {
-			stack[i] = { ...stack[i], R: Math.max(stack[i].R, stack[i + 1].R + AUTO_SHELL * k / 2 ** (i + 1)) };
+			stack[i] = { ...stack[i], R: Math.max(stack[i].R, stack[i + 1].R + AUTO_SHELL * k / DMath.pow(2, i + 1)) };
 		}
 	}
 	// Per level, in that level's parent cells. Parent cell of level i is k/2^i.
@@ -243,11 +244,11 @@ export function amrParams(bm) {
 		// Finest disk stays; each coarser level is the finer region + AUTO_SHELL
 		// of its own cells (own cell of level i is k / 2^(i+1)).
 		for (let i = stack.length - 2; i >= 0; i--) {
-			stack[i] = { ...stack[i], R: stack[i + 1].R + AUTO_SHELL * k / 2 ** (i + 1) };
+			stack[i] = { ...stack[i], R: stack[i + 1].R + AUTO_SHELL * k / DMath.pow(2, i + 1) };
 		}
 	}
 	const levels = stack.map((lv, i) => {
-		const pc = k / 2 ** i;
+		const pc = k / DMath.pow(2, i);
 		const radius = lv.R / pc;
 		return {
 			radius,

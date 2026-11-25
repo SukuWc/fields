@@ -17,6 +17,8 @@
 //   ml/md (mainsail lift and drag), jl/jd (jib lift and drag).
 // def d: rp, rl (rudder position, length), cp, cl (centreboard), mle, mbl
 //   (main leading edge, boom length), jle, jbl (jib).
+import { DMath } from './det-math.js';
+
 export const SAIL_FLAP_AMP_M = 0.12;
 export const SAIL_FLAP_JIB_AMP_M = 0.08;
 const SAIL_FLAP_POINTS = 9;
@@ -29,7 +31,7 @@ export function pushSailSegments(graphics, p, amp, phase, color = SAIL_COLOR) {
     return;
   }
   const cx = p[3].x - p[0].x, cy = p[3].y - p[0].y;
-  const len = Math.hypot(cx, cy) || 1;
+  const len = DMath.hypot(cx, cy) || 1;
   const nx = -cy / len, ny = cx / len;
   let prev = null;
   for (let k = 0; k < SAIL_FLAP_POINTS; k++) {
@@ -37,7 +39,7 @@ export function pushSailSegments(graphics, p, amp, phase, color = SAIL_COLOR) {
     const i = Math.min(2, Math.floor(u)), f = u - i;
     const bx = p[i].x + (p[i + 1].x - p[i].x) * f, by = p[i].y + (p[i + 1].y - p[i].y) * f;
     const sN = u / 3;
-    const w = amp * Math.sin(Math.PI * sN) * Math.sin(phase - 3 * Math.PI * sN);
+    const w = amp * DMath.sin(Math.PI * sN) * DMath.sin(phase - 3 * Math.PI * sN);
     const pt = { x: bx + nx * w, y: by + ny * w };
     if (prev) graphics.push({ color, type: "sail", x1: prev.x, y1: prev.y, x2: pt.x, y2: pt.y });
     prev = pt;
@@ -46,24 +48,24 @@ export function pushSailSegments(graphics, p, amp, phase, color = SAIL_COLOR) {
 
 // Body-local (0, ly) → world, as planck's Transform (q.c, q.s from the angle).
 function wp(s, ly) {
-  const c = Math.cos(s.pa), sn = Math.sin(s.pa);
+  const c = DMath.cos(s.pa), sn = DMath.sin(s.pa);
   return { x: (c * 0 - sn * ly) + s.px, y: (sn * 0 + c * ly) + s.py };
 }
 
 function chevron(graphics, s, angle, color, role) {
   const p = Math.PI / 2;
   graphics.push({ color, type: "guide", role,
-    x1: s.x + Math.cos(angle) * 3, y1: s.y + Math.sin(angle) * 3,
-    x2: s.x + Math.cos(angle) * 5 + Math.cos(angle + p) * 0.5, y2: s.y + Math.sin(angle) * 5 + Math.sin(angle + p) * 0.5 });
+    x1: s.x + DMath.cos(angle) * 3, y1: s.y + DMath.sin(angle) * 3,
+    x2: s.x + DMath.cos(angle) * 5 + DMath.cos(angle + p) * 0.5, y2: s.y + DMath.sin(angle) * 5 + DMath.sin(angle + p) * 0.5 });
   graphics.push({ color, type: "guide", role,
-    x1: s.x + Math.cos(angle) * 3, y1: s.y + Math.sin(angle) * 3,
-    x2: s.x + Math.cos(angle) * 5 - Math.cos(angle + p) * 0.5, y2: s.y + Math.sin(angle) * 5 - Math.sin(angle + p) * 0.5 });
+    x1: s.x + DMath.cos(angle) * 3, y1: s.y + DMath.sin(angle) * 3,
+    x2: s.x + DMath.cos(angle) * 5 - DMath.cos(angle + p) * 0.5, y2: s.y + DMath.sin(angle) * 5 - DMath.sin(angle + p) * 0.5 });
   graphics.push({ color, type: "guide", role,
-    x1: s.x + Math.cos(angle) * 4.75, y1: s.y + Math.sin(angle) * 4.75,
-    x2: s.x + Math.cos(angle) * 5 - Math.cos(angle + p) * 0.5, y2: s.y + Math.sin(angle) * 5 - Math.sin(angle + p) * 0.5 });
+    x1: s.x + DMath.cos(angle) * 4.75, y1: s.y + DMath.sin(angle) * 4.75,
+    x2: s.x + DMath.cos(angle) * 5 - DMath.cos(angle + p) * 0.5, y2: s.y + DMath.sin(angle) * 5 - DMath.sin(angle + p) * 0.5 });
   graphics.push({ color, type: "guide", role,
-    x1: s.x + Math.cos(angle) * 4.75, y1: s.y + Math.sin(angle) * 4.75,
-    x2: s.x + Math.cos(angle) * 5 + Math.cos(angle + p) * 0.5, y2: s.y + Math.sin(angle) * 5 + Math.sin(angle + p) * 0.5 });
+    x1: s.x + DMath.cos(angle) * 4.75, y1: s.y + DMath.sin(angle) * 4.75,
+    x2: s.x + DMath.cos(angle) * 5 + DMath.cos(angle + p) * 0.5, y2: s.y + DMath.sin(angle) * 5 + DMath.sin(angle + p) * 0.5 });
 }
 
 // Jib camber depth (m) for a chord at boomDeg to apparent wind awaDeg.
@@ -89,11 +91,11 @@ function sail(s, lead, length, boomAngle, fat) {
   const sg = Math.sign(rel);
   for (const [k, frac] of [[1, 0.25], [2, 0.5]]) {
     p[k] = {
-      x: p[0].x + Math.cos(s.ha + Math.PI / 2 + ang) * length * frac + Math.cos(s.ha + ang) * -fat * sg,
-      y: p[0].y + Math.sin(s.ha + Math.PI / 2 + ang) * length * frac + Math.sin(s.ha + ang) * -fat * sg,
+      x: p[0].x + DMath.cos(s.ha + Math.PI / 2 + ang) * length * frac + DMath.cos(s.ha + ang) * -fat * sg,
+      y: p[0].y + DMath.sin(s.ha + Math.PI / 2 + ang) * length * frac + DMath.sin(s.ha + ang) * -fat * sg,
     };
   }
-  p[3] = { x: p[0].x + Math.cos(s.ha + Math.PI / 2 + ang) * length, y: p[0].y + Math.sin(s.ha + Math.PI / 2 + ang) * length };
+  p[3] = { x: p[0].x + DMath.cos(s.ha + Math.PI / 2 + ang) * length, y: p[0].y + DMath.sin(s.ha + Math.PI / 2 + ang) * length };
   return p;
 }
 
@@ -151,7 +153,7 @@ export const AUTOPILOT_PREVIEW_LENGTH = 14;
 export function autopilotHeadingFromWorld(s, wx, wy) {
   if (!s || !Number.isFinite(s.wd) || !Number.isFinite(wx) || !Number.isFinite(wy)) return NaN;
   const o = wp(s, 0);
-  const ang = Math.atan2(wy - o.y, wx - o.x) * 180 / Math.PI;
+  const ang = DMath.atan2(wy - o.y, wx - o.x) * 180 / Math.PI;
   return wrap180(ang - s.wd);
 }
 
@@ -245,8 +247,8 @@ export function boatGuides(s, d) {
   const o = wp(s, 0);
   a.x1 = o.x;
   a.y1 = o.y;
-  a.x2 = a.x1 + Math.cos((s.wd + s.aht) / 180 * Math.PI) * aLength;
-  a.y2 = a.y1 + Math.sin((s.wd + s.aht) / 180 * Math.PI) * aLength;
+  a.x2 = a.x1 + DMath.cos((s.wd + s.aht) / 180 * Math.PI) * aLength;
+  a.y2 = a.y1 + DMath.sin((s.wd + s.aht) / 180 * Math.PI) * aLength;
   a.color = 0x556677;
   a.type = "autopilot";
   graphics.push(a);
@@ -259,7 +261,7 @@ export function boatGuides(s, d) {
   const cur = autopilotGuideTarget(s);
   if (Number.isFinite(cur) && Number.isFinite(s.wd)) {
     const ang = (s.wd + cur) / 180 * Math.PI;
-    const ux = Math.cos(ang), uy = Math.sin(ang);
+    const ux = DMath.cos(ang), uy = DMath.sin(ang);
     for (let k = 0; k < AUTOPILOT_PREVIEW_LENGTH; k += 1.2) {
       const e = Math.min(AUTOPILOT_PREVIEW_LENGTH, k + 0.7);
       graphics.push({ color: 0x556677, type: "guide", role: "ap-preview", opacity: 0.7,
@@ -274,8 +276,8 @@ export function boatGuides(s, d) {
   const r = wp(s, d.rp);
   graphics.push({ color: 0x550000, type: "hydro",
     x1: r.x, y1: r.y,
-    x2: r.x + Math.cos(s.pa + Math.PI / 2 + s.ra / 180 * Math.PI) * d.rl,
-    y2: r.y + Math.sin(s.pa + Math.PI / 2 + s.ra / 180 * Math.PI) * d.rl });
+    x2: r.x + DMath.cos(s.pa + Math.PI / 2 + s.ra / 180 * Math.PI) * d.rl,
+    y2: r.y + DMath.sin(s.pa + Math.PI / 2 + s.ra / 180 * Math.PI) * d.rl });
   // Centreboard
   const c0 = wp(s, d.cp + d.cl / 2), c1 = wp(s, d.cp - d.cl / 2);
   graphics.push({ color: 0x550000, type: "hydro", x1: c0.x, y1: c0.y, x2: c1.x, y2: c1.y });

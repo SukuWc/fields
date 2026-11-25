@@ -19,6 +19,8 @@
 //   PUT|POST /api/rooms/:id/config   apply room TOML (Authorization: Bearer <ADMIN_SECRET>
 //                    when ADMIN_SECRET is set; no auth when it is unset = open editing)
 //                    body: raw TOML (text/plain) or JSON { "toml": "..." } / { "config": "..." }
+//   GET /api/replays  last three finished races (RAM): [{ id, room, startedAt, endedAt, durationS, ticks, players, buildVersion, endReason, seed }]
+//   GET /api/replays/:id  one race: start options, tick-stamped command log, state hash every 30 ticks, results
 //   GET /api/perf    { rooms: [{ id, players, sampleHz, windowS, endAt, times, latestMs }] }
 //                    last ~180 s of frameMs (physics + field encode) per room (CORS *)
 //   GET /api/status  rooms, clients, tick cost
@@ -31,6 +33,9 @@ import https from 'node:https';
 import fs from 'node:fs';
 import path from 'node:path';
 import { WebSocketServer } from 'ws';
+import { listReplays } from './replays.js';
+import { getReplay } from './replays.js';
+import { setReplayBuildVersion } from './replays.js';
 import { ClientTx, transportFromQuery, startWebTransport, makeWtCert } from './transport.js';
 import {
   adminSecretsEqual,
@@ -150,6 +155,8 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
   }
   const root = staticDir ? path.resolve(staticDir) : null;
   const version = loadVersion(staticDir);
+  // Stored with each recorded race (apps/server/replays.js).
+  setReplayBuildVersion(version.sha || version.commit);
   const json = (res, code, body) => {
     res.writeHead(code, { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'cache-control': 'no-store' });
     res.end(JSON.stringify(body));
@@ -209,6 +216,16 @@ export function startServer({ port = 8787, host = '0.0.0.0', lockstep = false, f
         // This game's drawn wind schedule seed: replay with wind_schedule_seed = [seed, 0].
         windSeed: r.windSeed(),
       })));
+    }
+    // Last three finished races (in RAM, server-wide): list, and one full
+    // record (command log, state hashes, results) by id.
+    if (url.pathname === '/api/replays') return json(res, 200, listReplays());
+    const replayMatch = /^\/api\/replays\/([^/]+)$/.exec(url.pathname);
+    if (replayMatch) {
+      let id;
+      try { id = decodeURIComponent(replayMatch[1]); } catch { return json(res, 400, { error: 'bad replay id' }); }
+      const r = getReplay(id);
+      return r ? json(res, 200, r) : json(res, 404, { error: 'no such replay' });
     }
     if (url.pathname === '/api/perf') {
       return json(res, 200, {
