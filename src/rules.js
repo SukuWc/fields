@@ -2040,7 +2040,11 @@ function clearOldestPending(boat, now) {
   if (!queue || !queue.length) return null;
   const cleared = queue.shift();
   if (!queue.length) R.pendingPenalties.delete(boat);
+  // Stamp sim time on the boat so a snapshot/restore and a fast-forward
+  // seek still see the same CLEARED flash as a 30 Hz recording (hashRace
+  // includes justCleared). The module-level list is for the on-screen badge.
   R.penaltyCleared.push({ boat, startedAtMs: now });
+  Object.defineProperty(boat, '_penaltyClearedAtMs', { value: now, writable: true, configurable: true, enumerable: false });
   return cleared;
 }
 
@@ -2322,6 +2326,12 @@ export function penaltyGuidesFromState(s, boats) {
 export function penaltyJustCleared(boat, nowMs) {
   if (!boat) return false;
   const now = typeof nowMs === 'number' ? nowMs : performance.now();
+  // Prefer the stamp on the boat: it survives snapshot/restore and does not
+  // depend on object identity in the module-level flash list.
+  if (Number.isFinite(boat._penaltyClearedAtMs)) {
+    const age = now - boat._penaltyClearedAtMs;
+    if (age >= 0 && age <= PENALTY_CLEARED_MS) return true;
+  }
   for (let i = 0; i < R.penaltyCleared.length; i++) {
     const flash = R.penaltyCleared[i];
     if (flash.boat !== boat) continue;
