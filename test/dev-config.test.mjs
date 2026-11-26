@@ -17,11 +17,9 @@ import {
   coerceLegacy,
   LEGACY_STICKY_STORAGE_KEY as STICKY_AUTOPILOT_KEY,
   holdoffFromLegacySticky,
-  configFromQuery,
   configFromStored,
   devClientEffects,
   devConfigErrorLine,
-  legacyUrlValue,
   parseAndValidateDevConfig,
   stringifyDevConfig,
   validateAutopilotGains,
@@ -95,7 +93,7 @@ test('invalid TOML, unknown keys, types and ranges are refused whole', () => {
   assert.ok(line > 0);
 });
 
-test('legacy prefs and the query string move into the document', () => {
+test('legacy prefs move into the document', () => {
   const stored = configFromStored(null, {
     show_forces: true,
     ghost: true,
@@ -114,14 +112,6 @@ test('legacy prefs and the query string move into the document', () => {
   assert.equal(stored.config.tracer_count, 80);
   assert.equal(stored.config.autopilot_holdoff_ms, -1, 'legacy fields.stickyAutopilot 0 = never engage');
   assert.equal(stored.config.flow_tracers, true);
-  const over = configFromQuery(stored.config, new URLSearchParams('show_field=0&sticky_autopilot=1&autopilotKp=4'));
-  assert.equal(over.flow_tracers, false);
-  assert.equal(over.autopilot_holdoff_ms, 500, 'old ?sticky_autopilot=1 = the default holdoff');
-  assert.equal(over.autopilot_kp, 4);
-  assert.equal(over.show_forces, true);
-  assert.equal(legacyUrlValue('show_field', false), '0');
-  assert.equal(legacyUrlValue('show_field', true), null);
-  assert.equal(legacyUrlValue('plotSelect', 'curl'), 'Plot curl');
   assert.equal(coerceLegacy('tracers', ''), 0);
   const kept = configFromStored({ ...DEV_CONFIG_DEFAULTS, show_forces: false, autopilot_kp: 3 }, { show_forces: true }, '0');
   assert.equal(kept.migrated, false);
@@ -131,10 +121,6 @@ test('legacy prefs and the query string move into the document', () => {
   const { autopilot_holdoff_ms: _drop, ...beforeHoldoff } = DEV_CONFIG_DEFAULTS;
   const oldSave = configFromStored({ ...beforeHoldoff, sticky_autopilot: false }, null, null);
   assert.equal(oldSave.config.autopilot_holdoff_ms, -1, 'a saved sticky_autopilot = false becomes -1');
-  const both = configFromQuery(DEV_CONFIG_DEFAULTS, new URLSearchParams('sticky_autopilot=0&autopilot_holdoff_ms=250'));
-  assert.equal(both.autopilot_holdoff_ms, 250, 'the holdoff key wins over the old one');
-  assert.equal(configFromQuery(DEV_CONFIG_DEFAULTS, new URLSearchParams('autopilot_holdoff_ms=0')).autopilot_holdoff_ms, 0);
-  assert.equal(configFromQuery(DEV_CONFIG_DEFAULTS, new URLSearchParams('autopilot_holdoff_ms=-5')).autopilot_holdoff_ms, 500, 'out of range is skipped');
   assert.equal(holdoffFromLegacySticky(true), 500);
   assert.equal(holdoffFromLegacySticky('off'), -1);
   assert.equal(holdoffFromLegacySticky('maybe'), undefined);

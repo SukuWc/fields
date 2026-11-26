@@ -31,11 +31,9 @@ export function normalizeTouchLayout(v) { return 'overlay'; }
 
 const STOP_EVENTS = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'mousemove', 'mouseup', 'wheel', 'click', 'dblclick', 'contextmenu'];
 
-// True when this load already chose Touch controls (query or saved pref).
+// True when this load already chose Touch controls (a saved pref; the URL
+// never carries preferences).
 export function touchChoiceIsExplicit(win = window) {
-  try {
-    if (new URLSearchParams(win.location && win.location.search || '').has('touch')) return true;
-  } catch { /* no location */ }
   try {
     const raw = win.localStorage && win.localStorage.getItem(PREFS_KEY);
     const o = raw ? JSON.parse(raw) : null;
@@ -118,7 +116,7 @@ export function setupTouchControls(doc = document, win = window) {
     win.dispatchEvent(new Event('resize'));
   }
 
-  // A real click pins the choice. URL restore and saved prefs also dispatch
+  // A real click pins the choice. Restoring saved prefs also dispatches
   // change, but those are not trusted; they are pinned via touchChoiceIsExplicit.
   let pinned = touchChoiceIsExplicit(win);
   box.addEventListener('change', (e) => {

@@ -2,7 +2,8 @@
 // check the document as you type, point at the bad line, Apply only when
 // it is valid and different, Revert puts the applied document back, Reset
 // fills the defaults and does not apply. Invalid text never changes the
-// applied config, the URL, or the sim.
+// applied config or the sim. The document is saved only in this browser
+// (fields.devConfig); nothing is read from or written to the page URL.
 //
 // Apply writes this page's visuals immediately and sends autopilotGains
 // (the PID, rudder_max_deg as rudderMax, rudder_max_force_n as
@@ -15,14 +16,11 @@ import {
   DEV_CONFIG_DEFAULTS,
   DEV_CONFIG_KEY,
   DEV_CONFIG_KEYS,
-  DEV_TOML_FIELDS,
   devBoatCommand,
-  configFromQuery,
   configFromStored,
   devClientEffects,
   devConfigErrorLine,
   devConfigIds,
-  legacyUrlValue,
   LEGACY_STICKY_KEY,
   LEGACY_STICKY_STORAGE_KEY,
   parseAndValidateDevConfig,
@@ -62,38 +60,6 @@ function stripLegacy(storage) {
   try { storage.removeItem(LEGACY_STICKY_STORAGE_KEY); } catch { /* no storage */ }
 }
 
-function searchParams() {
-  try { return new URLSearchParams((globalThis.location && globalThis.location.search) || ''); }
-  catch { return new URLSearchParams(); }
-}
-
-function replaceQuery(params) {
-  const hist = globalThis.history;
-  const loc = globalThis.location;
-  if (!hist || !loc || typeof hist.replaceState !== 'function') return;
-  const qs = params.toString();
-  const next = loc.pathname + (qs ? '?' + qs : '') + (loc.hash || '');
-  const current = loc.pathname + loc.search + (loc.hash || '');
-  if (next === current) return;
-  hist.replaceState(hist.state, '', next);
-}
-
-const ID_TO_KEY = new Map(DEV_TOML_FIELDS.map((f) => [f.id, f.key]));
-function idToKey(id) { return ID_TO_KEY.get(id); }
-
-function syncDevUrl(cfg) {
-  const current = searchParams();
-  const ids = new Set(devConfigIds());
-  const next = new URLSearchParams();
-  // The old ?sticky_autopilot link key goes too (the holdoff key replaces it).
-  for (const [key, value] of current.entries()) if (!ids.has(key) && key !== LEGACY_STICKY_KEY) next.append(key, value);
-  for (const id of devConfigIds()) {
-    const value = legacyUrlValue(id, cfg[idToKey(id)]);
-    if (value != null) next.append(id, value);
-  }
-  replaceQuery(next);
-}
-
 function isDefaultConfig(cfg) {
   return DEV_CONFIG_KEYS.every((k) => sameDevValue(cfg[k], DEV_CONFIG_DEFAULTS[k]));
 }
@@ -102,7 +68,7 @@ function isDefaultConfig(cfg) {
  * Install the Dev TOML editor.
  * applyLocal(effects) updates this page (view, tracers, trails, ghost,
  * perf, plot). It must not touch another client's boat.
- * Returns { ready } — the startup apply (saved + query).
+ * Returns { ready } — the startup apply (the saved document).
  */
 export function installDevPrefs(doc, { host, applyLocal, storage } = {}) {
   const root = doc || document;
@@ -126,7 +92,7 @@ export function installDevPrefs(doc, { host, applyLocal, storage } = {}) {
   if (stored.migrated && !isDefaultConfig(stored.config)) writeJson(store, DEV_CONFIG_KEY, stored.config);
   if (stored.migrated || legacy || stickyRaw != null) stripLegacy(store);
 
-  let applied = configFromQuery(stored.config, searchParams());
+  let applied = stored.config;
   let dirty = false;
   let pidPending = false;
   let gen = 0;
@@ -202,7 +168,6 @@ export function installDevPrefs(doc, { host, applyLocal, storage } = {}) {
     pidPending = !!(r && r.pending);
     if (applyLocal) applyLocal(devClientEffects(applied));
     if (fromUser) writeJson(store, DEV_CONFIG_KEY, isDefaultConfig(applied) ? null : applied);
-    syncDevUrl(applied);
     showStatus(null);
     if (ta.value === text) fill(applied);
     else { dirty = true; refresh(); }

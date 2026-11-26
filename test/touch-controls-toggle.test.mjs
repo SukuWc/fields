@@ -90,7 +90,7 @@ test('phone default is on', () => {
 });
 
 test('an explicit off is not replaced when the media query flips', () => {
-  assert.equal(touchChoiceIsExplicit({ location: { search: '?touch=0' }, localStorage: { getItem: () => null } }), true);
+  assert.equal(touchChoiceIsExplicit({ location: { search: '?touch=0' }, localStorage: { getItem: () => null } }), false, 'the URL never pins a preference');
   assert.equal(touchChoiceIsExplicit({ location: { search: '' }, localStorage: { getItem: () => JSON.stringify({ touch: false }) } }), true);
   assert.equal(touchChoiceIsExplicit({ location: { search: '' }, localStorage: { getItem: () => '{}' } }), false);
 

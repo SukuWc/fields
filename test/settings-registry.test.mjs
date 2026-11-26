@@ -7,7 +7,7 @@ import { SimCore } from '../src/host.js';
 import { Room, validateRoomCommand, ROOM_COMMANDS as SERVER_ROOM_COMMANDS } from '../apps/server/room.js';
 import {
   SETTINGS, ROOM_SETTINGS, PLAYER_SETTINGS, ROOM_COMMANDS, SIM_RES_MODES, DEFAULT_SIM_RES, DEFAULT_MAP_SIZE,
-  urlSettingIds, roomCommandFor, roomStateValue, settingDefault, SUBSCRIPTION_IDS, MAX_WIND_MPS,
+  prefUrlKeys, roomCommandFor, roomStateValue, settingDefault, SUBSCRIPTION_IDS, MAX_WIND_MPS,
 } from '../src/settings-registry.js';
 import { SIM_RES_MODES as SIM_SIM_RES_MODES } from '../src/sim.js';
 import { MAP_SIZES, MAP_SIZE_ORDER, DEFAULT_MAP_SIZE as MAP_DEFAULT, mapDims, mapSizeFromQuery, fitMapSize, scenarioExtent, WALL_INSET_M } from '../src/map-size.js';
@@ -191,16 +191,16 @@ for (const m of html.matchAll(/<(input|select|textarea)\b([^>]*)>/g)) {
   controls.push({ id, tag: m[1].toUpperCase(), type, attrs, panel, options });
 }
 
-// 4. URL sync: player settings only (room settings are TOML, url:false).
+// 4. No URL state: the keys stripped from old links are the player settings
+// (Preferences + Dev TOML ids) and the old ?sticky_autopilot, never a room
+// setting or an infrastructure key.
 {
-  // Player drawer controls plus host:player_menu (boat_name) plus Dev TOML ids,
-  // in registry order — same set urlSettingIds returns for player settings.
-  const wantUrl = SETTINGS.filter((s) => s.scope === 'player').map((s) => s.id).join();
-  const local = urlSettingIds({ remote: false }), remote = urlSettingIds({ remote: true });
-  check('URL settings (local): player controls then dev TOML settings, in registry order', local.join() === wantUrl, local.join() + ' vs ' + wantUrl);
-  check('URL settings (remote): the same Player and Dev settings (room never in the URL)', remote.join() === wantUrl);
-  check('every room setting is url:false', ROOM_SETTINGS.every((s) => s.url === false));
-  check('no player setting is left out of the URL', PLAYER_SETTINGS.every((s) => remote.includes(s.id) && local.includes(s.id)));
+  const keys = prefUrlKeys();
+  check('stripped keys: every player setting plus sticky_autopilot', keys.join() === [...PLAYER_SETTINGS.map((s) => s.id), 'sticky_autopilot'].join(), keys.join());
+  check('no room setting is a stripped key', ROOM_SETTINGS.every((s) => !keys.includes(s.id)));
+  const infra = ['host', 'server', 'room', 'map_size', 'mapSize', 'scenario_selector', 'devmode', 'dev', 'hud', 'field_mode', 'replay', 'workerQueue', 'simPasses', 'settingsEdge', 'transport', 'send'];
+  check('infrastructure keys are kept', infra.every((k) => !keys.includes(k)), infra.filter((k) => keys.includes(k)).join());
+  check('the registry has no url flag any more', SETTINGS.every((s) => !('url' in s)));
 }
 
 // 5. Panel contents: player controls match the registry; room panel is the

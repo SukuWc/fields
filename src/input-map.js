@@ -11,7 +11,7 @@
 // and the saved choice takes effect once a second boat is bound.
 //
 // The radios have no ids on purpose: they are not registry controls
-// (settings-registry.js), so url-settings.js and the registry checks skip them.
+// (settings-registry.js), so player-prefs.js and the registry checks skip them.
 import { setInputMap, inputMap, normalizeInputMap, DEFAULT_INPUT_MAP, onBindingChange, boundBoats, MAX_PADS } from './controls.js';
 import { readPlayerPref, writePlayerPref } from './player-prefs.js';
 
