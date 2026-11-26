@@ -8,7 +8,7 @@
 
 ## Roadmap
 
-Last updated: 2026-11-25
+Last updated: 2026-11-26
 
 ### 1. Stabilize
 - [x] Fix scenario 1 crash (out-of-bounds read in `get_field_velocity`): [#2](https://github.com/SukuWc/fields/pull/2)
@@ -89,6 +89,7 @@ Last updated: 2026-11-25
 - [x] Replay chat and sizes: each recorded race keeps its chat (player messages and system lines, with race ticks, outside the sim log and hashes) and the replay page shows it in the chat panel as playback reaches each line (Pause holds it; input read-only; older records still play); the landing replay links show race length (m:ss) and record size in bytes (`bytes` in `GET /api/replays`): [#250](https://github.com/SukuWc/fields/pull/250)
 - [ ] Snapshottable sim (replay seeking, part 1): `SimCore.snapshot()` / `restore()` copy the whole sim state in memory and continue bit for bit (restores at four ticks of a live race match every recorded hash in Node, Chromium, Firefox and WebKit; `npm run determinism:browsers -- --restore`); hidden state (gust RNG, per-boat side tables, planck closures) moved onto the sim objects; hash version 2 lets a replay fast-forward without drawing, older records still verify: [#253](https://github.com/SukuWc/fields/pull/253)
 - [ ] Replay in a Web Worker (replay seeking, part 2): keyframes every 10 s of race time within a memory budget (thinned when over), seeks restore the nearest keyframe and fast-forward in slices with progress and cancel, every recorded hash still checked; optional look-ahead scan; speed 1x/2x/4x: [#254](https://github.com/SukuWc/fields/pull/254)
+- [ ] Replay timeline (replay seeking, part 3): Play / Pause, scrub bar with current and total time, the already simulated part shaded, 'Simulating 0:40 → 0:51' with Cancel while seeking, speed 1x / 2x / 4x, chat follows seeks: [#255](https://github.com/SukuWc/fields/pull/255)
 - [ ] Vote to restart (server rooms): a `Vote restart` button and `votes / racers` count in the race timer; the room starts a new race (new room seed, as the time limit does) when every racer has voted. Racers are connected players with a boat; spectators, scenario boats, race bots and owners away in their reconnect grace period do not count. A vote can be revoked (`Revoke restart vote`), votes clear on every restart, and the total follows joins, leaves and removed boats (a vote passes when a leaver was the last holdout). Alone in the room the button (`Restart race`) restarts at once. Chat: `Ann votes for a new race (1/3)`, `Ann withdrew the restart vote (0/3)`, `Restart vote passed (3/3) · new race`, then `Room seed N`. [#238](https://github.com/SukuWc/fields/pull/238)
 - [ ] Race timer without a start sequence (scenario 0 and the other numbered scenarios): `Time left m:ss` counts from the scenario start, as `race_time_limit_s` does. In rooms the clock runs while a player boat is on the water (it waits at the full limit in an empty room); in single player, which has no spawned boat on numbered scenarios, every boat counts, so the clock runs from the scenario start and the time limit / finish countdown restart the race there too. [#242](https://github.com/SukuWc/fields/pull/242)
 - [ ] Strategy tuning

@@ -353,6 +353,30 @@ A replay plays slower than real time on a slow device, and a six-boat race
 can play slower than real time anywhere; seeking ahead of the scan is about
 as fast as the sim steps.
 
+## Replay timeline (banner)
+
+`src/replay-banner.js` draws the replay controls top left, clear of the race
+clock: the room and players, the hash status (or, while a seek runs,
+`Simulating 0:40 → 0:51` with Cancel) and Rooms; below, Play / Pause, the
+current time, a scrub bar, the total time and speed 1x / 2x / 4x. The scrub
+bar shades the part the worker has already simulated (keyframes are near, so
+seeks there are quick; thin marks show the keyframes) and, during a seek, the
+part fast-forwarded so far. Dragging shows the time under the thumb and seeks
+on release; the thumb waits at the target until the seek starts. At the end
+Play becomes Replay and starts over from 0:00. The chat follows every seek
+(the host replaces it with the lines up to the new position). The banner
+holds no replay state: it draws `host.status()` and calls `setPaused`,
+`setSpeed`, `seek` and `cancelSeek`.
+
+Live fixture, built app, paused seeks by clicking the scrub bar (seek to
+about 0:51, ahead of the look-ahead scan), back to 0:15 and to 0:01:
+
+| engine | to 0:51 | back to 0:15 | back to 0:01 | 4x plays |
+|---|---|---|---|---|
+| Chromium | 3.3 s (scan at 1195) | 1.2 s | 0.26 s | 3.8x |
+| Firefox | 5.8 s (scan at 1009) | 1.9 s | 0.33 s | 3.2x |
+| WebKit | 0.9 s (scan at 1797) | 1.2 s | 0.31 s | 3.9x |
+
 ## Running it
 
 ```bash
