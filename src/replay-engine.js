@@ -21,6 +21,7 @@
 // the record's hash version allows it (ReplayStepper.canSkipDraw). Every stepper checks the
 // recorded hashes as it goes, so a seek verifies the path it simulates.
 import { ReplayStepper } from './replay-stepper.js';
+import { encodeVectorGrids } from './vector-field.js';
 
 export const KEYFRAME_EVERY_TICKS = 300;
 export const DEFAULT_MEMORY_MB = 160;
@@ -122,26 +123,37 @@ export class ReplayEngine {
 
   setSpeed(n) { this.speed = [1, 2, 4].includes(n) ? n : 1; }
 
+  // Vector field of the current lattice, the same message the live server
+  // sends. The page paints contrast and advects tracers from it. Read-only:
+  // it does not change the sim or the hashes.
+  _vector(frame) {
+    if (!frame) return frame;
+    frame.vector = encodeVectorGrids(this.core.bm);
+    return frame;
+  }
+
   /**
    * Playback: `speed` recorded ticks, the last one presented. Returns the
-   * last frame (null at the end or while a seek runs).
+   * last frame (null at the end or while a seek runs). The lattice painter
+   * is left off: the page paints the speed field from frame.vector, the
+   * same way a live remote client does, so contrast matches the real game.
    */
   play() {
     if (this.seeking || this.player.done) return null;
     let frame = null;
     const painter = this.core.bm.painter;
-    for (let i = 0; i < this.speed && !this.player.done; i++) {
-      const last = i === this.speed - 1;
-      this.core.bm.painter = last ? painter : null;
-      try {
+    this.core.bm.painter = null;
+    try {
+      for (let i = 0; i < this.speed && !this.player.done; i++) {
+        const last = i === this.speed - 1;
         frame = this.player.step(last ? {} : { draw: false });
-      } finally {
-        this.core.bm.painter = painter;
+        this._noteMismatch(this.player);
+        this._keyframe(this.player);
       }
-      this._noteMismatch(this.player);
-      this._keyframe(this.player);
+    } finally {
+      this.core.bm.painter = painter;
     }
-    return frame;
+    return this._vector(frame);
   }
 
   /** Start a seek to tick t (replaces a running one). */
@@ -171,7 +183,8 @@ export class ReplayEngine {
     const sk = this.seeking;
     if (!sk) return null;
     const p = this.player;
-    // Field painting only reads the field: off while fast-forwarding.
+    // Lattice painting stays off: the page paints from the vector field
+    // attached to the landing frame.
     const painter = this.core.bm.painter;
     this.core.bm.painter = null;
     const t0 = this.now();
@@ -182,15 +195,17 @@ export class ReplayEngine {
         this._noteMismatch(p);
         this._keyframe(p);
       }
+      if (p.t >= sk.to - 1 || p.done) {
+        // The target tick itself is presented, so the page draws where it landed.
+        if (p.t < sk.to && !p.done) { frame = p.step(); this._noteMismatch(p); this._keyframe(p); }
+        this.lastSeekMs = this.now() - sk.t0;
+        this.seeking = null;
+        if (!frame) frame = { stepped: false, seeked: true };
+        else frame.seeked = true;
+        this._vector(frame);
+      }
     } finally {
       this.core.bm.painter = painter;
-    }
-    if (p.t >= sk.to - 1 || p.done) {
-      // The target tick itself is presented, so the page draws where it landed.
-      if (p.t < sk.to && !p.done) { frame = p.step(); this._noteMismatch(p); this._keyframe(p); }
-      this.lastSeekMs = this.now() - sk.t0;
-      this.seeking = null;
-      if (!frame) frame = { stepped: false, seeked: true };
     }
     return frame;
   }
