@@ -189,3 +189,45 @@ test('landing replay links: DOM untouched while unchanged, hidden when empty', (
   assert.equal(box.hidden, true);
   assert.equal(box.kids.length, 0);
 });
+
+test('ReplayHost sends a vector field and paints client contrast even when the recorded view has show_fields off', async () => {
+  const tex = { image: { data: new Uint8Array(4), width: 1, height: 1 } };
+  const host = new ReplayHost('europe-1-mww066n9-1', {
+    texture: tex, oversampling: 8, scan: false,
+    fetchRecord: async () => RECORD,
+  });
+  await mute(() => host.ready);
+  await mute(() => ticks(host, 30));
+  const st = host.status();
+  assert.equal(st.mismatch, null);
+  assert.ok(st.t >= 30);
+  const vec = host.lastField;
+  assert.ok(vec && vec.kind === 'vec' && vec.grids && vec.grids.length, 'vector field on the host');
+  assert.ok(tex.image.data.length > 4 && tex.image.width > 1, 'page texture painted from the vector field');
+  const before = Uint8Array.from(tex.image.data);
+  host.commandSync({ type: 'plot', contrastExp: 6 });
+  assert.equal(host._contrastExp, 6);
+  const after = tex.image.data;
+  let changed = 0;
+  for (let i = 0; i < before.length; i++) if (before[i] !== after[i]) changed++;
+  assert.ok(changed > 0, 'raising contrast immediately repaints the texture');
+});
+
+test('a seek landing carries a vector field and seeked, and hashes stay OK', async () => {
+  const tex = { image: { data: new Uint8Array(4), width: 1, height: 1 } };
+  const host = new ReplayHost('europe-1-mww066n9-1', {
+    texture: tex, oversampling: 8, scan: false,
+    fetchRecord: async () => RECORD,
+  });
+  await mute(() => host.ready);
+  await mute(() => ticks(host, 20));
+  let landing = null;
+  host.onFrame((f) => { landing = f; });
+  host.seek(300);
+  for (let k = 0; k < 2000 && !(host.status().t === 300 && !host.status().seeking); k++) await mute(() => turn());
+  assert.equal(host.status().t, 300);
+  assert.equal(host.status().mismatch, null);
+  assert.equal(landing && landing.seeked, true);
+  assert.ok(host.lastField && host.lastField.kind === 'vec');
+  assert.ok(tex.image.data.length > 4, 'seek landing painted the field');
+});

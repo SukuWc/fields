@@ -8,15 +8,16 @@
 //   { type: 'seek', t }              seek to tick t (replaces a running seek)
 //   { type: 'cancelSeek' }
 //   { type: 'speed', n }             1, 2 or 4 recorded ticks per page tick
-//   { type: 'command', id, c }       only plot (field colours) reaches the core
+//   { type: 'command', id, c }       ignored (the page paints the field itself)
 //   { type: 'query', id, q }         → { type: 'result', id, r }
-//   { type: 'buffer', data }         a field buffer handed back for reuse
+//   { type: 'buffer', data }         ignored (no worker-side texture buffer)
 // Worker → page
 //   { type: 'info', info }           after init
 //   { type: 'event', ev }            Sim events (eventForClient)
-//   { type: 'frame', frame, status, tick, field? }   tick: the answer to a tick
-//                                    (frame null when nothing played); field:
-//                                    RGBA texels, transferred
+//   { type: 'frame', frame, status, tick, vec? }   tick: the answer to a tick
+//                                    (frame null when nothing played); vec:
+//                                    encodeVectorGrids message (kind: 'vec'),
+//                                    speed/dir buffers transferred
 //   { type: 'status', status }       seek progress and look-ahead (ReplayEngine.status)
 //   { type: 'error', message }
 //
@@ -52,7 +53,6 @@ export function createReplayWorker(post, {
 } = {}) {
   let engine = null;
   let core = null;
-  let spare = null;
   let pumping = false;
   let lastStatus = 0;
   let paused = false;
@@ -64,12 +64,16 @@ export function createReplayWorker(post, {
   const sendFrame = (frame, tick = false) => {
     const st = status();
     lastStatus = now();
-    if (frame && frame.fieldReady) {
-      const img = core.texture.image;
-      const field = { data: img.data, width: img.width, height: img.height };
-      img.data = spare && spare.length === field.data.length ? spare : new Uint8Array(field.data.length);
-      spare = null;
-      post({ type: 'frame', frame, status: st, field, tick }, [field.data.buffer]);
+    const vec = frame && frame.vector;
+    if (vec) {
+      const rest = { ...frame };
+      delete rest.vector;
+      const transfer = [];
+      for (const g of vec.grids || []) {
+        if (g.speed && g.speed.buffer) transfer.push(g.speed.buffer);
+        if (g.dir && g.dir.buffer) transfer.push(g.dir.buffer);
+      }
+      post({ type: 'frame', frame: rest, status: st, vec, tick }, transfer);
     } else {
       post({ type: 'frame', frame, status: st, tick });
     }
@@ -118,8 +122,6 @@ export function createReplayWorker(post, {
         case 'init': {
           const o = m.opts || {};
           engine = new ReplayEngine(m.record, {
-            texture: { image: { data: new Uint8Array(0) } },
-            oversampling: o.oversampling,
             memoryMB: o.memoryMB,
             scan: o.scan !== false,
           });
@@ -164,7 +166,6 @@ export function createReplayWorker(post, {
           post({ type: 'result', id: m.id, r: core ? core.query(m.q) : null });
           break;
         case 'buffer':
-          spare = m.data;
           break;
         default:
           break;
