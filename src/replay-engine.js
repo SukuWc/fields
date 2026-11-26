@@ -7,7 +7,8 @@
 // ticks, the last one presented). A keyframe is taken every keyframeEvery
 // ticks (10 s of race time) by whichever stepper passes that tick: playback,
 // a seek's fast-forward, or the look-ahead scan, a second stepper that runs
-// ahead of playback in idle time so later seeks find a keyframe close by.
+// ahead of playback while it is paused, so later seeks find a keyframe close by
+// without slowing the race on screen.
 // Keyframes live within a memory budget: when the estimate (cells × bytes
 // per cell) is over it, every other keyframe is dropped (tick 0 is kept)
 // and the spacing doubles.
@@ -197,19 +198,27 @@ export class ReplayEngine {
   /** Look-ahead scan for at most maxMs (idle time). Returns true while there is more to do. */
   runScan(maxMs = 10) {
     if (!this.scanEnabled || this.scanDone) return false;
+    const latest = this.keyframes[this.keyframes.length - 1];
     if (!this.scanner) {
       this.scanner = new ReplayStepper(this.record);
       this.scanner.core.bm.painter = null;
-      // Start from the furthest keyframe there is.
-      const k = this.keyframes[this.keyframes.length - 1];
-      if (k && k.t > 0) { this.scanner.restore(k.snap); this.scanner.core.bm.painter = null; }
+      if (latest && latest.t > 0) { this.scanner.restore(latest.snap); this.scanner.core.bm.painter = null; }
+    } else if (latest && latest.t > this.scanner.t) {
+      // A seek (or playback) may have taken keyframes ahead of this scanner:
+      // do not resimulate a range we already have.
+      this.scanner.restore(latest.snap);
+      this.scanner.core.bm.painter = null;
     }
     const s = this.scanner;
     const t0 = this.now();
-    while (!s.done && this.now() - t0 < maxMs) {
+    let did = false;
+    // At least one step: constructing or jumping the scanner can already
+    // spend the budget, and a zero-tick chunk would stall the look-ahead.
+    while (!s.done && (this.now() - t0 < maxMs || !did)) {
       s.step({ draw: false });
       this._noteMismatch(s);
       this._keyframe(s);
+      did = true;
     }
     if (s.done) {
       this.scanDone = true;

@@ -17,8 +17,9 @@
 // Seeking (src/replay-engine.js): seek(t) restores the nearest keyframe and
 // fast-forwards in the worker; status().seeking shows the progress and
 // cancelSeek() stops it. Keyframes every 10 s of race time, within a memory
-// budget (?replayMem=MB); a look-ahead scan fills them in idle time
-// (?replayScan=0 turns it off).
+// budget (?replayMem=MB); a look-ahead scan fills them only while playback is
+// paused (?replayScan=0 turns it off), so it does not share the worker with a
+// playing race (a slow machine's ticks can be farther apart than a short idle).
 //
 // Chat: the record's chat lines (record.chat, { t, seq, at, rc?, text, sys?,
 // from? }; older records have none) go to on() listeners as live chat
@@ -100,6 +101,7 @@ export class ReplayHost {
       this._rejectReady = reject;
       this._send = this._transport();
       this._send({ type: 'init', record, opts: this._opts });
+      if (this.paused) this._send({ type: 'paused', on: true });
     });
   }
 
@@ -253,6 +255,7 @@ export class ReplayHost {
 
   setPaused(on) {
     this.paused = !!on;
+    if (this._send) this._send({ type: 'paused', on: this.paused });
     this._emitStatus();
   }
 

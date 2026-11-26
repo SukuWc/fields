@@ -21,25 +21,42 @@
 //   { type: 'error', message }
 //
 // Work between messages: a seek fast-forwards in chunks of SEEK_CHUNK_MS,
-// the look-ahead scan in chunks of SCAN_CHUNK_MS, each followed by a
-// setTimeout(0) so ticks, a new seek or a cancel get through.
+// each followed by a setTimeout(0) so a new seek or a cancel gets through.
+// The look-ahead scan also runs in SCAN_CHUNK_MS slices, but only while
+// playback is paused (the page sends { type: 'paused', on }). It shares the
+// worker with playback, and running it between play ticks made a multi-boat
+// replay drop well below real time after a seek on a slower machine. A
+// wall-clock idle gap is not used: a slow machine's ticks already arrive
+// farther apart than a short idle timeout, which would start the scan again.
 import { ReplayEngine } from './replay-engine.js';
 import { eventForClient } from './host-protocol.js';
 
 export const SEEK_CHUNK_MS = 30;
 export const SCAN_CHUNK_MS = 12;
+// Optional delay after Pause before a look-ahead chunk (0: start at once).
+// Scan is armed only when the page says it is paused, not after a quiet
+// gap between play ticks.
+export const SCAN_IDLE_MS = 0;
 const STATUS_EVERY_MS = 250;
 
 /**
  * post(msg, transfer?): send to the page. schedule(fn): run fn soon
  * (setTimeout 0). Returns onMessage(msg).
  */
-export function createReplayWorker(post, { schedule = (fn) => setTimeout(fn, 0), now = () => performance.now() } = {}) {
+export function createReplayWorker(post, {
+  schedule = (fn, ms = 0) => setTimeout(fn, ms),
+  cancelSchedule = (id) => clearTimeout(id),
+  now = () => performance.now(),
+  scanIdleMs = SCAN_IDLE_MS,
+  scanChunkMs = SCAN_CHUNK_MS,
+} = {}) {
   let engine = null;
   let core = null;
   let spare = null;
   let pumping = false;
   let lastStatus = 0;
+  let paused = false;
+  let idleId = null;
 
   const status = () => engine.status();
   const sendStatus = () => { lastStatus = now(); post({ type: 'status', status: status() }); };
@@ -58,26 +75,41 @@ export function createReplayWorker(post, { schedule = (fn) => setTimeout(fn, 0),
     }
   };
 
+  const clearIdle = () => {
+    if (idleId === null || idleId === undefined) return;
+    try { cancelSchedule(idleId); } catch { /* a test schedule may not return ids */ }
+    idleId = null;
+  };
+
+  // Look-ahead scan, only while the page has paused playback.
+  const armIdleScan = (delay = scanIdleMs) => {
+    if (!engine || !paused || engine.seeking || !engine.scanEnabled || engine.scanDone) return;
+    clearIdle();
+    idleId = schedule(() => {
+      idleId = null;
+      if (!engine || !paused || engine.seeking || !engine.scanEnabled || engine.scanDone) return;
+      const more = engine.runScan(scanChunkMs);
+      if (now() - lastStatus > STATUS_EVERY_MS || !more) sendStatus();
+      if (more) armIdleScan(0);
+    }, delay);
+  };
+
+  // Seek chunks only (the look-ahead scan uses armIdleScan).
   const pump = () => {
     pumping = false;
     if (!engine) return;
-    let more = false;
-    if (engine.seeking) {
-      const frame = engine.runSeek(SEEK_CHUNK_MS);
-      if (frame) sendFrame(frame);
-      else sendStatus();
-      more = true;
-    } else {
-      more = engine.runScan(SCAN_CHUNK_MS);
-      if (now() - lastStatus > STATUS_EVERY_MS || !more) sendStatus();
-    }
-    if (more) kick();
+    if (!engine.seeking) { armIdleScan(); return; }
+    const frame = engine.runSeek(SEEK_CHUNK_MS);
+    if (frame) sendFrame(frame);
+    else sendStatus();
+    if (engine.seeking) kick();
+    else armIdleScan();
   };
 
   const kick = () => {
     if (pumping) return;
     pumping = true;
-    schedule(pump);
+    schedule(pump, 0);
   };
 
   return function onMessage(m) {
@@ -96,25 +128,31 @@ export function createReplayWorker(post, { schedule = (fn) => setTimeout(fn, 0),
           // Status first: the page has the position before it starts.
           sendStatus();
           post({ type: 'info', info: { ...core.info(), mode: 'replay' } });
-          kick();
+          break;
+        }
+        case 'paused': {
+          paused = !!m.on;
+          if (paused) armIdleScan(0);
+          else clearIdle();
           break;
         }
         case 'tick': {
           if (!engine) break;
           // Every tick is answered (the page counts ticks in flight).
+          clearIdle();
           const frame = engine.seeking ? null : engine.play();
           sendFrame(frame, true);
-          if (!engine.seeking) kick();
           break;
         }
         case 'seek':
           if (!engine) break;
+          clearIdle();
           engine.seek(m.t);
           sendStatus();
           kick();
           break;
         case 'cancelSeek':
-          if (engine) { engine.cancelSeek(); sendStatus(); }
+          if (engine) { engine.cancelSeek(); sendStatus(); armIdleScan(); }
           break;
         case 'speed':
           if (engine) { engine.setSpeed(m.n); sendStatus(); }
