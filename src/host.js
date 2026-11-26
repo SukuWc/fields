@@ -302,11 +302,18 @@ export class SimCore {
    * snapshot can be restored any number of times).
    */
   snapshot() {
-    return { state: copySimState(this._snapshotParts(), this._snapshotKeep()) };
+    return { state: copySimState(this._snapshotParts(), this._snapshotKeep()), painter: this.painter };
   }
 
+  // A snapshot from another core (a replay's look-ahead scan) restores too:
+  // its painter is never copied, this core's own one takes its place.
   restore(snapshot) {
-    const s = copySimState(snapshot.state, this._snapshotKeep());
+    const keep = this._snapshotKeep();
+    if (snapshot.painter) keep.add(snapshot.painter);
+    const s = copySimState(snapshot.state, keep);
+    s.bm.painter = this.painter;
+    // Event listeners belong to this core's host, not to the snapshot.
+    s.sim._listeners = this.sim._listeners;
     this.bm = s.bm;
     this.map = s.map;
     this.sim = s.sim;

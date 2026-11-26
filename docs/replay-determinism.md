@@ -263,8 +263,8 @@ Play and a link back to the rooms. The recorded chat appears in the normal
 chat panel when the replay reaches each line's tick (live chat events from
 the ReplayHost, so Pause holds them too); the chat input stays disabled.
 Older records without `chat` play as before. The landing links show start
-time, race length (m:ss) and record size in bytes. No seeking or speed control; a slow
-device plays slower than real time (the loop drops time, never ticks).
+time, race length (m:ss) and record size in bytes. A slow device plays slower than real time (the loop drops time, never
+ticks); seeking and speed are in the worker section below.
 
 `node scripts/replay-player-browser.mjs [--engine chromium|firefox|webkit]`
 (after `npm run build:app && npm run build:server`) serves the recorded live
@@ -318,6 +318,40 @@ each (about 40 MB with six boats). `test/sim-snapshot.test.mjs` restores at
 ticks 1, 450, 1200 and 1500 and checks every recorded hash after each;
 `npm run determinism:browsers -- --restore` does the same in Chromium,
 Firefox and WebKit.
+
+## Replay in a Web Worker (keyframes)
+
+The replay sim no longer runs on the page. `ReplayHost` (`src/replay-host.js`)
+is an async proxy over `src/replay.worker.js`, which runs
+`src/replay-worker-core.js` around a `ReplayEngine` (`src/replay-engine.js`).
+The page sends one `tick` message per 30 Hz page tick (at most two in flight)
+and draws the frame the worker answers; chat lines, statuses and the end come
+back as messages. `?worker=0` (or a browser without `Worker`) runs the same
+core on the page.
+
+- Keyframes: a `ReplayStepper.snapshot()` every 300 ticks (10 s of race
+  time), both while playing and from an optional look-ahead scan (a second
+  stepper without a painter, run in short slices between ticks; `?replayScan=0`
+  turns it off). They stay within a memory budget (default 160 MB, estimated
+  at about 700 bytes per lattice cell per keyframe; `?replayMem=<MB>`): over
+  budget, every other keyframe goes (t = 0 stays) and the spacing doubles.
+- Seek: restore the latest keyframe at or before the target, or the scan's
+  current position, or keep stepping from where playback is, whichever is
+  closest; then fast-forward in 30 ms slices without drawing (version 2
+  records also skip presenting). The worker posts progress (`from`, `to`,
+  `t`) at least every 250 ms, answers page ticks with no frame while seeking,
+  and `cancelSeek` stops at the tick reached. Recorded hashes are checked on
+  every tick of a seek, a scan and playback, so a mismatch is reported at the
+  same tick as without seeking. After a jump the host replaces the chat with
+  the lines up to the new position (`chatHistory`).
+- Speed 1x / 2x / 4x: 2 or 4 recorded ticks per page tick, presenting the
+  last only.
+
+Live fixture, Chromium, built app: playing at tick 303 the scan had reached
+1099 (keyframes 0-900); a seek to 1500 took 5.5 s, back to 450 took 1.3 s.
+A replay plays slower than real time on a slow device, and a six-boat race
+can play slower than real time anywhere; seeking ahead of the scan is about
+as fast as the sim steps.
 
 ## Running it
 

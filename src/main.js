@@ -196,7 +196,14 @@ const remoteLadderCache = createLadderCache();
 const _replayId = replayIdFromQuery(location.search);
 try {
   if (_replayId) {
-    host = new ReplayHost(_replayId, { texture: dataTextureMaterial, oversampling: texture_oversampling });
+    // ?worker=0: replay on the page; ?replayMem=MB keyframe budget; ?replayScan=0 no look-ahead.
+    const replayMem = Number(_query.get('replayMem'));
+    host = new ReplayHost(_replayId, {
+      texture: dataTextureMaterial, oversampling: texture_oversampling,
+      worker: _query.get('worker') !== '0',
+      memoryMB: Number.isFinite(replayMem) && replayMem > 0 ? replayMem : undefined,
+      scan: _query.get('replayScan') !== '0',
+    });
   } else if (_hostChoice.kind === 'worker') {
     host = new WorkerHost(_hostOpts, dataTextureMaterial, { maxInFlight: Number.isInteger(_workerQueue) && _workerQueue >= 0 && _query.has('workerQueue') ? _workerQueue : 4 });
   } else if (_hostChoice.kind === 'remote') {
