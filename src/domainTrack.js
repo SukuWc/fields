@@ -139,7 +139,15 @@ export const FIELD_CELL_CAP = 160;
 // owns is refused. A cluster on the Dirichlet frame is refused too.
 export const FIELD_DOMAIN_MAX = 2;
 
-const domainByBoat = new WeakMap();
+// Each boat's level-1 window is on the boat (non-enumerable _amrDomain, kept
+// out of boat hashes and frames), so a sim snapshot copies it with the boat.
+function domainOf(player) {
+	return player._amrDomain || null;
+}
+
+function setDomainOf(player, domain) {
+	Object.defineProperty(player, '_amrDomain', { value: domain, writable: true, configurable: true, enumerable: false });
+}
 
 // Every length above is in root cells and every cap in cells at the default
 // resolution (1 root cell = 1 world unit). A coarser root grid (Simulation
@@ -769,7 +777,7 @@ function trackOne(bm, player) {
 	const boatCy = bm.height / 2 + player.y * bm.resolution;
 	const P = amrParams(bm);
 
-	let level1 = domainByBoat.get(player);
+	let level1 = domainOf(player);
 	let level1Shifted = false;
 	if (outside(level1, boatCx, boatCy)) {
 		const cx = Math.round(boatCx);
@@ -784,7 +792,7 @@ function trackOne(bm, player) {
 		const at = idx >= 0 ? idx : bm.domains.length;
 		level1 = bm.replaceDomain(at, cx0, cy0, cx1, cy1);
 		if (!level1) return null;
-		domainByBoat.set(player, level1);
+		setDomainOf(player, level1);
 	} else {
 		for (let n = 0; n < P.maxShift; n++) {
 			const step = shiftToward(boatCx, boatCy, level1, bm.width, bm.height);
@@ -816,16 +824,15 @@ function trackOne(bm, player) {
 	return { domain: level1, shifted: level1Shifted };
 }
 
-// Per lattice. Tests build many Boltzmann instances; a module-level list would
-// slide one sim's island across the next.
-const fieldState = new WeakMap();
-
+// Per lattice, on the lattice itself (non-enumerable _trackState; a sim
+// snapshot copies it). Tests build many Boltzmann instances; a module-level
+// list would slide one sim's island across the next.
 function stateOf(bm) {
 	const n = bm.width * bm.height;
-	let state = fieldState.get(bm);
+	let state = bm._trackState;
 	if (!state || state.above.length !== n) {
 		state = { above: new Uint8Array(n), below: new Uint8Array(n), domains: [] };
-		fieldState.set(bm, state);
+		Object.defineProperty(bm, '_trackState', { value: state, writable: true, configurable: true, enumerable: false });
 	}
 	return state;
 }
@@ -1109,10 +1116,10 @@ export function trackBoats(bm, players) {
 
 // Forget every window and field-island hold for this lattice. A resolution
 // change rebuilds the root grid; old windows point at freed cells. Boats keep
-// their WeakMap entry, so pass the live players to drop theirs too.
+// their window (_amrDomain), so pass the live players to drop theirs too.
 export function resetTracking(bm, players) {
-	fieldState.delete(bm);
-	if (players) for (const p of players) domainByBoat.delete(p);
+	if (bm && bm._trackState) bm._trackState = null;
+	if (players) for (const p of players) if (p._amrDomain) p._amrDomain = null;
 	if (bm) {
 		bm.domains = [];
 		bm._rebuildInteriorCells();

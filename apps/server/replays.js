@@ -16,6 +16,7 @@
 // restart of the Node process forgets them.
 import fs from 'node:fs';
 import { hashCoreState } from '../../src/state-hash.js';
+import { HASH_VERSION } from '../../src/state-hash.js';
 import { ReplayStepper } from '../../src/replay-stepper.js';
 import { REPLAY_TICK_DT as STEP_TICK_DT } from '../../src/replay-stepper.js';
 import { REPLAY_HASH_EVERY as STEP_HASH_EVERY } from '../../src/replay-stepper.js';
@@ -203,6 +204,7 @@ export class RaceRecorder {
       seed,
       start: this.start,
       hashEvery: REPLAY_HASH_EVERY,
+      hashVersion: HASH_VERSION,
       log: this.log,
       spawns: this.players,
       inTickCommands: this.inTickCommands,

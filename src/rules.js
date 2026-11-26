@@ -795,10 +795,10 @@ function obligationOverlay(obligation) {
 // makes its own state active with useRulesState() before it steps or is read.
 export function createRulesState() {
   return {
-    // Identity for pair memory. Live boats are keyed in a WeakMap. A what-if
-    // snapshot carries the same number on `id` plus `_ruleHull`, and does not
-    // keep the boat object alive.
-    boatIds: new WeakMap(),
+    // Identity for pair memory. Live boats carry theirs on the boat
+    // (non-enumerable _ruleId: { state, id }, so a sim snapshot copies it and
+    // nothing here keeps a boat alive). A what-if snapshot carries the same
+    // number on `id` plus `_ruleHull`.
     nextBoatId: 1,
     pairMemory: new Map(),
     markRoomEntitled: new Set(),
@@ -837,12 +837,12 @@ export function stateId(boat) {
 function boatId(boat) {
   if (!boat) return 0;
   if (Number.isInteger(boat.id) && Array.isArray(boat._ruleHull)) return boat.id;
-  let id = R.boatIds.get(boat);
-  if (!id) {
-    id = R.nextBoatId++;
-    R.boatIds.set(boat, id);
+  let e = boat._ruleId;
+  if (!e || e.state !== R) {
+    e = { state: R, id: R.nextBoatId++ };
+    Object.defineProperty(boat, '_ruleId', { value: e, writable: true, configurable: true, enumerable: false });
   }
-  return id;
+  return e.id;
 }
 
 function pairKey(boatA, boatB) {

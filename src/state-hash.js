@@ -7,7 +7,8 @@
 //   field  every lattice cell (9 populations, rho, ux, uy) of the root grid
 //          and of every refinement domain (recursively), plus domain bounds
 //   boats  planck body (position, angle, velocities) and every primitive own
-//          field of each Boat (rudder, autopilot PID state, sail, heel, ...)
+//          field of each Boat (rudder, autopilot PID state, sail, heel, ...;
+//          version 2: not the drawing-only fields, see HASH_VERSION)
 //   wind   applied/base wind, schedule clock, gust columns
 //   race   sim tick / rules time, marks, course progress, start, leaderboard
 const F64 = new Float64Array(1);
@@ -93,8 +94,16 @@ export function hashField(bm) {
 // awayUntil is the reconnect-grace countdown (Room._markAway), a wall-clock
 // display value, not sim state.
 const BOAT_SKIP = new Set(['uid', 'awayUntil']);
+// Hash version 2 (records with hashVersion: 2) also leaves out the drawing
+// state Boat.renderState() advances when a frame is presented (boom
+// smoothing, sail flap): it never feeds back into the physics, so a replay
+// can fast-forward without presenting. Version 1 (older records) keeps it.
+export const HASH_VERSION = 2;
+const BOAT_RENDER_ONLY = ['mainsail_boom_angle_actual', 'jib_boom_angle_actual', '_flapTick', 'sailFlap', 'jibFlap'];
+const BOAT_SKIP_V2 = new Set([...BOAT_SKIP, ...BOAT_RENDER_ONLY]);
 
-export function hashBoats(sim) {
+export function hashBoats(sim, version = HASH_VERSION) {
+  const skip = version >= 2 ? BOAT_SKIP_V2 : BOAT_SKIP;
   const h = new StateHasher();
   h.word(sim.players.length);
   for (const b of sim.players) {
@@ -105,7 +114,7 @@ export function hashBoats(sim) {
       h.num(p.x); h.num(p.y); h.num(body.getAngle());
       h.num(v.x); h.num(v.y); h.num(body.getAngularVelocity());
     }
-    h.prims(b, BOAT_SKIP);
+    h.prims(b, skip);
     h.prims(b.telemetry);
   }
   return h.hex();
@@ -149,9 +158,10 @@ export function hashRace(sim) {
   return h.hex();
 }
 
-export function hashCoreState(core) {
+/** version: HASH_VERSION (default) or 1 for records without hashVersion. */
+export function hashCoreState(core, version = HASH_VERSION) {
   const field = hashField(core.bm);
-  const boats = hashBoats(core.sim);
+  const boats = hashBoats(core.sim, version);
   const wind = hashWind(core.sim);
   const race = hashRace(core.sim);
   const h = new StateHasher();

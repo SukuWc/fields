@@ -7,7 +7,8 @@
 // Record shape used here: start: { opts, nextSpawn }, ticks, hashEvery,
 // log: [{ t, c } (a top-level SimCore.command before tick t) |
 //       { t, dt?, held?, present?, view? } (tick inputs from tick t on)],
-// hashes: [{ t, all, ... }] (after t ticks), finalHash: { t, all, ... }.
+// hashes: [{ t, all, ... }] (after t ticks), finalHash: { t, all, ... },
+// hashVersion (src/state-hash.js; missing = 1, records before #253).
 import { SimCore } from './host.js';
 import { hashCoreState } from './state-hash.js';
 
@@ -40,6 +41,39 @@ export class ReplayStepper {
     this.checked = 0;
     this.firstMismatch = null;
     this.finalHash = null;
+    this.hashVersion = record.hashVersion || 1;
+  }
+
+  /**
+   * Whether a tick may skip presenting (step({ draw: false })) without
+   * changing the hashes: hash version 2 leaves out the drawing-only boat
+   * state. A version-1 record always presents as recorded.
+   */
+  get canSkipDraw() { return this.hashVersion >= 2; }
+
+  /**
+   * In-memory keyframe: the SimCore state (SimCore.snapshot) and the
+   * stepping cursor. restore() continues from it bit for bit.
+   */
+  snapshot() {
+    return {
+      t: this.t, li: this.li, held: clone(this.held), present: this.present, view: clone(this.view),
+      checked: this.checked, hashes: this.hashes.length, firstMismatch: this.firstMismatch,
+      core: this.core.snapshot(),
+    };
+  }
+
+  restore(snap) {
+    this.core.restore(snap.core);
+    this.t = snap.t;
+    this.li = snap.li;
+    this.held = clone(snap.held);
+    this.present = snap.present;
+    this.view = clone(snap.view);
+    this.checked = snap.checked;
+    this.hashes.length = Math.min(this.hashes.length, snap.hashes);
+    this.firstMismatch = snap.firstMismatch;
+    this.finalHash = null;
   }
 
   /** True once every tick ran and the final hash was taken. */
@@ -63,7 +97,7 @@ export class ReplayStepper {
 
   _finish() {
     this._apply();
-    const finalHash = { t: this.ticks, ...hashCoreState(this.core) };
+    const finalHash = { t: this.ticks, ...hashCoreState(this.core, this.hashVersion) };
     const want = this.record.finalHash;
     if (!this.firstMismatch && want && finalHash.all !== want.all) this.firstMismatch = { t: this.ticks, want: want.all, got: finalHash.all };
     this.finalHash = finalHash;
@@ -72,15 +106,18 @@ export class ReplayStepper {
   /**
    * One recorded tick: the SimCore frame (as SimCore.tick returns it), or
    * null when the race is over (the first such call takes the final hash).
+   * draw: false skips presenting (no scene state in the frame) when that
+   * cannot change the hashes (canSkipDraw); otherwise the recorded present.
    */
-  step() {
+  step({ draw } = {}) {
     if (this.done) return null;
     if (this.t >= this.ticks) { this._finish(); return null; }
     const dt = this._apply();
-    const frame = this.core.tick({ dt, held: clone(this.held), present: this.present, view: clone(this.view) });
+    const present = draw === false && this.canSkipDraw ? false : this.present;
+    const frame = this.core.tick({ dt, held: clone(this.held), present, view: clone(this.view) });
     this.t++;
     if (this.t % this.every === 0 && this.want.has(this.t)) {
-      const h = { t: this.t, ...hashCoreState(this.core) };
+      const h = { t: this.t, ...hashCoreState(this.core, this.hashVersion) };
       this.hashes.push(h);
       this.checked++;
       const want = this.want.get(this.t);
