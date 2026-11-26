@@ -185,6 +185,31 @@ test('a live race that once failed mid-hash after a scrub now matches through th
   assert.ok(e.player.checked >= 50, 'checked ' + e.player.checked);
 });
 
+test('4x playback without a seek matches hashes through the old fail window', () => {
+  const e = mute(() => new ReplayEngine(RECORD_LONG, { scan: false }));
+  e.setSpeed(4);
+  while (e.t < 1500 && !e.done) mute(() => e.play());
+  assert.equal(e.t, 1500);
+  assert.equal(e.mismatch, null, e.mismatch && ('4x mismatch at ' + e.mismatch.t));
+  assert.ok(e.player.checked >= 50, 'checked ' + e.player.checked);
+});
+
+test('2x and 4x playback with seeks leave no hash mismatch', () => {
+  for (const speed of [2, 4]) {
+    const e = mute(() => new ReplayEngine(RECORD_LONG, { scan: true }));
+    e.setSpeed(speed);
+    while (e.t < 360 && !e.done) mute(() => e.play());
+    assert.equal(e.mismatch, null, speed + 'x early mismatch at ' + (e.mismatch && e.mismatch.t));
+    for (const t of [1200, 400, 1500, 200, 900]) {
+      e.seek(t);
+      while (e.seeking) mute(() => e.runSeek(1000));
+      const until = Math.min(t + 90, 1600);
+      while (e.t < until && !e.done) mute(() => e.play());
+      assert.equal(e.mismatch, null, speed + 'x mismatch after seek ' + t + ' at ' + (e.mismatch && e.mismatch.t));
+    }
+  }
+});
+
 test('randomized seek, pause-scan and play sequences leave no hash mismatch', () => {
   let a = 0xA5F3C109;
   const rnd = () => {
@@ -199,7 +224,9 @@ test('randomized seek, pause-scan and play sequences leave no hash mismatch', ()
     const cap = Math.min(rec.ticks, rec === RECORD_LONG ? 1600 : rec.ticks);
     for (let i = 0; i < 40; i++) {
       const r = rnd();
-      if (r < 0.4) {
+      if (r < 0.1) {
+        e.setSpeed([1, 2, 4][(rnd() * 3) | 0]);
+      } else if (r < 0.45) {
         const n = 1 + (rnd() * 40 | 0);
         for (let j = 0; j < n && e.t < cap && !e.done; j++) mute(() => e.play());
       } else if (r < 0.6) {
