@@ -175,3 +175,41 @@ test('the worker runs the look-ahead scan only while playback is paused', () => 
   const idle = out.filter((m) => m.status).at(-1).status;
   assert.ok(idle.simulatedTo > idle.t, `scan should run once paused, t=${idle.t} simulatedTo=${idle.simulatedTo}`);
 });
+
+const RECORD_LONG = JSON.parse(fs.readFileSync(new URL('./fixtures/replay-europe-1-mwxq7pem-1.json', import.meta.url), 'utf8'));
+
+test('a live race that once failed mid-hash after a scrub now matches through the old fail window', () => {
+  const e = mute(() => new ReplayEngine(RECORD_LONG, { scan: false }));
+  while (e.t < 1500 && !e.done) mute(() => e.play());
+  assert.equal(e.mismatch, null, e.mismatch && ('mismatch at ' + e.mismatch.t));
+  assert.ok(e.player.checked >= 50, 'checked ' + e.player.checked);
+});
+
+test('randomized seek, pause-scan and play sequences leave no hash mismatch', () => {
+  let a = 0xA5F3C109;
+  const rnd = () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let x = a;
+    x = Math.imul(x ^ (x >>> 15), x | 1);
+    x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+  for (const rec of [RECORD, RECORD_LONG]) {
+    const e = mute(() => new ReplayEngine(rec, { scan: true }));
+    const cap = Math.min(rec.ticks, rec === RECORD_LONG ? 1600 : rec.ticks);
+    for (let i = 0; i < 40; i++) {
+      const r = rnd();
+      if (r < 0.4) {
+        const n = 1 + (rnd() * 40 | 0);
+        for (let j = 0; j < n && e.t < cap && !e.done; j++) mute(() => e.play());
+      } else if (r < 0.6) {
+        const t0 = Date.now();
+        while (!e.scanDone && Date.now() - t0 < 30) mute(() => e.runScan(20));
+      } else {
+        e.seek((rnd() * (cap + 1)) | 0);
+        while (e.seeking) mute(() => e.runSeek(1000));
+      }
+      assert.equal(e.mismatch, null, rec.id + ' mismatch at t=' + (e.mismatch && e.mismatch.t) + ' op ' + i);
+    }
+  }
+});

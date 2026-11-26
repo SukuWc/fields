@@ -563,6 +563,7 @@ export class Sim {
 
     // Boats: forces, telemetry, sail energy into the lattice.
     players.forEach((player, index) => {
+      Object.defineProperty(player, '_penaltyNowMs', { value: this.rulesTime * 1000, writable: true, configurable: true, enumerable: false });
       player.physics_model_step();
       if (player.telemetry) rec.telemetryIndex = index;
       // Finish ghosts (finish-ghost.js) put no momentum into the lattice.
@@ -638,7 +639,7 @@ export class Sim {
         tacking: !!b.tacking,
         tackingOnto: b.tacking && b.tackingOnto ? b.tackingOnto : null,
         pending,
-        justCleared: penaltyJustCleared(b),
+        justCleared: penaltyJustCleared(b, this.rulesTime * 1000),
         penaltyTurn: steered ? { dir: steered.dir, remainingDeg: penaltyAutopilotRemainingDeg(b) } : null,
         reason: pending > 0 ? pendingPenaltyReason(b) : null,
         ic: pending > 0 ? pendingPenaltyCode(b) : null,

@@ -919,7 +919,10 @@ export class Boat{
 
     // Tack and gybe detection for the pending penalty. Hand-sailed and Q/E
     // turns both clear through this, never through the circle itself.
-    updatePenaltyManeuvers(this);
+    // nowMs is sim time (rulesTime×1000) when the sim set it, so the CLEARED
+    // flash is deterministic across a 30 Hz recording and a fast-forward seek.
+    const nowMs = this._penaltyNowMs;
+    updatePenaltyManeuvers(this, Number.isFinite(nowMs) ? { nowMs } : undefined);
 
   }
 
