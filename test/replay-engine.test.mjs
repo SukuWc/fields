@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import { ReplayEngine } from '../src/replay-engine.js';
 import { KEYFRAME_EVERY_TICKS } from '../src/replay-engine.js';
 import { createReplayWorker } from '../src/replay-worker-core.js';
+import { SCAN_IDLE_MS } from '../src/replay-worker-core.js';
 
 const RECORD = JSON.parse(fs.readFileSync(new URL('./fixtures/replay-europe-1-mww066n9-1.json', import.meta.url), 'utf8'));
 const mute = (f) => { const l = console.log; const i = console.info; console.log = () => {}; console.info = () => {}; try { return f(); } finally { console.log = l; console.info = i; } };
@@ -112,4 +113,65 @@ test('worker messages: seek progress statuses, a cancel, ticks answered while se
   assert.equal(last.status.t, 60);
   assert.equal(last.status.seeking, null);
   assert.equal(last.status.mismatch, null);
+});
+
+test('look-ahead scan jumps a lagging scanner to the latest keyframe', () => {
+  const e = mute(() => new ReplayEngine(RECORD));
+  mute(() => { while (!e.scanner || e.scanner.t < 40) e.runScan(1000); });
+  const behind = e.scanner.t;
+  assert.ok(behind < 300, 'scanner still early, got ' + behind);
+  e.seek(1200);
+  runSeek(e);
+  assert.equal(e.t, 1200);
+  assert.ok(e.scanner.t === behind, 'seek does not itself move the scanner');
+  mute(() => e.runScan(20));
+  assert.ok(e.scanner.t >= 1200, `scanner jumped from ${behind} to ${e.scanner.t}`);
+  assert.equal(e.mismatch, null);
+});
+
+test('the worker runs the look-ahead scan only while playback is paused', () => {
+  let now = 0;
+  let nid = 0;
+  const timers = [];
+  const schedule = (fn, ms = 0) => {
+    const id = ++nid;
+    timers.push({ id, at: now + (ms || 0), fn });
+    return id;
+  };
+  const cancelSchedule = (id) => {
+    const i = timers.findIndex((x) => x.id === id);
+    if (i >= 0) timers.splice(i, 1);
+  };
+  const runDue = () => {
+    let n = 0;
+    for (;;) {
+      const i = timers.reduce((best, t, idx) => (t.at <= now && (best < 0 || t.at < timers[best].at) ? idx : best), -1);
+      if (i < 0) break;
+      if (++n > 10000) throw new Error('timer loop');
+      const job = timers.splice(i, 1)[0];
+      mute(() => job.fn());
+    }
+  };
+  const out = [];
+  const on = createReplayWorker((m) => out.push(m), { schedule, cancelSchedule, now: () => now, scanIdleMs: SCAN_IDLE_MS, scanChunkMs: 1000 });
+  mute(() => on({ type: 'init', record: RECORD, opts: { scan: true } }));
+  assert.equal(timers.length, 0, 'init does not arm a scan while playing');
+  // Play ticks must not start the look-ahead scan, even if they arrive slowly.
+  for (let i = 0; i < 20; i++) {
+    mute(() => on({ type: 'tick' }));
+    now += 33;
+    runDue();
+  }
+  const mid = out.filter((m) => m.status).at(-1).status;
+  assert.ok(mid.t >= 20, 'played ticks, t=' + mid.t);
+  assert.equal(mid.simulatedTo, mid.t, `scan ran during play: t=${mid.t} simulatedTo=${mid.simulatedTo}`);
+  // Pause arms the look-ahead scan; it must not have been scheduled while playing.
+  assert.equal(timers.length, 0, 'no scan armed during play');
+  mute(() => on({ type: 'paused', on: true }));
+  assert.ok(timers.length >= 1, 'pause arms a scan');
+  mute(() => timers.shift().fn());
+  // A scan chunk only posts status every STATUS_EVERY_MS; ask for a fresh one.
+  mute(() => on({ type: 'speed', n: 1 }));
+  const idle = out.filter((m) => m.status).at(-1).status;
+  assert.ok(idle.simulatedTo > idle.t, `scan should run once paused, t=${idle.t} simulatedTo=${idle.simulatedTo}`);
 });
