@@ -429,11 +429,12 @@ the room is not in dev mode). Reloading with `?field_mode=freeze` stays
 subscribed just long enough to paint one keyframe, then unsubscribes.
 Unchecking and checking the box again takes a fresh snapshot.
 
-Flow tracers are a **separate** Dev setting (`flow_tracers`, default on,
-URL key `?show_field`). Unchecking Show field hides the colour plane but
+Flow tracers are a **separate** Dev setting (`flow_tracers`, default on).
+Preferences are no longer URL keys: set them in the Dev TOML or the
+Preferences tab (saved in this browser). Unchecking Show field hides the colour plane but
 does **not** unsubscribe if tracers or ladder lines are on: both are
-computed on the client from the same vector stream (see below). Add
-`show_field=0` (and leave the plane off, and `?ladder=0`) to drop
+computed on the client from the same vector stream (see below). Set
+`flow_tracers = false` (and leave the plane off, and `ladder_lines = false`) to drop
 the stream as well as the per-frame tracer draw.
 
 `?hud=1` shows a small on-screen client readout (not the server `?perf=`
@@ -449,10 +450,10 @@ On sailzone.app, after this is deployed (same query keys work on a local
 - Receive + paint, hide the plane: `/play/?room=europe-1&hud=1&field_mode=recv`
 - One field, then stop sending, keep it visible: `/play/?room=europe-1&hud=1&field_mode=freeze`
 - Decode only, skip paint: `/play/?room=europe-1&hud=1&field_mode=nopaint`
-- Same four with tracers off: add `&show_field=0`
-- Field fully off (current toggle): `/play/?room=europe-1&hud=1&field_plane=0`
+- Same four with tracers off: Dev TOML `flow_tracers = false`
+- Field fully off (current toggle): Preferences, untick Show field (server)
 
-If `recv` and `nopaint` still hitch but `freeze` and `field_plane=0` are
+If `recv` and `nopaint` still hitch but `freeze` and the field off are
 smooth, the live field stream (bytes and/or decode) is the cause. If only
 `nopaint` and hiding the plane (`recv` / `field_plane=0`) are smooth,
 paint and the 5 MB texture upload are the expensive part.
@@ -488,9 +489,9 @@ the existing JS `paintGrids` path (GPU paint is a follow-up).
 
 The client bilinear-samples the finest covering AMR grid for:
 
-- Flow tracers (`flow_tracers` / `?show_field`)
+- Flow tracers (`flow_tracers`)
 - Ladder lines, when the per-client Dev setting `ladder_lines` is on
-  (default; URL `?ladder=0` turns them off). `ladder-lines.js` anchors
+  (default; Dev TOML `ladder_lines = false` turns them off). `ladder-lines.js` anchors
   them at the local player's next course target (the next mark or the
   mid of a gate, then the finish-line mid; the same progress as the HUD
   "NEXT" logic; no lines before the gun). The field is sampled once, at
@@ -543,8 +544,8 @@ fits the 32 KiB ack window.
 Phone checks after deploy (europe-1):
 
 - Baseline, HUD on: `/play/?room=europe-1&hud=1`
-- Tracers + plane, default ack: `/play/?room=europe-1&hud=1&show_field=1&field_plane=1`
-- Tracers, plane off: `/play/?room=europe-1&hud=1&show_field=1&field_plane=0`
+- Tracers + plane, default ack: `/play/?room=europe-1&hud=1` (tracers and Show field (server) on)
+- Tracers, plane off: the same, with Show field (server) unticked in Preferences
 - A/B legacy: add `&send=legacy`
 - Field-mode experiments: `&field_mode=recv|freeze|nopaint` as above
 

@@ -39,8 +39,7 @@ import { replayIdFromQuery } from './replay-host.js';
 import { setupReplayBanner } from './replay-banner.js';
 import { setupOwnBoat } from './own-boat.js';
 import { View, cameraTarget } from './view.js';
-import { installUrlSettings } from './url-settings.js';
-import { installPlayerPrefs } from './player-prefs.js';
+import { installPlayerPrefs, stripPrefsFromUrl } from './player-prefs.js';
 import { applyDevEffects, installDevPrefs } from './dev-prefs.js';
 import { setupSettingsTabs } from './settings-tabs.js';
 import { setupInstrumentPanel } from './instrument-panel.js';
@@ -53,7 +52,6 @@ import { setupRankChip } from './rank-chip.js';
 import {
   settingDefault,
   SUBSCRIPTION_IDS,
-  urlSettingIds,
 } from './settings-registry.js';
 import {
   fieldModeFromQuery,
@@ -173,6 +171,9 @@ if (_hostChoice.drop.length) {
   const qs = q.toString();
   history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
 }
+// Preferences are not URL state (they live in localStorage only). An old
+// link's preference keys are dropped here, unapplied.
+stripPrefsFromUrl(window);
 const _workerQueue = Number(_query.get('workerQueue'));
 function makeLocalHost() { return new LocalHost(_hostOpts); }
 // A random token per server URL (the room is in the URL), kept in
@@ -323,17 +324,16 @@ function startClient() {
   setupMobileSheet();
   setupFullscreenToggle();
   setupDevView();
-  // Room settings (TOML) are committed from controls.js. Player URL params
-  // still sync via installUrlSettings. Dev URL keys are applied by the Dev
-  // TOML editor (dev-prefs.js), which also owns tracers, trails, ghost and
-  // the autopilot holdoff.
+  // Room settings (TOML) are committed from controls.js. Preferences are
+  // saved in this browser only (player-prefs.js); the Dev TOML editor
+  // (dev-prefs.js) owns tracers, trails, ghost and the autopilot holdoff.
   // Counters: live from the main-thread host, else the latest frame's.
   let lastFrame = null;
   // Remote mode (server clock) is event-driven: the overlay closes a frame per
   // server frame instead of running its own rAF loop.
   const remoteDriven = host.kind === 'remote' && host.mode !== 'client';
   setupPerfOverlay(() => (host.perfStats ? host.perfStats() : lastFrame && lastFrame.perf) || null, { external: remoteDriven });
-  // Before installUrlSettings: the device default must be the checkbox default.
+  // Before installPlayerPrefs: the device default must be the checkbox default.
   setupTouchControls();
   setupGamepad();
   // Preferences tab → Input mapping: which boat the keyboard and each pad drive.
@@ -355,10 +355,9 @@ function startClient() {
     // Preferences → Autopilot drag circle (default off, opt-in).
     enabled: () => { const b = document.getElementById('autopilot_drag'); return !!(b && b.checked); },
   });
-  installUrlSettings(undefined, { ids: urlSettingIds({ remote }) });
-  // After the URL: saved player prefs fill what the query string leaves unset.
+  // Saved player prefs (localStorage) over the defaults.
   const playerPrefs = installPlayerPrefs();
-  // Dev TOML: query wins over the saved document, then Apply (visuals + PID).
+  // Dev TOML: the saved document, then Apply (visuals + PID).
   // The panel layout can arrive before the instrument panel exists (local
   // Apply is synchronous): kept here and handed over once it is set up.
   let instrumentPanel = null;

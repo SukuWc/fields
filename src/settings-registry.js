@@ -1,6 +1,6 @@
 // Settings registry: every control on the settings panel (#settings), in
 // panel order, with
-//   id         element id, also its URL query key (url-settings.js)
+//   id         element id (preferences are never URL keys; see prefUrlKeys)
 //   scope      'room': a room-wide setting, sent as a validated room command
 //              (apps/server/room.js ROOM_COMMANDS / validateRoomCommand,
 //              broadcast to everyone in a server room);
@@ -22,8 +22,6 @@
 //   state      room settings: path of the value in SimCore.settings /
 //              roomState().settings (remote mode shows the room's values)
 //   subscription  per-client stream it switches: 'flow' | 'field' | 'perf'
-//   url        false: never written to the URL (default true; remote mode
-//              leaves every room setting out: the room has its own values)
 //   ui         number inputs: { min, max } spinner hints when they differ
 //              from the validation range (null: no attribute); the wind
 //              speed max then follows the mode (controls.js setWindCeiling)
@@ -92,8 +90,8 @@ export const SETTINGS = [
   { id: 'autopilot_drag', scope: 'player', panel: 'player', type: 'bool', default: false },
   // touch_layout (Classic / Overlay) removed: Overlay is the only touch layout.
   // Dev tab: still this page only (scope player), one TOML document
-  // (src/dev-config.js). control:false = no per-setting DOM. The ids stay
-  // the URL keys (?show_field, ?boat_trails, ?autopilot_holdoff_ms, …).
+  // (src/dev-config.js). control:false = no per-setting DOM. Saved only in
+  // this browser (fields.devConfig), never in the URL.
   { id: 'show_field', scope: 'player', panel: 'dev', control: false, type: 'bool', default: true, subscription: 'flow' },
   { id: 'ladder', scope: 'player', panel: 'dev', control: false, type: 'bool', default: true },
   // Drawn-layline half-angle corrections (degrees). Client draw only; Rule 13 untouched.
@@ -128,48 +126,47 @@ export const SETTINGS = [
 
   // Room settings: still validated / applied as room commands, but the
   // Room settings panel is a single TOML textarea (src/room-config.js).
-  // control:false = no per-setting DOM; url:false = not written to the query
-  // (old room URL params are gone).
+  // control:false = no per-setting DOM. None of them is written to the URL.
   // The scenario's existence and fit depend on the room: checks.scenario.
-  { id: 'scenario_selector', scope: 'room', panel: 'room', control: false, url: false, type: 'int', default: 0, min: 0, coerce: true, check: 'scenario', ui: { min: 0, max: 25 },
+  { id: 'scenario_selector', scope: 'room', panel: 'room', control: false, type: 'int', default: 0, min: 0, coerce: true, check: 'scenario', ui: { min: 0, max: 25 },
     command: { type: 'restart', field: 'scenario', required: true }, invalid: (v) => 'no scenario ' + v },
-  { id: 'windAngle', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: 90, ui: { min: 0, max: 360 },
+  { id: 'windAngle', scope: 'room', panel: 'room', control: false, type: 'number', default: 90, ui: { min: 0, max: 360 },
     command: { type: 'wind', field: 'angle' }, state: 'wind.angle', normalize: (v) => ((v % 360) + 360) % 360, invalid: () => 'bad wind angle' },
-  { id: 'windSpeed', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: 4.5, min: 0, max: MAX_WIND_MPS, ui: { min: 0, max: windCeilingMps(DEFAULT_SIM_RES) },
+  { id: 'windSpeed', scope: 'room', panel: 'room', control: false, type: 'number', default: 4.5, min: 0, max: MAX_WIND_MPS, ui: { min: 0, max: windCeilingMps(DEFAULT_SIM_RES) },
     command: { type: 'wind', field: 'speed' }, state: 'wind.speed', invalid: () => 'wind speed must be 0..' + MAX_WIND_MPS + ' m/s' },
-  { id: 'devmode', scope: 'room', panel: 'room', control: false, url: false, type: 'bool', default: false, command: { type: 'devMode', field: 'on', required: true }, state: 'devMode' },
-  { id: 'amr', scope: 'room', panel: 'room', control: false, url: false, type: 'bool', default: true, command: { type: 'options', field: 'amr', key: true }, state: 'amr', devModeDisabled: true },
-  { id: 'barrier', scope: 'room', panel: 'room', control: false, url: false, type: 'bool', default: false, command: { type: 'barrier', field: 'on', required: true }, state: 'barrier', devModeDisabled: true },
-  { id: 'boat_energy', scope: 'room', panel: 'room', control: false, url: false, type: 'bool', default: true, command: { type: 'options', field: 'boatEnergy', key: true }, state: 'boatEnergy', devModeDisabled: true },
-  { id: 'simRes', scope: 'room', panel: 'room', control: false, url: false, type: 'enum', default: DEFAULT_SIM_RES, values: Object.keys(SIM_RES_MODES), markDefault: true,
+  { id: 'devmode', scope: 'room', panel: 'room', control: false, type: 'bool', default: false, command: { type: 'devMode', field: 'on', required: true }, state: 'devMode' },
+  { id: 'amr', scope: 'room', panel: 'room', control: false, type: 'bool', default: true, command: { type: 'options', field: 'amr', key: true }, state: 'amr', devModeDisabled: true },
+  { id: 'barrier', scope: 'room', panel: 'room', control: false, type: 'bool', default: false, command: { type: 'barrier', field: 'on', required: true }, state: 'barrier', devModeDisabled: true },
+  { id: 'boat_energy', scope: 'room', panel: 'room', control: false, type: 'bool', default: true, command: { type: 'options', field: 'boatEnergy', key: true }, state: 'boatEnergy', devModeDisabled: true },
+  { id: 'simRes', scope: 'room', panel: 'room', control: false, type: 'enum', default: DEFAULT_SIM_RES, values: Object.keys(SIM_RES_MODES), markDefault: true,
     command: { type: 'simRes', field: 'mode', required: true }, state: 'simRes', invalid: (v) => 'unknown simRes ' + v },
-  { id: 'amrMode', scope: 'room', panel: 'room', control: false, url: false, type: 'enum', default: 'auto', values: ['auto', 'fixed'],
+  { id: 'amrMode', scope: 'room', panel: 'room', control: false, type: 'enum', default: 'auto', values: ['auto', 'fixed'],
     command: { type: 'amrMode', field: 'mode', required: true }, state: 'amrMode', invalid: () => 'amrMode must be auto or fixed' },
-  { id: 'sailWakeGain', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: 16, min: 0, max: 64,
+  { id: 'sailWakeGain', scope: 'room', panel: 'room', control: false, type: 'number', default: 16, min: 0, max: 64,
     command: { type: 'sailWake', field: 'gain', required: true }, state: 'sailWakeGain', invalid: () => 'sailWake gain must be 0..64', devModeDisabled: true },
-  { id: 'maxLevel', scope: 'room', panel: 'room', control: false, url: false, type: 'int', default: DEFAULT_MAX_LEVEL, nullable: true, min: 1, max: 5,
+  { id: 'maxLevel', scope: 'room', panel: 'room', control: false, type: 'int', default: DEFAULT_MAX_LEVEL, nullable: true, min: 1, max: 5,
     command: { type: 'refine', field: 'maxLevel' }, state: 'refine.maxLevel', invalid: () => 'maxLevel must be 1..5 or null', devModeDisabled: true },
-  { id: 'boatRefineRadius', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: DEFAULT_BOAT_REFINE_RADIUS, nullable: true, min: 0.5, max: 16,
+  { id: 'boatRefineRadius', scope: 'room', panel: 'room', control: false, type: 'number', default: DEFAULT_BOAT_REFINE_RADIUS, nullable: true, min: 0.5, max: 16,
     command: { type: 'refine', field: 'boatRefineRadius' }, state: 'refine.boatRefineRadius', invalid: () => 'boatRefineRadius must be 0.5..16 m or null', devModeDisabled: true },
   // Set when the room is created (the creator's init options); no command.
-  { id: 'map_size', scope: 'room', panel: 'room', control: false, url: false, type: 'enum', default: DEFAULT_MAP_SIZE },
+  { id: 'map_size', scope: 'room', panel: 'room', control: false, type: 'enum', default: DEFAULT_MAP_SIZE },
   // Default off: TOML budget_target = -1 means unlimited (tune false).
-  { id: 'cellBudgetTune', scope: 'room', panel: 'room', control: false, url: false, type: 'bool', default: false, command: { type: 'cellBudget', field: 'tune', required: true }, state: 'cellBudget.tune' },
-  { id: 'cellBudget', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: null, nullable: true, min: 1000, max: 1e8, ui: { min: 1000, max: null },
+  { id: 'cellBudgetTune', scope: 'room', panel: 'room', control: false, type: 'bool', default: false, command: { type: 'cellBudget', field: 'tune', required: true }, state: 'cellBudget.tune' },
+  { id: 'cellBudget', scope: 'room', panel: 'room', control: false, type: 'number', default: null, nullable: true, min: 1000, max: 1e8, ui: { min: 1000, max: null },
     command: { type: 'cellBudget', field: 'target' }, state: 'cellBudget.target', invalid: () => 'cellBudget target must be 1000..1e8 or null' },
-  { id: 'fieldSkip', scope: 'room', panel: 'room', control: false, url: false, type: 'int', default: 0, min: 0, max: 29, coerce: true,
+  { id: 'fieldSkip', scope: 'room', panel: 'room', control: false, type: 'int', default: 0, min: 0, max: 29, coerce: true,
     command: { type: 'fieldSkip', field: 'n', required: true }, state: 'fieldSkip', invalid: () => 'fieldSkip must be 0..29',
     remoteOnly: true },
   // Gust rate spawner (room-config.js TOML). Applied via atomic `config` → `gusts`
   // command; not individual panel controls. See gusts.js / ROOM_CONFIG_DEFAULTS.
-  { id: 'gusts', scope: 'room', panel: 'room', control: false, url: false, type: 'bool', default: false, state: 'gusts.enabled' },
-  { id: 'gust_rate_per_min', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: 0, min: 0, max: 120, state: 'gusts.ratePerMin' },
-  { id: 'gust_force_gain', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: 0.003, min: 0, max: 1, state: 'gusts.forceGain' },
-  { id: 'gust_along_sigma_m', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: 2.5, min: 0, max: 100, state: 'gusts.alongSigmaM' },
-  { id: 'gust_cross_sigma_m', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: 12.5, min: 0, max: 200, state: 'gusts.crossSigmaM' },
-  { id: 'gust_life_s', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: 10, min: 0, max: 120, state: 'gusts.lifeS' },
-  { id: 'gust_dir_deg', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: 0, state: 'gusts.dirDeg' },
-  { id: 'gust_ramp_s', scope: 'room', panel: 'room', control: false, url: false, type: 'number', default: 1.5, min: 0, max: 60, state: 'gusts.rampS' },
+  { id: 'gusts', scope: 'room', panel: 'room', control: false, type: 'bool', default: false, state: 'gusts.enabled' },
+  { id: 'gust_rate_per_min', scope: 'room', panel: 'room', control: false, type: 'number', default: 0, min: 0, max: 120, state: 'gusts.ratePerMin' },
+  { id: 'gust_force_gain', scope: 'room', panel: 'room', control: false, type: 'number', default: 0.003, min: 0, max: 1, state: 'gusts.forceGain' },
+  { id: 'gust_along_sigma_m', scope: 'room', panel: 'room', control: false, type: 'number', default: 2.5, min: 0, max: 100, state: 'gusts.alongSigmaM' },
+  { id: 'gust_cross_sigma_m', scope: 'room', panel: 'room', control: false, type: 'number', default: 12.5, min: 0, max: 200, state: 'gusts.crossSigmaM' },
+  { id: 'gust_life_s', scope: 'room', panel: 'room', control: false, type: 'number', default: 10, min: 0, max: 120, state: 'gusts.lifeS' },
+  { id: 'gust_dir_deg', scope: 'room', panel: 'room', control: false, type: 'number', default: 0, state: 'gusts.dirDeg' },
+  { id: 'gust_ramp_s', scope: 'room', panel: 'room', control: false, type: 'number', default: 1.5, min: 0, max: 60, state: 'gusts.rampS' },
 ];
 
 export const SETTING_BY_ID = new Map(SETTINGS.map((s) => [s.id, s]));
@@ -278,10 +275,12 @@ export function roomStateValue(s, settings) {
   return v;
 }
 
-// Ids kept in sync with the URL: every setting, minus the room settings in
-// remote mode (the room's own values win there).
-export function urlSettingIds({ remote = false } = {}) {
-  return SETTINGS.filter((s) => s.url !== false && !(remote && s.scope === 'room')).map((s) => s.id);
+// Query keys that once carried a preference (every player setting, plus the
+// old ?sticky_autopilot link). Preferences live only in localStorage; these
+// keys are ignored and stripped from old links (player-prefs.js).
+export const LEGACY_PREF_URL_KEYS = ['sticky_autopilot'];
+export function prefUrlKeys() {
+  return [...SETTINGS.filter((s) => s.scope === 'player').map((s) => s.id), ...LEGACY_PREF_URL_KEYS];
 }
 
 // Per-client streams and the player setting that switches each.

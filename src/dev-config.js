@@ -205,8 +205,8 @@ function inRange(s, v) {
 }
 
 /**
- * One legacy / URL value (registry id) → TOML value, or undefined to skip.
- * Accepts the types player-prefs and the query string actually stored:
+ * One legacy saved value (registry id) → TOML value, or undefined to skip.
+ * Accepts the types the old player-prefs store actually held:
  * booleans, numeric strings, "Plot speed", and tracers "" / null for auto.
  */
 export function coerceLegacy(id, raw) {
@@ -241,24 +241,6 @@ export function coerceLegacy(id, raw) {
     return n;
   }
   return undefined;
-}
-
-/** Query string for one TOML value, or null when it is the default (omit). */
-export function legacyUrlValue(id, tomlValue) {
-  const field = FIELD_BY_ID.get(id);
-  if (!field) return null;
-  const s = setting(id);
-  if (field.zeroMeansAuto) return tomlValue ? String(tomlValue) : null;
-  if (field.plot) {
-    const label = PLOT_LABELS[PLOT_TOKENS.indexOf(tomlValue)];
-    return label && label !== s.default ? label : null;
-  }
-  if (s.type === 'bool') {
-    if (!!tomlValue === !!s.default) return null;
-    return tomlValue ? '1' : '0';
-  }
-  if (tomlValue === s.default) return null;
-  return String(tomlValue);
 }
 
 export function stringifyDevConfig(cfg) {
@@ -430,27 +412,6 @@ export function devConfigErrorLine(text, err) {
   return null;
 }
 
-/** Overlay query keys onto a validated config. Bad keys are skipped, not applied. */
-export function configFromQuery(cfg, params) {
-  const next = { ...cfg };
-  let any = false;
-  // Old link key: ?sticky_autopilot=0 / 1 (the holdoff key wins when both are there).
-  if (params && params.has(LEGACY_STICKY_KEY) && !params.has('autopilot_holdoff_ms')) {
-    const v = holdoffFromLegacySticky(params.get(LEGACY_STICKY_KEY));
-    if (v !== undefined) { next.autopilot_holdoff_ms = v; any = true; }
-  }
-  for (const field of DEV_TOML_FIELDS) {
-    if (!params || !params.has(field.id)) continue;
-    const v = coerceLegacy(field.id, params.get(field.id));
-    if (v === undefined) continue;
-    next[field.key] = v;
-    any = true;
-  }
-  if (!any) return cfg;
-  const v = validateDevConfig(next);
-  return v.error ? cfg : v.config;
-}
-
 /**
  * Build a config from saved dev JSON plus leftover player-prefs / sticky
  * values. `saved` wins when it validates (the new store). Otherwise the
@@ -496,8 +457,8 @@ export function configFromStored(saved, legacyPrefs, stickyRaw) {
   return { config: out.error ? { ...DEV_CONFIG_DEFAULTS } : out.config, migrated };
 }
 
-// The boolean sticky_autopilot this holdoff replaced (TOML key, URL key and
-// old player-prefs id), and its own localStorage key before the Dev TOML.
+// The boolean sticky_autopilot this holdoff replaced (TOML key and old
+// player-prefs id; an old ?sticky_autopilot link key is only stripped), and its own localStorage key before the Dev TOML.
 export const LEGACY_STICKY_KEY = 'sticky_autopilot';
 export const LEGACY_STICKY_STORAGE_KEY = 'fields.stickyAutopilot';
 // Old true / false → holdoff ms: false = -1 (never), true = the default; else undefined.

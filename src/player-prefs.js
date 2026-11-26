@@ -3,14 +3,16 @@
 // Player-panel controls in settings-registry.js are saved to localStorage
 // 'fields.playerPrefs' when the user edits them, and restored on the next
 // load. Only values that differ from the registry default are kept.
-// Precedence on load: a query key wins over the saved value, which wins
-// over the default. Restoring dispatches input + change like a real edit.
-// Reset settings clears this store.
+// Preferences are never kept in the page URL: the saved value wins over
+// the default, and a query key with a preference id is ignored (old links
+// are cleaned by stripPrefsFromUrl). Restoring dispatches input + change
+// like a real edit. Reset settings puts the Preferences controls back to
+// their defaults and clears this store.
 //
 // The Dev tab is a separate TOML document (src/dev-prefs.js,
 // 'fields.devConfig'). Those settings are control:false and are not saved
 // here. A load that still finds the old keys moves them into that document.
-import { SETTINGS } from './settings-registry.js';
+import { SETTINGS, prefUrlKeys } from './settings-registry.js';
 
 export const PREFS_KEY = 'fields.playerPrefs';
 
@@ -67,27 +69,60 @@ export function installPlayerPrefs(doc = document) {
     store(out);
     if (note) { note.classList.add('flash'); setTimeout(() => note.classList.remove('flash'), 900); }
   };
-  // Restore: skip keys the URL sets (url-settings.js already applied them).
-  const params = new URLSearchParams(window.location.search);
+  // Firefox restores form state on reload (autocomplete="off" in index.html
+  // opts out). A checkbox that still came back from the browser goes back to
+  // its markup default, so no handler is left out of step with the box.
+  for (const el of controls) if (el.type === 'checkbox') el.checked = el.defaultChecked;
   const saved = load();
+  const apply = (id, v) => {
+    const el = byId.get(id);
+    if (!el || !differs(el, v)) return;
+    if (el.tagName === 'SELECT' && !Array.from(el.options).some((o) => o.value === String(v))) return;
+    if (el.type === 'checkbox') el.checked = !!v; else el.value = String(v);
+    try {
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    } catch (err) { console.error(err); }
+  };
   restoring = true;
   try {
-    for (const [id, v] of Object.entries(saved)) {
-      const el = byId.get(id);
-      if (!el || params.has(id) || !differs(el, v)) continue;
-      if (el.tagName === 'SELECT' && !Array.from(el.options).some((o) => o.value === String(v))) continue;
-      if (el.type === 'checkbox') el.checked = !!v; else el.value = String(v);
-      try {
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-      } catch (err) { console.error(err); }
-    }
+    for (const [id, v] of Object.entries(saved)) apply(id, v);
   } finally { restoring = false; }
   // Save on the user's own edits only (not on programmatic dispatches).
   const onEdit = (e) => { if (!restoring && e.isTrusted && byId.has(e.target.id)) save(); };
   doc.addEventListener('change', onEdit, true);
   doc.addEventListener('input', onEdit, true);
+  // Reset settings: the Preferences pane (#settings) back to its defaults.
+  // The player name (Player menu) keeps its field value; its saved copy goes
+  // with the rest of the store.
   const reset = doc.getElementById('reset_settings');
-  if (reset) reset.addEventListener('click', () => { try { localStorage.removeItem(PREFS_KEY); } catch { /* no storage */ } });
+  const panel = doc.getElementById('settings');
+  if (reset) reset.addEventListener('click', () => {
+    restoring = true;
+    try {
+      for (const el of controls) if (!panel || !panel.contains || panel.contains(el)) apply(el.id, defaults.get(el.id));
+    } finally { restoring = false; }
+    try { localStorage.removeItem(PREFS_KEY); } catch { /* no storage */ }
+  });
   return { save, ids: controls.map((el) => el.id) };
+}
+
+// Old links (before preferences left the URL) can still carry preference
+// keys (?camera_follow=1, ?ghost=1, ?sticky_autopilot=0, …). They are not
+// applied; this drops them from the address bar once on load. Every other
+// key (host, map_size, scenario_selector, dev, hud, …) is kept as is.
+export function stripPrefsFromUrl(win = globalThis.window) {
+  try {
+    if (!win || !win.location || !win.history || typeof win.history.replaceState !== 'function') return false;
+    const keys = new Set(prefUrlKeys());
+    const current = new URLSearchParams(win.location.search || '');
+    const next = new URLSearchParams();
+    let dropped = false;
+    for (const [k, v] of current.entries()) { if (keys.has(k)) dropped = true; else next.append(k, v); }
+    if (!dropped) return false;
+    const qs = next.toString();
+    // pathname keeps the Pages folder (PR previews live under a subfolder).
+    win.history.replaceState(win.history.state, '', win.location.pathname + (qs ? '?' + qs : '') + (win.location.hash || ''));
+    return true;
+  } catch { return false; }
 }

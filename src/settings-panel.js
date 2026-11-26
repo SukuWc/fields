@@ -6,7 +6,7 @@ import { SETTINGS } from './settings-registry.js';
 
 export const PANEL_IDS = { player: 'player_panel', dev: 'dev_panel', room: 'admin_panel' };
 
-// Before anything reads a control (url-settings.js captures these as the
+// Before anything reads a control (player-prefs.js captures these as the
 // defaults). Returns the mismatches found (also logged). Skips settings
 // with control:false (no DOM).
 export function applySettingDefaults(doc = document) {
