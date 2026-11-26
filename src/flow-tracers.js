@@ -229,6 +229,12 @@ export class FlowTracers {
     if (first) this._fill();
   }
 
+  // Spawn every tracer again (staggered ages, empty tails). Visual only:
+  // used after a replay seek so tails do not jump across the field.
+  reseed() {
+    if (this.grid) this._fill();
+  }
+
   // Bilinear velocity at (x, y), clamped to the grid; out.x / out.y in m/s.
   velocityAt(x, y, out = { x: 0, y: 0 }) {
     const g = this.grid;

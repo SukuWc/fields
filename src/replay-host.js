@@ -11,8 +11,11 @@
 // a dt asks the worker for the next `speed` recorded ticks; ticks without a
 // dt (?simPasses), while paused, seeking or after the end do nothing. The
 // page's held keys, dt and view are ignored: the sim gets exactly the
-// recorded inputs. Client commands other than plot (the field colours) are
-// dropped, so nothing on the page can change the replayed race.
+// recorded inputs. Client commands are dropped, so nothing on the page can
+// change the replayed race. The field is painted on the page from the
+// worker's vector-field message (the same encodeVectorGrids stream the live
+// server sends), so contrast matches the real game and flow tracers have a
+// grid even though the recorded view has show_fields off.
 //
 // Seeking (src/replay-engine.js): seek(t) restores the nearest keyframe and
 // fast-forwards in the worker; status().seeking shows the progress and
@@ -32,6 +35,7 @@
 // done, paused, error, speed, seeking, simulatedTo, keyframes, ... }) after
 // every frame and on pause, seek progress and errors.
 import { createReplayWorker } from './replay-worker-core.js';
+import { FieldPainter } from './fieldPainter.js';
 
 const ID_RE = /^[A-Za-z0-9_.-]{1,128}$/;
 
@@ -64,6 +68,10 @@ export class ReplayHost {
     this.id = id;
     this.texture = texture;
     this.oversampling = oversampling;
+    this.lastField = null;
+    this._contrastExp = 0;
+    this._plotType = 3;
+    this._painter = texture ? new FieldPainter(texture, oversampling || 8) : null;
     this.paused = false;
     this.error = null;
     this.lastFrame = null;
@@ -149,7 +157,7 @@ export class ReplayHost {
         break;
       case 'frame':
         if (m.tick) this.inFlight = Math.max(0, this.inFlight - 1);
-        if (m.field) this._applyField(m.field);
+        if (m.vec) this._applyVec(m.vec);
         if (m.frame && m.frame.statics) this._statics = m.frame.statics;
         if (m.frame && m.frame.state) {
           m.frame.statics = this._statics;
@@ -166,20 +174,18 @@ export class ReplayHost {
     }
   }
 
-  // New texels for the page's DataTexture (as WorkerHost).
-  _applyField({ data, width, height }) {
-    const tex = this.texture;
-    if (!tex) return;
-    const img = tex.image;
-    if (img && img.width === width && img.height === height) {
-      const old = img.data;
-      img.data = data;
-      if (old && old.buffer && old.byteLength === data.byteLength && this.worker) this._send({ type: 'buffer', data: old }, [old.buffer]);
-    } else {
-      tex.image = { data, width, height };
-      if (typeof tex.dispose === 'function') tex.dispose();
-    }
-    tex.needsUpdate = true;
+  // Vector field from the worker (kind: 'vec'): paint with this page's
+  // contrast and keep it for flow tracers (main.js setFlowGrid).
+  _applyVec(vec) {
+    if (!vec || vec.kind !== 'vec') return;
+    this.lastField = vec;
+    if (this._painter) this._painter.paintGrids(vec, this._contrastExp);
+  }
+
+  _applyPlot(c) {
+    if (Number.isFinite(c.plotType)) this._plotType = c.plotType;
+    if ('contrastExp' in c) this._contrastExp = Number(c.contrastExp);
+    if (this.lastField && this._painter) this._painter.paintGrids(this.lastField, this._contrastExp);
   }
 
   _setStatus(st) {
@@ -195,7 +201,12 @@ export class ReplayHost {
   }
 
   // The page's texture once it knows the replayed map size (main.js).
-  setTexture(texture) { this.texture = texture; }
+  setTexture(texture) {
+    this.texture = texture;
+    if (this._painter) this._painter.texture = texture;
+    else if (texture) this._painter = new FieldPainter(texture, this.oversampling || 8);
+    if (this.lastField && this._painter) this._painter.paintGrids(this.lastField, this._contrastExp);
+  }
 
   on(fn) { this._listeners.push(fn); }
   onFrame(fn) { this._frameListeners.push(fn); }
@@ -276,13 +287,17 @@ export class ReplayHost {
     });
   }
 
-  // Only the field colours (plot) reach the replayed core.
+  // Plot / contrast stay on this page (the worker does not paint the field).
+  // Other commands are dropped so the page cannot change the replayed race.
   commandSync(c) {
-    if (c && c.type === 'plot') this._call('command', 'c', c);
+    if (c && c.type === 'plot') this._applyPlot(c);
     return undefined;
   }
 
-  command(c) { return c && c.type === 'plot' ? this._call('command', 'c', c) : Promise.resolve(undefined); }
+  command(c) {
+    if (c && c.type === 'plot') this._applyPlot(c);
+    return Promise.resolve(undefined);
+  }
 
   query(q) { return this._call('query', 'q', q); }
 

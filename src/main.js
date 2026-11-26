@@ -11,6 +11,7 @@ import {
   resetFluidPlane,
   setBoatTrailsOn,
   setFieldVisible,
+  reseedFlowTracers,
   setFlowGrid,
   setFluidPlaneSize,
   setGhostParams,
@@ -519,8 +520,12 @@ function startClient() {
       frameRowCircles = scene.rowCircles || null;
     }
     if (frame.fieldReady) dataTextureMaterial.needsUpdate = true;
-    if (host.kind === 'remote') {
+    // Remote and replay: tracers advect from the vector-field message
+    // (host.lastField). Local / worker still send a coarse frame.flow grid.
+    // A replay seek reseeds the pool so tails do not jump across the field.
+    if (host.kind === 'remote' || host.kind === 'replay') {
       if (view.show_fields && host.lastField && host.lastField.kind === 'vec') setFlowGrid(host.lastField);
+      if (host.kind === 'replay' && frame.seeked) reseedFlowTracers();
     } else if (frame.flow) {
       setFlowGrid(frame.flow);
     }

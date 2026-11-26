@@ -703,6 +703,12 @@ export function setFlowGrid(grid) {
   tracers.setGrid(grid);
 }
 export function getTracers() { return tracers; }
+// After a replay seek: respawn the pool on the current grid and reset the
+// advection clock so a long seek dt does not fling the old tails.
+export function reseedFlowTracers() {
+  _tracerT = null;
+  if (tracers && tracers.grid) tracers.reseed();
+}
 // Headless browser checks read the live pool (count, lifetime, tail, quality).
 if (typeof window !== 'undefined') window.__tracers = () => tracers && { count: tracers.count, lifetime: tracers.lifetime, tail: tracers.tail, quality: tracers.quality, segments: tracers.segments, visible: !!(tracerLines && tracerLines.visible) };
 
